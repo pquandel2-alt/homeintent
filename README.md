@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.1.2** (V12 + Learning Center)
+- Aktuelle Version: **7.1.3** (V12 + Learning Center)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,56 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.1.3 neu?
+
+**HomeIntent 7.1.3 — Live-Test-Fix.** Behebt alle 28 Befunde des Live-Tests
+gegen ein echtes Home Assistant 2026.9.2 mit simuliertem Einfamilienhaus
+(Bericht und Nachtest: [`docs/testbericht-live-simulation-7.1.2.md`](docs/testbericht-live-simulation-7.1.2.md)).
+Parser führen weiterhin nichts aus; Validator, ExecutionPolicy und
+Executor bleiben die einzige Ausführungsinstanz, keine Sicherheitsgrenze
+wurde gelockert.
+
+- **hassil 3.12 (Home Assistant 2026.9):** Relative Zeitangaben, verzögerte
+  Pushes und Erinnerungen („In 30 Minuten erinnere mich …“) werden wieder
+  korrekt zerlegt; ein Platzhalter, der mitten im Wort beginnt, wird nie
+  mehr ausgeführt.
+- **Proaktive Hinweise laufen im Event-Loop:** Garage-offen-Vorschläge,
+  Daueranweisungen und Erinnerungen feuern unter echtem Home Assistant
+  zuverlässig; ein „Ja“ auf einen Push antwortet sofort, die Wirkung wird im
+  Hintergrund geprüft.
+- **Statistik und Messwerte:** „Wie war die Durchschnittstemperatur gestern
+  im Wohnzimmer?“ liest die echte Recorder-Statistik; Sensoren werden über
+  Raum und Messgröße gefunden, Außensensoren zählen nicht zum Hausmittel.
+- **Farbtemperatur** nutzt `color_temp_kelvin`; Notify-Entities und Skripte
+  im Anfangszustand `unknown` sind nutzbar.
+- **Ausnahmen:** „alle Lichter außer Küche und Flur“ schließt jede genannte
+  Ausnahme aus; eine unauflösbare Ausnahme führt nichts aus.
+- **Optionen:** Speichern friert die Entitätsauswahl nicht mehr ein; betroffene
+  Installationen erhalten einen Reparaturhinweis.
+- **Daueranweisungen** werden bei erneuter Bestätigung erneuert statt
+  dupliziert.
+- **Automationen per Name** verwalten, Dialoge sauber verlassen („Abbrechen“,
+  „keine Bedingung“), Routinen per gespeichertem Namen, Medien-Folgefragen,
+  Timer nach Neustart („Der Timer … ging durch den Neustart verloren“),
+  Listen ohne Listennamen, deutsche Zustandswörter statt Rohwerten.
+- **Neue Regeln:** „das Licht im Bad“ schaltet alle Lichter eines Raums mit
+  mehreren Lichtern (wie der Home-Assistant-Agent); „im Haus“, „überall“ und
+  „in allen Räumen“ gelten als ganzes Haus.
+- **Antworttyp:** Kalender- und Automationsabfragen liefern `query_answer`.
+- **Vorhersagefragen** („Wann ist das Büro warm?“) erhalten eine
+  modellgestützte Schätzung oder die ehrliche Keine-Modell-Antwort.
+- **V12-Verlauf:** ein Eintrag pro Entscheidung statt pro Empfänger; die
+  Erklärung nennt nur tatsächlich zugestellte Kanäle. Kritische Alarme
+  verbrauchen kein normales Hinweisbudget, gruppierte Hinweise gehen nicht
+  mehr verloren.
+- **Geänderter Standard:** Neue Installationen erlauben das Anlegen von
+  Automationen nur Administratoren (`allow_non_admin_automations` = aus).
+  Bestehende Installationen behalten ihre Einstellung; die Option ist unter
+  HomeIntent → Konfigurieren änderbar.
+- **CI:** Die Stub-Suite läuft zusätzlich mit der hassil-Version von Home
+  Assistant; ein neuer Job prüft das Live-Testbett (`sim/`) gegen echtes Home
+  Assistant samt Log-Prüfung, nächtlich inklusive der Proaktiv-Ketten.
 
 ## Was ist in Version 7.1.2 neu?
 
@@ -1332,11 +1382,11 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.1.2:
+Geprüfter Release-Stand von Version 7.1.3:
 
 ```text
-4244 passed, 12 skipped, 0 failed
-8 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
+4371 passed, 12 skipped, 0 failed (hassil 3.11 und 3.12)
+16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
 89 % Gesamt-Coverage
 75 % Coverage für conversation.py
 ≥ 93 % Coverage für jedes V12-Modul
@@ -1375,7 +1425,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.1.2.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.1.3.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
