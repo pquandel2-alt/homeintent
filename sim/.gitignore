@@ -15,3 +15,4 @@ config/.ha_run.lock
 config/.shopping_list.json
 config/home-assistant.log.fault
 !results/final*.json
+!results/nach-fix*.json

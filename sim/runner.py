@@ -215,10 +215,19 @@ async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only")
     ap.add_argument("--category")
+    ap.add_argument("--exclude-category", action="append", default=[],
+                    help="Kategorie überspringen (mehrfach möglich), z. B. die langen Proaktiv-Szenarien")
+    ap.add_argument("--strict", action="store_true",
+                    help="Exit-Code 1, sobald ein Szenario fehlschlägt (CI)")
     ap.add_argument("--out", default=str(HERE / "results" / "run.json"))
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
-    chosen = [s for s in SCENARIOS if (not args.only or args.only in s["id"]) and (not args.category or s["category"] == args.category)]
+    chosen = [
+        s for s in SCENARIOS
+        if (not args.only or args.only in s["id"])
+        and (not args.category or s["category"] == args.category)
+        and s["category"] not in args.exclude_category
+    ]
     results = []
     async with aiohttp.ClientSession() as session:
         async with Runner(session, load_tokens()) as runner:
@@ -241,6 +250,8 @@ async def main() -> None:
         existing[res["id"]] = res
     out.write_text(json.dumps(existing, ensure_ascii=False, indent=1))
     print(f"\n{sum(r['passed'] for r in results)}/{len(results)} Szenarien bestanden")
+    if args.strict and not all(r["passed"] for r in results):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

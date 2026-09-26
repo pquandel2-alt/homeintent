@@ -203,6 +203,68 @@ jobs:
       - name: Statische Importprüfung
         run: python -m pyflakes custom_components tests tests_ha scripts
 
+  tests-hassil-home-assistant:
+    # The stub suite pins hassil 3.11; Home Assistant 2026.9 ships 3.12 whose
+    # wildcard matching differs (live-test finding F1). Run the whole stub
+    # suite and the language gate with the version Home Assistant uses.
+    name: Tests mit hassil aus Home Assistant
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Python einrichten
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements-ha-test.txt
+      - name: Testabhängigkeiten installieren
+        run: python -m pip install --requirement requirements-dev.txt
+      - name: hassil-Version aus requirements-ha-test.txt übernehmen
+        run: python -m pip install "$(grep -E '^hassil==' requirements-ha-test.txt)"
+      - name: Sprachverständnis-Sicherheitsgate
+        run: bash scripts/run_language_eval.sh
+      - name: Tests ausführen
+        run: python -m pytest -q
+
+  live-testbed:
+    # Ende-zu-Ende gegen echtes Home Assistant mit dem simulierten Haus
+    # (sim/README.md). Die Proaktiv-Szenarien mit minutenlangen Wartezeiten
+    # laufen nächtlich (nightly-live.yml).
+    name: Live-Testbett (echtes Home Assistant)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Python einrichten
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-ha-test.txt
+      - name: Echtes Home Assistant installieren
+        run: python -m pip install --requirement requirements-ha-test.txt
+      - name: Frisches Testbett starten und einrichten
+        run: HASS="$(command -v hass)" PYTHON="$(command -v python)" sim/fresh_ha.sh
+      - name: Szenarien ausführen
+        working-directory: sim
+        run: python runner.py --strict --exclude-category Proaktiv --out results/ci.json
+      - name: Home-Assistant-Log prüfen
+        if: always()
+        run: python sim/check_log.py
+      - name: Ergebnisse speichern
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-testbed
+          path: |
+            sim/results/ci.json
+            sim/config/home-assistant.run.log
+          if-no-files-found: warn
+
   home-assistant-options-flow:
     name: Home Assistant 2026.9 Options Flow
     runs-on: ubuntu-latest
