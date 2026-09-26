@@ -1385,13 +1385,16 @@ python -m pytest -q tests_ha
 Geprüfter Release-Stand von Version 7.1.3:
 
 ```text
-4371 passed, 12 skipped, 0 failed (hassil 3.11 und 3.12)
+4375 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
 89 % Gesamt-Coverage
-75 % Coverage für conversation.py
+76 % Coverage für conversation.py
 ≥ 93 % Coverage für jedes V12-Modul
 ≥ 95 % Coverage für jedes Learning-Center-Modul
 ```
+
+Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 126 / 126
+Szenarien, keine HomeIntent-Warnung im Log.
 
 Zusätzlich wurden ausgeführt:
 

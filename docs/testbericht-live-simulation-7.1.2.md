@@ -293,3 +293,88 @@ cd sim && HASS=../havenv/bin/hass ./run_ha.sh && ../havenv/bin/python bootstrap.
 ../havenv/bin/python runner.py --out results/run.json      # alle Szenarien
 ../havenv/bin/python dump.py results/run.json pro-garage   # Transkript eines Szenarios
 ```
+
+## 8. Nachtest mit HomeIntent 7.1.3
+
+Alle 28 Befunde wurden in 7.1.3 behoben, jeweils mit Regressionstest
+(Stub-Suite, bei F2/F3/F4/F8 zusätzlich gegen echtes Home Assistant in
+`tests_ha/`). Nachtest am 26.09.2026 auf frischem Testbett
+(`sim/fresh_ha.sh`: ohne `.storage`, Datenbank und Laufzeit-Automationen),
+gleiches Haus, gleiche Szenarien, Home Assistant 2026.9.2 mit hassil 3.12.0.
+Ergebnis: [`sim/results/nach-fix.json`](../sim/results/nach-fix.json).
+
+| Bereich | 7.1.2 | 7.1.3 |
+|---|---|---|
+| Geräte | 11 / 21 | 21 / 21 |
+| Sicherheit | 10 / 11 | 11 / 11 |
+| Sprache | 13 / 16 | 16 / 16 |
+| Mengen/Orte | 6 / 7 | 7 / 7 |
+| Dialog | 10 / 11 | 11 / 11 |
+| Abfragen | 5 / 11 | 11 / 11 |
+| Statistik | 1 / 2 | 2 / 2 |
+| Kalender | 4 / 4 | 4 / 4 |
+| Listen | 1 / 2 | 2 / 2 |
+| Timer | 2 / 3 | 3 / 3 |
+| Push | 5 / 7 | 7 / 7 |
+| Automationen | 8 / 9 | 9 / 9 |
+| Proaktiv | 3 / 7 | 7 / 7 |
+| Agent | 6 / 8 | 8 / 8 |
+| Gezielte Regressionen | 2 / 7 | 7 / 7 |
+| **Gesamt** | **87 / 126** | **126 / 126** |
+
+Kein vorher grünes Szenario ist rot geworden. Das Home-Assistant-Log des
+Laufs enthält keine HomeIntent-Tracebacks, keine Thread-Warnungen und keine
+„Detected blocking call“-Meldung (`sim/check_log.py`: 0 Befunde).
+
+**Korrigierte Szenarioerwartungen** (Verhalten war richtig, die Erwartung nicht):
+
+- `dev-fan`: `fan.turn_on` mit `percentage` ist das dokumentierte Äquivalent
+  zu `fan.set_percentage`; geprüft werden weiterhin Aufruf und 60 %.
+- `dev-lock`: Verriegeln ist als hohes Risiko eingestuft und wird erst nach
+  „Ja“ ausgeführt; das Szenario bestätigt jetzt (Sicherheitsgrenze unverändert).
+- `pro-washer-status`: startet ~10 s nach dem Hinweis aus `pro-washer`;
+  V12 fasst Info-Hinweise innerhalb von 2 Minuten bewusst zu einer
+  Sammelnachricht zusammen. Die Prüfung wartet jetzt auf diese Nachricht.
+- Testbett: `haus_sim.reset` aktualisiert die gespiegelten Temperatursensoren
+  sofort (vorher 10 s `unknown`, Artefakt in q-measure/q-compare).
+
+**Handnachweise mit dem echten Home Assistant** (Transkripte gekürzt):
+
+1. Garage 1 min offen → Push an beide Handys „Das Garagentor ist noch offen.
+   Soll ich es schließen?“ → „Ja.“ → „In Ordnung, ich schließe das Garagentor
+   jetzt, prüfe die Wirkung und melde mich nur, falls es nicht klappt.“ →
+   `cover.close_cover`, Zustand `closed`.
+2. Daueranweisung zweimal bestätigt → „Diese Daueranweisung gab es schon; ich
+   habe sie verlängert.“; „Welche Daueranweisungen gibt es?“ → „1 Daueranweisung
+   aktiv …“; niemand zu Hause → Licht nach 5 min aus (`light.turn_off`).
+3. „Erinnere mich in 30 Sekunden an die Waschmaschine.“ → „Ja.“ → nach 30 s
+   Push „Erinnerung: die Waschmaschine.“ an „Handy Philipp“.
+4. „Wie war die Durchschnittstemperatur gestern im Wohnzimmer?“ → „Der
+   Durchschnitt von Temperatur Wohnzimmer betrug gestern 20,8 Grad.“
+
+Dabei zusätzlich gefunden und in 7.1.3 behoben: Das Kompositum
+„Durchschnittstemperatur“ und „im Schnitt“ wurden nicht als Statistikfrage
+erkannt; „Welche Daueranweisungen gibt es?“ antwortete als `action_done`;
+der V12-Verlauf fasste Empfänger unter echtem HA nicht zusammen
+(Zeitstempel im Mikrosekundenabstand) und ein angenommener Vorschlag nannte
+noch „Antwortknöpfe“.
+
+**Produktentscheidungen:**
+
+- F15: Leistungssensoren melden „fertig“, wenn nach einem Lauf über 10 W die
+  Leistung eine Minute unter 5 W bleibt; binäre Sensoren bei `on → off`.
+- F19: Nach einem Neustart verlorene Timer werden bei der nächsten Timerfrage
+  benannt, nicht stillschweigend neu gestartet (der ursprüngliche Satellit ist
+  nach dem Neustart unbekannt).
+- F20: „das Licht im <Raum>“ schaltet alle Lichter eines Raums mit mehreren
+  Lichtern (wie der Home-Assistant-Agent); ein genanntes Gerät oder „die
+  Lampe“ fragt weiterhin nach.
+- F26: Neue Installationen erlauben das Anlegen von Automationen nur
+  Administratoren. Bestehende Einträge behalten ihr Verhalten, weil eine
+  stille Umstellung auch Sprachsatelliten ohne Benutzerkontext sperren würde.
+
+**CI:** Die Stub-Suite läuft zusätzlich mit hassil aus
+`requirements-ha-test.txt`; der Job „Live-Testbett“ startet das Testbett bei
+jedem Push und scheitert an roten Szenarien und an HomeIntent-Warnungen im
+HA-Log; die Proaktiv-Ketten mit langen Wartezeiten laufen nächtlich
+(`.github/workflows/nightly-live.yml`).
