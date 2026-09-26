@@ -179,6 +179,10 @@ class SituationStore:
         return store
 
 
+# Records of one routing pass are written microseconds apart.
+_SAME_DECISION_SECONDS = 1.0
+
+
 class ProactiveHistoryStore:
     """Bounded explainability log; decisions and reason codes only."""
 
@@ -193,16 +197,19 @@ class ProactiveHistoryStore:
             and record.recipient_user_id is not None
             and last.recipient_user_id is not None
             and not last.addressed_to(record.recipient_user_id)
+            and abs((record.timestamp - last.timestamp).total_seconds()) <= _SAME_DECISION_SECONDS
             and replace(
                 last,
                 record_id=record.record_id,
                 recipient_user_id=record.recipient_user_id,
                 other_recipient_user_ids=(),
+                timestamp=record.timestamp,
             ) == record
         ):
             # The same decision for another household member (same
-            # situation, channel, result, reasons and moment) extends the
-            # existing entry instead of duplicating it (F25).
+            # situation, channel, result, reasons and moment, i.e. one
+            # routing pass) extends the existing entry instead of
+            # duplicating it (F25).
             self._items[-1] = replace(
                 last,
                 other_recipient_user_ids=(

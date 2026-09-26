@@ -45,6 +45,19 @@ def test_identical_decisions_for_several_recipients_are_one_entry():
     assert restored.records() == records
 
 
+def test_records_of_one_routing_pass_microseconds_apart_are_merged():
+    # Live Home Assistant stamps every record with its own ``now``.
+    store = ProactiveHistoryStore()
+    store.append(_record("h1", "philipp"))
+    store.append(replace(_record("h2", "anna"), timestamp=NOW + timedelta(microseconds=180)))
+    later = replace(_record("h3", "gast"), timestamp=NOW + timedelta(minutes=2))
+    store.append(later)
+
+    assert [item.recipient_user_ids for item in store.records()] == [
+        ("philipp", "anna"), ("gast",),
+    ]
+
+
 def test_different_decisions_stay_separate_entries():
     store = ProactiveHistoryStore()
     store.append(_record("h1", "philipp"))

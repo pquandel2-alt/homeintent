@@ -528,6 +528,9 @@ S("pro-washer-status", "Proaktiv", "Waschmaschine fertig (Text-Statussensor)",
   PROACTIVE,
   set_("sensor.waschmaschine_status", "running", settle=2),
   set_("sensor.waschmaschine_status", "finished", settle=5),
+  # Runs ~10 s after pro-washer's notice: V12 groups INFO notices within the
+  # 2-minute window by design and delivers them as one digest afterwards.
+  wait(125),
   check(notify="waschmaschine"))
 S("pro-standing", "Proaktiv", "Daueranweisung: niemand zuhause → Licht aus",
   options(standing_permissions_enabled=True),
