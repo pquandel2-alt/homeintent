@@ -76,8 +76,9 @@ class TransitionEvidence:
 _HISTORY_CUE_RE = re.compile(
     r"\b(?:durchschnitt|mittelwert|minimum|minimal|niedrigst|kleinst|maximum|"
     r"maximal|hoechst|groesst|verbraucht|verbrauch|erzeugt|produziert|"
-    r"veraendert|veraenderung)\w*\b"
+    r"veraendert|veraenderung|im\s+schnitt)\w*\b"
 )
+_MEAN_RE = re.compile(r"\b(?:durchschnitt\w*|mittelwert\w*|im\s+schnitt)\b")
 _MIN_RE = re.compile(r"\b(?:minimum|minimal|niedrigst|kleinst|tiefst)\w*\b")
 _MAX_RE = re.compile(r"\b(?:maximum|maximal|hoechst|groesst)\w*\b")
 _CHANGE_RE = re.compile(
@@ -88,8 +89,9 @@ _CHANGE_RE = re.compile(
 # Wohnzimmer" or "wie kalt war es draussen" find the sensor through its area
 # and measurement even when the spoken words are not the sensor's name.
 _MEASUREMENT_CUES: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
-    (re.compile(r"\b(?:temperatur\w*|warm|waermst\w*|kalt|kaelt\w*|grad)\b"), frozenset({"temperature"})),
-    (re.compile(r"\b(?:luftfeuchtigkeit|feuchtigkeit|feucht\w*)\b"), frozenset({"humidity"})),
+    # ``\w*`` before the noun also covers compounds ("Durchschnittstemperatur").
+    (re.compile(r"\b(?:\w*temperatur\w*|warm|waermst\w*|kalt|kaelt\w*|grad)\b"), frozenset({"temperature"})),
+    (re.compile(r"\b(?:\w*feuchtigkeit|feucht\w*)\b"), frozenset({"humidity"})),
     (re.compile(r"\b(?:co2|kohlendioxid|luftqualitaet)\b"), frozenset({"carbon_dioxide"})),
     (re.compile(r"\b(?:energie\w*|energiezaehler|kilowattstunden|kwh)\b"), frozenset({"energy"})),
     (re.compile(r"\b(?:strom\w*|leistung\w*|watt)\b"), frozenset({"power"})),
@@ -263,7 +265,7 @@ def parse_history_query(
     entity = _measured_sensor(text, [item for item in entities if item.domain == "sensor"])
     if entity is None or time_range is None:
         return None
-    if re.search(r"\b(?:durchschnitt|mittelwert)\w*\b", value):
+    if _MEAN_RE.search(value):
         metric = HistoryMetric.MEAN
     elif _MIN_RE.search(value):
         metric = HistoryMetric.MIN
