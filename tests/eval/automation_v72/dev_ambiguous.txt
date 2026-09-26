@@ -1,0 +1,17 @@
+# DEV - ambiguity world (two covers in Büro).
+## question
+clarify :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht.
+clarify :: Wenn im Büro der Rollladen bei 30 Prozent steht, sag mir Bescheid.
+clarify :: Schick mir eine Nachricht, sobald das Rollo im Büro halb offen ist.
+clarify :: Benachrichtige mich, wenn der Rollladen im Büro unter 20 Prozent fällt.
+## follow_up
+auto: num(cover.buero_links).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht. >> Die linke.
+auto: num(cover.buero_rechts).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht. >> die rechte bitte
+auto: num(cover.buero_rechts).cover_position==30 => notify(me) :: Wenn im Büro der Rollladen bei 30 Prozent steht, sag mir Bescheid. >> Den rechten.
+auto: num(cover.buero_links).cover_position<20 => notify(me) :: Benachrichtige mich, wenn der Rollladen im Büro unter 20 Prozent fällt. >> Büro Rollladen links
+clarify :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht. >> Die mittlere.
+## explicit
+auto: num(cover.buero_rechts).cover_position==50 => notify(me) :: Benachrichtige mich, wenn der rechte Rollladen im Büro 50 Prozent erreicht.
+auto: num(cover.buero_links).cover_position==40 => notify(me) :: Sag mir Bescheid, wenn der Büro Rollladen links 40 Prozent erreicht.
+auto: num(cover.buero_links,cover.buero_rechts).cover_position==50 => notify(me) :: Schick mir eine Nachricht, wenn irgendein Rollladen im Büro 50 Prozent erreicht.
+auto: num(cover.buero_links,cover.buero_rechts).cover_position>80 => notify(me) :: Benachrichtige mich, sobald einer der Rollläden im Büro über 80 Prozent steht.

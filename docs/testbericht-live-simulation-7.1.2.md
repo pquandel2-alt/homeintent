@@ -294,16 +294,16 @@ cd sim && HASS=../havenv/bin/hass ./run_ha.sh && ../havenv/bin/python bootstrap.
 ../havenv/bin/python dump.py results/run.json pro-garage   # Transkript eines Szenarios
 ```
 
-## 8. Nachtest mit HomeIntent 7.1.3
+## 8. Nachtest mit HomeIntent 7.2.1
 
-Alle 28 Befunde wurden in 7.1.3 behoben, jeweils mit Regressionstest
+Alle 28 Befunde wurden in 7.2.1 behoben, jeweils mit Regressionstest
 (Stub-Suite, bei F2/F3/F4/F8 zusätzlich gegen echtes Home Assistant in
 `tests_ha/`). Nachtest am 26.09.2026 auf frischem Testbett
 (`sim/fresh_ha.sh`: ohne `.storage`, Datenbank und Laufzeit-Automationen),
 gleiches Haus, gleiche Szenarien, Home Assistant 2026.9.2 mit hassil 3.12.0.
 Ergebnis: [`sim/results/nach-fix.json`](../sim/results/nach-fix.json).
 
-| Bereich | 7.1.2 | 7.1.3 |
+| Bereich | 7.1.2 | 7.2.1 |
 |---|---|---|
 | Geräte | 11 / 21 | 21 / 21 |
 | Sicherheit | 10 / 11 | 11 / 11 |
@@ -352,7 +352,7 @@ Laufs enthält keine HomeIntent-Tracebacks, keine Thread-Warnungen und keine
 4. „Wie war die Durchschnittstemperatur gestern im Wohnzimmer?“ → „Der
    Durchschnitt von Temperatur Wohnzimmer betrug gestern 20,8 Grad.“
 
-Dabei zusätzlich gefunden und in 7.1.3 behoben: Das Kompositum
+Dabei zusätzlich gefunden und in 7.2.1 behoben: Das Kompositum
 „Durchschnittstemperatur“ und „im Schnitt“ wurden nicht als Statistikfrage
 erkannt; „Welche Daueranweisungen gibt es?“ antwortete als `action_done`;
 der V12-Verlauf fasste Empfänger unter echtem HA nicht zusammen

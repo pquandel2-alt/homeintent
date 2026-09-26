@@ -33,6 +33,7 @@ from homeassistant.helpers import device_registry as dr, intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .automation_grounding import looks_like_selection_reply
 from .automation_executor import AutomationExecutor
 from .alias_learning import (
     AliasLearningDraft,
@@ -97,6 +98,7 @@ from .dialog_manager import DialogPriority, DialogTaskKind
 from .document_intent import interpret_document_search
 from .device_result import DeviceControlResult
 from .engine import (
+    AutomationClarificationResult,
     AutomationDraftMatchResult,
     AutomationDeletionMatchResult,
     AutomationMatchResult,
@@ -236,6 +238,7 @@ from .nlu.context import (
     PendingAutomationConfirmation,
     PendingAutomationDeletion,
     PendingAutomationDraft,
+    PendingAutomationEventClarification,
     PendingAutomationActionEdit,
     PendingAutomationManagement,
     PendingAutomationStructureEdit,
@@ -548,6 +551,7 @@ def _dialog_manager_kind(
         return DialogTaskKind.SAFETY_CONFIRMATION, DialogPriority.CONFIRMATION
     if kind in {
         PendingDialogKind.AUTOMATION_DRAFT,
+        PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
         PendingDialogKind.AUTOMATION_ACTION_EDIT,
         PendingDialogKind.AUTOMATION_STRUCTURE_EDIT,
         PendingDialogKind.AUTOMATION_WIZARD,
@@ -584,6 +588,7 @@ _CONTINUE_CONVERSATION_KINDS: frozenset[PendingDialogKind] = frozenset(
         PendingDialogKind.SERVICE_CONFIRMATION,
         PendingDialogKind.SEMANTIC_COMMAND,
         PendingDialogKind.AUTOMATION_DRAFT,
+        PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
         PendingDialogKind.CLARIFICATION,
     }
 )
@@ -850,6 +855,7 @@ class NluConversationEntity(
                 and (
                     active_dialog.kind not in {
                         PendingDialogKind.AUTOMATION_DRAFT,
+                        PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
                         PendingDialogKind.AUTOMATION_ACTION_EDIT,
                         PendingDialogKind.AUTOMATION_STRUCTURE_EDIT,
                         PendingDialogKind.AUTOMATION_WIZARD,
@@ -1293,6 +1299,18 @@ class NluConversationEntity(
 
         if (
             active_dialog is not None
+            and active_dialog.kind is PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION
+            and active_task is not None
+            and isinstance(active_task.payload, PendingAutomationEventClarification)
+        ):
+            handled = self._handle_pending_event_clarification(
+                user_input, response, active_task.payload, entities
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is not None
             and active_dialog.kind is PendingDialogKind.AUTOMATION_DRAFT
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationDraft)
@@ -1353,17 +1371,27 @@ class NluConversationEntity(
         ):
             return self._handle_audit_query(user_input, response)
 
-        history_query = parse_history_query(user_input.text, entities, dt_util.now())
+        # A trigger/notification request ("Benachrichtige mich, wenn der Akku
+        # unter 20 Prozent fällt") shares words with read-only queries but is
+        # never answered as one.
+        automation_turn = language_document.utterance.speech_act is SpeechAct.AUTOMATION
+        history_query = (
+            None if automation_turn
+            else parse_history_query(user_input.text, entities, dt_util.now())
+        )
         if history_query is not None:
             return await self._async_handle_history_query_result(
                 user_input, response, history_query
             )
 
-        advanced_answer = match_advanced_query(user_input.text, entities, dt_util.now())
+        advanced_answer = (
+            None if automation_turn
+            else match_advanced_query(user_input.text, entities, dt_util.now())
+        )
         if advanced_answer is not None:
             return self._handle_advanced_answer(user_input, response, advanced_answer)
 
-        if re.search(
+        if not automation_turn and re.search(
             r"\b(?:alarm|alarmanlage|sicherung|scharf|unscharf)\b",
             user_input.text, re.IGNORECASE,
         ):
@@ -1927,6 +1955,11 @@ class NluConversationEntity(
 
         if isinstance(result, AutomationDraftMatchResult):
             return self._handle_automation_draft_match_result(
+                user_input, response, result
+            )
+
+        if isinstance(result, AutomationClarificationResult):
+            return self._handle_automation_clarification_result(
                 user_input, response, result
             )
 
@@ -4780,9 +4813,13 @@ class NluConversationEntity(
     ) -> conversation.ConversationResult:
         """Store a valid automation preview, or report its validation error."""
         if result.validation_error is None:
-            materialized, failure = self._materialize_notification_recipients(
-                result.model, user_input, entities
-            )
+            speaker_bound, failure = self._materialize_presence_speaker(result.model, user_input)
+            if failure is None:
+                materialized, failure = self._materialize_notification_recipients(
+                    speaker_bound, user_input, entities
+                )
+            else:
+                materialized = result.model
             if failure is not None:
                 # Understood, but nobody to deliver to: say so instead of
                 # silently degrading into an HA persistent notification.
@@ -4822,6 +4859,35 @@ class NluConversationEntity(
             self._runtime_data.user_contexts,
             label_for=lambda target_id: labels.get(target_id, ""),
         )
+
+    def _materialize_presence_speaker(
+        self,
+        model: AutomationModel,
+        user_input: conversation.ConversationInput,
+    ) -> tuple[AutomationModel, str | None]:
+        """Bind "ich komme nach Hause" to the speaker's own person entity.
+
+        Only an explicit, confirmed user/person binding is used - never a
+        person guessed from a similar name.
+        """
+        if not any(trigger.presence_of_speaker for trigger in model.triggers):
+            return model, None
+        store = self._runtime_data.user_contexts
+        binding = (
+            store.resolve_current_person(conversation_user_id(user_input))
+            if store is not None else None
+        )
+        if binding is None or binding.person_entity_id is None:
+            return model, (
+                "Ich weiß noch nicht, welche Person du bist. Bitte ordne deinem "
+                "HomeIntent-Benutzer eine Person zu."
+            )
+        triggers = tuple(
+            replace(trigger, target=TriggerTarget(domain="person", entity_id=binding.person_entity_id))
+            if trigger.presence_of_speaker else trigger
+            for trigger in model.triggers
+        )
+        return replace(model, triggers=triggers), None
 
     def _materialize_notification_recipients(
         self,
@@ -4891,6 +4957,73 @@ class NluConversationEntity(
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    def _handle_automation_clarification_result(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        result: AutomationClarificationResult,
+    ) -> conversation.ConversationResult:
+        """Ask the one open question of an automation draft - nothing runs.
+
+        Only a device choice keeps the draft; the answer ("Die linke.")
+        continues exactly this automation and nothing else.
+        """
+        if result.clarification is not None:
+            self._context_store.set(
+                user_input.conversation_id,
+                ConversationContext(
+                    last_command=None,
+                    last_entities=(),
+                    last_area=None,
+                    pending_clarification=None,
+                    pending_automation_event_clarification=PendingAutomationEventClarification(
+                        clarification=result.clarification,
+                        requested_by_user_id=conversation_user_id(user_input),
+                    ),
+                ),
+            )
+        else:
+            self._context_store.clear(user_input.conversation_id)
+        response.async_set_speech(result.response_text)
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id
+        )
+
+    def _handle_pending_event_clarification(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        pending: PendingAutomationEventClarification,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        """Resolve "Die linke." against exactly the open draft.
+
+        Another user's answer, or a reply that selects none/several of the
+        offered devices, never continues the draft: the draft is dropped and
+        the turn is processed as a fresh utterance (``None``).
+        """
+        if pending.requested_by_user_id not in {None, conversation_user_id(user_input)}:
+            return None
+        result = self._engine.resolve_event_clarification(
+            user_input.text, pending.clarification, entities
+        )
+        if result is None:
+            if looks_like_selection_reply(user_input.text):
+                # A short answer that names no offered device is still an
+                # answer to this question - ask again, never guess.
+                response.async_set_speech(
+                    "Das konnte ich keiner der Möglichkeiten zuordnen. "
+                    + (pending.clarification.grounded.question or "Welches Gerät meinst du?")
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            self._context_store.clear(user_input.conversation_id)
+            return None
+        if isinstance(result, AutomationClarificationResult):
+            return self._handle_automation_clarification_result(user_input, response, result)
+        return self._handle_automation_match_result(user_input, response, result, entities)
 
     def _handle_automation_draft_match_result(
         self,

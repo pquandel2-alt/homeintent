@@ -1,0 +1,73 @@
+# HELD-OUT - device-action, multi-action, delayed, reminder automations.
+## state_to_device
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) :: Wenn die Haustür aufgeht, mach das Flurlicht an.
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) :: Schalte das Flurlicht ein, sobald die Haustür geöffnet wird.
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) :: Sobald die Haustür aufgeht schalte das Licht im Flur ein
+auto: state(binary_sensor.kuechenfenster)=open => turn_off(climate.wohnzimmer) :: Wenn das Küchenfenster geöffnet wird, schalte die Wohnzimmer Heizung aus.
+auto: state(binary_sensor.wohnzimmer_fenster)=open => turn_off(climate.wohnzimmer) :: Mach die Heizung im Wohnzimmer aus, wenn das Wohnzimmer Fenster aufgeht.
+auto: state(binary_sensor.flur_bewegung)=on => turn_on(light.flur) :: Wenn im Flur eine Bewegung erkannt wird, schalte das Flurlicht an.
+auto: state(binary_sensor.flur_bewegung)=on => turn_on(light.flur) :: Mach das Flurlicht an, wenn der Bewegungsmelder im Flur auslöst.
+auto: state(binary_sensor.terrassentuer)=open => turn_on(light.wohnzimmer) :: Falls die Terrassentür aufgeht, mach das Wohnzimmerlicht an.
+auto: state(binary_sensor.buero_fenster)=open => turn_off(light.buero) :: Wenn das Bürofenster geöffnet wird dann schalte die Bürolampe aus
+auto: state(binary_sensor.haustuer)=closed => turn_off(light.flur) :: Wenn die Haustür geschlossen wird, schalte das Flurlicht aus.
+auto: state(light.kueche)=on => turn_on(switch.kaffeemaschine) :: Wenn das Küchenlicht angeht, schalte die Kaffeemaschine ein.
+auto: state(switch.kaffeemaschine)=on => turn_on(light.kueche) :: Sobald die Kaffeemaschine eingeschaltet wird, mach das Küchenlicht an.
+## cover_actions
+auto: state(binary_sensor.terrassentuer)=open => open(cover.wohnzimmer_rollladen) :: Wenn die Terrassentür aufgeht, fahre den Wohnzimmer Rollladen hoch.
+auto: sun=sunset => close(cover.wohnzimmer_rollladen) :: Bei Sonnenuntergang fahre den Rollladen im Wohnzimmer runter.
+auto: sun=sunset => close(cover.schlafzimmer_rollladen) :: Wenn die Sonne untergeht, schließe den Schlafzimmer Rollladen.
+auto: sun=sunrise => open(cover.kueche_rollladen) :: Öffne den Rollladen in der Küche bei Sonnenaufgang.
+auto: time=07:00 => open(cover.schlafzimmer_rollladen) :: Um 7 Uhr öffne den Schlafzimmer Rollladen.
+auto: time=22:00 => close(cover.buero_rollladen) :: Um 22 Uhr schließe den Rollladen im Büro.
+auto: num(sensor.aussentemperatur).state>28 => position(cover.buero_rollladen)=30 :: Wenn die Außentemperatur über 28 Grad steigt, fahre den Büro Rollladen auf 30 Prozent.
+auto: num(sensor.wohnzimmer_temperatur).state>26 => close(cover.wohnzimmer_rollladen) :: Wenn es im Wohnzimmer wärmer als 26 Grad wird, schließe den Wohnzimmer Rollladen.
+auto: num(cover.buero_rollladen).cover_position==0 => turn_on(light.buero) :: Wenn der Rollladen im Büro 0 Prozent erreicht, schalte die Bürolampe ein.
+auto: num(cover.wohnzimmer_rollladen).cover_position<20 => turn_on(light.wohnzimmer) :: Mach das Wohnzimmerlicht an, sobald die Rolllade im Wohnzimmer unter 20 Prozent ist.
+## numeric_to_device
+auto: num(sensor.wohnzimmer_temperatur).state<19 => turn_on(climate.wohnzimmer) :: Wenn die Temperatur im Wohnzimmer unter 19 Grad fällt, schalte die Wohnzimmer Heizung ein.
+auto: num(sensor.buero_luftfeuchtigkeit).state>70 => turn_on(fan.schlafzimmer) :: Wenn die Luftfeuchtigkeit im Büro über 70 Prozent steigt, schalte den Schlafzimmer Ventilator ein.
+auto: num(sensor.wohnzimmer_temperatur).state>27 => turn_on(fan.schlafzimmer) :: Sobald es im Wohnzimmer über 27 Grad hat, mach den Ventilator im Schlafzimmer an.
+## time_sun_to_device
+auto: time=06:30 => turn_on(switch.kaffeemaschine) :: Schalte jeden Morgen um 6:30 Uhr die Kaffeemaschine ein.
+auto: time=23:00 => turn_off(light.wohnzimmer) :: Um 23 Uhr mach das Wohnzimmerlicht aus.
+auto: sun=sunset => turn_on(light.flur) :: Bei Sonnenuntergang schalte das Flurlicht ein.
+auto: sun=sunset => turn_on(light.wohnzimmer) :: Wenn es dunkel wird, mach das Wohnzimmerlicht an.
+auto: sun=sunset+15 => turn_on(light.flur) :: 15 Minuten nach Sonnenuntergang schalte das Flurlicht ein.
+auto: sun=sunrise => turn_off(light.flur) :: Schalte bei Sonnenaufgang das Flurlicht aus.
+## presence_to_device
+auto: arrive(person.julia) => turn_on(light.flur) :: Wenn Julia nach Hause kommt, mach das Flurlicht an.
+auto: leave(person.philipp) => turn_off(light.wohnzimmer) :: Wenn ich das Haus verlasse, schalte das Wohnzimmerlicht aus.
+auto: arrive(person.philipp) => turn_on(light.wohnzimmer) :: Sobald ich heimkomme, schalte das Wohnzimmerlicht ein.
+## conditions_device
+auto: state(binary_sensor.flur_bewegung)=on ; if: time>22:00 => turn_on(light.flur) :: Wenn im Flur eine Bewegung erkannt wird und es nach 22 Uhr ist, mach das Flurlicht an.
+auto: state(binary_sensor.haustuer)=open ; if: nobody_home => turn_on(light.flur) :: Wenn die Haustür aufgeht und niemand zuhause ist, schalte das Flurlicht ein.
+auto: state(binary_sensor.flur_bewegung)=on ; if: state(light.wohnzimmer)=off => turn_on(light.flur) :: Wenn im Flur eine Bewegung erkannt wird und das Wohnzimmerlicht aus ist, schalte das Flurlicht an.
+auto: time=07:00 ; if: weekday=mon,tue,wed,thu,fri => turn_on(switch.kaffeemaschine) :: Schalte an Werktagen um 7 Uhr die Kaffeemaschine ein.
+auto: sun=sunset ; if: anybody_home => turn_on(light.wohnzimmer) :: Bei Sonnenuntergang mach das Wohnzimmerlicht an, aber nur wenn jemand zuhause ist.
+## multi_action
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + notify(me) :: Wenn die Haustür aufgeht, mach das Flurlicht an und schick mir eine Nachricht.
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + turn_on(light.wohnzimmer) :: Wenn die Haustür aufgeht, schalte das Flurlicht und das Wohnzimmerlicht ein.
+auto: sun=sunset => close(cover.wohnzimmer_rollladen) + turn_on(light.wohnzimmer) :: Bei Sonnenuntergang schließe den Wohnzimmer Rollladen und mach das Wohnzimmerlicht an.
+auto: state(binary_sensor.kuechenfenster)=open => turn_off(climate.wohnzimmer) + notify(me) :: Wenn das Küchenfenster aufgeht, schalte die Wohnzimmer Heizung aus und benachrichtige mich.
+## delayed_actions
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + delay=300 + turn_off(light.flur) :: Wenn die Haustür aufgeht, mach das Flurlicht an und nach 5 Minuten wieder aus.
+auto: state(binary_sensor.flur_bewegung)=on => turn_on(light.flur) + delay=120 + turn_off(light.flur) :: Wenn im Flur eine Bewegung erkannt wird, schalte das Flurlicht ein und nach 2 Minuten wieder aus.
+## reminders_delayed
+auto: in(600) => notify(me) :: Erinnere mich in 10 Minuten daran, die Wäsche aufzuhängen.
+auto: in(1800) => notify(me) :: Schick mir in einer halben Stunde eine Erinnerung, dass ich den Ofen ausmachen soll.
+auto: in(300) => notify(me) :: Benachrichtige mich in 5 Minuten.
+auto: in(20) => notify(me) :: Schick mir in 20 Sekunden eine Testnachricht.
+auto: at(tomorrow 08:00) => notify(me) :: Erinnere mich morgen um 8 Uhr an den Zahnarzt.
+auto: at(tomorrow 08:00) => notify(me) :: Morgen um acht erinnere mich an den Zahnarzt.
+auto: at(tomorrow 07:00) => notify(me) :: Erinnere mich morgen früh um 7 daran, den Müll rauszubringen.
+auto: in(3600) => notify(me) :: In einer Stunde sag mir Bescheid, dass ich die Pizza aus dem Ofen holen muss.
+## word_order_variants
+auto: state(binary_sensor.buero_fenster)=open => turn_off(light.buero) :: Die Bürolampe soll ausgehen, wenn das Bürofenster geöffnet wird.
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) :: Immer wenn die Haustür aufgeht, soll das Flurlicht angehen.
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) :: Kannst du das Flurlicht einschalten, wenn die Haustür aufgeht?
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Kannst du mich bitte immer dann benachrichtigen, wenn das Bürofenster aufgeht?
+auto: state(binary_sensor.haustuer)=open => notify(me) :: Wenn die Haustür aufgeht dann bitte eine Nachricht an mich.
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Bei geöffnetem Bürofenster sag mir Bescheid.
+## unsupported_device
+unsupported :: Wenn die Temperatur im Wohnzimmer um 3 Grad steigt, schalte den Ventilator im Schlafzimmer ein.
+unsupported :: Schalte das Flurlicht ein, wenn der Rollladen im Wohnzimmer weitere 10 Prozent runterfährt.

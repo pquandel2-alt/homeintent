@@ -1,0 +1,18 @@
+# HELD-OUT - ambiguity world (cover.buero_links + cover.buero_rechts in Büro).
+## ambiguous_needs_question
+clarify :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht.
+clarify :: Sag mir Bescheid, sobald im Büro der Rollladen halb offen ist.
+clarify :: Schicke mir eine Benachrichtigung wenn im Büro die Rolllade 50% erreicht hat
+clarify :: Wenn der Rollo im Büro bei 50 Prozent steht, schick mir eine Nachricht.
+clarify :: Gib mir Bescheid, wenn der Büro Rollladen über 80 Prozent offen ist.
+## follow_up_resolves
+auto: num(cover.buero_links).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht. >> Die linke.
+auto: num(cover.buero_rechts).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht. >> Die rechte
+auto: num(cover.buero_rechts).cover_position==50 => notify(me) :: Sag mir Bescheid, sobald im Büro der Rollladen halb offen ist. >> den rechten
+auto: num(cover.buero_links).cover_position==50 => notify(me) :: Schicke mir eine Benachrichtigung wenn im Büro die Rolllade 50% erreicht hat >> Büro Rollladen links
+auto: num(cover.buero_links).cover_position>80 => notify(me) :: Gib mir Bescheid, wenn der Büro Rollladen über 80 Prozent offen ist. >> Links.
+## explicit_disambiguation
+auto: num(cover.buero_links).cover_position==50 => notify(me) :: Benachrichtige mich, wenn der linke Rollladen im Büro 50 Prozent erreicht.
+auto: num(cover.buero_rechts).cover_position==50 => notify(me) :: Sag mir Bescheid, sobald der Büro Rollladen rechts bei 50 Prozent steht.
+auto: num(cover.buero_links,cover.buero_rechts).cover_position==50 => notify(me) :: Benachrichtige mich wenn im Büro irgendeine Rolllade 50 Prozent erreicht.
+auto: num(cover.buero_links,cover.buero_rechts).cover_position==50 => notify(me) :: Sag mir Bescheid, sobald einer der Rollläden im Büro 50 Prozent erreicht.

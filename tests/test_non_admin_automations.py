@@ -1,7 +1,7 @@
 """F26: creating automations can be reserved for administrators.
 
 New installations store ``allow_non_admin_automations = False`` (see
-``tests_ha/test_options_flow.py``); entries from before 7.1.3 keep their
+``tests_ha/test_options_flow.py``); entries from before 7.2.1 keep their
 behaviour. With the option off a non-admin user cannot confirm a new
 automation, an administrator still can.
 """

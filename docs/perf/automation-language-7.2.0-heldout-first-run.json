@@ -1,0 +1,37 @@
+{
+  "total": 676,
+  "automation_cases": 332,
+  "understood_correctly": 316,
+  "clarification_instead_of_automation": 0,
+  "missed_automation": 15,
+  "wrong_semantic_interpretation": 1,
+  "clarification_correctly_requested": 18,
+  "clarification_cases": 21,
+  "unsupported_correctly_rejected": 10,
+  "unsupported_cases": 10,
+  "negative_correct": 311,
+  "negative_cases": 313,
+  "unsafe_false_positive_previews": 3,
+  "unsafe_wrong_execution": 2,
+  "automation_accuracy": 0.9518,
+  "by_kind": {
+    "auto": {
+      "correct": 316,
+      "wrong": 1,
+      "missed": 15
+    },
+    "clarify": {
+      "correct": 18,
+      "false_preview": 3
+    },
+    "reject": {
+      "correct": 311,
+      "unsafe": 2
+    },
+    "unsupported": {
+      "correct": 10
+    }
+  },
+  "corpus": "heldout",
+  "seconds": 8.63
+}

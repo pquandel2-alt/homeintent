@@ -33,7 +33,14 @@ from typing import Sequence
 
 from .entities import EntitySnapshot
 from .nlu.action_model import NotificationRecipientKind
-from .nlu.automation_model import TriggerModel, TriggerTarget, TriggerType
+from .nlu.automation_model import (
+    NumericComparator,
+    PresenceEvent,
+    TriggerModel,
+    TriggerTarget,
+    TriggerType,
+)
+from .nlu.measurement import MeasurementProperty, TravelDirection
 from .nlu.german_morphology import (
     definite_entity_phrase,
     dative_location_phrase,
@@ -76,21 +83,23 @@ _MODAL_WRAPPER_RE = re.compile(
 )
 # Pragmatic particles that never change the meaning of a notification head.
 _PARTICLE_RE = re.compile(
-    r"\b(?:bitte|mal|doch|kurz|einfach|gleich|sofort|jetzt|nochmal|noch\s+mal)\b",
+    r"\b(?:bitte|mal|doch|kurz|einfach|gleich|sofort|jetzt|nochmal|noch\s+mal|"
+    r"vielleicht|eben|eigentlich|dann)\b",
     re.IGNORECASE,
 )
 _CHANNEL_RE = re.compile(
     r"\b(?:(?:aufs|auf\s+(?:das|mein|dein))\s+(?:handy|iphone|smartphone|telefon)|"
-    r"per\s+push|als\s+push(?:[\s-]?nachricht)?)\b",
+    r"(?:per|über|via)\s+(?:push(?:[\s-]?nachricht)?|benachrichtigung|app|handy)|"
+    r"als\s+push(?:[\s-]?(?:nachricht|benachrichtigung))?)\b",
     re.IGNORECASE,
 )
-_NOUN = r"(?:nachricht|benachrichtigung|meldung|mitteilung|notification|info)"
+_NOUN = r"(?:nachricht|benachrichtigung|meldung|mitteilung|notification|info|warnung)"
 _OBJECT = (
     r"(?:(?:eine|die|ne)\s+)?(?P<test>test[\s-]?)?(?:push[\s-]?)?" + _NOUN
 )
 _RECIPIENT = r"(?P<recipient>[a-zäöüß][\wäöüß-]*)"
 _ACCUSATIVE_VERB = r"(?:benachrichtig(?:e|en|er)?|informier(?:e|en|er)?)"
-_DATIVE_VERB = r"(?:schick(?:e|en|er)?|send(?:e|en|er)?)"
+_DATIVE_VERB = r"(?:schick(?:e|en|er)?|send(?:e|en|er)?|mach(?:e)?)"
 _BESCHEID_VERB = r"(?:sag(?:e|en)?|gib|geb(?:e|en)?)"
 
 _HEAD_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
@@ -110,7 +119,36 @@ _HEAD_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         rf"{_RECIPIENT}\s+{_OBJECT}\s+(?:schicken|senden|zukommen\s+lassen)",
         # (kannst du) mir Bescheid sagen/geben
         rf"{_RECIPIENT}\s+bescheid\s+(?:sagen|geben)",
+        # (bitte) eine Nachricht an mich - verbless request
+        rf"{_OBJECT}\s+an\s+{_RECIPIENT}",
+        # schick mir ne Push / schick mir was
+        rf"{_DATIVE_VERB}\s+{_RECIPIENT}\s+(?:(?:eine|ne)\s+)?(?:push|was|etwas)",
+        # schick mir (aufs Handy) Bescheid
+        rf"{_DATIVE_VERB}\s+{_RECIPIENT}\s+bescheid",
+        # two-word addressee, anchored by the message noun/"Bescheid":
+        # "schick Onkel Herbert eine Nachricht", "sag Tante Erna Bescheid"
+        rf"{_DATIVE_VERB}\s+(?P<recipient>[A-ZÄÖÜ][\wäöüß-]*\s+[A-ZÄÖÜ][\wäöüß-]*)\s+{_OBJECT}",
+        rf"{_BESCHEID_VERB}\s+(?P<recipient>[A-ZÄÖÜ][\wäöüß-]*\s+[A-ZÄÖÜ][\wäöüß-]*)\s+bescheid",
+        rf"{_ACCUSATIVE_VERB}\s+(?P<recipient>[A-ZÄÖÜ][\wäöüß-]*\s+[A-ZÄÖÜ][\wäöüß-]*)",
     )
+)
+# First-person wishes: "ich möchte eine Nachricht bekommen", "ich will
+# benachrichtigt werden", "ich hätte gern eine Benachrichtigung".  They only
+# ever address the speaker.
+_SELF_WISH_RE = re.compile(
+    r"(?:ich\s+(?:möchte|moechte|will|würde|wuerde|hätte|haette|wäre|waere)"
+    r"|(?:möchte|moechte|will|hätte|haette)\s+ich)\s+"
+    r"(?:(?:sehr\s+)?(?:gern|gerne)\s+|dankbar\s+für\s+)?"
+    r"(?:"
+    r"(?:(?:eine|ne|die)\s+)?(?:push[\s-]?)?" + _NOUN + r"(?:\s+(?:bekommen|erhalten|haben))?"
+    r"|(?:benachrichtigt|informiert|gewarnt|verständigt)\s+werden"
+    r")",
+    re.IGNORECASE,
+)
+# "melde dich (bei mir)", "ping mich (an)", "gib Bescheid"
+_SELF_CONTACT_RE = re.compile(
+    r"(?:meld(?:e)?\s+dich(?:\s+bei\s+mir)?|ping\s+mich(?:\s+an)?|(?:gib|sag|sage)\s+bescheid)",
+    re.IGNORECASE,
 )
 # "Sag mir" is stripped by ``normalize()`` as a politeness prefix, which
 # leaves a bare "Bescheid" that still unambiguously means "tell me".
@@ -132,6 +170,9 @@ _EXPLICIT_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _COLON_RE = re.compile(r"^(?P<head>[^:]+?)\s*:\s*(?P<message>.+)$")
+_QUOTED_RE = re.compile(
+    r"^(?P<head>[^„\"“«]+?)\s*,?\s*[„\"“«](?P<message>[^„\"“”«»]+)[“”\"»]$"
+)
 _DASS_RE = re.compile(r"^(?P<head>.+?)\s*,?\s+dass\s+(?P<content>.+)$", re.IGNORECASE)
 _NAMED_MESSAGE_RE = re.compile(
     rf"^(?P<head>{_DATIVE_VERB}\s+{_RECIPIENT})\s+die\s+nachricht\s+(?P<message>.+)$",
@@ -173,12 +214,16 @@ def parse_notification_clause(text: str) -> NotificationClause | None:
 
     head = clause
     message: str | None = None
-    for pattern in (_EXPLICIT_TEXT_RE, _NAMED_MESSAGE_RE, _COLON_RE):
+    for pattern in (_EXPLICIT_TEXT_RE, _NAMED_MESSAGE_RE, _COLON_RE, _QUOTED_RE):
         match = pattern.match(clause)
         if match is not None:
             head, message = match.group("head"), _literal_message(match.group("message"))
             if pattern is _NAMED_MESSAGE_RE:
                 head = f"{head} eine Nachricht"  # "schick mir die Nachricht X"
+            elif pattern is _QUOTED_RE:
+                head = re.sub(r"\s+die\s+nachricht$", "", head.strip(), flags=re.IGNORECASE)
+                if re.fullmatch(rf"{_DATIVE_VERB}\s+{_RECIPIENT}", _clean_head(head), re.IGNORECASE):
+                    head = f"{head} eine Nachricht"  # schick mir „Fenster zu!"
             break
     else:
         dass = _DASS_RE.match(clause)
@@ -196,7 +241,11 @@ def parse_notification_clause(text: str) -> NotificationClause | None:
 
 def _parse_head(head: str) -> tuple[NotificationRecipientKind, str | None, bool] | None:
     cleaned = _clean_head(head)
-    if _BARE_BESCHEID_RE.fullmatch(cleaned):
+    if (
+        _BARE_BESCHEID_RE.fullmatch(cleaned)
+        or _SELF_WISH_RE.fullmatch(cleaned)
+        or _SELF_CONTACT_RE.fullmatch(cleaned)
+    ):
         return NotificationRecipientKind.CURRENT_USER, None, False
     for pattern in _HEAD_PATTERNS:
         match = pattern.fullmatch(cleaned)
@@ -244,6 +293,10 @@ def _parse_reminder(clause: str) -> NotificationClause | None:
 
 def _recipient(token: str) -> tuple[NotificationRecipientKind, str | None] | None:
     lowered = token.casefold()
+    if " " in lowered:
+        if any(part in _NOT_A_RECIPIENT or part in {"mir", "mich", "uns"} for part in lowered.split()):
+            return None
+        return NotificationRecipientKind.EXPLICIT_TARGET, token
     if lowered in {"mich", "mir"}:
         return NotificationRecipientKind.CURRENT_USER, None
     if lowered == "uns":
@@ -418,6 +471,160 @@ def describe_state_event(
     )
 
 
+def describe_event(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """Describe a STATE or NUMERIC_STATE trigger's event for people."""
+    if trigger.type is TriggerType.STATE:
+        return describe_state_event(trigger, entities)
+    if trigger.type is TriggerType.NUMERIC_STATE:
+        return describe_numeric_event(trigger, entities)
+    if trigger.type is TriggerType.PRESENCE:
+        return describe_presence_event(trigger, entities)
+    return None
+
+
+def describe_presence_event(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """"Julia nach Hause kommt" / "Julia ist nach Hause gekommen."."""
+    event = trigger.presence_event
+    if event is None:
+        return None
+    if trigger.presence_of_speaker:
+        if event is PresenceEvent.ARRIVE:
+            return StateEventPhrase("du nach Hause kommst", "Du bist nach Hause gekommen.")
+        return StateEventPhrase("du das Haus verlässt", "Du hast das Haus verlassen.")
+    target = trigger.target
+    person = _single_entity(target, entities) if target is not None else None
+    if person is None:
+        return None
+    name = person.friendly_name
+    if event is PresenceEvent.ARRIVE:
+        return StateEventPhrase(f"{name} nach Hause kommt", f"{name} ist nach Hause gekommen.")
+    return StateEventPhrase(f"{name} das Haus verlässt", f"{name} hat das Haus verlassen.")
+
+
+_UNIT_WORDS: dict[str, str] = {"°C": "Grad", "°F": "Grad Fahrenheit", "%": "%"}
+_PROPERTY_PHRASES: dict[MeasurementProperty, str] = {
+    MeasurementProperty.COVER_POSITION: "",
+    MeasurementProperty.LIGHT_BRIGHTNESS: "eine Helligkeit von ",
+    MeasurementProperty.FAN_PERCENTAGE: "eine Geschwindigkeit von ",
+}
+_PROPERTY_SUFFIXES: dict[MeasurementProperty, str] = {
+    MeasurementProperty.LIGHT_BRIGHTNESS: "Helligkeit",
+    MeasurementProperty.FAN_PERCENTAGE: "Geschwindigkeit",
+}
+_DIRECTION_PHRASES: dict[TravelDirection, str] = {
+    TravelDirection.UP: "beim Hochfahren ",
+    TravelDirection.DOWN: "beim Herunterfahren ",
+}
+
+
+def format_german_number(value: float) -> str:
+    """50.0 -> "50", 50.5 -> "50,5" (German decimal comma)."""
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:g}".replace(".", ",")
+
+
+def describe_numeric_event(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """"der Rollladen im Büro 50 % erreicht" / "Der Rollladen im Büro hat 50 % erreicht."
+
+    Realized from the grounded entity - never from the user's own wording -
+    so every paraphrase of one meaning yields the same message.
+    """
+    target = trigger.target
+    if (
+        trigger.type is not TriggerType.NUMERIC_STATE
+        or target is None
+        or trigger.threshold is None
+        or trigger.comparator is None
+    ):
+        return None
+    subject = _event_subject(target, entities)
+    if subject is None:
+        return None
+    number = format_german_number(trigger.threshold)
+    if trigger.measurement is not None:
+        unit = "%"
+        prefix = _PROPERTY_PHRASES[trigger.measurement]
+    else:
+        single = _single_entity(target, entities)
+        unit_symbol = single.unit if single is not None else None
+        unit = _UNIT_WORDS.get(unit_symbol or "", unit_symbol or "")
+        prefix = ""
+    amount = f"{number} {unit}".strip()
+    direction = _DIRECTION_PHRASES[trigger.direction] if trigger.direction is not None else ""
+    comparator = trigger.comparator
+    if comparator is NumericComparator.EQUAL:
+        return StateEventPhrase(
+            f"{subject} {direction}{prefix}{amount} erreicht",
+            f"{sentence_initial(subject)} hat {direction}{prefix}{amount} erreicht.",
+        )
+    if comparator is NumericComparator.AT_LEAST:
+        return StateEventPhrase(
+            f"{subject} {direction}mindestens {prefix}{amount} erreicht",
+            f"{sentence_initial(subject)} hat {direction}mindestens {prefix}{amount} erreicht.",
+        )
+    word = {
+        NumericComparator.ABOVE: "über",
+        NumericComparator.BELOW: "unter",
+        NumericComparator.AT_MOST: "bei höchstens",
+    }[comparator]
+    suffix = _PROPERTY_SUFFIXES.get(trigger.measurement) if trigger.measurement else None
+    measured = f"{word} {amount}" + (f" {suffix}" if suffix else "")
+    return StateEventPhrase(
+        f"{subject} {direction}{measured} liegt",
+        f"{sentence_initial(subject)} liegt {direction}jetzt {measured}.",
+    )
+
+
+def _event_subject(
+    target: TriggerTarget, entities: Sequence[EntitySnapshot]
+) -> str | None:
+    """Nominative noun phrase for a numeric trigger's subject."""
+    single = _single_entity(target, entities)
+    if single is not None:
+        return entity_subject_phrase(single)
+    noun = _EVENT_NOUNS.get((target.domain or "", target.device_class)) or _EVENT_NOUNS.get(
+        (target.domain or "", None)
+    )
+    if noun is None:
+        return None
+    location = _location(target, entities)
+    return f"{noun} {location}" if location is not None else noun
+
+
+def entity_subject_phrase(entity: EntitySnapshot) -> str:
+    """"Büro Rollladen" in area "Büro" -> "der Rollladen im Büro".
+
+    The area word is only moved into a locative when the rest of the name is
+    a single known device noun; any other name is kept verbatim.
+    """
+    name = entity.friendly_name.strip()
+    area = (entity.area_name or "").strip()
+    if area:
+        remainder = _without_area(name, area)
+        if remainder is not None and " " not in remainder:
+            gender_phrase = definite_entity_phrase(remainder)
+            if gender_phrase is not None:
+                return f"{gender_phrase[0]} {dative_location_phrase(area)}"
+    definite = definite_entity_phrase(name)
+    return definite[0] if definite is not None else name
+
+
+def _without_area(name: str, area: str) -> str | None:
+    lowered, area_key = name.casefold(), area.casefold()
+    if lowered.startswith(area_key + " "):
+        return name[len(area) + 1:].strip()
+    if lowered.endswith(" " + area_key):
+        return name[: -len(area) - 1].strip()
+    return None
+
+
 def _matching_entities(
     target: TriggerTarget, entities: Sequence[EntitySnapshot]
 ) -> list[EntitySnapshot]:
@@ -458,7 +665,7 @@ def trigger_message(
 ) -> str:
     """Deterministic message for a notification without explicit text."""
     if trigger is not None:
-        described = describe_state_event(trigger, entities)
+        described = describe_event(trigger, entities)
         if described is not None:
             return described.sentence
     return message_from_trigger_text(trigger_text)
@@ -489,7 +696,11 @@ __all__ = (
     "NotificationClause",
     "StateEventPhrase",
     "TEST_NOTIFICATION_MESSAGE",
+    "describe_event",
+    "describe_numeric_event",
     "describe_state_event",
+    "entity_subject_phrase",
+    "format_german_number",
     "message_from_dass_content",
     "message_from_trigger_text",
     "parse_notification_clause",

@@ -25,6 +25,11 @@
     "custom_components/homeintent/nlu/semantic_interpreter.py",
     "custom_components/homeintent/name_similarity.py",
     "custom_components/homeintent/nlu/entity_clarification.py"
+    ,"custom_components/homeintent/automation_language.py"
+    ,"custom_components/homeintent/automation_grounding.py"
+    ,"custom_components/homeintent/automation_composition.py"
+    ,"custom_components/homeintent/nlu/automation_lexicon.py"
+    ,"custom_components/homeintent/nlu/measurement.py"
     ,"custom_components/homeintent/house_graph.py"
     ,"custom_components/homeintent/memory.py"
     ,"custom_components/homeintent/situation.py"

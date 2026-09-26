@@ -268,7 +268,7 @@ def test_render_accepts_real_recorder_response_format():
          "sensor.aussentemperatur", HistoryMetric.MIN),
         ("Wie warm war es gestern in der Küche maximal?",
          "sensor.temperatur_kueche", HistoryMetric.MAX),
-        # Compound noun and "im Schnitt" (found in the 7.1.3 live re-test).
+        # Compound noun and "im Schnitt" (found in the 7.2.1 live re-test).
         ("Wie war die Durchschnittstemperatur gestern im Wohnzimmer?",
          "sensor.temperatur_wohnzimmer", HistoryMetric.MEAN),
         ("Wie warm war es gestern im Schnitt draußen?",

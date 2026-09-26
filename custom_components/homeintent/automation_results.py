@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .automation_composition import CompositionTrace, EventClarification
 from .automation_summary import AutomationSummary
 from .nlu.automation_model import AutomationModel, TriggerModel
 from .nlu.automation_validator import AutomationValidationError
@@ -16,6 +17,16 @@ class AutomationMatchResult:
     model: AutomationModel
     response_text: str
     validation_error: AutomationValidationError | None
+
+
+@dataclass(frozen=True)
+class AutomationClarificationResult:
+    """An understood automation request that needs one more answer, or that
+    cannot be built safely.  Never persists or executes anything."""
+
+    response_text: str
+    clarification: EventClarification | None = None
+    trace: CompositionTrace | None = None
 
 
 @dataclass(frozen=True)

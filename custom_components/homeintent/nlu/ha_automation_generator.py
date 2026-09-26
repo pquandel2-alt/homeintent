@@ -45,13 +45,28 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any
+from typing import Any, Callable
 
 from ..entities import EntitySnapshot
 from .action_model import ActionGroup, ActionModel, ActionType, ExecutionMode
-from .automation_model import AutomationModel, NumericComparator, SunEvent, TriggerModel, TriggerTarget, TriggerType
+from .automation_model import (
+    AutomationModel,
+    NumericComparator,
+    PresenceEvent,
+    SunEvent,
+    TriggerModel,
+    TriggerTarget,
+    TriggerType,
+)
 from .condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator, TimeComparator
 from .constraint_resolver import Constraints, resolve_candidates
+from .measurement import (
+    arrival_condition,
+    comparison_expression,
+    direction_condition,
+    safe_entity_id,
+    spec_for,
+)
 from .semantic_state import SemanticState
 
 
@@ -176,6 +191,72 @@ def _format_offset(minutes: int) -> str:
     return f"{sign}{hours:02d}:{mins:02d}:{secs:02d}"
 
 
+# Relations Home Assistant's numeric_state trigger cannot express exactly:
+# equality and inclusive bounds. They become template triggers, which fire on
+# the false -> true transition of the comparison.
+_TEMPLATE_COMPARATORS: dict[NumericComparator, str] = {
+    NumericComparator.EQUAL: "==",
+    NumericComparator.AT_LEAST: ">=",
+    NumericComparator.AT_MOST: "<=",
+}
+
+
+def _generate_measurement_trigger(
+    trigger: TriggerModel,
+    candidates: list[EntitySnapshot],
+    identified: Callable[[dict[str, Any]], dict[str, Any]],
+) -> tuple[dict[str, Any] | None, GenerationError | None]:
+    """Attribute-backed percentage (cover position, brightness, fan speed).
+
+    The template is assembled only from the closed ``MeasurementProperty``
+    mapping, validated entity ids and a number - never from spoken text.
+    """
+    assert trigger.measurement is not None and trigger.comparator is not None
+    assert trigger.threshold is not None
+    spec = spec_for(trigger.measurement)
+    if any(entity.domain != spec.domain for entity in candidates):
+        return None, GenerationError.UNSUPPORTED_STATE
+    entity_ids = [entity.entity_id for entity in candidates]
+    if trigger.direction is not None:
+        # Direction needs the previous value, which only a state trigger on
+        # the attribute provides; the arrival edge and the travel sense are
+        # checked by the conditions from ``_trigger_conditions``.
+        config: dict[str, Any] = {
+            "trigger": "state",
+            "entity_id": _entity_id_field(candidates),
+            "attribute": spec.attribute,
+        }
+    else:
+        config = {
+            "trigger": "template",
+            "value_template": comparison_expression(
+                trigger.measurement, entity_ids, trigger.comparator.name, trigger.threshold
+            ),
+        }
+    if trigger.for_seconds is not None:
+        config["for"] = {"seconds": trigger.for_seconds}
+    return identified(config), None
+
+
+def _trigger_conditions(trigger: TriggerModel) -> list[dict[str, Any]]:
+    """Automation conditions a trigger's own meaning requires."""
+    if trigger.measurement is None or trigger.direction is None:
+        return []
+    assert trigger.comparator is not None and trigger.threshold is not None
+    return [
+        {
+            "condition": "template",
+            "value_template": arrival_condition(
+                trigger.measurement, trigger.comparator.name, trigger.threshold
+            ),
+        },
+        {
+            "condition": "template",
+            "value_template": direction_condition(trigger.measurement, trigger.direction),
+        },
+    ]
+
+
 def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> tuple[dict[str, Any] | None, GenerationError | None]:
     def identified(config: dict[str, Any]) -> dict[str, Any]:
         if trigger.trigger_id is not None:
@@ -202,12 +283,26 @@ def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> 
         candidates = _resolve_target_entities(trigger.target, entities)
         if not candidates:
             return None, GenerationError.ENTITY_NOT_FOUND
-        if trigger.comparator is NumericComparator.EQUAL:
-            entity_ids = [entity.entity_id for entity in candidates]
-            comparisons = [
-                f"states('{entity_id}') | float(none) == {trigger.threshold:g}"
-                for entity_id in entity_ids
-            ]
+        entity_ids = [entity.entity_id for entity in candidates]
+        if not all(safe_entity_id(entity_id) for entity_id in entity_ids):
+            return None, GenerationError.ENTITY_NOT_FOUND
+        if trigger.measurement is not None:
+            return _generate_measurement_trigger(trigger, candidates, identified)
+        if trigger.comparator in _TEMPLATE_COMPARATORS:
+            operator = _TEMPLATE_COMPARATORS[trigger.comparator]
+            if trigger.comparator is NumericComparator.EQUAL:
+                # ``None == 50`` is simply false for a non-numeric state.
+                comparisons = [
+                    f"states('{entity_id}') | float(none) == {trigger.threshold:g}"
+                    for entity_id in entity_ids
+                ]
+            else:
+                # Ordering against ``None`` would raise; guard with is_number.
+                comparisons = [
+                    f"(states('{entity_id}') | is_number and "
+                    f"states('{entity_id}') | float {operator} {trigger.threshold:g})"
+                    for entity_id in entity_ids
+                ]
             config = {
                 "trigger": "template",
                 "value_template": "{{ " + " or ".join(comparisons) + " }}",
@@ -222,13 +317,18 @@ def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> 
         return identified(config), None
 
     if trigger.type is TriggerType.PRESENCE:
-        assert trigger.target is not None and trigger.target.entity_id is not None
-        # Direction-neutral (fires on any state change of the person entity)
-        # - mirrors ``automation_preview.py``'s own PRESENCE rendering
-        # decision: the upstream parser never records arrival vs. departure,
-        # so this is the only truthful translation (see that module's
-        # docstring for the full reasoning).
-        return identified({"trigger": "state", "entity_id": trigger.target.entity_id}), None
+        assert trigger.target is not None
+        if trigger.target.entity_id is None or not safe_entity_id(trigger.target.entity_id):
+            # "ich" not yet bound to the speaker's person entity - never guess.
+            return None, GenerationError.ENTITY_NOT_FOUND
+        config = {"trigger": "state", "entity_id": trigger.target.entity_id}
+        if trigger.presence_event is PresenceEvent.ARRIVE:
+            config["to"] = "home"
+        elif trigger.presence_event is PresenceEvent.LEAVE:
+            config["from"] = "home"
+        # Without a spoken direction the trigger stays direction-neutral, the
+        # historical meaning (see automation_preview.py's PRESENCE wording).
+        return identified(config), None
 
     if trigger.type is TriggerType.SUN:
         assert trigger.sun_event is not None
@@ -833,6 +933,14 @@ def generate_ha_automation_config(
             triggers_delay_action = {"delay": {"seconds": trigger.delay_seconds}}
 
     conditions: list[dict[str, Any]] = []
+    trigger_conditions = [
+        condition for trigger in model.triggers for condition in _trigger_conditions(trigger)
+    ]
+    if trigger_conditions and len(model.triggers) != 1:
+        # A direction guard is trigger-scoped; with several triggers it would
+        # silently constrain the others as well.
+        return GenerationResult(config=None, error=GenerationError.UNSUPPORTED_TRIGGER_TYPE)
+    conditions.extend(trigger_conditions)
     for condition_node in model.conditions:
         condition_config, error = _generate_condition_node(condition_node, entities)
         if error is not None:
@@ -875,7 +983,13 @@ def generate_ha_automation_config(
             raw_state = triggers[0].get("to")
             if isinstance(raw_state, str):
                 expected_source_state = raw_state
-        if len(model.triggers) == 1 and model.triggers[0].type is TriggerType.NUMERIC_STATE:
+        if (
+            len(model.triggers) == 1
+            and model.triggers[0].type is TriggerType.NUMERIC_STATE
+            and model.triggers[0].measurement is None
+            and model.triggers[0].comparator
+            in {NumericComparator.ABOVE, NumericComparator.BELOW, NumericComparator.EQUAL}
+        ):
             numeric_trigger = model.triggers[0]
             if numeric_trigger.target is not None:
                 numeric_candidates = _resolve_target_entities(

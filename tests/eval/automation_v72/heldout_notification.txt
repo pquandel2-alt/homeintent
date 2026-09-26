@@ -1,0 +1,185 @@
+# HELD-OUT - notification automations. Frozen before 7.2.0 implementation.
+## cover_position_equal
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Schicke mir eine Benachrichtigung wenn im Büro die Rolllade 50% erreicht hat
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Gib mir Bescheid, sobald der Büro Rollladen 50 Prozent erreicht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Wenn der Rollladen im Büro fünfzig Prozent erreicht hat, informiere mich.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Ich will eine Push-Nachricht, wenn die Rolllade im Büro 50 % erreicht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Melde dich bei mir, sobald im Büro der Rollladen bei 50 Prozent steht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Könntest du mir Bescheid geben, wenn der Rollladen im Büro auf 50 % ist?
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Falls die Rolllade im Büro bei 50 Prozent angekommen ist, schick mir eine Nachricht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: sobald das rollo im büro auf fünfzig prozent steht sag mir bescheid
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Benachrichtige mich jedes Mal wenn der Büro-Rollladen 50 % erreicht
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Immer wenn die Rollade im Büro 50 Prozent erreicht, will ich eine Meldung bekommen.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Schick mir eine Mitteilung sobald der Rolladen im Büro halb offen ist
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Sag mir bitte Bescheid wenn die Büro Rolllade zur Hälfte geöffnet ist
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Wenn im Büro der Rollladen halb geöffnet ist, dann schick mir eine Push-Benachrichtigung.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Ich möchte informiert werden, sobald der Rollladen im Büro bei 50 % liegt.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Kannst du mir eine Nachricht aufs Handy schicken wenn der Rollladen im Büro 50 Prozent erreicht hat?
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Wenn der Rollo im Büro bei 50 % ist, benachrichtige mich per Push.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Schick mir auf mein iPhone eine Benachrichtigung sobald die Rolllade im Büro 50 Prozent erreicht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Also wenn die Rolllade im Büro irgendwann 50 Prozent erreicht, kannst du mir dann Bescheid sagen?
+auto: num(cover.wohnzimmer_rollladen).cover_position==50 => notify(me) :: Benachrichtige mich wenn der Rollladen im Wohnzimmer 50 Prozent erreicht.
+auto: num(cover.wohnzimmer_rollladen).cover_position==30 => notify(me) :: Sag mir Bescheid, sobald die Rolllade im Wohnzimmer bei 30 Prozent steht.
+auto: num(cover.kueche_rollladen).cover_position==50 => notify(me) :: Wenn in der Küche der Rollladen 50 % erreicht hat, schick mir eine Nachricht.
+auto: num(cover.kueche_rollladen).cover_position==75 => notify(me) :: Informiere mich, sobald der Küche Rollladen 75 Prozent erreicht.
+auto: num(cover.schlafzimmer_rollladen).cover_position==50 => notify(me) :: Schick mir eine Push Nachricht, wenn das Rollo im Schlafzimmer halb offen ist.
+auto: num(cover.schlafzimmer_rollladen).cover_position==20 => notify(me) :: Ich hätte gerne eine Nachricht, sobald die Rolllade im Schlafzimmer auf 20 Prozent steht.
+auto: num(cover.bad_rollladen).cover_position==50 => notify(me) :: Gib mir Bescheid wenn im Bad der Rollladen 50 Prozent erreicht hat.
+auto: num(cover.bad_rollladen).cover_position==40 => notify(me) :: Wenn die Rolllade im Bad bei vierzig Prozent ist, melde dich bei mir.
+auto: num(cover.buero_rollladen).cover_position==25 => notify(me) :: Benachrichtige mich, wenn der Rollladen im Büro 25 % erreicht.
+auto: num(cover.buero_rollladen).cover_position==100 => notify(me) :: Schick mir eine Nachricht wenn die Rolllade im Büro 100 Prozent erreicht hat
+auto: num(cover.buero_rollladen).cover_position==10 => notify(me) :: sag mir bescheid wenn der büro rollladen bei zehn prozent ist
+auto: num(cover.buero_rollladen).cover_position==50.5 => notify(me) :: Benachrichtige mich, sobald der Rollladen im Büro 50,5 Prozent erreicht.
+auto: num(cover.wohnzimmer_rollladen).cover_position==50 => notify(me) :: Wenn im Wohnzimmer die Rolllade zur Hälfte offen ist, gib mir Bescheid.
+auto: num(cover.kueche_rollladen).cover_position==50 => notify(me) :: Informier mich wenn der Rollo in der Küche halb geöffnet ist
+auto: num(cover.bad_rollladen).cover_position==60 => notify(me) :: Könntest du mich benachrichtigen, sobald der Rollladen im Bad 60 % erreicht hat?
+auto: num(cover.schlafzimmer_rollladen).cover_position==50 => notify(me) :: Ich will benachrichtigt werden wenn die Schlafzimmer Rolllade 50 Prozent erreicht
+## cover_position_range
+auto: num(cover.buero_rollladen).cover_position>50 => notify(me) :: Benachrichtige mich, wenn der Rollladen im Büro über 50 Prozent geöffnet ist.
+auto: num(cover.buero_rollladen).cover_position>50 => notify(me) :: Sag mir Bescheid sobald die Rolllade im Büro mehr als 50 % offen ist.
+auto: num(cover.buero_rollladen).cover_position<30 => notify(me) :: Schick mir eine Nachricht, wenn der Rollladen im Büro unter 30 Prozent fällt.
+auto: num(cover.buero_rollladen).cover_position<30 => notify(me) :: Wenn die Rolllade im Büro weniger als 30 Prozent offen ist, benachrichtige mich.
+auto: num(cover.buero_rollladen).cover_position>=50 => notify(me) :: Gib mir Bescheid, sobald der Rollladen im Büro mindestens 50 Prozent erreicht.
+auto: num(cover.buero_rollladen).cover_position<=20 => notify(me) :: Informiere mich, wenn der Rollladen im Büro höchstens noch 20 Prozent offen ist.
+auto: num(cover.wohnzimmer_rollladen).cover_position>80 => notify(me) :: Wenn im Wohnzimmer die Rolllade über 80 % steht, schick mir eine Push-Nachricht.
+auto: num(cover.kueche_rollladen).cover_position<10 => notify(me) :: Benachrichtige mich sobald der Rollladen in der Küche unter 10 Prozent ist
+auto: num(cover.schlafzimmer_rollladen).cover_position>=75 => notify(me) :: Sag mir Bescheid wenn das Rollo im Schlafzimmer mindestens 75 Prozent offen ist.
+auto: num(cover.bad_rollladen).cover_position<=50 => notify(me) :: Schick mir eine Meldung, falls die Rolllade im Bad höchstens 50 Prozent erreicht.
+## cover_direction
+auto: num(cover.buero_rollladen).cover_position==50/dir=down => notify(me) :: Benachrichtige mich, wenn der Rollladen im Büro auf 50 Prozent heruntergefahren ist.
+auto: num(cover.buero_rollladen).cover_position==50/dir=up => notify(me) :: Sag mir Bescheid, wenn der Rollladen im Büro beim Hochfahren 50 Prozent erreicht.
+auto: num(cover.wohnzimmer_rollladen).cover_position==30/dir=down => notify(me) :: Schick mir eine Nachricht, sobald die Rolllade im Wohnzimmer auf 30 Prozent runtergefahren ist.
+## cover_state
+auto: state(cover.buero_rollladen)=open => notify(me) :: Benachrichtige mich, wenn der Rollladen im Büro geöffnet wird.
+auto: state(cover.buero_rollladen)=closed => notify(me) :: Sag mir Bescheid, sobald die Rolllade im Büro geschlossen ist.
+auto: state(cover.wohnzimmer_rollladen)=closed => notify(me) :: Wenn der Wohnzimmer Rollladen zugeht, schick mir eine Nachricht.
+auto: state(cover.kueche_rollladen)=open => notify(me) :: Informiere mich wenn in der Küche der Rollladen aufgeht
+## window_door
+auto: state(binary_sensor.wohnzimmer_fenster)=open => notify(me) :: Benachrichtige mich, wenn das Wohnzimmer Fenster geöffnet wird.
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Sag mir Bescheid sobald das Bürofenster aufgeht
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Wenn im Büro das Fenster geöffnet wird, schick mir eine Nachricht.
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Gib mir Bescheid, sobald das Fenster im Büro offen ist.
+auto: state(binary_sensor.kuechenfenster)=open => notify(me) :: Informiere mich wenn jemand das Küchenfenster öffnet
+auto: state(binary_sensor.kuechenfenster)=closed => notify(me) :: Schick mir eine Push-Nachricht, sobald das Küchenfenster geschlossen wird.
+auto: state(binary_sensor.schlafzimmer_fenster)=open => notify(me) :: Wenn das Fenster im Schlafzimmer aufgeht, melde dich bei mir.
+auto: state(binary_sensor.schlafzimmer_fenster)=closed => notify(me) :: Ich möchte eine Nachricht bekommen, wenn das Schlafzimmer Fenster zugemacht wird.
+auto: state(binary_sensor.haustuer)=open => notify(me) :: Benachrichtige mich, sobald die Haustür geöffnet wird.
+auto: state(binary_sensor.haustuer)=open => notify(me) :: Jedes Mal wenn die Haustür aufgeht, sag mir Bescheid.
+auto: state(binary_sensor.haustuer)=closed => notify(me) :: Wenn die Haustür zugeht, schick mir eine Meldung.
+auto: state(binary_sensor.terrassentuer)=open => notify(me) :: Sag mir Bescheid falls die Terrassentür aufgeht
+auto: state(binary_sensor.terrassentuer)=open => notify(me) :: Wenn im Wohnzimmer eine Tür geöffnet wird, benachrichtige mich.
+auto: state(binary_sensor.wohnzimmer_fenster)=open => notify(me) :: Benachrichtige mich sobald im Wohnzimmer ein Fenster aufgeht.
+auto: state(binary_sensor.wohnzimmer_fenster)=open => notify(me) :: Schick mir eine Nachricht wenn irgendein Fenster im Wohnzimmer geöffnet wird
+auto: state(binary_sensor.buero_fenster,binary_sensor.kuechenfenster,binary_sensor.schlafzimmer_fenster,binary_sensor.wohnzimmer_fenster)=open => notify(me) :: Benachrichtige mich, wenn irgendein Fenster geöffnet wird.
+auto: state(binary_sensor.buero_fenster,binary_sensor.kuechenfenster,binary_sensor.schlafzimmer_fenster,binary_sensor.wohnzimmer_fenster)=open => notify(me) :: Sobald ein Fenster aufgeht, sag mir bitte Bescheid.
+auto: state(binary_sensor.haustuer,binary_sensor.terrassentuer)=open => notify(me) :: Gib mir Bescheid, wenn eine Tür geöffnet wird.
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: wenn bürofenster aufgeht benachrichtige mich
+auto: state(binary_sensor.haustuer)=open => notify(me) :: kannst du mir ne nachricht schicken wenn die haustür aufgeht
+## motion
+auto: state(binary_sensor.flur_bewegung)=on => notify(me) :: Benachrichtige mich, wenn im Flur eine Bewegung erkannt wird.
+auto: state(binary_sensor.flur_bewegung)=on => notify(me) :: Sag mir Bescheid, sobald der Bewegungsmelder im Flur auslöst.
+auto: state(binary_sensor.flur_bewegung)=on => notify(me) :: Wenn sich im Flur etwas bewegt, schick mir eine Nachricht.
+## light_fan_media
+auto: state(light.kueche)=on => notify(me) :: Benachrichtige mich, wenn das Küchenlicht eingeschaltet wird.
+auto: state(light.wohnzimmer)=off => notify(me) :: Sag mir Bescheid, sobald das Wohnzimmerlicht ausgeht.
+auto: state(light.flur)=on => notify(me) :: Wenn im Flur das Licht angeht, schick mir eine Nachricht.
+auto: num(light.wohnzimmer).brightness==50 => notify(me) :: Benachrichtige mich, wenn das Wohnzimmerlicht auf 50 Prozent gedimmt ist.
+auto: num(light.buero).brightness>80 => notify(me) :: Sag mir Bescheid, wenn die Bürolampe heller als 80 Prozent ist.
+auto: num(light.kueche).brightness<20 => notify(me) :: Schick mir eine Nachricht, sobald das Küchenlicht unter 20 Prozent Helligkeit hat.
+auto: num(fan.schlafzimmer).fan_percentage==50 => notify(me) :: Benachrichtige mich, wenn der Ventilator im Schlafzimmer auf 50 Prozent läuft.
+auto: num(fan.schlafzimmer).fan_percentage>70 => notify(me) :: Gib mir Bescheid, wenn der Schlafzimmer Ventilator mit mehr als 70 Prozent läuft.
+auto: state(fan.schlafzimmer)=on => notify(me) :: Wenn der Ventilator im Schlafzimmer angeht, informiere mich.
+auto: state(switch.kaffeemaschine)=on => notify(me) :: Sag mir Bescheid, wenn die Kaffeemaschine eingeschaltet wird.
+auto: state(switch.kaffeemaschine)=off => notify(me) :: Schick mir eine Nachricht sobald die Kaffeemaschine ausgeschaltet wird
+## temperature_humidity_battery
+auto: num(sensor.wohnzimmer_temperatur).state>25 => notify(me) :: Benachrichtige mich, wenn die Temperatur im Wohnzimmer über 25 Grad steigt.
+auto: num(sensor.wohnzimmer_temperatur).state>25 => notify(me) :: Sag mir Bescheid sobald es im Wohnzimmer wärmer als 25 Grad ist.
+auto: num(sensor.wohnzimmer_temperatur).state<18 => notify(me) :: Wenn die Wohnzimmer Temperatur unter 18 Grad fällt, schick mir eine Nachricht.
+auto: num(sensor.wohnzimmer_temperatur).state==22 => notify(me) :: Informiere mich, wenn die Temperatur im Wohnzimmer 22 Grad erreicht hat.
+auto: num(sensor.wohnzimmer_temperatur).state==22 => notify(me) :: Gib mir Bescheid, sobald die Wohnzimmertemperatur bei 22 Grad liegt.
+auto: num(sensor.aussentemperatur).state<0 => notify(me) :: Benachrichtige mich, wenn die Außentemperatur unter 0 Grad sinkt.
+auto: num(sensor.aussentemperatur).state>30 => notify(me) :: Schick mir eine Push-Nachricht, sobald die Außentemperatur über 30 Grad liegt.
+auto: num(sensor.aussentemperatur).state==25 => notify(me) :: Wenn die Außentemperatur 25 Grad erreicht, sag mir Bescheid.
+auto: num(sensor.buero_luftfeuchtigkeit).state>60 => notify(me) :: Benachrichtige mich, wenn die Luftfeuchtigkeit im Büro über 60 Prozent steigt.
+auto: num(sensor.buero_luftfeuchtigkeit).state<40 => notify(me) :: Sag mir Bescheid sobald die Büro Luftfeuchtigkeit unter 40 Prozent ist.
+auto: num(sensor.handy_akku).state<20 => notify(me) :: Benachrichtige mich, wenn der Handy Akku unter 20 Prozent fällt.
+auto: num(sensor.handy_akku).state==20 => notify(me) :: Schick mir eine Nachricht, wenn der Handy Akku 20 Prozent erreicht hat.
+auto: num(sensor.handy_akku).state==100 => notify(me) :: Gib mir Bescheid, sobald der Handy Akku bei 100 Prozent ist.
+auto: num(sensor.wohnzimmer_temperatur).state>=24 => notify(me) :: Informiere mich, wenn die Temperatur im Wohnzimmer mindestens 24 Grad beträgt.
+auto: num(sensor.aussentemperatur).state<=5 => notify(me) :: Sag mir Bescheid, wenn die Außentemperatur höchstens 5 Grad beträgt.
+auto: num(sensor.wohnzimmer_temperatur).state>21.5 => notify(me) :: Benachrichtige mich sobald die Wohnzimmer Temperatur über 21,5 Grad steigt
+## presence
+auto: arrive(person.philipp) => notify(me) :: Schick mir eine Nachricht, wenn ich nach Hause komme.
+auto: arrive(person.julia) => notify(me) :: Benachrichtige mich, sobald Julia nach Hause kommt.
+auto: arrive(person.julia) => notify(me) :: Sag mir Bescheid, wenn Julia heimkommt.
+auto: leave(person.julia) => notify(me) :: Gib mir Bescheid, wenn Julia das Haus verlässt.
+auto: leave(person.philipp) => notify(me) :: Wenn ich das Haus verlasse, schick mir eine Push-Nachricht.
+auto: arrive(person.philipp) => notify(julia) :: Sag Julia Bescheid, wenn ich nach Hause komme.
+## time_sun
+auto: time=07:00 => notify(me) :: Schick mir jeden Tag um 7 Uhr eine Benachrichtigung.
+auto: time=20:30 => notify(me) :: Benachrichtige mich täglich um 20:30 Uhr.
+auto: sun=sunset => notify(me) :: Sag mir bei Sonnenuntergang Bescheid.
+auto: sun=sunset => notify(me) :: Benachrichtige mich, wenn die Sonne untergeht.
+auto: sun=sunset => notify(me) :: Wenn es dunkel wird, schick mir eine Nachricht.
+auto: sun=sunrise => notify(me) :: Schick mir eine Nachricht bei Sonnenaufgang.
+auto: sun=sunset-30 => notify(me) :: Benachrichtige mich 30 Minuten vor Sonnenuntergang.
+## duration
+auto: state(binary_sensor.buero_fenster)=open/for=600 => notify(me) :: Benachrichtige mich, wenn das Bürofenster seit zehn Minuten offen ist.
+auto: state(binary_sensor.buero_fenster)=open/for=600 => notify(me) :: Sag mir Bescheid, wenn das Bürofenster länger als 10 Minuten offen ist.
+auto: state(binary_sensor.kuechenfenster)=open/for=900 => notify(me) :: Wenn das Küchenfenster 15 Minuten lang offen ist, schick mir eine Nachricht.
+auto: state(binary_sensor.haustuer)=open/for=300 => notify(me) :: Gib mir Bescheid, falls die Haustür mindestens 5 Minuten offen steht.
+auto: state(binary_sensor.schlafzimmer_fenster)=open/for=1800 => notify(me) :: Benachrichtige mich wenn das Schlafzimmer Fenster eine halbe Stunde offen ist
+## conditions
+auto: state(binary_sensor.buero_fenster)=open ; if: nobody_home => notify(me) :: Benachrichtige mich, wenn das Bürofenster geöffnet wird und niemand zuhause ist.
+auto: state(binary_sensor.buero_fenster)=open ; if: nobody_home => notify(me) :: Wenn das Bürofenster aufgeht und keiner zu Hause ist, sag mir Bescheid.
+auto: state(binary_sensor.haustuer)=open ; if: nobody_home => notify(me) :: Schick mir eine Nachricht wenn die Haustür aufgeht und niemand daheim ist
+auto: state(binary_sensor.haustuer)=open ; if: time>22:00 => notify(me) :: Benachrichtige mich, wenn die Haustür nach 22 Uhr geöffnet wird.
+auto: state(binary_sensor.flur_bewegung)=on ; if: nobody_home => notify(me) :: Sag mir Bescheid, wenn im Flur eine Bewegung erkannt wird, aber nur wenn niemand zuhause ist.
+auto: num(cover.buero_rollladen).cover_position==50 ; if: nobody_home => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht und niemand zuhause ist.
+auto: state(binary_sensor.kuechenfenster)=open ; if: num(sensor.aussentemperatur).state<5 => notify(me) :: Wenn das Küchenfenster aufgeht und die Außentemperatur unter 5 Grad liegt, schick mir eine Nachricht.
+auto: state(binary_sensor.terrassentuer)=open ; if: weekday=sat,sun => notify(me) :: Gib mir Bescheid, wenn am Wochenende die Terrassentür geöffnet wird.
+auto: state(binary_sensor.haustuer)=open ; if: nobody_home => notify(me) :: Benachrichtige mich wenn die Haustür aufgeht außer wenn jemand zuhause ist
+## explicit_message
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me,"Rollladen ist halb unten.") :: Wenn die Rolllade im Büro 50 Prozent erreicht, schick mir die Nachricht: Rollladen ist halb unten.
+auto: state(binary_sensor.buero_fenster)=open => notify(me,"Fenster im Büro offen.") :: Benachrichtige mich, sobald das Bürofenster geöffnet wird, mit dem Text: Fenster im Büro offen.
+auto: state(binary_sensor.haustuer)=open => notify(me,"Mach alle Lichter aus.") :: Wenn die Haustür aufgeht, schick mir die Nachricht: Mach alle Lichter aus.
+auto: state(binary_sensor.kuechenfenster)=open => notify(me,"Küchenfenster zu machen") :: Sobald das Küchenfenster aufgeht, benachrichtige mich mit dem Text Küchenfenster zu machen
+auto: num(sensor.aussentemperatur).state<0 => notify(me,"Frost!") :: Schick mir die Nachricht "Frost!", wenn die Außentemperatur unter 0 Grad fällt.
+auto: state(binary_sensor.terrassentuer)=open => notify(me,"Die Terrassentür ist offen.") :: Wenn die Terrassentür aufgeht, sag mir Bescheid, dass die Terrassentür offen ist.
+auto: state(binary_sensor.haustuer)=open => notify(me,"Schalte die Heizung ein.") :: Wenn die Haustür geöffnet wird, schick mir eine Nachricht mit dem Text Schalte die Heizung ein.
+## recipients
+auto: state(binary_sensor.haustuer)=open => notify(julia) :: Schick Julia eine Nachricht, wenn die Haustür aufgeht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(julia) :: Sag Julia Bescheid, sobald der Rollladen im Büro 50 Prozent erreicht.
+auto: state(binary_sensor.buero_fenster)=open => notify(julia) :: Benachrichtige Julia, wenn das Bürofenster geöffnet wird.
+auto: state(binary_sensor.haustuer)=open => notify(us) :: Benachrichtige uns, wenn die Haustür geöffnet wird.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Schick Julia, nein mir eine Nachricht wenn der Rollladen im Büro 50 Prozent erreicht.
+auto: state(binary_sensor.kuechenfenster)=open => notify(julia) :: Wenn das Küchenfenster aufgeht, informiere Julia.
+## repairs
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 60, äh 50 Prozent erreicht.
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 60 nein 50 Prozent erreicht
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Wenn das Küchenfenster, nein das Bürofenster geöffnet wird, sag mir Bescheid.
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: Wenn das Küchenfenster äh ich meine das Bürofenster geöffnet wird sag mir Bescheid
+auto: num(cover.wohnzimmer_rollladen).cover_position==50 => notify(me) :: Sag mir Bescheid, wenn der Rollladen in der Küche, nein im Wohnzimmer 50 Prozent erreicht.
+auto: num(sensor.wohnzimmer_temperatur).state>24 => notify(me) :: Benachrichtige mich wenn die Temperatur im Wohnzimmer über 26, nein über 24 Grad steigt
+## stt
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: benachrichtige mich wenn die roll lade im büro fünfzig prozent erreicht
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: schick mir eine push nachricht wenn der büro rollladen fünfzig prozent erreicht hat
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: sag mir bescheid wenn der rollladen im büro fünf zig prozent erreicht
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: ÄH WENN DER ROLLLADEN IM BÜRO 50 PROZENT ERREICHT SAG MIR BESCHEID
+auto: state(binary_sensor.buero_fenster)=open => notify(me) :: gib mir bescheid wenn das büro fenster aufgeht
+auto: num(sensor.wohnzimmer_temperatur).state>25 => notify(me) :: benachrichtige mich wenn die temperatur im wohnzimmer über fünfundzwanzig grad steigt
+## clarify
+clarify :: Benachrichtige mich wenn es 50 Prozent erreicht.
+clarify :: Sag mir Bescheid, sobald der Rollladen 50 Prozent erreicht.
+clarify :: Schick mir eine Nachricht, wenn die Rolllade bei 50 Prozent steht.
+clarify :: Benachrichtige mich, wenn im Büro etwas 50 Prozent erreicht.
+clarify :: Sag mir Bescheid, wenn es bei 30 Prozent ist.
+clarify :: Benachrichtige mich, wenn der Rollladen halb offen ist.
+clarify :: Gib mir Bescheid sobald die Temperatur 25 Grad erreicht.
+clarify :: Schick mir eine Nachricht, wenn das Licht angeht.
+## unsupported
+unsupported :: Benachrichtige mich, wenn die Temperatur im Wohnzimmer um 2 Grad steigt.
+unsupported :: Sag mir Bescheid, wenn es im Wohnzimmer 5 Grad kälter wird.
+unsupported :: Schick mir eine Nachricht, wenn der Rollladen im Büro weitere 20 Prozent runterfährt.
+unsupported :: Benachrichtige mich, wenn die Außentemperatur innerhalb einer Stunde um 3 Grad fällt.
+unsupported :: Gib mir Bescheid, wenn der Handy Akku schneller als sonst leer wird.

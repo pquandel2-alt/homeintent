@@ -186,6 +186,11 @@ def _german_number(word: str) -> int | None:
     return None
 
 
+def german_number(word: str) -> int | None:
+    """Public view of the one shared German number-word reader (0-100)."""
+    return _german_number(word)
+
+
 def _replace_number_with_unit(match: re.Match[str]) -> str:
     value = _german_number(match.group("number"))
     return match.group(0) if value is None else f"{value} {match.group('unit')}"

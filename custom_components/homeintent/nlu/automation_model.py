@@ -22,6 +22,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
+from .measurement import MeasurementProperty, TravelDirection
 from .semantic_state import SemanticState
 
 if TYPE_CHECKING:
@@ -94,6 +95,18 @@ class NumericComparator(Enum):
     ABOVE = auto()
     BELOW = auto()
     EQUAL = auto()
+    # Inclusive bounds ("mindestens"/"höchstens"). HA's numeric_state only
+    # knows strict above/below, so these are generated as template triggers
+    # and are never silently narrowed to ABOVE/BELOW (7.2.0 spec §15).
+    AT_LEAST = auto()
+    AT_MOST = auto()
+
+
+class PresenceEvent(Enum):
+    """Which presence transition a PRESENCE trigger means."""
+
+    ARRIVE = auto()  # "nach Hause kommt" - to: home
+    LEAVE = auto()  # "das Haus verlässt" - from: home
 
 
 class SunEvent(Enum):
@@ -151,9 +164,21 @@ class TriggerModel:
     state: SemanticState | None = None  # STATE - reuses the existing enum, no new state vocabulary
     comparator: NumericComparator | None = None  # NUMERIC_STATE
     threshold: float | None = None  # NUMERIC_STATE
+    # NUMERIC_STATE over a closed, attribute-backed property (cover position,
+    # light brightness, fan percentage) instead of the entity state. ``None``
+    # keeps the classic "numeric entity state" meaning.
+    measurement: MeasurementProperty | None = None
+    # Explicit cover travel direction; only ever set with ``measurement``.
+    direction: TravelDirection | None = None
     device_id: str | None = None  # DEVICE
     device_trigger_type: str | None = None  # DEVICE
     zone_id: str | None = None  # PRESENCE
+    # PRESENCE direction. ``None`` keeps the historical direction-neutral
+    # "any presence change" meaning.
+    presence_event: PresenceEvent | None = None
+    # "wenn ich nach Hause komme": the speaker's own person entity, bound to
+    # the authenticated user when the preview is created.
+    presence_of_speaker: bool = False
     sun_event: SunEvent | None = None  # SUN
     offset_minutes: int | None = None  # SUN
     time_hour: int | None = None  # TIME
@@ -386,12 +411,18 @@ def _render_trigger(trigger: TriggerModel) -> str:
         parts.append(f"comparator={trigger.comparator.name}")
     if trigger.threshold is not None:
         parts.append(f"threshold={trigger.threshold}")
+    if trigger.measurement is not None:
+        parts.append(f"measurement={trigger.measurement.name}")
+    if trigger.direction is not None:
+        parts.append(f"direction={trigger.direction.name}")
     if trigger.device_id is not None:
         parts.append(f"device_id={trigger.device_id}")
     if trigger.device_trigger_type is not None:
         parts.append(f"device_trigger_type={trigger.device_trigger_type}")
     if trigger.zone_id is not None:
         parts.append(f"zone_id={trigger.zone_id}")
+    if trigger.presence_event is not None:
+        parts.append(f"presence_event={trigger.presence_event.name}")
     if trigger.sun_event is not None:
         parts.append(f"sun_event={trigger.sun_event.name}")
     if trigger.offset_minutes is not None:

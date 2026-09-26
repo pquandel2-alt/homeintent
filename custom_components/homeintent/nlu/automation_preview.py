@@ -25,7 +25,15 @@ from __future__ import annotations
 
 from ..entities import EntitySnapshot
 from .action_model import ActionGroup, ActionModel, ActionType, ExecutionMode
-from .automation_model import AutomationModel, NumericComparator, SunEvent, TriggerModel, TriggerTarget, TriggerType
+from .automation_model import (
+    AutomationModel,
+    NumericComparator,
+    PresenceEvent,
+    SunEvent,
+    TriggerModel,
+    TriggerTarget,
+    TriggerType,
+)
 from .condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator, TimeComparator
 from .semantic_state import SemanticState
 
@@ -157,13 +165,12 @@ def _speak_trigger(
         text = f"{target} wird {state}"
     elif trigger.type is TriggerType.NUMERIC_STATE:
         target = _speak_target(trigger.target, entity_by_id, area_name_by_id)
-        comparator = (
-            "über"
-            if trigger.comparator is NumericComparator.ABOVE
-            else "unter"
-            if trigger.comparator is NumericComparator.BELOW
-            else "genau"
-        )
+        comparator = {
+            NumericComparator.ABOVE: "über",
+            NumericComparator.BELOW: "unter",
+            NumericComparator.AT_LEAST: "mindestens",
+            NumericComparator.AT_MOST: "höchstens",
+        }.get(trigger.comparator, "genau") if trigger.comparator is not None else "genau"
         text = f"{target} {comparator} {_format_number(trigger.threshold)} liegt"
     elif trigger.type is TriggerType.DEVICE:
         text = f"das Geräteereignis „{trigger.device_trigger_type}“ eintritt"
@@ -171,7 +178,12 @@ def _speak_trigger(
         # Deliberately direction-neutral - TriggerModel never records
         # arrive/leave (see module docstring), so this must not guess it.
         who = _speak_target(trigger.target, entity_by_id, area_name_by_id) if trigger.target is not None else "jemand"
-        text = f"sich der Anwesenheitsstatus von {who} ändert"
+        if trigger.presence_event is PresenceEvent.ARRIVE:
+            text = "du nach Hause kommst" if trigger.presence_of_speaker else f"{who} nach Hause kommt"
+        elif trigger.presence_event is PresenceEvent.LEAVE:
+            text = "du das Haus verlässt" if trigger.presence_of_speaker else f"{who} das Haus verlässt"
+        else:
+            text = f"sich der Anwesenheitsstatus von {who} ändert"
     elif trigger.type is TriggerType.SUN:
         event = "Sonnenaufgang" if trigger.sun_event is SunEvent.SUNRISE else "Sonnenuntergang"
         if trigger.offset_minutes:
@@ -367,7 +379,7 @@ def _render_notification_preview(
     einrichten?"
     """
     # Function-local: notification_language lives outside nlu/ and imports it.
-    from ..notification_language import TEST_NOTIFICATION_MESSAGE, describe_state_event
+    from ..notification_language import TEST_NOTIFICATION_MESSAGE, describe_event
     from .action_model import NotificationRecipientKind
 
     clauses: list[str] = []
@@ -408,7 +420,7 @@ def _render_notification_preview(
         sentence = f"In {_format_delay(trigger.relative_offset_seconds)} {action_text}"
     else:
         described = [
-            describe_state_event(item, entities) for item in model.triggers
+            describe_event(item, entities) for item in model.triggers
         ]
         trigger_text = " oder ".join(
             phrase.subordinate if phrase is not None
@@ -434,6 +446,22 @@ def _render_notification_preview(
             f"bis {model.quiet_end_hour:02d}:00 Uhr, wird die Erinnerung auf deren Ende verschoben."
         )
     return f"{sentence} Soll ich das so einrichten?"
+
+
+def _speak_measured_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> str | None:
+    """Natural wording for attribute measurements and inclusive bounds.
+
+    Classic numeric state triggers keep their established rendering.
+    """
+    if trigger.type is not TriggerType.NUMERIC_STATE or (
+        trigger.measurement is None
+        and trigger.comparator not in {NumericComparator.AT_LEAST, NumericComparator.AT_MOST}
+    ):
+        return None
+    from ..notification_language import describe_event
+
+    described = describe_event(trigger, entities)
+    return described.subordinate if described is not None else None
 
 
 def render_automation_preview(model: AutomationModel, entities: list[EntitySnapshot]) -> str:
@@ -463,7 +491,9 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
         trigger_text = f"der Zeitpunkt „{model.calendar_schedule.spoken}“ erreicht ist"
     else:
         trigger_text = " und ".join(
-            _speak_trigger(t, entity_by_id, area_name_by_id) for t in model.triggers
+            _speak_measured_trigger(t, entities)
+            or _speak_trigger(t, entity_by_id, area_name_by_id)
+            for t in model.triggers
         )
     action_text = ", dann ".join(_speak_action_step(a, entity_by_id, area_name_by_id) for a in model.actions)
     sentence = f"Wenn {trigger_text}"

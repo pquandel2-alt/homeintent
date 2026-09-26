@@ -37,7 +37,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/v7_shadow_report.py
-          --check docs/perf/v7-shadow-baseline-7.1.3.json
+          --check docs/perf/v7-shadow-baseline-7.2.1.json
           --quiet
       - name: V9-Latenzbudget bei großer Registry prüfen
         if: matrix.python-version == '3.12'
@@ -47,6 +47,12 @@ jobs:
           --scales 5000
           --iterations 20
           --warmup 3
+          --max-p95-ms 100
+      - name: Automationssprache-Latenzbudget bei großer Registry prüfen
+        if: matrix.python-version == '3.12'
+        run: >-
+          python scripts/benchmark_automation_language.py
+          --registry-size 5000
           --max-p95-ms 100
       - name: V10 Goal-/Planungsbudgets prüfen
         if: matrix.python-version == '3.12'
@@ -121,6 +127,11 @@ jobs:
           custom_components/homeintent/agent_action_policy.py
           custom_components/homeintent/agent_delivery.py
           custom_components/homeintent/notification_language.py
+          custom_components/homeintent/automation_language.py
+          custom_components/homeintent/automation_grounding.py
+          custom_components/homeintent/automation_composition.py
+          custom_components/homeintent/nlu/automation_lexicon.py
+          custom_components/homeintent/nlu/measurement.py
           custom_components/homeintent/notification_target.py
           custom_components/homeintent/notification_request.py
           custom_components/homeintent/native_timer.py
@@ -328,6 +339,14 @@ jobs:
           --env PYTHONPATH=/workspace/custom_components
           ghcr.io/home-assistant/home-assistant:stable
           /workspace/scripts/validate_generated_automation_schema.py
+      - name: Attribut-Automationen (Rollladenposition) im echten Home Assistant ausführen
+        run: >-
+          docker run --rm
+          --entrypoint python3
+          --volume "${GITHUB_WORKSPACE}:/workspace:ro"
+          --env PYTHONPATH=/workspace/custom_components
+          ghcr.io/home-assistant/home-assistant:stable
+          /workspace/scripts/validate_measurement_automation_ha.py
       - name: Learning-Center-Glue gegen echtes Home Assistant prüfen
         run: >-
           docker run --rm

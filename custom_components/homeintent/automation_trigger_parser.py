@@ -47,6 +47,7 @@ from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
 from .automation_target_resolver import build_device_class_target, build_named_target
 from .nlu.automation_model import (
     NumericComparator,
+    PresenceEvent,
     SunEvent,
     TriggerModel,
     TriggerTarget,
@@ -339,7 +340,10 @@ class AutomationTriggerParser:
         # Both {presence_event} outcomes (arrive/leave) watch the same "home"
         # zone - lexicon.py's own comment explains why a third, zone-count-
         # based outcome doesn't fit this slot (out of scope this wave).
-        return TriggerModel(type=TriggerType.PRESENCE, target=target, zone_id="home")
+        event = PresenceEvent.ARRIVE if str(event_slot.value) == "arrive" else PresenceEvent.LEAVE
+        return TriggerModel(
+            type=TriggerType.PRESENCE, target=target, zone_id="home", presence_event=event
+        )
 
     @staticmethod
     def _parse_sun_trigger(slots: dict, context: ParseContext) -> TriggerModel | None:

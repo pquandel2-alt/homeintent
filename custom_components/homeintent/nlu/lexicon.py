@@ -304,6 +304,16 @@ _WEEKDAY_SLOT_LIST = TextSlotList.from_tuples(
     name="weekday",
 )
 
+def weekday_vocabulary() -> dict[str, tuple[str, ...]]:
+    """Spoken weekday word -> HA weekday abbreviations (same list as above)."""
+    table: dict[str, tuple[str, ...]] = {}
+    for value in _WEEKDAY_SLOT_LIST.values:
+        spoken = str(getattr(value.text_in, "text", "")).casefold()
+        if spoken:
+            table[spoken] = tuple(str(value.value_out).split(","))
+    return table
+
+
 # {sun_event} vocabulary for the Sun Trigger - values match HA's own `sun`
 # trigger `event` parameter (`sunrise`/`sunset`) directly, no translation
 # layer needed downstream.

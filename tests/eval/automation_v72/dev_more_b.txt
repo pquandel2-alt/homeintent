@@ -1,0 +1,78 @@
+# DEV - additional independent utterances (part B).
+## device_state
+auto: state(binary_sensor.kuechenfenster)=open => turn_off(light.kueche) :: Wenn in der Küche das Fenster aufgeht, mach das Küchenlicht aus.
+auto: state(binary_sensor.buero_fenster)=closed => turn_on(light.buero) :: Sobald das Bürofenster zugeht, schalte die Bürolampe ein.
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) :: Schalte das Flurlicht an, wenn jemand die Haustür öffnet.
+auto: state(binary_sensor.terrassentuer)=closed => turn_off(light.wohnzimmer) :: Mach das Wohnzimmerlicht aus, sobald die Terrassentür zugeht.
+auto: state(binary_sensor.flur_bewegung)=on => turn_on(light.flur) :: Sobald sich im Flur etwas bewegt, schalte das Flurlicht ein.
+auto: state(light.flur)=on => turn_on(light.kueche) :: Wenn das Flurlicht angeht, mach auch das Küchenlicht an.
+auto: state(switch.kaffeemaschine)=off => turn_off(light.kueche) :: Wenn die Kaffeemaschine ausgeht, schalte das Küchenlicht aus.
+auto: state(binary_sensor.schlafzimmer_fenster)=open => turn_off(climate.wohnzimmer) :: Wenn das Schlafzimmer Fenster geöffnet wird, schalte die Wohnzimmer Heizung aus.
+## device_numeric
+auto: num(cover.kueche_rollladen).cover_position==0 => turn_on(light.kueche) :: Wenn der Küche Rollladen 0 Prozent erreicht, schalte das Küchenlicht ein.
+auto: num(cover.schlafzimmer_rollladen).cover_position>50 => turn_off(fan.schlafzimmer) :: Wenn das Rollo im Schlafzimmer über 50 Prozent offen ist, schalte den Ventilator im Schlafzimmer aus.
+auto: num(sensor.wohnzimmer_temperatur).state>25 => turn_on(fan.schlafzimmer) :: Sobald es im Wohnzimmer über 25 Grad hat, schalte den Schlafzimmer Ventilator ein.
+auto: num(sensor.aussentemperatur).state<5 => turn_on(climate.wohnzimmer) :: Wenn die Außentemperatur unter 5 Grad fällt, schalte die Heizung im Wohnzimmer ein.
+auto: num(sensor.buero_luftfeuchtigkeit).state<40 => turn_off(fan.schlafzimmer) :: Wenn die Luftfeuchtigkeit im Büro unter 40 Prozent fällt, mach den Ventilator im Schlafzimmer aus.
+## device_time_sun
+auto: time=06:00 => open(cover.schlafzimmer_rollladen) :: Um 6 Uhr öffne den Rollladen im Schlafzimmer.
+auto: time=23:15 => turn_off(light.wohnzimmer) :: Um 23:15 Uhr mach das Wohnzimmerlicht aus.
+auto: sun=sunset => close(cover.kueche_rollladen) :: Schließe bei Sonnenuntergang den Rollladen in der Küche.
+auto: sun=sunrise => open(cover.bad_rollladen) :: Bei Sonnenaufgang fahre den Rollladen im Bad hoch.
+auto: sun=sunset+10 => turn_on(light.flur) :: 10 Minuten nach Sonnenuntergang mach das Flurlicht an.
+## device_presence
+auto: arrive(person.julia) => turn_on(light.flur) :: Sobald Julia heimkommt, schalte das Flurlicht ein.
+auto: leave(person.philipp) => turn_off(switch.kaffeemaschine) :: Wenn ich das Haus verlasse, schalte die Kaffeemaschine aus.
+auto: leave(person.julia) => turn_off(light.wohnzimmer) :: Sobald Julia weggeht, mach das Wohnzimmerlicht aus.
+## device_conditions
+auto: state(binary_sensor.haustuer)=open ; if: nobody_home => turn_on(light.flur) :: Wenn die Haustür aufgeht, aber nur wenn niemand zuhause ist, schalte das Flurlicht ein.
+auto: state(binary_sensor.flur_bewegung)=on ; if: time<06:00 => turn_on(light.flur) :: Wenn im Flur eine Bewegung erkannt wird und es vor 6 Uhr ist, schalte das Flurlicht ein.
+auto: state(binary_sensor.kuechenfenster)=open ; if: state(climate.wohnzimmer)=on => turn_off(climate.wohnzimmer) :: Wenn das Küchenfenster aufgeht und die Wohnzimmer Heizung an ist, schalte die Wohnzimmer Heizung aus.
+## device_multi
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + turn_on(light.kueche) :: Wenn die Haustür aufgeht, schalte das Flurlicht ein und mach das Küchenlicht an.
+auto: state(binary_sensor.kuechenfenster)=open => turn_off(light.kueche) + notify(me) :: Sobald das Küchenfenster aufgeht, mach das Küchenlicht aus und schick mir eine Nachricht.
+auto: sun=sunset => turn_on(light.wohnzimmer) + turn_on(light.flur) :: Bei Sonnenuntergang schalte das Wohnzimmerlicht ein und dann das Flurlicht.
+## device_delay
+auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + delay=600 + turn_off(light.flur) :: Sobald die Haustür aufgeht, schalte das Flurlicht an und nach 10 Minuten wieder aus.
+## presence_notify
+auto: arrive(person.julia) => notify(me) :: Sag mir Bescheid, sobald Julia nach Hause kommt.
+auto: leave(person.julia) => notify(me) :: Informiere mich, wenn Julia weggeht.
+auto: arrive(person.philipp) => notify(julia) :: Gib Julia Bescheid, wenn ich heimkomme.
+auto: leave(person.philipp) => notify(julia) :: Schick Julia eine Nachricht, wenn ich das Haus verlasse.
+## notify_conditions
+auto: state(binary_sensor.terrassentuer)=open ; if: nobody_home => notify(me) :: Sag mir Bescheid, wenn die Terrassentür aufgeht und keiner zuhause ist.
+auto: state(binary_sensor.kuechenfenster)=open ; if: time>22:00 => notify(me) :: Schick mir eine Nachricht, wenn das Küchenfenster nach 22 Uhr geöffnet wird.
+auto: num(cover.wohnzimmer_rollladen).cover_position==50 ; if: nobody_home => notify(me) :: Benachrichtige mich, sobald der Wohnzimmer Rollladen 50 Prozent erreicht und niemand zuhause ist.
+auto: state(binary_sensor.haustuer)=open ; if: weekday=mon,tue,wed,thu,fri => notify(me) :: Schick mir eine Nachricht, wenn an Werktagen die Haustür aufgeht.
+auto: state(binary_sensor.buero_fenster)=open ; if: num(sensor.aussentemperatur).state<0 => notify(me) :: Gib mir Bescheid, wenn das Bürofenster aufgeht und die Außentemperatur unter 0 Grad liegt.
+auto: state(binary_sensor.flur_bewegung)=on ; if: nobody_home => notify(me) :: Schick mir eine Nachricht, wenn im Flur eine Bewegung erkannt wird, außer wenn jemand zuhause ist.
+## explicit_messages
+auto: state(binary_sensor.kuechenfenster)=open => notify(me,"Küche lüftet gerade") :: Wenn das Küchenfenster aufgeht, schick mir die Nachricht Küche lüftet gerade
+auto: num(cover.wohnzimmer_rollladen).cover_position==50 => notify(me,"Wohnzimmer halb dunkel") :: Benachrichtige mich mit der Nachricht „Wohnzimmer halb dunkel“, sobald der Wohnzimmer Rollladen 50 Prozent erreicht.
+auto: state(binary_sensor.haustuer)=open => notify(me,"Schalte sofort die Alarmanlage ein") :: Wenn die Haustür aufgeht, schick mir die Nachricht: Schalte sofort die Alarmanlage ein
+auto: state(binary_sensor.buero_fenster)=open => notify(me,"Das Bürofenster ist offen.") :: Sobald das Bürofenster aufgeht, schick mir eine Nachricht, dass das Bürofenster offen ist.
+## repairs
+auto: num(cover.wohnzimmer_rollladen).cover_position==30 => notify(me) :: Sag mir Bescheid, wenn der Rollladen im Wohnzimmer 20, nein 30 Prozent erreicht.
+auto: state(binary_sensor.terrassentuer)=open => notify(me) :: Wenn die Haustür, nein die Terrassentür aufgeht, benachrichtige mich.
+auto: num(cover.bad_rollladen).cover_position==50 => notify(me) :: Benachrichtige mich, wenn der Rollladen im Schlafzimmer, äh ich meine im Bad 50 Prozent erreicht.
+auto: num(sensor.wohnzimmer_temperatur).state>21 => notify(me) :: Schick mir eine Nachricht, wenn die Temperatur im Wohnzimmer über 22, äh über 21 Grad steigt.
+auto: state(binary_sensor.haustuer)=open => notify(julia) :: Schick mir, nein Julia eine Nachricht, wenn die Haustür aufgeht.
+## stt
+auto: state(binary_sensor.wohnzimmer_fenster)=open => notify(me) :: benachrichtige mich wenn das wohnzimmer fenster aufgeht
+auto: num(cover.schlafzimmer_rollladen).cover_position==50 => notify(me) :: sag mir bescheid wenn das rollo im schlafzimmer halb offen ist
+auto: num(cover.wohnzimmer_rollladen).cover_position==70 => notify(me) :: gib mir bescheid wenn der wohnzimmer roll laden siebzig prozent erreicht
+auto: state(binary_sensor.haustuer)=open => notify(me) :: schick mir ne push wenn die haustür aufgeht
+auto: num(sensor.aussentemperatur).state<0 => notify(me) :: sag mir bescheid wenn es draußen unter null grad hat
+## dialog_repairs_and_confirm
+auto: num(cover.buero_rollladen).cover_position==50 => notify(me) :: Benachrichtige mich wenn die Rolllade im Büro 50 Prozent erreicht. >> Moment, nein, 50 Prozent passt schon.
+## clarify
+clarify :: Schick mir eine Nachricht, wenn es 40 Grad hat.
+clarify :: Sag mir Bescheid, wenn der Rollladen im Wintergarten halb offen ist.
+clarify :: Benachrichtige Opa Heinz, sobald die Haustür aufgeht.
+clarify :: Gib mir Bescheid, wenn es halb offen ist.
+clarify :: Benachrichtige mich, wenn es unter 20 Prozent fällt.
+## unsupported
+unsupported :: Sag mir Bescheid, wenn die Luftfeuchtigkeit im Büro um 5 Prozent steigt.
+unsupported :: Benachrichtige mich, wenn alle Rollläden geschlossen sind.
+unsupported :: Schick mir eine Nachricht, wenn die Heizung im Wohnzimmer 22 Grad erreicht.
+unsupported :: Gib mir Bescheid, wenn der Rollladen im Büro schneller als sonst fährt.

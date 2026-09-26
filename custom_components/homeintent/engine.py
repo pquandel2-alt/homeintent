@@ -24,7 +24,20 @@ from hassil import Intents
 
 from .areas import AreaResolveStatus, resolve_area_name
 from .automation_summary import AutomationSummary
+from .automation_composition import (
+    CompositionOutcome,
+    EventClarification,
+    OutcomeKind,
+    Readers,
+    compose_event_automation,
+    log_composition_trace,
+    resolve_event_clarification,
+    unsupported_text,
+)
+from .automation_grounding import GroundingStatus, ground_event
+from .automation_language import only_quoted_connectors, read_event_roles
 from .automation_results import (
+    AutomationClarificationResult,
     AutomationDraftMatchResult,
     AutomationDeletionMatchResult,
     AutomationMatchResult,
@@ -672,6 +685,43 @@ def _unresolved_exclusion_text(names: tuple[str, ...]) -> str:
         f"Ich konnte {subject} zuordnen und habe deshalb nichts geschaltet. "
         "Bitte nenne die Geräte genauer."
     )
+
+
+# "Sag mir ... Bescheid" is a request, although "sag mir" also opens
+# embedded questions ("Sag mir, ob ..."), which stay queries.
+_SAY_REQUEST_RE = re.compile(
+    r"^\s*(?:sag|sage|gib)\s+(?!.*\b(?:ob|wie|was|warum|wann|welche[rsmn]?|wer|wo|wieviel)\b)"
+    r"(?=.*\bbescheid\b)[^?]*$",
+    re.IGNORECASE,
+)
+
+
+# A polite modal request ("..., kannst du mir dann Bescheid sagen?") is a
+# request even though it is phrased as a question; wh-questions never are.
+_MODAL_REQUEST_RE = re.compile(
+    r"\b(?:kannst|könntest|koenntest|würdest|wuerdest)\s+du\s+(?:\S+\s+){0,4}?"
+    r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden)\b",
+    re.IGNORECASE,
+)
+_WH_QUESTION_RE = re.compile(
+    r"^\s*(?:wie|was|warum|wieso|weshalb|wann|wer|wo|welche[rsmn]?|wohin|womit|ob)\b",
+    re.IGNORECASE,
+)
+_NEGATED_NOTIFICATION_RE = re.compile(
+    r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|sag\w*|gib|meld\w*)\s+"
+    r"(?:\S+\s+){0,2}?(?:nicht|nie|niemals|keine?[nmrs]?|bloß\s+nicht)\b"
+    r"|\b(?:keine|kein)\s+(?:push[\s-]?)?(?:nachricht|benachrichtigung|meldung)\w*\b"
+    r"|\bnicht\s+(?:mehr\s+)?(?:benachrichtigt|informiert)\b",
+    re.IGNORECASE,
+)
+
+
+_NOTIFICATION_REQUEST_VERB_RE = re.compile(
+    r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|sag\w*|gib|geb\w*|meld\w*|"
+    r"ping\w*|mach\w*|kannst|könntest|koenntest|würdest|wuerdest|möchte|moechte|will|hätte|"
+    r"haette|erinner\w*)\b",
+    re.IGNORECASE,
+)
 
 
 class NluEngine:
@@ -1613,7 +1663,7 @@ class NluEngine:
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
         document: LanguageDocument | None = None,
-    ) -> UnderstandingOutcome[AutomationMatchResult]:
+    ) -> UnderstandingOutcome[AutomationMatchResult | AutomationClarificationResult]:
         """Canonical V8 boundary for a trigger/condition/action turn."""
         document = document or analyse_language(text, entities)
         result = self.match_automation(text, entities, world_model, context)
@@ -3064,7 +3114,7 @@ class NluEngine:
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
-    ) -> AutomationMatchResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | None:
         """Match a combined spoken automation sentence ("Wenn das
         Küchenfenster geöffnet wird, schalte das Küchenlicht ein.") into an
         ``AutomationModel`` (Integration Wave Migration Step 3). Called live
@@ -3110,7 +3160,29 @@ class NluEngine:
         automation_shell_stripped_text, shell_was_present = strip_automation_shell(text)
 
         utterance = analyse_utterance(automation_shell_stripped_text)
-        if utterance.speech_act is SpeechAct.QUERY or not _AUTOMATION_TRIGGER_RE.search(automation_shell_stripped_text):
+        if utterance.speech_act is SpeechAct.QUERY and (
+            _WH_QUESTION_RE.match(automation_shell_stripped_text)
+            or not (
+                _SAY_REQUEST_RE.match(automation_shell_stripped_text)
+                or _MODAL_REQUEST_RE.search(automation_shell_stripped_text)
+            )
+        ):
+            return None
+        if _NEGATED_NOTIFICATION_RE.search(automation_shell_stripped_text):
+            # "Benachrichtige mich nicht, wenn ..." asks for the opposite of
+            # an automation; no reading may turn it into one.
+            return None
+        composed = self._compose_with_run_limits(
+            automation_shell_stripped_text, text, entities, world_model, context
+        )
+        if composed is not None:
+            return composed
+        if utterance.speech_act is SpeechAct.QUERY:
+            return None
+        if not _AUTOMATION_TRIGGER_RE.search(automation_shell_stripped_text):
+            return None
+        if only_quoted_connectors(automation_shell_stripped_text):
+            # "Auf dem Zettel steht „... wenn ...“": reported, inert text.
             return None
 
         normalized = normalize(automation_shell_stripped_text)
@@ -3265,7 +3337,9 @@ class NluEngine:
         trigger_text, action_text = split
 
         condition_node: ConditionNode | None = None
-        trigger = self._automation_trigger_parser.parse(trigger_text, parse_context)
+        trigger = self._typed_trigger(trigger_text, entities) or self._automation_trigger_parser.parse(
+            trigger_text, parse_context
+        )
         triggers: tuple[TriggerModel, ...] = ()
         if trigger is not None:
             triggers = (trigger,)
@@ -3313,6 +3387,130 @@ class NluEngine:
         if validation_error is not None:
             response_text = f"{response_text}\nvalidation_error: {validation_error.name}"
         return AutomationMatchResult(model=model, response_text=response_text, validation_error=validation_error)
+
+    def _typed_trigger(
+        self, trigger_text: str, entities: list[EntitySnapshot]
+    ) -> TriggerModel | None:
+        """Typed (class + area) grounding of an entity event, if it resolves.
+
+        Preferred over the grammar parser's free-name slot, which resolves
+        names fuzzily ("Schlafzimmerfenster" must never become a fan).
+        """
+        roles = read_event_roles(trigger_text)
+        if roles.conditions:
+            return None
+        grounded = ground_event(roles, entities)
+        if grounded.status is GroundingStatus.RESOLVED:
+            return grounded.trigger
+        return None
+
+    def _composition_readers(
+        self,
+        entities: list[EntitySnapshot],
+        world_model: WorldModel | None,
+        context: ConversationContext | None,
+    ) -> Readers:
+        parse_context = create_parse_context(
+            entities,
+            world_model=world_model,
+            last_entities=tuple(context.last_entities) if context is not None else (),
+            last_area=context.last_area if context is not None else None,
+        )
+        plain: list[ParseContext] = []
+
+        def read_action(span: str) -> tuple[ActionModel | ActionGroup, ...] | None:
+            # The same established action parsers; the registry-free context
+            # is a second reading for spans the world-model index rejects.
+            parsed = self._parse_action_semantically(span, parse_context)
+            if parsed or world_model is None:
+                return parsed
+            if not plain:
+                plain.append(create_parse_context(entities))
+            return self._parse_action_semantically(span, plain[0])
+
+        return Readers(
+            trigger=lambda span: self._automation_trigger_parser.parse(span, parse_context),
+            condition=lambda span: self._automation_condition_parser.parse(span, parse_context),
+            action=read_action,
+        )
+
+    def _compose_with_run_limits(
+        self,
+        text: str,
+        source_text: str,
+        entities: list[EntitySnapshot],
+        world_model: WorldModel | None,
+        context: ConversationContext | None,
+    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+        """"einmalig"/"dreimal" qualify the whole automation, not a clause."""
+        repeat_match = _AUTOMATION_REPEAT_RE.search(text)
+        max_runs: int | None = None
+        if repeat_match is not None:
+            raw_count = (repeat_match.group("separate") or repeat_match.group("joined")).casefold()
+            max_runs = int(raw_count) if raw_count.isdigit() else _REPEAT_COUNTS[raw_count]
+            text = re.sub(r"\s+", " ", _AUTOMATION_REPEAT_RE.sub(" ", text)).strip()
+        once = bool(_AUTOMATION_ONCE_RE.search(text))
+        if once:
+            text = re.sub(r"\s+", " ", _AUTOMATION_ONCE_RE.sub(" ", text)).strip()
+        result = self.compose_event_automation(text, entities, world_model, context)
+        if isinstance(result, AutomationMatchResult) and (once or max_runs is not None):
+            model = replace(result.model, once=once, max_runs=max_runs, source_text=source_text)
+            validation_error = validate_automation(model)
+            response_text = render_automation_tree(model)
+            if validation_error is not None:
+                response_text = f"{response_text}\nvalidation_error: {validation_error.name}"
+            return AutomationMatchResult(model, response_text, validation_error)
+        return result
+
+    def compose_event_automation(
+        self,
+        text: str,
+        entities: list[EntitySnapshot],
+        world_model: WorldModel | None = None,
+        context: ConversationContext | None = None,
+    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+        """7.2.0 compositional EVENT clause + ACTION clause reading (both orders)."""
+        outcome = compose_event_automation(
+            text, entities, self._composition_readers(entities, world_model, context)
+        )
+        return self._composition_result(outcome)
+
+    @staticmethod
+    def _composition_result(
+        outcome: CompositionOutcome | None,
+    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+        if outcome is None:
+            return None
+        log_composition_trace(outcome.trace)
+        if outcome.kind is OutcomeKind.AUTOMATION and outcome.model is not None:
+            # The engine's validator stays the single validation authority.
+            validation_error = validate_automation(outcome.model)
+            response_text = render_automation_tree(outcome.model)
+            if validation_error is not None:
+                response_text = f"{response_text}\nvalidation_error: {validation_error.name}"
+            return AutomationMatchResult(
+                model=outcome.model,
+                response_text=response_text,
+                validation_error=validation_error,
+            )
+        return AutomationClarificationResult(
+            response_text=outcome.speech or unsupported_text(None),
+            clarification=outcome.clarification,
+            trace=outcome.trace,
+        )
+
+    def resolve_event_clarification(
+        self,
+        text: str,
+        pending: EventClarification,
+        entities: list[EntitySnapshot],
+    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+        """Continue a clarified event-notification draft ("Die linke.")."""
+        return self._composition_result(
+            resolve_event_clarification(
+                text, pending, entities, self._composition_readers(entities, None, None)
+            )
+        )
 
     def match_automation_draft_start(
         self,
@@ -3512,6 +3710,10 @@ class NluEngine:
             or _CALENDAR_TIME_RE.search(text)
         ):
             return None
+        if not _NOTIFICATION_REQUEST_VERB_RE.search(text):
+            # "Bescheid." / "Nachricht an mich." alone are fragments, not a
+            # request to send something now.
+            return None
         clause = parse_notification_clause(text)
         if clause is None or clause.recipient_kind is NotificationRecipientKind.EXPLICIT_TARGET:
             return None
@@ -3695,7 +3897,11 @@ class NluEngine:
         replacement = f"{state} wird"
         rewritten = text[:persistent.start()] + replacement + text[persistent.end():]
         base = self.match_automation(rewritten, entities, world_model, context)
-        if base is None or base.validation_error is not None or len(base.model.triggers) != 1:
+        if (
+            not isinstance(base, AutomationMatchResult)
+            or base.validation_error is not None
+            or len(base.model.triggers) != 1
+        ):
             return None
         trigger = base.model.triggers[0]
         if trigger.type not in {TriggerType.STATE, TriggerType.NUMERIC_STATE}:
@@ -3729,7 +3935,11 @@ class NluEngine:
             rewritten = rewritten[:match.start()] + " " + rewritten[match.end():]
         rewritten = re.sub(r"\s+", " ", rewritten)
         base = self.match_automation(rewritten, entities, world_model, context)
-        if base is None or base.validation_error is not None or len(base.model.triggers) != 1:
+        if (
+            not isinstance(base, AutomationMatchResult)
+            or base.validation_error is not None
+            or len(base.model.triggers) != 1
+        ):
             return None
         trigger = base.model.triggers[0]
         if trigger.type not in {TriggerType.STATE, TriggerType.NUMERIC_STATE}:

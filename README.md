@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.1.3** (V12 + Learning Center)
+- Aktuelle Version: **7.2.1** (Natural Language Automations + Live-Test-Fix)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -42,9 +42,9 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
-## Was ist in Version 7.1.3 neu?
+## Was ist in Version 7.2.1 neu?
 
-**HomeIntent 7.1.3 — Live-Test-Fix.** Behebt alle 28 Befunde des Live-Tests
+**HomeIntent 7.2.1 — Live-Test-Fix.** Behebt alle 28 Befunde des Live-Tests
 gegen ein echtes Home Assistant 2026.9.2 mit simuliertem Einfamilienhaus
 (Bericht und Nachtest: [`docs/testbericht-live-simulation-7.1.2.md`](docs/testbericht-live-simulation-7.1.2.md)).
 Parser führen weiterhin nichts aus; Validator, ExecutionPolicy und
@@ -91,6 +91,72 @@ wurde gelockert.
 - **CI:** Die Stub-Suite läuft zusätzlich mit der hassil-Version von Home
   Assistant; ein neuer Job prüft das Live-Testbett (`sim/`) gegen echtes Home
   Assistant samt Log-Prüfung, nächtlich inklusive der Proaktiv-Ketten.
+
+## Was ist in Version 7.2.0 neu?
+
+**HomeIntent 7.2.0 — Natural Language Automations.** Ereignisgesteuerte
+Benachrichtigungen und Automationen werden kompositionell verstanden statt
+über auswendig gelernte Satzformen:
+
+- **„Schicke mir eine Benachrichtigung wenn im Büro die Rolllade 50%
+  erreicht hat“** wird verstanden: „Wenn der Rollladen im Büro 50 %
+  erreicht, sende ich dir eine Push-Benachrichtigung … Soll ich das so
+  einrichten?“ Nach „Ja“ entsteht ein Template-Trigger auf
+  `state_attr('cover.…', 'current_position') == 50`; beim Erreichen von
+  50 % geht genau eine Push-Nachricht an das konfigurierte Ziel. Der
+  Rollladen selbst wird nie bewegt.
+- **Rollladenposition, Lichthelligkeit und Ventilatorstufe sind typisierte
+  Messwerte** (`MeasurementProperty`, geschlossene Zuordnung auf
+  `current_position`/`brightness`/`percentage`). „50 Prozent“ bekommt seine
+  Bedeutung erst durch die erkannte Domäne; gesprochener Text wird nie zu
+  einem Attributnamen oder Template. „mindestens/höchstens“ bleiben
+  inklusiv, eine ausdrücklich genannte Fahrtrichtung („beim
+  Herunterfahren“) wird ausgewertet.
+- **Ereignissatz + Aktionssatz in beiden Reihenfolgen, ohne Kommapflicht:**
+  „Benachrichtige mich, wenn X“, „Wenn X, sag mir Bescheid“, „Sobald X
+  schick mir eine Nachricht“, „Ich möchte informiert werden, falls X“,
+  „Bei Sonnenuntergang benachrichtige mich“. Verbzweit, Verbletzt und
+  Perfekt („50 Prozent erreicht hat“, „bei 50 Prozent steht“, „halb offen
+  ist“) ergeben dieselbe Bedeutung.
+- **Typisierte Geräteauflösung statt Rateversuch:** Gerätewort + Raum
+  bestimmen das Ziel („die Rolllade im Büro“ = „im Büro der Rollladen“ =
+  „Büro-Rollladen“). Bei zwei Rollläden im Büro fragt HomeIntent „Welche
+  Rolllade im Büro meinst du …?“, und „Die linke.“ setzt denselben Entwurf
+  fort. „Wenn es 50 Prozent erreicht“ ergibt „Was soll 50 Prozent
+  erreichen?“.
+- **Anwesenheit mit Richtung:** „wenn Julia nach Hause kommt“ löst nur
+  beim Ankommen aus, „wenn ich das Haus verlasse“ nutzt die bestätigte
+  Person des sprechenden Benutzers.
+- **Selbstkorrekturen** („60, äh 50 Prozent“, „das Küchenfenster, nein das
+  Bürofenster“, „Schick Julia, nein mir …“) behalten nur die korrigierte
+  Bedeutung. Diktierte Nachrichtentexte bleiben wörtlich und werden nie
+  als Befehl ausgeführt.
+- **Sicherheitskorrekturen im bestehenden Automationspfad:** eine
+  gesprochene Zeitbedingung („nach 21 Uhr“) oder eine zweite Aktion („… und
+  benachrichtige mich“) wird nicht mehr stillschweigend verworfen;
+  „Schlafzimmerfenster“ wird nicht mehr als Ventilator aufgelöst;
+  „Benachrichtige mich nicht, wenn …“ erzeugt keine Automation.
+- **Messung statt Behauptung:** ein vor der Implementierung eingefrorener
+  Held-out-Korpus (363 Automations-/Rückfrage-Sätze, 313 adversariale
+  Negative) und ein Entwicklungskorpus (645 Automations-/Rückfrage-Sätze,
+  101 Negative) laufen durch den echten Gesprächspfad mit instrumentierter
+  Service-Senke (`scripts/automation_language_report.py`).
+
+Messergebnisse (Details in `docs/perf/automation-language-7.2.0-*.json`):
+
+| Korpus | korrekt verstanden | Rückfrage korrekt | Negativ korrekt | falsche Vorschau | unsichere Ausführung |
+|---|---|---|---|---|---|
+| Held-out, erster blinder Lauf | 316/332 (95,2 %) | 18/21 | 311/313 | 3 | **2** |
+| Held-out nach Sicherheitskorrekturen | 316/332 (95,2 %) | 19/21 | 313/313 | 2 | **0** |
+| Entwicklung | 601/603 (99,7 %) | – | 101/101 | 0 | 0 |
+
+Die zwei unsicheren Ausführungen des ersten Laufs („Bescheid.“, „Nachricht
+an mich.“ lösten eine Sofort-Push aus) sind behoben; eine Sofort-Push
+braucht jetzt ein ausdrückliches Verb. Die zwei verbleibenden „falschen
+Vorschauen“ sind strittig (das historische „das Fenster“ = irgendein
+Fenster; „der Akku“ bei genau einem Akku-Sensor). Nicht unterstützt und
+ehrlich abgelehnt: relative Änderungen („um 2 Grad steigt“), Raten,
+Gesamtzustände („alle Fenster offen“).
 
 ## Was ist in Version 7.1.2 neu?
 
@@ -1382,15 +1448,18 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.1.3:
+Geprüfter Release-Stand von Version 7.2.1:
 
 ```text
-4375 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+4588 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
 89 % Gesamt-Coverage
 76 % Coverage für conversation.py
 ≥ 93 % Coverage für jedes V12-Modul
 ≥ 95 % Coverage für jedes Learning-Center-Modul
+Held-out-Automationskorpus (7.2.0): 95,2 % korrekt, 0 unsichere Ausführungen
+Attribut-Automation im echten Home-Assistant-Core ausgeführt
+(scripts/validate_measurement_automation_ha.py)
 ```
 
 Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 126 / 126
@@ -1428,7 +1497,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.1.3.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.2.1.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

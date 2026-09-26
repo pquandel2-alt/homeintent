@@ -17,7 +17,11 @@ from __future__ import annotations
 
 import pytest
 
-from homeintent.engine import AutomationDraftMatchResult, AutomationMatchResult
+from homeintent.engine import (
+    AutomationClarificationResult,
+    AutomationDraftMatchResult,
+    AutomationMatchResult,
+)
 from homeintent.entities import EntitySnapshot
 from homeintent.nlu.automation_validator import AutomationValidationError
 from homeintent.nlu.action_model import ActionType
@@ -538,8 +542,13 @@ def test_notification_with_unknown_recipient_returns_none(engine):
         "Wenn das Wohnzimmer Fenster geöffnet wird, schicke eine Nachricht an Klaus",
         NOTIFY_ENTITIES,
     )
-    # No Klaus in the notify entities, so no valid automation
-    assert result is None
+    # No Klaus in the notify entities, so no valid automation. Since 7.2.0
+    # the request is recognized and answered with a recipient question.
+    assert not isinstance(result, AutomationMatchResult)
+    if result is not None:
+        assert isinstance(result, AutomationClarificationResult)
+        assert "Klaus" in result.response_text
+        assert result.clarification is None
 
 
 def test_notification_trigger_first_with_window_variants(engine):

@@ -42,8 +42,9 @@ from enum import Enum, auto
 
 from .action_model import ActionGroup, ActionModel, ActionType
 from .automation_operations import validate_registered_operation
-from .automation_model import AutomationModel, TriggerModel, TriggerTarget, TriggerType
+from .automation_model import AutomationModel, NumericComparator, TriggerModel, TriggerTarget, TriggerType
 from .condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator
+from .measurement import MeasurementProperty, is_valid_value, spec_for
 
 # Reused verbatim from nlu/validator.py's own _CLIMATE_TEMPERATURE_MIN/MAX
 # (Regel 6, no new bound invented) - already enforced at parse time by
@@ -253,6 +254,26 @@ def _validate_trigger(trigger: TriggerModel) -> AutomationValidationError | None
         return AutomationValidationError.INVALID_PARAMETER
     if trigger.type is TriggerType.CALENDAR and trigger.calendar_event not in {"start", "end"}:
         return AutomationValidationError.INVALID_PARAMETER
+    return _validate_measurement(trigger)
+
+
+def _validate_measurement(trigger: TriggerModel) -> AutomationValidationError | None:
+    """Attribute measurements are closed, typed and domain-bound."""
+    if trigger.measurement is None:
+        return (
+            AutomationValidationError.INVALID_PARAMETER
+            if trigger.direction is not None
+            else None
+        )
+    if trigger.type is not TriggerType.NUMERIC_STATE or trigger.threshold is None:
+        return AutomationValidationError.INVALID_PARAMETER
+    spec = spec_for(trigger.measurement)
+    if trigger.target is not None and trigger.target.domain not in {None, spec.domain}:
+        return AutomationValidationError.INVALID_PARAMETER
+    if not is_valid_value(trigger.measurement, trigger.threshold):
+        return AutomationValidationError.INVALID_PARAMETER
+    if trigger.direction is not None and trigger.measurement is not MeasurementProperty.COVER_POSITION:
+        return AutomationValidationError.INVALID_PARAMETER
     return None
 
 
@@ -263,6 +284,11 @@ def _validate_condition_leaf(condition: ConditionModel) -> AutomationValidationE
     error = _validate_target(condition.target)
     if error is not None:
         return error
+    if condition.comparator is not None and condition.comparator not in {
+        NumericComparator.ABOVE, NumericComparator.BELOW
+    }:
+        # Conditions are generated as native numeric_state (strict bounds).
+        return AutomationValidationError.INVALID_PARAMETER
     if condition.type is ConditionType.CALENDAR_EVENT and (
         len(condition.raw_state or "") > 100 or not (condition.raw_state or "").strip()
     ):

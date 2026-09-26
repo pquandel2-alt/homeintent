@@ -41,7 +41,10 @@ def test_trigger_type_covers_all_documented_types():
 
 
 def test_numeric_comparator_covers_above_and_below():
-    assert {c.name for c in NumericComparator} == {"ABOVE", "BELOW", "EQUAL"}
+    # 7.2.0: inclusive bounds are their own members, never narrowed to ABOVE/BELOW.
+    assert {c.name for c in NumericComparator} == {
+        "ABOVE", "BELOW", "EQUAL", "AT_LEAST", "AT_MOST",
+    }
 
 
 def test_sun_event_covers_sunrise_and_sunset():
