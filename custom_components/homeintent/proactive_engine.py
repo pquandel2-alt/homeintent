@@ -269,7 +269,9 @@ class ProactiveContextEngine:
         self._last_anticipation: dict[str, AnticipationResult] = {}
         # Desired-state proposals per situation key (never a service plan).
         self._goals: dict[str, ProposedGoal] = {}
-        self._background_executions: set[asyncio.Future[object]] = set()
+        self._background_executions: set[
+            asyncio.Future[ProactiveExecutionResult] | asyncio.Future[None]
+        ] = set()
 
     # ------------------------------------------------------------------ events
     async def async_observe_state(
@@ -946,11 +948,8 @@ class ProactiveContextEngine:
         )
         if not failed:
             return
-        run_id = (
-            task.result().run.run_id
-            if not task.cancelled() and task.exception() is None and task.result().run is not None
-            else proposal.proposal_id
-        )
+        run = task.result().run if not task.cancelled() and task.exception() is None else None
+        run_id = run.run_id if run is not None else proposal.proposal_id
         # Report the failure the user was promised (same path as other
         # unattended goal failures).
         report = self.async_report_situation(DetectionSignal(

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
-from typing import Awaitable, Callable, Iterable, Mapping, Protocol, Sequence, cast
+from typing import Awaitable, Callable, Iterable, Mapping, Protocol, Sequence, TypeVar, cast
 
 from .const import (
     CONF_FRIGATE_ENABLED,
@@ -25,6 +25,19 @@ from .agent_config_validation import validate_mqtt_topic
 
 
 _LOGGER = logging.getLogger(__name__)
+
+_ListenerT = TypeVar("_ListenerT", bound=Callable[..., object])
+
+
+def _event_loop_callback(func: _ListenerT) -> _ListenerT:
+    """Mark a listener like ``homeassistant.core.callback`` (F2).
+
+    Without the marker Home Assistant runs a plain function in the executor,
+    where the evidence sink is not thread safe. Setting the same attribute
+    keeps this module free of a Home Assistant import.
+    """
+    setattr(func, "_hass_callback", True)
+    return func
 
 
 class _EntryLike(Protocol):
@@ -309,15 +322,11 @@ class StructuredAdapterRuntime:
         self._sink(evidence)
 
     async def async_start(self) -> Callable[[], None]:
-        # Event-loop callbacks: without @callback HA runs a plain function in
-        # the executor, where the evidence sink is not thread safe.
-        from homeassistant.core import callback
-
-        @callback
+        @_event_loop_callback
         def _on_state_changed(event: _EventLike) -> None:
             self._handle_state_changed(event)
 
-        @callback
+        @_event_loop_callback
         def _on_frigate_event(event: _EventLike) -> None:
             self._handle_frigate_event(event)
 
@@ -412,9 +421,7 @@ class StructuredAdapterRuntime:
         except ValueError:
             _LOGGER.warning("Frigate MQTT topic is invalid")
             return None
-        from homeassistant.core import callback
-
-        @callback
+        @_event_loop_callback
         def _on_mqtt_message(message: _MessageLike) -> None:
             self._handle_mqtt_message(message)
 
