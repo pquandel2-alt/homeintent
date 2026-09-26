@@ -1005,6 +1005,8 @@ class NluConversationEntity(
                     area_lookup=build_area_lookup(entities),
                 )
                 if owned is not None:
+                    if owned.query:
+                        response.response_type = intent.IntentResponseType.QUERY_ANSWER
                     response.async_set_speech(owned.speech)
                     return conversation.ConversationResult(
                         response=response, conversation_id=user_input.conversation_id

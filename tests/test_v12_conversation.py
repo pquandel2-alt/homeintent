@@ -351,6 +351,7 @@ def test_standing_permission_requires_preview_and_explicit_yes(tmp_path, monkeyp
     assert permission.confirmed and not permission.revoked
     listed = h.say("Welche Daueranweisungen gibt es?")
     assert listed.response.speech.startswith("1 Daueranweisung aktiv")
+    assert listed.response.response_type == "query_answer"
     revoked = h.say("Widerrufe alle Daueranweisungen.")
     assert revoked.response.speech == "Ich habe 1 Daueranweisung widerrufen."
     assert h.world.engine.permissions.active(h.world.ports.clock) == ()
@@ -414,6 +415,7 @@ def test_explain_and_history_from_stored_evidence(tmp_path, monkeypatch):
     assert "eindeutig in einem Raum" in text
     history = h.say("Welche Hinweise gab es heute?")
     assert history.response.speech == "Heute habe ich mich zu 1 Situation gemeldet: Garage."
+    assert history.response.response_type == "query_answer"
     nothing = h.say("Warum hast du mich wegen der Waschmaschine angesprochen?")
     assert nothing.response.speech == "Dazu habe ich in letzter Zeit keinen Hinweis gegeben."
 

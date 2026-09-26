@@ -75,6 +75,9 @@ _STOP_WORDS = frozenset({"der", "die", "das", "dem", "den", "des", "wegen", "zu"
 @dataclass(frozen=True)
 class DialogOutcome:
     speech: str
+    # Read-only answers (instructions, history, explanations) are questions
+    # for clients and satellites, not executed actions (F22).
+    query: bool = False
 
 
 class ProactiveDialogHandler:
@@ -118,7 +121,7 @@ class ProactiveDialogHandler:
         if looks_like_permission_request(text):
             return self._start_permission(text, conversation_id, user_id, entities, area_lookup, local_now)
         if _LIST_PERMISSIONS_RE.fullmatch(normalized):
-            return DialogOutcome(self._list_permissions(user_id, local_now))
+            return DialogOutcome(self._list_permissions(user_id, local_now), query=True)
         if _REVOKE_ALL_RE.fullmatch(normalized):
             if user_id is None:
                 return DialogOutcome("Ich kann Daueranweisungen nur einem angemeldeten Benutzer zuordnen.")
@@ -133,10 +136,12 @@ class ProactiveDialogHandler:
                 word for word in re.split(r"[^a-z0-9]+", subject)
                 if word and word not in _STOP_WORDS
             )
-            return DialogOutcome(self._engine.explain_latest(words, user_id=user_id))
+            return DialogOutcome(self._engine.explain_latest(words, user_id=user_id), query=True)
         if _HISTORY_RE.fullmatch(normalized):
             midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-            return DialogOutcome(self._engine.history_summary(since=midnight, user_id=user_id))
+            return DialogOutcome(
+                self._engine.history_summary(since=midnight, user_id=user_id), query=True
+            )
         if _MUTE_RE.fullmatch(normalized):
             return self._start_mute(conversation_id, user_id)
         return None
