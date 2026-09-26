@@ -64,7 +64,16 @@ async def ensure_entry(session, token: str, handler: str, answers: dict | None =
     title = (answers or {}).get("calendar_name") or (answers or {}).get("todo_list_name")
     if any(e["domain"] == handler and (title is None or e["title"] == title) for e in entries):
         return
-    flow = await rest(session, "POST", "/api/config/config_entries/flow", token, json={"handler": handler})
+    # A cold Home Assistant (first CI start) may still be installing the
+    # requirements of an integration's dependencies; retry briefly.
+    for attempt in range(30):
+        try:
+            flow = await rest(session, "POST", "/api/config/config_entries/flow", token, json={"handler": handler})
+            break
+        except HAError as err:
+            if "Invalid handler" not in str(err) or attempt == 29:
+                raise
+            await asyncio.sleep(2)
     if flow.get("type") == "form":
         flow = await rest(session, "POST", f"/api/config/config_entries/flow/{flow['flow_id']}", token, json=answers or {})
     if flow.get("type") != "create_entry":

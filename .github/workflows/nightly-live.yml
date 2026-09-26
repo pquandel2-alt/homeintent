@@ -34,6 +34,9 @@ jobs:
       - name: Home-Assistant-Log prüfen
         if: always()
         run: python sim/check_log.py
+      - name: Home-Assistant-Fehler anzeigen
+        if: failure()
+        run: grep -E "ERROR|haus_sim|homeintent|Traceback|Error" -A3 sim/config/home-assistant.run.log | tail -n 200 || true
       - name: Ergebnisse speichern
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
