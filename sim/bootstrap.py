@@ -66,12 +66,12 @@ async def ensure_entry(session, token: str, handler: str, answers: dict | None =
         return
     # A cold Home Assistant (first CI start) may still be installing the
     # requirements of an integration's dependencies; retry briefly.
-    for attempt in range(30):
+    for attempt in range(90):
         try:
             flow = await rest(session, "POST", "/api/config/config_entries/flow", token, json={"handler": handler})
             break
         except HAError as err:
-            if "Invalid handler" not in str(err) or attempt == 29:
+            if "Invalid handler" not in str(err) or attempt == 89:
                 raise
             await asyncio.sleep(2)
     if flow.get("type") == "form":
