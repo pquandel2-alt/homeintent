@@ -104,3 +104,27 @@ def test_plain_push_is_not_explained_as_push_with_reply_buttons():
     explanation = explain_record(record, local_time=NOW)
     assert "per Push-Nachricht" in explanation
     assert "Antwortknöpfen" not in explanation
+
+
+def test_accepted_proposal_from_a_plain_push_is_not_explained_with_buttons(tmp_path):
+    # A notify entity gets no reply buttons: the history must not claim any.
+    world = build_world(
+        tmp_path, garage_states(),
+        recipients={"philipp": philipp()},
+        household={"person.philipp": "home", "person.anna": "not_home"},
+        companion_devices={},
+    )
+
+    async def scenario() -> None:
+        await world.change("cover.garage", "open")
+        await world.ports.advance(timedelta(minutes=15))
+        reply = await world.engine.async_handle_reply(
+            "Ja", user_id="philipp", device_id=None, is_admin=True,
+        )
+        assert reply is not None
+
+    run(scenario())
+    record = world.engine.history.records()[-1]
+    assert record.result.startswith("proposal_")
+    assert record.channel is CommunicationChannel.PUSH
+    assert "Antwortknöpfen" not in world.engine.explain_latest(("garage",), user_id="philipp")

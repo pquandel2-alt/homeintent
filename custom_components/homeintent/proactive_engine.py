@@ -973,8 +973,13 @@ class ProactiveContextEngine:
             now=now, by=by, run_id=run_id, result=result.status.value,
         )
         self.situations.set_state(situation.dedupe_key, SituationState.ACKNOWLEDGED, now=now)
+        channel = proposal.channel
+        if channel is CommunicationChannel.INTERACTIVE_PUSH and not proposal.push_bindings:
+            # No reply button was ever sent (notify entity): the answer came
+            # by voice or dashboard to a plain push (F25).
+            channel = CommunicationChannel.PUSH
         self._record(
-            situation, OpportunityOutcome.COMMUNICATE, user_id, proposal.channel,
+            situation, OpportunityOutcome.COMMUNICATE, user_id, channel,
             situation.priority_hint, proposal.privacy_level, f"proposal_{result.status.value}",
             (result.reason,), None, run_id=run_id, acknowledgement="accepted",
         )
