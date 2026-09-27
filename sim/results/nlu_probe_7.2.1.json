@@ -1,0 +1,1216 @@
+[
+ {
+  "cat": "indirekt",
+  "text": "Mir ist kalt.",
+  "ideal": "act",
+  "calls": [
+   "climate.heizung_wohnzimmer"
+  ],
+  "any": [],
+  "device": "Wohnzimmer",
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Es ist zu dunkel hier.",
+  "ideal": "act",
+  "calls": [
+   "light.buerolicht",
+   "light.schreibtischlampe"
+  ],
+  "any": [],
+  "device": "Büro",
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Hier ist es zu hell.",
+  "ideal": "act",
+  "calls": [
+   "light.stehlampe",
+   "light.wohnzimmer_deckenlicht"
+  ],
+  "any": [],
+  "device": "Wohnzimmer",
+  "pre": [
+   "Schalte die Stehlampe und das Wohnzimmer Deckenlicht ein."
+  ],
+  "note": "",
+  "speech": "LED-Streifen Wohnzimmer: aus; Stehlampe: 71 Prozent; Wohnzimmer Deckenlicht: 71 Prozent.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Ich gehe jetzt schlafen.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Ich verlasse jetzt das Haus.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Im Bad ist es total stickig.",
+  "ideal": "act",
+  "calls": [
+   "fan.badluefter"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Die Sonne blendet im Büro.",
+  "ideal": "act",
+  "calls": [
+   "cover.buero_raffstore"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Ich will einen Film schauen.",
+  "ideal": "act",
+  "calls": [
+   "scene.filmabend"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Ich hätte gern etwas mehr Wärme im Bad.",
+  "ideal": "act",
+  "calls": [
+   "climate.heizung_badezimmer"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Ich brauche das Licht im Flur nicht mehr.",
+  "ideal": "act",
+  "calls": [
+   "light.flurlicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Flurlicht ein."
+  ],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Das Licht im Büro kann aus.",
+  "ideal": "act",
+  "calls": [
+   "light.buerolicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Bürolicht ein."
+  ],
+  "note": "",
+  "speech": "Bürolicht ausgeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.buerolicht"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "indirekt",
+  "text": "Es ist so laut in der Küche.",
+  "ideal": "act",
+  "calls": [
+   "media_player.kuechenradio"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Muss ich lüften?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "bad",
+   "feucht",
+   "co2",
+   "luftfeuchtigkeit"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Brennt irgendwo noch Licht?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "kein",
+   "nein",
+   "licht"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Ist das Haus abgeschlossen?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "haustür",
+   "schloss",
+   "verriegelt",
+   "abgeschlossen"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Ist unten noch irgendwas an?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "küchenradio",
+   "steckdose",
+   "fernseher",
+   "heizung"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Wo ist es gerade am kältesten?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "keller",
+   "schlafzimmer"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Garten.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Hab ich vergessen, irgendwas auszuschalten?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "küchenradio",
+   "steckdose",
+   "nichts",
+   "eingeschaltet"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Warum ist es im Büro so kalt?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "heiz",
+   "grad",
+   "fenster"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Wie lange läuft die Waschmaschine noch?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "minute",
+   "uhr"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Welche Maschine meinst du? Ich habe nichts ausgeführt.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Sind alle Fenster zu?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "nein",
+   "küche",
+   "bad"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Nein, nicht alle Fenster sind geschlossen.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "ok"
+ },
+ {
+  "cat": "schluss",
+  "text": "Kann ich die Heizung im Bad ausmachen, das Fenster ist doch offen?",
+  "ideal": "act",
+  "calls": [
+   "climate.heizung_badezimmer"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Was ist gerade los im Haus?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "fenster",
+   "an",
+   "offen"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "schluss",
+  "text": "Ist jemand im Wohnzimmer?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "ja",
+   "präsenz",
+   "belegt",
+   "anwesend"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Mach mal Licht in der Küche.",
+  "ideal": "act",
+  "calls": [
+   "light.kuechenlicht",
+   "light.kuecheninsel"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Licht aus im Flur.",
+  "ideal": "act",
+  "calls": [
+   "light.flurlicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Flurlicht ein."
+  ],
+  "note": "",
+  "speech": "Flurlicht ausgeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.flurlicht"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "umgang",
+  "text": "Kannste die Rollos in der Küche runtermachen?",
+  "ideal": "act",
+  "calls": [
+   "cover.kuechenrollladen"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Mach die Jalousie im Büro zu.",
+  "ideal": "act",
+  "calls": [
+   "cover.buero_raffstore"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Büro Raffstore wird geschlossen.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "cover.buero_raffstore"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "umgang",
+  "text": "Dreh die Heizung im Wohnzimmer bisschen hoch.",
+  "ideal": "act",
+  "calls": [
+   "climate.heizung_wohnzimmer"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Mach die Glotze an.",
+  "ideal": "act",
+  "calls": [
+   "media_player.wohnzimmer_tv"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Mach die Musik in der Küche leiser.",
+  "ideal": "act",
+  "calls": [
+   "media_player.kuechenradio"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Planvorschau: Küchenradio paused. 1 geprüfte Aktion(en), Gesamtrisiko niedrig. Soll ich den gesamten Plan ausführen?",
+  "type": "action_done",
+  "asked": true,
+  "got_calls": [],
+  "verdict": "partial"
+ },
+ {
+  "cat": "umgang",
+  "text": "Mach's Radio aus.",
+  "ideal": "act",
+  "calls": [
+   "media_player.kuechenradio"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Lampe im Büro an.",
+  "ideal": "act",
+  "calls": [
+   "light.buerolicht",
+   "light.schreibtischlampe"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Bürolicht eingeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.buerolicht"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "umgang",
+  "text": "Zieh die Rollläden im Schlafzimmer ganz hoch.",
+  "ideal": "act",
+  "calls": [
+   "cover.schlafzimmer_rollladen"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Fahre den Schlafzimmer Rollladen auf 20 Prozent."
+  ],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Fernseher aus.",
+  "ideal": "act",
+  "calls": [
+   "media_player.wohnzimmer_tv"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte den Wohnzimmer TV ein."
+  ],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Kaffee!",
+  "ideal": "act",
+  "calls": [
+   "switch.kaffeemaschine",
+   "script.kaffee_kochen"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Staubsauger an.",
+  "ideal": "act",
+  "calls": [
+   "vacuum.saugroboter"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "umgang",
+  "text": "Tür zu.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "mehrfach",
+  "text": "Mach das Licht im Flur an und die Rollläden in der Küche runter.",
+  "ideal": "act",
+  "calls": [
+   "light.flurlicht",
+   "cover.kuechenrollladen"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "beide",
+  "speech": "Flurlicht eingeschaltet. Küchenrollladen wird geschlossen.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "cover.kuechenrollladen",
+   "light.flurlicht"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "mehrfach",
+  "text": "Schalte das Küchenlicht aus und die Kaffeemaschine an.",
+  "ideal": "act",
+  "calls": [
+   "light.kuechenlicht",
+   "switch.kaffeemaschine"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Küchenlicht ein."
+  ],
+  "note": "beide",
+  "speech": "Küchenlicht ausgeschaltet. Kaffeemaschine eingeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.kuechenlicht",
+   "switch.kaffeemaschine"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "mehrfach",
+  "text": "Mach im Wohnzimmer alles aus.",
+  "ideal": "act",
+  "calls": [
+   "light.stehlampe",
+   "media_player.wohnzimmer_tv",
+   "switch.fernseher_steckdose"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte die Stehlampe ein."
+  ],
+  "note": "",
+  "speech": "Heizung Wohnzimmer ausgeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "climate.heizung_wohnzimmer"
+  ],
+  "verdict": "fail"
+ },
+ {
+  "cat": "mehrfach",
+  "text": "Mach das Bürolicht an, stell die Heizung im Büro auf 21 Grad und fahr den Raffstore hoch.",
+  "ideal": "act",
+  "calls": [
+   "light.buerolicht",
+   "climate.heizung_buero",
+   "cover.buero_raffstore"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "alle drei",
+  "speech": "Heizung Büro auf 21 Grad gestellt. Büro Raffstore wird geöffnet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "climate.heizung_buero",
+   "cover.buero_raffstore"
+  ],
+  "verdict": "fail"
+ },
+ {
+  "cat": "kontext",
+  "text": "Etwas heller bitte.",
+  "ideal": "act",
+  "calls": [
+   "light.buerolicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Mach das Bürolicht an."
+  ],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "kontext",
+  "text": "Nee, doch wieder aus.",
+  "ideal": "act",
+  "calls": [
+   "light.buerolicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Mach das Bürolicht an."
+  ],
+  "note": "",
+  "speech": "Bürolicht ausgeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.buerolicht"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "kontext",
+  "text": "Mach's da wärmer.",
+  "ideal": "act",
+  "calls": [
+   "climate.heizung_schlafzimmer"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Wie warm ist es im Schlafzimmer?"
+  ],
+  "note": "",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "kontext",
+  "text": "Dann mach die Heizung da aus.",
+  "ideal": "act",
+  "calls": [
+   "climate.heizung_kueche"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Ist das Küchenfenster offen?"
+  ],
+  "note": "",
+  "speech": "Keine passenden Ergebnisse.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "kontext",
+  "text": "Und im Kinderzimmer auch.",
+  "ideal": "act",
+  "calls": [
+   "light.kinderzimmerlicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Mach das Licht im Schlafzimmer an."
+  ],
+  "note": "",
+  "speech": "2 Lichter eingeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.kinderzimmerlicht",
+   "light.nachtlicht"
+  ],
+  "verdict": "ok"
+ },
+ {
+  "cat": "kontext",
+  "text": "Die andere.",
+  "ideal": "act",
+  "calls": [
+   "light.nachttischlampe_rechts"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Mach die linke Nachttischlampe an."
+  ],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "kontext",
+  "text": "Mach alle aus.",
+  "ideal": "act",
+  "calls": [
+   "light.kuechenlicht",
+   "light.flurlicht"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Küchenlicht und das Flurlicht ein.",
+   "Welche Lichter sind an?"
+  ],
+  "note": "beide",
+  "speech": "Keine passenden Ergebnisse.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "zeit",
+  "text": "Weck mich morgen um 7 mit Licht im Schlafzimmer.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "zeit",
+  "text": "Schalte die Kaffeemaschine in 10 Minuten wieder aus.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Automation erkannt: Wenn 10 Minuten vergangen sind, dann Schalter im Bereich Küche ausschalten. Diese Automation wird nach der ersten Ausführung automatisch gelöscht. Soll diese Automation erstellt werden?",
+  "type": "action_done",
+  "asked": true,
+  "got_calls": [],
+  "verdict": "ok"
+ },
+ {
+  "cat": "zeit",
+  "text": "Mach das Außenlicht an, sobald es dunkel wird.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "zeit",
+  "text": "Sag mir Bescheid, wenn die Waschmaschine fertig ist.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe verstanden, dass du bei einem Ereignis benachrichtigt werden möchtest, konnte das Ereignis aber keinem Gerät oder Zeitpunkt sicher zuordnen.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "partial"
+ },
+ {
+  "cat": "zeit",
+  "text": "Wenn ich nach Hause komme, soll das Flurlicht angehen.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "zeit",
+  "text": "Mach um halb sieben die Rollläden hoch.",
+  "ideal": "ask",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "negation",
+  "text": "Lass das Licht in der Küche an.",
+  "ideal": "none",
+  "calls": [],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Küchenlicht ein."
+  ],
+  "note": "",
+  "speech": "2 Lichter eingeschaltet.",
+  "type": "action_done",
+  "asked": false,
+  "got_calls": [
+   "light.kuecheninsel",
+   "light.kuechenlicht"
+  ],
+  "verdict": "fail"
+ },
+ {
+  "cat": "negation",
+  "text": "Nicht das Küchenlicht, das Esszimmerlicht meine ich.",
+  "ideal": "act",
+  "calls": [
+   "light.esszimmer_pendelleuchte"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte das Küchenlicht ein."
+  ],
+  "note": "",
+  "speech": "Das habe ich nicht verstanden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "negation",
+  "text": "Könntest du vielleicht irgendwann mal die Markise einfahren?",
+  "ideal": "act",
+  "calls": [
+   "cover.markise"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Fahre die Markise aus."
+  ],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "negation",
+  "text": "Ich frage mich, ob die Haustür abgeschlossen ist.",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "verriegelt",
+   "abgeschlossen",
+   "haustürschloss"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "negation",
+  "text": "Die Stehlampe muss nicht an sein.",
+  "ideal": "act",
+  "calls": [
+   "light.stehlampe"
+  ],
+  "any": [],
+  "device": null,
+  "pre": [
+   "Schalte die Stehlampe ein."
+  ],
+  "note": "",
+  "speech": "Ich habe den Satz als unsicheren oder verneinten Befehl erkannt und führe nichts aus.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "auskunft",
+  "text": "Was kann ich im Wohnzimmer alles steuern?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "stehlampe",
+   "rollladen",
+   "tv"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "auskunft",
+  "text": "Welche Szenen gibt es?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "filmabend"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Verfügbare Szenen: Abwesend, Filmabend, Guten Morgen.",
+  "type": "query_answer",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "ok"
+ },
+ {
+  "cat": "auskunft",
+  "text": "Was macht das Skript Gute Nacht?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "licht",
+   "schloss",
+   "aus"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "auskunft",
+  "text": "Welche Räume gibt es im Obergeschoss?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "schlafzimmer",
+   "kinderzimmer",
+   "bad"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "auskunft",
+  "text": "Wie viele Lampen hat das Haus?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "23"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ },
+ {
+  "cat": "auskunft",
+  "text": "Wofür ist der Heizlüfter?",
+  "ideal": "answer",
+  "calls": [],
+  "any": [
+   "bad",
+   "heiz"
+  ],
+  "device": null,
+  "pre": [],
+  "note": "",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "type": "error",
+  "asked": false,
+  "got_calls": [],
+  "verdict": "fail"
+ }
+]
