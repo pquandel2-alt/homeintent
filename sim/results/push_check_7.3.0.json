@@ -1,0 +1,975 @@
+[
+ {
+  "text": "Benachrichtige mich, wenn das Küchenfenster aufgeht.",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "küche",
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Küchenfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Küchenfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "de5fe6b71555400ab8de10542b573c2e"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Küchenfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich wenn Fenster Küche auf geht",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Küchenfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Küchenfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "fde608daba454a339f1d5d61f8977884"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Küchenfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich wenn das Badfenster auf geht",
+  "trigger": "binary_sensor.badezimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Badezimmerfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Badezimmerfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "8dc4655a5c4d4e208065efb118120755"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Badezimmerfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Sag mir Bescheid, wenn das Badezimmerfenster geöffnet wird.",
+  "trigger": "binary_sensor.badezimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Badezimmerfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Badezimmerfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "ea12156e3bb44367a21cab3282118bb3"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Badezimmerfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Gib mir Bescheid wenn im Schlafzimmer das Fenster aufgemacht wird",
+  "trigger": "binary_sensor.schlafzimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Schlafzimmerfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Schlafzimmerfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "cb4b5a467554439ba4c058f7908f5de7"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Schlafzimmerfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schick mir eine Nachricht, sobald die Haustür aufgeht.",
+  "trigger": "binary_sensor.haustuer",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "haustür"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Haustür geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Haustür wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "904051c83c1d4a9089ce4a5d37f9561e"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Die Haustür wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Informier mich, falls jemand die Terrassentür öffnet.",
+  "trigger": "binary_sensor.terrassentuer",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "terrassentür"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Terrassentür geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Terrassentür wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "c75e0fef2fcf4e96bef5c6612911d6c6"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Die Terrassentür wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Wenn das Bürofenster aufgeht, schick mir eine Push-Nachricht.",
+  "trigger": "binary_sensor.buerofenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Bürofenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Bürofenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "ddef661494e845efa6bd83a74ca11d78"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Bürofenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Ich möchte eine Nachricht aufs Handy, wenn das Kinderzimmerfenster geöffnet wird.",
+  "trigger": "binary_sensor.kinderzimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Kinderzimmerfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Kinderzimmerfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "1b332af402e845ecbf6e333034119bfe"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Kinderzimmerfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Kannst du mir Bescheid geben wenn das Wohnzimmerfenster auf ist",
+  "trigger": "binary_sensor.wohnzimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Wohnzimmerfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Wohnzimmerfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "f457a09b9ea440a39cd3d8e2af94c481"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn im Obergeschoss irgendein Fenster geöffnet wird.",
+  "trigger": "binary_sensor.kinderzimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn im Obergeschoss ein Fenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Im Obergeschoss wurde ein Fenster geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "b3a8ecd386334c00954155a65769c164"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Im Obergeschoss wurde ein Fenster geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn ein Fenster aufgeht.",
+  "trigger": "binary_sensor.wohnzimmerfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn ein Fenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Ein Fenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "8d653283b5fb4778a784581b6c468cec"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Wohnzimmerfenster wurde geöffnet."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Ein Fenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn das Küchenfenster wieder zu ist.",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "on",
+  "after": "off",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Küchenfenster geschlossen wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Küchenfenster wurde geschlossen.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "b0b235442490451492c25a0710fcb0a3"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Küchenfenster wurde geschlossen."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn das Küchenfenster geöffnet wird, dass ich lüften soll.",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "lüften"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Küchenfenster geöffnet wird, sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: lüften.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "50ce85b0d4d145188ff8d838c364f34e"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Erinnerung: lüften."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Wenn die Haustür aufgeht, will ich eine Nachricht auf mein Handy.",
+  "trigger": "binary_sensor.haustuer",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "haustür"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Haustür geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Haustür wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "94d60c1a6e07487d93cafea1476fe770"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Die Haustür wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Push an mich, wenn die Haustür offen ist.",
+  "trigger": "binary_sensor.haustuer",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "haustür"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Haustür geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Haustür wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "6b8b5f00585641a69fd9e97bed00646a"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Die Haustür wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn im Flur Bewegung erkannt wird.",
+  "trigger": "binary_sensor.bewegung_flur",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "bewegung"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn im Flur eine Bewegung erkannt wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Im Flur wurde eine Bewegung erkannt.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "c2450b42a6ca417fb03d7369a7eaad15"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Im Flur wurde eine Bewegung erkannt."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn der Wassermelder im Keller auslöst.",
+  "trigger": "binary_sensor.wassermelder_keller",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "wasser"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn Wassermelder Keller Wasser meldet, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Wassermelder Keller meldet Wasser.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "c54fb9da02ed4da295ffbf07d37c2528"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Wassermelder Keller meldet Wasser."
+   ],
+   [
+    "notify.handy_philipp_nachricht",
+    "Achtung: Das Gerät „Wassermelder Keller“ meldet Wasser!"
+   ],
+   [
+    "notify.handy_anna_nachricht",
+    "Achtung: Das Gerät „Wassermelder Keller“ meldet Wasser!"
+   ]
+  ],
+  "passed": false
+ },
+ {
+  "text": "Sag mir Bescheid, wenn das Garagentor aufgeht.",
+  "trigger": "cover.garagentor",
+  "before": null,
+  "after": "open",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "garage"
+  ],
+  "user": "admin",
+  "wait": 9.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Garagentor geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Garagentor wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "f0cd0a1874a04c469a3e2c1905d3d29e"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Das Garagentor wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn die Temperatur im Keller unter 12 Grad fällt.",
+  "trigger": "sensor.temperatur_keller",
+  "before": 14.6,
+  "after": 11.4,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "temperatur",
+   "keller"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn Temperatur Keller unter 12 Grad liegt, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Temperatur Keller liegt jetzt unter 12 Grad.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "cf6621f4b70f42359dd4fb506855a1e6"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Temperatur Keller liegt jetzt unter 12 Grad."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn die Luftfeuchtigkeit im Bad über 75 Prozent steigt.",
+  "trigger": "sensor.luftfeuchtigkeit_badezimmer",
+  "before": 68,
+  "after": 78,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "feucht"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Luftfeuchtigkeit im Badezimmer über 75 % liegt, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Luftfeuchtigkeit im Badezimmer liegt jetzt über 75 %.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "28c9244f182443dab1e111e9c63b02f0"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Die Luftfeuchtigkeit im Badezimmer liegt jetzt über 75 %."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Sag mir Bescheid, wenn die Waschmaschine fertig ist.",
+  "trigger": "sensor.waschmaschine_status",
+  "before": "running",
+  "after": "finished",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "waschmaschine"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Waschmaschine fertig ist, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Waschmaschine ist fertig.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "38bb0d011fc2472fa05684320fa894a9"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Die Waschmaschine ist fertig."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn Anna nach Hause kommt.",
+  "trigger": "device_tracker.handy_anna",
+  "before": "not_home",
+  "after": "home",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "anna"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn Anna nach Hause kommt, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Anna ist nach Hause gekommen.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "0585e62c6e0c4b3daf0b7ffbbaa2d15f"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Anna ist nach Hause gekommen."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schicke mir eine Benachrichtigung wenn im Büro der Raffstore 50% erreicht hat",
+  "trigger": "cover.buero_raffstore",
+  "before": null,
+  "after": 50,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "50"
+  ],
+  "user": "admin",
+  "wait": 6.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn Büro Raffstore 50 % erreicht, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Büro Raffstore hat 50 % erreicht.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "a9ccc9725a354c68b76fe332ed620cef"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Büro Raffstore hat 50 % erreicht."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schick Anna eine Nachricht, wenn die Haustür aufgeht.",
+  "trigger": "binary_sensor.haustuer",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_anna_nachricht",
+  "expect_words": [
+   "haustür"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn die Haustür geöffnet wird, sende ich eine Push-Benachrichtigung an „Handy Anna“: „Die Haustür wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "87162c6ff507465c9fe03121b2a9e9f8"
+  ],
+  "pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Die Haustür wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige Anna, wenn das Küchenfenster geöffnet wird.",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_anna_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Wenn das Küchenfenster geöffnet wird, sende ich eine Push-Benachrichtigung an „Handy Anna“: „Das Küchenfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "4a75f5bd2144400b92d60bf590533e81"
+  ],
+  "pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Das Küchenfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich, wenn das Küchenfenster aufgeht.",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_anna_nachricht",
+  "expect_words": [
+   "fenster"
+  ],
+  "user": "anna",
+  "wait": 3.0,
+  "kind": "auto",
+  "note": "Anna spricht → Annas Handy",
+  "early_pushes": [],
+  "speech": "Wenn das Küchenfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Anna“: „Das Küchenfenster wurde geöffnet.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "1156f9928d574108afd8434c41cd7f70"
+  ],
+  "pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Das Küchenfenster wurde geöffnet."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schick mir eine Testbenachrichtigung.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "test"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "now",
+  "note": "",
+  "early_pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Testbenachrichtigung von HomeIntent."
+   ]
+  ],
+  "speech": "Die Testbenachrichtigung wurde gesendet.",
+  "confirm_speech": "",
+  "created": [],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Testbenachrichtigung von HomeIntent."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schick mir aufs Handy: Essen ist fertig.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "essen"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "now",
+  "note": "",
+  "early_pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Essen ist fertig"
+   ]
+  ],
+  "speech": "Die Benachrichtigung wurde gesendet.",
+  "confirm_speech": "",
+  "created": [],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Essen ist fertig"
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schreib Anna, dass das Essen fertig ist.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_anna_nachricht",
+  "expect_words": [
+   "essen"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "now",
+  "note": "",
+  "early_pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Das Essen ist fertig."
+   ]
+  ],
+  "speech": "Die Nachricht an Anna wurde gesendet.",
+  "confirm_speech": "",
+  "created": [],
+  "pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Das Essen ist fertig."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Sag Anna Bescheid, dass ich gleich komme.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_anna_nachricht",
+  "expect_words": [
+   "gleich"
+  ],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "now",
+  "note": "",
+  "early_pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Ich komme gleich."
+   ]
+  ],
+  "speech": "Die Nachricht an Anna wurde gesendet.",
+  "confirm_speech": "",
+  "created": [],
+  "pushes": [
+   [
+    "notify.handy_anna_nachricht",
+    "Ich komme gleich."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Schick mir in 15 Sekunden eine Nachricht, dass der Tee fertig ist.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "tee"
+  ],
+  "user": "admin",
+  "wait": 22.0,
+  "kind": "delay",
+  "note": "",
+  "early_pushes": [],
+  "speech": "In 15 Sekunden sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Der Tee ist fertig.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "abcf2cf10c764c74932880e097aae4be"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Der Tee ist fertig."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Erinnere mich in 15 Sekunden an den Backofen.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [
+   "backofen"
+  ],
+  "user": "admin",
+  "wait": 22.0,
+  "kind": "delay",
+  "note": "",
+  "early_pushes": [],
+  "speech": "In 15 Sekunden sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: den Backofen.“ Soll ich das so einrichten?",
+  "confirm_speech": "Automation wurde erstellt.",
+  "created": [
+   "8f041457be564619b086caa8a7f0514a"
+  ],
+  "pushes": [
+   [
+    "notify.handy_philipp_nachricht",
+    "Erinnerung: den Backofen."
+   ]
+  ],
+  "passed": true
+ },
+ {
+  "text": "Benachrichtige mich nicht, wenn das Küchenfenster aufgeht.",
+  "trigger": "binary_sensor.kuechenfenster",
+  "before": "off",
+  "after": "on",
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "negative",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
+  "confirm_speech": "",
+  "created": [],
+  "pushes": [],
+  "passed": true
+ },
+ {
+  "text": "Sag mir, ob das Küchenfenster offen ist.",
+  "trigger": null,
+  "before": null,
+  "after": null,
+  "target": "notify.handy_philipp_nachricht",
+  "expect_words": [],
+  "user": "admin",
+  "wait": 3.0,
+  "kind": "question",
+  "note": "",
+  "early_pushes": [],
+  "speech": "Küchenfenster ist geöffnet.",
+  "confirm_speech": "",
+  "created": [],
+  "pushes": [],
+  "passed": true
+ }
+]

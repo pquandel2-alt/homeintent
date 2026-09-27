@@ -42,6 +42,59 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
+## Was ist in Version 7.3.0 neu?
+
+**HomeIntent 7.3.0 — Sprachverständnis ohne Sprachmodell.** HomeIntent
+versteht Alltagsdeutsch jenseits exakter Gerätenamen und fester Satzformen –
+weiterhin ohne LLM, ohne ML-Modell und ohne externe Dienste. Wissen liegt als
+Daten vor (Geräte-Ontologie, Orte, Bedürfnis- und Sichtentabellen), Regeln
+arbeiten über Bedeutungsbausteine statt über Satzschablonen. Parser führen
+weiterhin nichts aus; Validator, ExecutionPolicy, Bestätigungen und
+`NEVER_AUTO` sind unverändert. Details: [`docs/architecture-v13.md`](docs/architecture-v13.md)
+und der Abschnitt [„Wie HomeIntent Sprache versteht“](#wie-homeintent-sprache-versteht).
+
+- **Ziele als Gattung × Ort × Menge:** „die Leuchte im Kinderzimmer“, „alle
+  Jalousien im Obergeschoss“, „die Glotze“, „Kinderzimmerjalousie“; Einzahl
+  bei mehreren Geräten fragt nach, fehlende Gattung wird ehrlich benannt.
+- **Sicherheitsbefunde S1–S7 behoben:** „Lass … an“ tut nichts, „alles“ im
+  Raum mit Vorschau ohne Heizung/Schlösser, keine verschluckten Teilsätze,
+  „leiser“ pausiert nicht, Superlative nur über Innenräume, „zu hell“ wirkt,
+  Melder bleiben in ihrer Gattung. Zusätzlich: „die Rollläden“ in
+  verzögerten und geplanten Aufträgen erreicht nie Garagentor oder Markise,
+  „um 18:30 …“ läuft nie sofort, und „in Küche und Flur“ verliert keinen Ort.
+- **Bedürfnisse, Situationssichten, Diskurs, Modalität und Zeitsprache**
+  („Ich friere“, „Ist alles abgeschlossen?“, „Die andere bitte auch“, „Die
+  Kaffeemaschine kann jetzt aus“, „um viertel vor neun“, „Weck mich um
+  sieben mit Licht“).
+- **Benachrichtigungen** mit einer gemeinsamen Bedeutung für Sofort-,
+  Verzögert-, Termin- und Ereignis-Push; diktierter Text wird vor der
+  Zielauflösung abgetrennt.
+- **Testhaus erweitert** (Einfahrtkamera, dritte Bürolampe) und neue
+  Szenario-Kategorie „Sprache 7.3“ (36 Szenarien mit eigenen Sätzen).
+- Regex-Verwendungen im Code: 854 → 793; Automationssprache p95 bei 5000
+  Entitäten auf der Messmaschine 83 ms → 20 ms.
+
+Messwerte gegen ein frisches, echtes Home Assistant 2026.9.2 mit dem
+simulierten Einfamilienhaus (`sim/`):
+
+| Messung | 7.2.1 | 7.3.0 |
+| --- | --- | --- |
+| Funktionsszenarien (`sim/runner.py`) | 126 / 126 | 162 / 162 |
+| README-Beispiele (`sim/readme_check.py`) | 101 ok, 17 Rückfragen, 25 fehlgeschlagen von 143 | 131 ok, 32 Rückfragen, 6 fehlgeschlagen von 169 |
+| Push-Matrix mit echter Auslösung (`sim/push_check.py`) | 23 / 35 | 34 / 35 |
+| Alltagssprache-Korpus (`sim/nlu_probe.py`) | 11 / 66 (17 %) | 55 / 66 (83 %) |
+| HomeIntent-Befunde im HA-Log (`sim/check_log.py`) | 0 | 0 |
+
+Offen und ehrlich: Die verbliebenen README-Fehlschläge sind zwei
+Konfigurationszeilen (`Leselampe = light.…`, keine Sätze), drei
+Automationsbefehle, die bei mehreren passenden Automationen bewusst
+ablehnen statt zu raten, und ein Listeneintrag, den der vorige Schritt schon
+verschoben hatte. Der eine Push-Befund ist die unabhängige kritische
+Wassermelder-Warnung, die zusätzlich an alle Haushaltshandys geht. Im
+Alltagssprache-Korpus löste „Ich will einen Film schauen.“ die richtige
+Szene Filmabend aus; das Testbett protokolliert Szenen nur über ihre
+Lichtaufrufe.
+
 ## Was ist in Version 7.2.1 neu?
 
 **HomeIntent 7.2.1 — Live-Test-Fix.** Behebt alle 28 Befunde des Live-Tests
@@ -1543,19 +1596,18 @@ python -m pytest -q tests_ha
 Geprüfter Release-Stand von Version 7.3.0:
 
 ```text
-4588 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6034 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
-89 % Gesamt-Coverage
+90 % Gesamt-Coverage
 76 % Coverage für conversation.py
-≥ 93 % Coverage für jedes V12-Modul
-≥ 95 % Coverage für jedes Learning-Center-Modul
-Held-out-Automationskorpus (7.2.0): 95,2 % korrekt, 0 unsichere Ausführungen
+Held-out-Automationskorpus (7.2.0): 95,5 % korrekt (317/332), 0 unsichere Ausführungen
 Attribut-Automation im echten Home-Assistant-Core ausgeführt
 (scripts/validate_measurement_automation_ha.py)
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 126 / 126
-Szenarien, keine HomeIntent-Warnung im Log.
+Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 162 / 162
+Szenarien (davon 36 in der Kategorie „Sprache 7.3“), keine
+HomeIntent-Warnung im Log.
 
 Zusätzlich wurden ausgeführt:
 
