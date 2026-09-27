@@ -103,6 +103,14 @@ class LanguageDocument:
         return self.variants[1].text if len(self.variants) > 1 else self.source_text
 
 
+_SEPARABLE_PARTICLES = frozenset({"an", "aus", "auf", "zu", "ein", "hoch", "runter"})
+_SUBJECT_PRONOUNS = frozenset({"ich", "du", "wir", "ihr", "er", "man"})
+_INTERROGATIVES = frozenset({
+    "wer", "was", "wie", "wo", "wann", "warum", "wieso", "weshalb", "welche", "welcher",
+    "welches", "welchen", "ob", "ist", "sind", "hat", "haben",
+})
+
+
 def tokenize_language(text: str) -> tuple[LanguageToken, ...]:
     """Tokenize one surface while retaining stable source offsets."""
     return tuple(
@@ -416,6 +424,30 @@ def analyse_language(
         ):
             # Verbless settings ("Saugroboter bitte auf leise", "Rollladen
             # auf 40"): a target followed by "auf <value>" is a directive.
+            utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+    ):
+        words = [
+            normalize_for_compare(word)
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        ]
+        if (
+            len(words) > 1
+            and words[0] not in _INTERROGATIVES
+            and words[-1] in _SEPARABLE_PARTICLES
+            and ("bitte" in words or len(words) <= 4)
+            and not set(words) & _SUBJECT_PRONOUNS
+            and (
+                _has_registry_mention(" ".join(words[:-1]), entity_tuple)
+                or any(analyse_word(word) is not None for word in words[:-1])
+            )
+        ):
+            # Verbless particle requests ("Bitte das Radio in der Küche
+            # an", "Den Rollladen auf"): a target plus a final separable
+            # particle is a directive; a copula ("ist an") is a statement.
             utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
     explicit_unmute = re.search(r"\bnicht\s+mehr\s+stumm\b", text, re.I) is not None
     if explicit_unmute:

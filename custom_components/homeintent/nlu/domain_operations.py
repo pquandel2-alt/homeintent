@@ -95,6 +95,10 @@ ACTION_EXPRESSIONS: dict[str, tuple[str, ...]] = {
     "open": (
         r"hoch", r"oben", r"offen", r"hochfahr(?:e|en)?", r"hochgefahren",
         r"öffn(?:e|en|est|et)?", r"mach(?:e|en|st|t)?(?:\s+\w+){1,8}\s+auf",
+        r"aufmach(?:e|en|st|t)?",
+        # Sentence-final separable particle ("Bitte den Rollladen auf."):
+        # never the preposition of a value ("auf 50 Prozent").
+        r"auf(?=\s*[.!?]*\s*$)",
     ),
     "close": (
         r"runter", r"herunter", r"nach\s+unten", r"runterfahr(?:e|en)?",

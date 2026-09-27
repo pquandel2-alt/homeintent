@@ -810,6 +810,23 @@ _NOTIFICATION_REQUEST_VERB_RE = re.compile(
 )
 
 
+def _names_its_target(
+    document: LanguageDocument, entity_id: str, entities: list[EntitySnapshot]
+) -> bool:
+    """Whether the utterance names this device (name or alias), not a kind."""
+    entity = next((item for item in entities if item.entity_id == entity_id), None)
+    if entity is None:
+        return True
+    spoken = " " + " ".join(token.canonical for token in document.tokens if token.is_word) + " "
+    names = (entity.friendly_name, *entity.aliases)
+    return any(
+        f" {normalize_for_compare(name)} " in spoken
+        or normalize_for_compare(name).replace(" ", "") in spoken.replace(" ", "")
+        for name in names
+        if name
+    )
+
+
 class NluEngine:
     """Loads all intent YAML files once at construction; ``match()`` is
     stateless per call (entities are passed in fresh each time since HA
@@ -1516,9 +1533,10 @@ class NluEngine:
             and isinstance(legacy.plan.entity_id, str)
             and not universal
             and not coordinated
+            and _names_its_target(document, legacy.plan.entity_id, entities)
         ):
-            # One grounded single-target command cannot be too broad and
-            # cannot have dropped a clause.
+            # One grounded single-target command that names its device
+            # cannot be too broad and cannot have dropped a clause.
             return None
         compiled = compile_ontology_command(
             document,
@@ -1527,6 +1545,21 @@ class NluEngine:
         )
         if compiled is None:
             return None
+        if (
+            compiled.clarification is not None
+            and isinstance(legacy, MatchResult)
+            and legacy.plan is not None
+            and isinstance(legacy.plan.entity_id, str)
+            and not coordinated
+        ):
+            # A singular kind word ("die Lampe im Büro") with several
+            # members at the place is ambiguous; the legacy pick of one of
+            # them would be a guess.  Ask instead.
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
         if legacy is not None and not universal:
             legacy_commands = (
                 legacy.commands if isinstance(legacy, CommandPlan) else (legacy,)
@@ -1560,6 +1593,14 @@ class NluEngine:
                 and legacy_targets
                 and compiled_targets < legacy_targets
             )
+            # Disjoint readings ("die Lichter unten": legacy basement, the
+            # house's own floor alias says ground floor) cannot both be
+            # right; the registry-grounded place model decides.
+            disagrees = bool(
+                compiled_targets and legacy_targets
+                and not compiled_targets & legacy_targets
+            )
+            too_broad = too_broad or disagrees
             if (
                 compiled.message is not None
                 and compiled.clauses > 1

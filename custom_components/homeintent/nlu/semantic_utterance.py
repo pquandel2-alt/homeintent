@@ -246,6 +246,10 @@ _VERB_FIRST_MODAL_RE = re.compile(
     r"^(?:kannst|koenntest|könntest|wuerdest|würdest|moechtest|möchtest|sollst)$",
     re.I,
 )
+_NON_VERB_FIRST_WORDS = frozenset({
+    "oben", "unten", "draußen", "draussen", "drinnen", "hinten", "jetzt", "morgen",
+    "licht", "gleich", "sofort", "nachtlicht",
+})
 _SUBJECT_START_RE = re.compile(
     r"^\s*(?:der|die|das|ein|eine|mein\w*|dein\w*|unser\w*|dies\w*|alle)\b",
     re.I,
@@ -294,6 +298,10 @@ def _is_verb_first_device_question(text: str) -> bool:
     """
     match = _VERB_FIRST_DEVICE_RE.match(text)
     if match is None or _VERB_FIRST_MODAL_RE.fullmatch(match.group("verb")):
+        return False
+    if match.group("verb").casefold() in _NON_VERB_FIRST_WORDS:
+        # Place/time adverbs and the mass noun "Licht" merely look like
+        # finite verbs ("Oben alle Lichter aus", "Jetzt das Licht an").
         return False
     return text.rstrip().endswith("?") or _SUBJECT_START_RE.match(match.group("body")) is not None
 

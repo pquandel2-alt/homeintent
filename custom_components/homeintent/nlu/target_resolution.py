@@ -364,6 +364,14 @@ def describe_with_residue(
                 taken[index] = True
         if kind == "explicit":
             matches, phrase = payload  # type: ignore[misc]
+            as_genus = analyse_word(phrase) if " " not in phrase else None
+            if as_genus is not None and (
+                quantity in {Quantity.BOTH, Quantity.COUNT, Quantity.ALL} or article_plural
+            ):
+                # "beide Rollladen": a quantity makes the kind word a kind,
+                # even when one device happens to be named "Rollladen".
+                kind, payload = "genus", as_genus
+        if kind == "explicit":
             descriptions.append(TargetDescription(
                 explicit=tuple(matches),
                 explicit_name=phrase,
@@ -537,6 +545,16 @@ def resolve_description(
     domains: frozenset[str] | None = None,
 ) -> TargetResolution:
     """Combine one description with the registry into an outcome."""
+    if description.explicit and description.place is not None and not any(
+        description.place.contains(entity) for entity in description.explicit
+    ) and (as_genus := analyse_word(description.explicit_name)) is not None:
+        # A kind word that is also somebody's name, spoken with a place the
+        # named device is not at ("den Rollladen im Poleraum"): the kind
+        # reading at that place is meant.
+        description = replace(
+            description, explicit=(), explicit_name="", genera=tuple(as_genus.genera),
+            head=as_genus.word, mass=as_genus.mass,
+        )
     if description.explicit:
         matches = tuple(description.explicit)
         if description.place is not None and len(matches) > 1:
