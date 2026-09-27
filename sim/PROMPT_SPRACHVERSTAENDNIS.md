@@ -12,6 +12,42 @@ Namen, Etagen, Schlussfolgerungsfragen, Kontext, Verneinung – und die passende
 **sicher** ausführen. Push-Benachrichtigungen („Benachrichtige mich, wenn Fenster X
 aufgeht“) müssen in allen natürlichen Formen zuverlässig bis aufs Handy funktionieren.
 
+**Das Ziel ist Verstehen, nicht Auswendiglernen.** Es geht nicht darum, dass HomeIntent
+1000 Sätze beherrscht, sondern dass es Sätze *versteht*, die es nie gesehen hat: aus
+Wortbedeutungen, deutscher Grammatik und dem Wissen über das konkrete Haus. Jede neue
+Fähigkeit muss sich deshalb als allgemeine Regel über Bedeutungsbausteine ausdrücken
+lassen – nie als Satzmuster.
+
+**HomeIntent hat dafür bereits ein eigenes Sprachmodell – das wird ausgebaut, nicht
+ersetzt.** In `custom_components/homeintent/nlu/` steckt ein deterministisches,
+kompositionelles Modell: `semantic_catalog.py`/`semantic_lexicon.py` (Lexikon mit
+Bedeutungsbausteinen), `german_morphology.py`, `language_frontend.py`,
+`german_structure.py` (Satzstruktur, Klauseln, Rollen), `semantic_graph.py`,
+`meaning.py`/`semantic_interpreter.py` (Bedeutungskandidaten), `semantic_compiler.py`
+(typisierte Frames), `entity_resolution.py`/`house_graph.py` (Weltmodell). Sein
+Grundsatz steht in `semantic_lexicon.py`: *„Adding a synonym extends every permutation in
+which that meaning can occur; it does not add another sentence template.“* Genau so soll
+es weiterwachsen.
+
+Zwei Ursachen verhindern heute LLM-ähnliches Verstehen:
+
+1. **Das Wissen des Modells ist zu dünn.** Der Katalog kennt zu wenige Gerätearten,
+   keine Bedürfnisse, Etagen und Komposita nur teilweise; die Zielauflösung fällt auf
+   Friendly Names zurück.
+2. **Viele Funktionen umgehen das Modell.** Benachrichtigungen
+   (`notification_language.py`), Haushaltsfragen (`household_query.py`), Listen/Timer
+   (`productivity.py`), Kalender (`calendar_management.py`), Verlauf
+   (`history_query.py`), Automationsverwaltung (`automation_management.py`), Ziele
+   (`goal_intent.py`) u. a. arbeiten mit eigenen regulären Ausdrücken (insgesamt rund
+   **824 Regex-Verwendungen** in der Integration). Was das Modell lernt, kommt dort nicht
+   an – deshalb versteht der Push-Pfad kein „im Keller“, kein „Garagentor“ und kein
+   „Schreib Anna, dass …“, obwohl das Modell Orte und Empfänger grundsätzlich kennt.
+
+Der Auftrag ist daher: **das vorhandene Modell mit Weltwissen anreichern und alle
+Funktionen über dieses eine Modell führen.** Ein Satz wird genau einmal analysiert
+(`LanguageDocument` → Struktur → Bedeutung), und jede Funktion liest ihre Bedeutung aus
+diesem Ergebnis statt aus dem Rohtext.
+
 **Harte Randbedingung: Es darf kein LLM und kein anderes ML-Modell hinzugefügt werden** –
 weder lokal noch in der Cloud, weder optional noch als Fallback. Keine
 Embeddings, keine neuronalen Netze, keine Modell-Downloads, kein `ai_task`, keine
@@ -108,6 +144,21 @@ soll optional auch Listen, laufende Timer und Testautomationen zurücksetzen, da
 Messreihen im selben HA unabhängig bleiben
 
 ## Was zu bauen ist
+
+### 0. Architektur: ein Modell für alle Funktionen
+
+- Jede Fachfunktion (Benachrichtigung, Haushaltsfrage, Liste, Timer, Kalender, Verlauf,
+  Automationsverwaltung, Ziel/Routine, Gedächtnis) konsumiert das eine
+  `LanguageDocument` bzw. die daraus kompilierte Bedeutung (Sprechakt, Aktion, Ziel,
+  Ort, Menge, Zeit, Empfänger, Inhalt, Modalität). Reguläre Ausdrücke auf dem Rohtext
+  werden schrittweise durch Abfragen auf diese Bedeutung ersetzt. Miss die Zahl der
+  Regex-Verwendungen vorher/nachher und nenne sie im PR; sie soll deutlich sinken.
+- Neues Wissen kommt als **Daten** in den Katalog bzw. die Ontologie (Wortbedeutung,
+  Wortart, Flexion, Synonyme, Gattung, Bedürfnis → Wirkung), nicht als Code-Sonderfall.
+  Ein neues Wort muss automatisch in Befehlen, Fragen, Automationen und
+  Benachrichtigungen wirken.
+- Wo das Modell eine Bedeutung nur teilweise versteht, sagt es das präzise („Ich
+  verstehe ‚Wassermelder‘, aber keinen Zeitpunkt“), statt „nicht verstanden“.
 
 Arbeite am bestehenden Weg eines Satzes (`nlu/language_frontend.py` →
 `nlu/german_structure.py`/`semantic_graph.py`/`german_morphology.py` →
@@ -215,14 +266,22 @@ Stunden und 30 Minuten die Rollläden“ (Plural = alle, mit Vorschau).
   Bestätigungen, Benutzerbindung, NEVER_AUTO, Nur-Lesen/Nur-Admin gelten für jede neue
   Bedeutung. Mehrdeutigkeit → Rückfrage, nie raten. Eine neue Regel darf nie ein anderes
   Gerät schalten als das gemeinte – im Zweifel fragen.
-- **Generalisierung statt Auswendiglernen.** `sim/nlu_probe.py`, `sim/push_check.py` und
-  `sim/readme_check.py` sind **Abnahme-Holdouts**: Leite aus ihren Sätzen keine
-  Lexikon-, Grammatik- oder Sonderregeln ab und optimiere nicht auf sie hin. Baue einen
-  eigenen Entwicklungskorpus `tests/eval/natural_language_cases.json` mit mindestens
-  600 handgeschriebenen Sätzen (andere Formulierungen und Geräte als in den Holdouts,
-  inkl. Negativ- und Sicherheitsfällen, Erwartung je Satz), der in der Stub-Suite läuft.
-  Die Test-Session prüft am Ende zusätzlich mit einem **weiteren, unveröffentlichten
-  Korpus**.
+- **Verstehen statt Auswendiglernen.** Verboten sind Satzschablonen, Regex auf ganze
+  Formulierungen, Nachschlagetabellen „Satz → Aktion“ und jede Regel, die nur für einen
+  konkreten Testsatz existiert. Erlaubt und erwünscht sind allgemeine Regeln über
+  Bedeutungsbausteine (Wortbedeutung, Flexion, Satzstruktur, Rollen, Ontologie,
+  Weltmodell).
+- **Beweis durch Kombinatorik statt Satzmenge.** Für jede Fähigkeit gibt es einen
+  generierten Produktivitätstest, der Bausteine frei kombiniert – z. B. Gattung × Ort
+  (Raum/Etage/Satellit) × Aktion × Satzhülle (Befehl, Bitte, Wunsch, Frage) ×
+  Wortstellung × Verneinung – und gegen das Testhaus prüft. Der Test belegt, dass jede
+  neue Einheit (ein Wort, eine Gattung, ein Ort) in *allen* Kombinationen wirkt. Eine
+  kleine handgeschriebene Regressionsliste für Sonderfälle (Sicherheit, Mehrdeutigkeit)
+  ist zusätzlich erlaubt; ihre Größe ist kein Ziel.
+- `sim/nlu_probe.py`, `sim/push_check.py` und `sim/readme_check.py` sind
+  **Abnahme-Holdouts**: nicht daraus ableiten, nicht darauf optimieren. Die
+  Test-Session prüft am Ende mit einem **weiteren, unveröffentlichten Korpus**
+  ungesehener Sätze – gemessen wird also, ob HomeIntent Neues versteht.
 - Keine bestehenden Tests löschen, überspringen oder abschwächen; bestehende
   Szenarioerwartungen nicht aufweichen.
 - Latenz: p95 < 100 ms bei 5000 Entitäten (bestehende Benchmarks), Stub-Suite mit hassil
@@ -258,6 +317,7 @@ Einfahrtkamera), **ohne** Gerätenamen an Testsätze anzupassen.
    - `push_check.py`: 35 / 35; keine Nachricht an ein falsches Handy, keine Nachricht beim
      Anlegen.
    - `nlu_probe.py`: ≥ 75 % „ok“ und **0 falsche Geräteaktionen**.
+   - Produktivitätstests aus den Regeln oben grün; Regex-Verwendungen deutlich reduziert.
    - `check_log.py`: keine HomeIntent-Befunde.
 3. README ehrlich aktualisieren: Abschnitt „Wie HomeIntent Sprache versteht“ (Gattungen,
    Bedürfnisse, Sichten, Diskurs), neue Beispiele nur, wenn sie im Testhaus nachweislich
@@ -268,7 +328,8 @@ Einfahrtkamera), **ohne** Gerätenamen an Testsätze anzupassen.
 
 ## Reihenfolge
 
-S1–S7 (je ein Commit mit Regressionstest) → Abschnitt 1 Zielauflösung → Abschnitt 6
+S1–S7 (je ein Commit mit Regressionstest) → Abschnitt 0 (Funktionen auf das eine Modell
+umstellen, beginnend mit Benachrichtigungen) → Abschnitt 1 Zielauflösung → Abschnitt 6
 Benachrichtigungen → R1–R9 → Abschnitt 5 → Abschnitt 4 → Abschnitt 3 → Abschnitt 2 →
 Abschnitt 7 → Messung aller Holdouts → Dokumentation → PR. Nach jedem Abschnitt Stub-Suite
 und Testhaus laufen lassen; Rückschritte sofort beheben.
