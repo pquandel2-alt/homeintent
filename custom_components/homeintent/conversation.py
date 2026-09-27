@@ -200,6 +200,7 @@ from .thermal_deadline import (
 )
 from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
+from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain
 from .nlu.german_morphology import counted_passive
 from .nlu.unit_reasoning import normalize_measurement
@@ -985,6 +986,30 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+
+        if active_dialog is None and (
+            language_document.utterance.speech_act is SpeechAct.QUERY
+            or user_input.text.rstrip().endswith("?")
+        ):
+            # Situation views ("Ist unten noch was an?", "Ist alles zu?")
+            # aggregate observed states; they never execute anything.
+            view = answer_situation_view(
+                user_input.text,
+                entities,
+                source_area_id=(
+                    conversation_area.area_id if conversation_area is not None else None
+                ),
+                routine_steps=self._script_steps,
+            )
+            if view is not None:
+                return await self._async_handle_match_result(
+                    user_input,
+                    response,
+                    MatchResult(
+                        plan=None, response_text=view.text, context_entities=view.entities
+                    ),
+                    entities,
+                )
 
         if active_dialog is None:
             # Need statements ("Mir ist kalt", "Hier ist es zu hell") are
@@ -4756,6 +4781,19 @@ class NluConversationEntity(
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
+        """The configured action sequence of one script entity, if readable."""
+        component = self.hass.data.get("script")
+        get_entity = getattr(component, "get_entity", None)
+        if get_entity is None:
+            return None
+        script_entity = get_entity(entity_id)
+        config = getattr(script_entity, "raw_config", None)
+        sequence = config.get("sequence") if isinstance(config, dict) else None
+        if not isinstance(sequence, list):
+            return None
+        return [step for step in sequence if isinstance(step, dict)]
 
     async def _async_handle_match_result(
         self,
