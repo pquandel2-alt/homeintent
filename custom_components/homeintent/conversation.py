@@ -819,6 +819,31 @@ class NluConversationEntity(
             )
 
         active_dialog = active_pending_dialog(pending)
+        if (
+            active_dialog is not None
+            and active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION
+            and classify_confirmation_reply(user_input.text) is ConfirmationReply.UNCLEAR
+            and sum(1 for token in language_document.tokens if token.is_word) >= 3
+            and language_document.utterance.speech_act is not SpeechAct.QUERY
+            and not any(
+                token.canonical in {"warum", "wieso", "was", "welche", "welches", "wie"}
+                for token in language_document.tokens[:2]
+            )
+        ):
+            # A full new sentence instead of "Ja"/"Nein" drops the open
+            # proposal (nothing runs) and is understood on its own.
+            self._context_store.clear(user_input.conversation_id)
+            pending = (
+                ConversationContext(
+                    last_command=None,
+                    last_entities=(),
+                    last_area=pending.last_area,
+                    pending_clarification=None,
+                )
+                if pending is not None and pending.last_area is not None
+                else None
+            )
+            active_dialog = None
         direct_understanding = None
         manager = self._runtime_data.dialog_manager
         if active_dialog is None:
@@ -958,6 +983,35 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+
+        if active_dialog is None:
+            # Need statements ("Mir ist kalt", "Hier ist es zu hell") are
+            # grounded before read-only routers could answer them with values.
+            need = self._engine.understand_need(
+                language_document,
+                entities,
+                source_area_id=(
+                    conversation_area.area_id if conversation_area is not None else None
+                ),
+                context_area_id=(
+                    pending.last_area.area_id
+                    if pending is not None and pending.last_area is not None
+                    else None
+                ),
+            )
+            if isinstance(need, CommandPlan):
+                return await self._async_handle_command_plan(
+                    user_input, response, need, entities
+                )
+            if need is not None and need.plan is None:
+                response.async_set_speech(need.response_text)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            if need is not None:
+                return await self._async_handle_match_result(
+                    user_input, response, need, entities
+                )
 
         if (
             active_dialog is None

@@ -151,3 +151,30 @@ def test_s5_superlative_compares_indoor_rooms(monkeypatch, text, expected):
 def test_s5_outdoor_reference_includes_the_garden(monkeypatch):
     turn = HouseConversation(monkeypatch).say("Wo ist es draußen am kältesten?")
     assert "Garten" in turn.speech
+
+
+# --- S6: "zu hell" is a need (dim or ask), never a value readout -----------
+
+@pytest.mark.parametrize("text", [
+    "Hier ist es zu hell.",
+    "Es ist mir hier viel zu grell.",
+    "Das Licht ist zu hell.",
+])
+def test_s6_too_bright_dims_lights_that_are_on(monkeypatch, text):
+    house = HouseConversation(monkeypatch, with_states(
+        house_entities(), light__stehlampe="on", light__wohnzimmer_deckenlicht="on",
+    ), area="wohnzimmer")
+    turn = house.say(text)
+    assert "aus;" not in turn.speech and "Prozent;" not in turn.speech
+    if turn.calls:
+        assert all(data.get("brightness_step_pct", 0) < 0 for _, _, data in turn.calls)
+        assert turn.targets <= {"light.stehlampe", "light.wohnzimmer_deckenlicht"}
+    else:
+        assert turn.speech.startswith("Soll ich")
+
+
+def test_s6_too_bright_without_lights_on_only_proposes(monkeypatch):
+    house = HouseConversation(monkeypatch, area="wohnzimmer")
+    turn = house.say("Hier ist es zu hell.")
+    assert turn.calls == []
+    assert turn.speech.startswith("Soll ich")

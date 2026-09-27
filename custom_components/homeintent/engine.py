@@ -67,6 +67,9 @@ from .nlu.primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .nlu.normalize import normalize
 from .nlu.device_ontology import analyse_word
 from .nlu.ontology_compiler import compile_ontology_command
+from .nlu.need_compiler import compile_need
+from .nlu.need_semantics import interpret_need
+from .nlu.place_model import PlaceKind, build_place_lexicon
 from .nlu.language_frontend import LanguageDocument, analyse_language
 from .nlu.parser import (
     ClarificationRequest,
@@ -1291,6 +1294,67 @@ class NluEngine:
             authority = UnderstandingAuthority.V8_SEMANTIC
         return self._direct_understanding_outcome(
             text, document, interpreted, result, entities, authority
+        )
+
+    def understand_need(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        *,
+        source_area_id: str | None = None,
+        context_area_id: str | None = None,
+    ) -> MatchResult | CommandPlan | None:
+        """Ground a need statement ("Mir ist kalt") in operations.
+
+        Returns ``None`` when the turn states no need.  A ``MatchResult``
+        without plan carries a spoken hint or question; a ``CommandPlan``
+        with ``confirmation_text`` is a proposal.
+        """
+        utterance = document.utterance
+        if utterance.speech_act in {
+            SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION, SpeechAct.CORRECTION,
+        } or utterance.modality is Modality.HYPOTHETICAL:
+            return None
+        actions = document.semantics.values(SemanticKind.ACTION) - {"close"}
+        if utterance.speech_act is SpeechAct.COMMAND and actions:
+            return None
+        words = [token.canonical for token in document.tokens if token.is_word]
+        meaning = interpret_need(
+            words, question=document.source_text.rstrip().endswith("?")
+        )
+        if meaning is None:
+            return None
+        lexicon = build_place_lexicon(entities)
+        mentions = lexicon.scan(words)
+        place = next(
+            (mention.place for mention in mentions if mention.place.kind is not PlaceKind.HERE),
+            None,
+        )
+        if place is None:
+            for area_id in (source_area_id, context_area_id):
+                if area_id is not None:
+                    place = lexicon.place_for_area(area_id)
+                    if place is not None:
+                        break
+        outcome = compile_need(meaning, entities, place, document.source_text)
+        if outcome.message is not None and not outcome.results:
+            return MatchResult(plan=None, response_text=outcome.message)
+        rendered: list[MatchResult] = []
+        for parsed in outcome.results:
+            item = self._build_match_result(parsed, entities)
+            if item is None or item.plan is None:
+                return None
+            rendered.append(item)
+        if not rendered:
+            return None
+        if outcome.confirm is not None:
+            return CommandPlan(tuple(rendered), confirmation_text=outcome.confirm)
+        if len(rendered) == 1:
+            return replace(rendered[0], response_text=outcome.reason or rendered[0].response_text)
+        first, *rest = rendered
+        return CommandPlan(
+            (replace(first, response_text=outcome.reason or first.response_text),
+             *(replace(item, response_text="") for item in rest))
         )
 
     def _ontology_failure(
