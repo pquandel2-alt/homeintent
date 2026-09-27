@@ -180,3 +180,24 @@ def test_quantified_kind_word_is_a_kind_even_if_it_is_a_name(quantifier):
     compiled = compile_ontology_command(document, entities)
     assert compiled is not None
     assert {e.entity_id for r in compiled.results for e in r.resolved_entities} == {"cover.a", "cover.b"}
+
+
+@pytest.mark.parametrize("tone,kelvin", [
+    ("warmweiß", 2700), ("neutralweiß", 4000), ("neutral weiß", 4000),
+    ("tageslichtweiß", 5500), ("kaltweiß", 6500),
+])
+@pytest.mark.parametrize("shape", ["Stell {t} auf {w}.", "Mach {t} {w}."])
+@pytest.mark.parametrize("target,expected", [
+    ("das Bürolicht", {"light.buerolicht"}),
+    ("das Licht im Wohnzimmer", {"light.wohnzimmer_deckenlicht", "light.wohnzimmer_led_streifen"}),
+    ("das Licht im Büro", {"light.buerolicht"}),
+])
+def test_white_tone_reaches_every_capable_light(monkeypatch, tone, kelvin, shape, target, expected):
+    turn = HouseConversation(monkeypatch).say(shape.format(t=target, w=tone))
+    assert turn.targets == expected, turn.speech
+    assert all(data.get("color_temp_kelvin") == kelvin for _, _, data in turn.calls)
+
+
+def test_white_tone_on_incapable_light_says_so(monkeypatch):
+    turn = HouseConversation(monkeypatch).say("Stell die Stehlampe auf warmweiß.")
+    assert turn.calls == [] and "Stehlampe" in turn.speech and "warmweiß" in turn.speech

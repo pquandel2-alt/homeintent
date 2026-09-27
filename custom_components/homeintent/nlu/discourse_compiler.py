@@ -221,6 +221,23 @@ def compile_discourse(
         descriptions = (TargetDescription(
             explicit=others, quantity=Quantity.ALL if len(others) == 1 else Quantity.ONE,
         ),)
+    elif spoken_places and context.last_entities and not any(
+        spoken_places[0].contains(entity) for entity in context.last_entities
+    ):
+        # An explicit new place outranks the remembered referent: "Mach es
+        # im Kinderzimmer kühler" after the office means the kind the
+        # property implies (or the remembered kind) in the children's room.
+        if degree is not None and degree[0] in PROPERTY_GENUS:
+            kinds = [PROPERTY_GENUS[degree[0]]]
+        else:
+            kinds = sorted(entity_genera(context.last_entities[0]) - {"device"})
+        if not kinds:
+            return None
+        descriptions = (TargetDescription(
+            genera=tuple(kinds), head=kinds[0], place=spoken_places[0],
+            quantity=Quantity.ALL if len(context.last_entities) > 1 else Quantity.ONE,
+            mass=len(context.last_entities) > 1,
+        ),)
     elif context.last_entities and not (word_set & _DEICTIC_PLACE and degree is not None):
         by_id = {entity.entity_id: entity for entity in entities}
         referents = tuple(

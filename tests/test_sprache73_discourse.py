@@ -93,3 +93,14 @@ def test_discourse_never_crosses_conversations(monkeypatch):
     house.say("Schalte die Stehlampe ein.")
     house.conversation_id = "another-conversation"
     assert house.say("Etwas heller bitte.").calls == []
+
+
+@pytest.mark.parametrize("followup,expected", [
+    ("Mach es im Kinderzimmer etwas kühler.", {"climate.heizung_kinderzimmer"}),
+    ("Mach es im Schlafzimmer wärmer.", {"climate.heizung_schlafzimmer"}),
+    ("Mach das im Bad aus.", {"climate.heizung_badezimmer"}),
+])
+def test_explicit_new_place_outranks_the_remembered_referent(monkeypatch, followup, expected):
+    house = HouseConversation(monkeypatch, area="buro")
+    house.say("Mach es etwas kühler.")
+    assert house.say(followup).targets == expected

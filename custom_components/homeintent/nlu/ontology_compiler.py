@@ -42,6 +42,7 @@ from .semantic_catalog import (
     DEGREE_WORDS,
     GROUP_PREVIEW_THRESHOLD,
     ONTOLOGY_OPERATIONS,
+    COLOR_TEMPERATURE_WORDS,
     OPTION_OPERATIONS,
     PROPERTY_GENUS,
     TIME_BOUND_WORDS,
@@ -467,6 +468,82 @@ def _option_command(
     return None
 
 
+_TONE_WORDS = {
+    normalize_for_compare(word): kelvin for word, kelvin in COLOR_TEMPERATURE_WORDS.items()
+}
+_TONE_GLUE = frozenset({"auf", "in", "weiss", "licht", "lichtfarbe", "farbe", "stellen", "stelle", "stell"})
+
+
+def _tone_command(
+    document: object,
+    entities: Sequence[EntitySnapshot],
+    source_area: AreaSnapshot | None,
+) -> OntologyCommand | None:
+    """"<Licht-Ziel> (auf) warmweiß": a white tone for every capable light.
+
+    Only lights reporting colour-temperature support are set; when none of
+    the described lights can, the answer says so instead of "not
+    understood".  Singular with several capable members asks.
+    """
+    source = getattr(getattr(document, "utterance"), "normalized_text")
+    tokens = tokenize_language(source)
+    words = [token.canonical for token in tokens]
+    kelvin: int | None = None
+    tone_indices: set[int] = set()
+    for index, word in enumerate(words):
+        if word in _TONE_WORDS:
+            kelvin, tone_indices = _TONE_WORDS[word], {index}
+        elif index + 1 < len(words) and words[index + 1] == "weiss" and f"{word}weiss" in _TONE_WORDS:
+            kelvin, tone_indices = _TONE_WORDS[f"{word}weiss"], {index, index + 1}
+    if kelvin is None:
+        return None
+    target_tokens = [token for index, token in enumerate(tokens) if index not in tone_indices]
+    lexicon = build_place_lexicon(entities)
+    descriptions, residue = describe_with_residue(
+        target_tokens, entities, lexicon=lexicon,
+        ignore=frozenset(_operation_words(normalize(source))[1] | _FILLER_WORDS | {"auf"}),
+        names=_name_index(entities),
+    )
+    if residue or len(descriptions) != 1:
+        return None
+    place = lexicon.place_for_area(source_area.area_id) if source_area is not None else None
+    resolution = resolve_description(
+        descriptions[0], entities, source_area=place, domains=frozenset({"light"}),
+    )
+    lights = [entity for entity in resolution.entities if entity.domain == "light"]
+    if not lights or resolution.outcome not in {ResolutionOutcome.RESOLVED, ResolutionOutcome.AMBIGUOUS}:
+        return None
+    capable = [entity for entity in lights if "COLOR_TEMPERATURE" in entity.capabilities]
+    tone = next(word for word, value in COLOR_TEMPERATURE_WORDS.items() if value == kelvin)
+    if not capable:
+        verb = "kann" if len(lights) == 1 else "können"
+        return OntologyCommand(message=(
+            f"{_names(lights)} {verb} keine Lichtfarbe wie {tone} einstellen. "
+            "Ich habe nichts ausgeführt."
+        ))
+    if resolution.outcome is ResolutionOutcome.AMBIGUOUS and len(capable) > 1:
+        return OntologyCommand(clarification=ClarificationRequest(
+            "HassLightSetColorTemp", "light", tuple(capable), {"color_temp_kelvin": kelvin},
+        ))
+    results = tuple(
+        ParseResult(
+            frame=SemanticFrame(
+                intent="HassLightSetColorTemp",
+                target=TargetReference(entity.friendly_name, entity.entity_id, entity.domain),
+                area=None,
+                parameters={"color_temp_kelvin": kelvin},
+                source_text=getattr(document, "source_text"),
+                action=SemanticAction.SET,
+                property=SemanticProperty.COLOR_TEMPERATURE,
+            ),
+            resolved_entities=[entity],
+        )
+        for entity in capable
+    )
+    kept = tuple(entity for entity in lights if entity not in capable)
+    return OntologyCommand(results=results, kept=kept, clauses=1)
+
+
 def compile_ontology_command(
     document: object,
     entities: Sequence[EntitySnapshot],
@@ -490,6 +567,9 @@ def compile_ontology_command(
     option = _option_command(document, entities, source_area)
     if option is not None:
         return option
+    tone = _tone_command(document, entities, source_area)
+    if tone is not None:
+        return tone
     clauses = _clause_meanings(document, entities)
     if not clauses:
         return None
