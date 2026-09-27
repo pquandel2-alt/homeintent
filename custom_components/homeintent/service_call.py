@@ -8,6 +8,7 @@ working integration rather than inventing new semantics.
 
 from __future__ import annotations
 
+from .nlu.semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
@@ -540,7 +541,7 @@ _COLOR_SPOKEN_DE = {
     "red": "rot", "green": "grün", "blue": "blau", "yellow": "gelb", "orange": "orange",
     "purple": "lila", "white": "weiß", "pink": "pink", "turquoise": "türkis", "cyan": "cyan",
 }
-_COLOR_TEMP_SPOKEN_DE = {2700: "warmweiß", 6500: "kaltweiß"}
+_COLOR_TEMP_SPOKEN_DE = COLOR_TEMPERATURE_SPOKEN
 
 
 @dataclass(frozen=True)

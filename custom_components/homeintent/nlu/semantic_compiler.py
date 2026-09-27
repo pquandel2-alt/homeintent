@@ -64,6 +64,7 @@ from .registered_operation_compiler import climate_in_named_area
 from .semantic_exclusion import split_exclusion as _split_exclusion
 from .semantic_lexicon import SemanticAnalysis, SemanticKind, analyse_semantics
 from .semantic_catalog import (
+    COLOR_TEMPERATURE_WORDS,
     DOMAIN_WORDS,
     INTENT_BY_DOMAIN_ACTION,
     MEASUREMENT_PROPERTY_SPECS,
@@ -1016,7 +1017,13 @@ def _compile_light_color(
     entities: list[EntitySnapshot],
     world_model: WorldModel | None,
 ) -> ParseResult | None:
-    temperature = re.search(r"\b(warmweiß|kaltweiß)\b", text, re.I)
+    temperature = next(
+        (
+            word for word in COLOR_TEMPERATURE_WORDS
+            if word in text.casefold().replace("weiss", "weiß")
+        ),
+        None,
+    )
     color_matches = [
         (word, value)
         for word, value in _LIGHT_COLORS.items()
@@ -1038,7 +1045,7 @@ def _compile_light_color(
     ):
         return None
     if temperature is not None:
-        kelvin = 2700 if temperature.group(1).casefold().startswith("warm") else 6500
+        kelvin = COLOR_TEMPERATURE_WORDS[temperature]
         intent = "HassLightSetColorTemp"
         parameters: dict[str, object] = {"color_temp_kelvin": kelvin}
         property_ = SemanticProperty.COLOR_TEMPERATURE

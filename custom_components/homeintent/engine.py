@@ -491,7 +491,7 @@ _GET_STATE_ZEIGT_RE = re.compile(r"\bzeigt\b", re.IGNORECASE)
 # Prozent heller" contains both "Prozent" and "heller" and must not fall
 # into PercentageParser's absolute {name}/{percent} grammar.
 _LIGHT_EXTENDED_RE = re.compile(
-    r"\b(heller|dunkler|rot|grün|blau|gelb|orange|lila|violett|weiß|pink|rosa|türkis|cyan|warmweiß|kaltweiß)\b",
+    r"\b(heller|dunkler|rot|grün|blau|gelb|orange|lila|violett|weiß|pink|rosa|türkis|cyan|(?:warm|neutral|tageslicht|kalt)wei(?:ß|ss))\b",
     re.IGNORECASE,
 )
 
@@ -734,6 +734,27 @@ def _several_automations_text(entity: EntitySnapshot | None) -> str:
     if entity is None:
         return "Es gibt mehrere Automationen mit diesem Namen."
     return f"Es gibt mehrere Automationen, die {entity.friendly_name} steuern."
+
+
+def _unknown_exclusions(
+    names: tuple[str, ...], entities: list[EntitySnapshot]
+) -> tuple[str, ...]:
+    """Excluded names that match no registry name or alias at all (R7)."""
+    known = {
+        normalize_for_compare(name).removeprefix("der ").removeprefix("die ").removeprefix("das ")
+        for entity in entities
+        for name in (entity.friendly_name, *entity.aliases)
+    }
+    unknown: list[str] = []
+    for name in names:
+        words = normalize_for_compare(name).split()
+        while words and words[0] in {"der", "die", "das", "den", "dem"}:
+            words.pop(0)
+        key = " ".join(words)
+        if key and not any(key == item or key in item.split() or item in key for item in known):
+            spoken = " ".join(name.split()[len(name.split()) - len(words):])
+            unknown.append(spoken[:1].upper() + spoken[1:])
+    return tuple(unknown)
 
 
 def _unresolved_exclusion_text(names: tuple[str, ...]) -> str:
@@ -2007,6 +2028,14 @@ class NluEngine:
         self, text: str, entities: list[EntitySnapshot] | None = None
     ) -> UnderstandingFeedback | None:
         """Return the structured counterpart of the spoken failure text."""
+        if entities is not None and has_exclusion_clause(normalize(text)):
+            unknown = _unknown_exclusions(split_exclusion(normalize(text))[1], entities)
+            if unknown:
+                names = " und ".join(f"„{name}“" for name in unknown)
+                return UnderstandingFeedback(
+                    ParseFailureReason.UNKNOWN_ENTITY,
+                    f"Ich finde kein Gerät {names}. Ich habe nichts ausgeführt.",
+                )
         if entities is not None:
             honest = self._ontology_failure(text, entities)
             if honest is not None:
@@ -4388,13 +4417,16 @@ class NluEngine:
             else ()
         )
         model = AutomationModel(
-            triggers=(
+            triggers=tuple(
                 TriggerModel(
                     type=TriggerType.CALENDAR,
-                    calendar_entity_id=draft.calendar_entity_id,
+                    calendar_entity_id=calendar_entity_id,
                     calendar_event=draft.event,
                     offset_minutes=draft.offset_minutes,
-                ),
+                )
+                for calendar_entity_id in (
+                    draft.calendar_entity_ids or (draft.calendar_entity_id,)
+                )
             ),
             conditions=conditions,
             actions=actions,

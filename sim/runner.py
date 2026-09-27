@@ -40,6 +40,7 @@ class Runner:
         self.tokens = tokens
         self.ws: dict[str, WS] = {}
         self.area_devices: dict[str, str] = {}
+        self.full_reset = False
 
     async def __aenter__(self):
         for user in ("admin", "anna", "lena"):
@@ -165,7 +166,7 @@ class Runner:
     # ---------------------------------------------------------- scenarios
     async def run(self, scenario: dict[str, Any]) -> dict[str, Any]:
         if not scenario.get("no_reset"):
-            await self.service("haus_sim.reset")
+            await self.service("haus_sim.reset", {"full": True} if self.full_reset else None)
         conv_ids: dict[str, str | None] = {}
         out_steps = []
         for step in scenario["steps"]:
@@ -221,6 +222,8 @@ async def main() -> None:
                     help="Exit-Code 1, sobald ein Szenario fehlschlägt (CI)")
     ap.add_argument("--out", default=str(HERE / "results" / "run.json"))
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--full-reset", action="store_true",
+                    help="also clear lists, timers and test automations before every scenario (R11)")
     args = ap.parse_args()
     chosen = [
         s for s in SCENARIOS
@@ -231,6 +234,7 @@ async def main() -> None:
     results = []
     async with aiohttp.ClientSession() as session:
         async with Runner(session, load_tokens()) as runner:
+            runner.full_reset = args.full_reset
             for sc in chosen:
                 res = await runner.run(sc)
                 results.append(res)

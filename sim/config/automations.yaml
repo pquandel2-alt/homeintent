@@ -1,25 +1,131 @@
-- id: "1700000000001"
+- id: '1700000000001'
   alias: Flurlicht bei Bewegung
   description: Vom Benutzer angelegt (nicht HomeIntent)
   triggers:
-    - trigger: state
-      entity_id: binary_sensor.bewegung_flur
-      to: "on"
+  - trigger: state
+    entity_id: binary_sensor.bewegung_flur
+    to: 'on'
   actions:
-    - action: light.turn_on
-      target:
-        entity_id: light.flurlicht
-- id: "1700000000002"
+  - action: light.turn_on
+    target:
+      entity_id: light.flurlicht
+  initial_state: false
+- id: '1700000000002'
   alias: Rollläden abends schließen
   description: Vom Benutzer angelegt (nicht HomeIntent)
   triggers:
-    - trigger: sun
-      event: sunset
-      offset: "00:15:00"
+  - trigger: sun
+    event: sunset
+    offset: 00:15:00
   actions:
-    - action: cover.close_cover
-      target:
-        entity_id:
-          - cover.wohnzimmer_rollladen_links
-          - cover.wohnzimmer_rollladen_rechts
-          - cover.kuechenrollladen
+  - action: cover.close_cover
+    target:
+      entity_id:
+      - cover.wohnzimmer_rollladen_links
+      - cover.wohnzimmer_rollladen_rechts
+      - cover.kuechenrollladen
+- id: 5a67f65461c44d1e953aef70f08371e8
+  alias: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird.
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.wohnzimmerfenster
+    to: 'on'
+  actions:
+  - action: notify.send_message
+    target:
+      entity_id:
+      - notify.handy_philipp_nachricht
+    data:
+      message: Das Wohnzimmerfenster wurde geöffnet.
+      title: HomeIntent
+- id: 8a8aa5e53b764a52be4393d46dc60f1e
+  alias: Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein.
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.kuechenfenster
+    to: 'on'
+  actions:
+  - action: homeassistant.turn_on
+    target:
+      entity_id: light.kuechenlicht
+- id: 67079a9ffa514c4191c3f06aa40c523a
+  alias: Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht
+    ein.
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.temperatur_keller
+    below: 12.0
+  actions:
+  - action: homeassistant.turn_on
+    target:
+      entity_id: light.kellerlicht
+- id: aecdd641aef74e5c96eb88d907847225
+  alias: Bei Sonnenuntergang schalte die Außenbeleuchtung ein.
+  triggers:
+  - trigger: sun
+    event: sunset
+  actions:
+  - action: homeassistant.turn_on
+    target:
+      entity_id: light.aussenbeleuchtung
+  conditions:
+  - condition: or
+    conditions:
+    - condition: state
+      entity_id: person.anna
+      state: home
+    - condition: state
+      entity_id: person.lena
+      state: home
+    - condition: state
+      entity_id: person.philipp
+      state: home
+- id: b02597efbc28449f86d95a638d2fd385
+  alias: Jeden Werktag um 7 Uhr schalte das Küchenlicht ein.
+  triggers:
+  - trigger: time
+    at: 07:00:00
+  actions:
+  - action: homeassistant.turn_on
+    target:
+      entity_id: light.kuechenlicht
+  conditions:
+  - condition: time
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+- id: d852101deb6840ce86af19b5c79921ae
+  alias: Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung
+    im Schlafzimmer aus.
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.schlafzimmerfenster
+    to: 'on'
+    for:
+      seconds: 600
+  actions:
+  - action: homeassistant.turn_off
+    target:
+      entity_id: climate.heizung_schlafzimmer
+- id: b02f98e65f844344a58d9967e5ddbb3a
+  alias: Jeden Tag um 21 Uhr stelle das Bürolicht auf warmweiß.
+  triggers:
+  - trigger: time
+    at: '21:00:00'
+  actions:
+  - action: homeassistant.turn_on
+    target:
+      entity_id: light.buerolicht
+- id: 58842fa5cd304c2ab466afc590e6bb7f
+  alias: Wenn die Haustür geöffnet wird.; Schalte das Flurlicht ein.; Immer.
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.haustuer
+    to: 'on'
+  actions:
+  - action: homeassistant.turn_on
+    target:
+      entity_id: light.flurlicht

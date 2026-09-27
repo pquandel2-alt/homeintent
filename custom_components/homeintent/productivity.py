@@ -454,7 +454,11 @@ def parse_timer_request(text: str, entities: list[EntitySnapshot]) -> TimerReque
         if _TIMER_CANCEL_RE.search(text):
             return TimerRequest(TimerOperation.CANCEL_ALL)
         return TimerRequest(TimerOperation.LIST)
-    if entity_id is None and not candidates and _LIST_TIMERS_RE.search(text):
+    if entity_id is None and not candidates and (
+        _LIST_TIMERS_RE.search(text) or "wie viele" in lowered or "wieviele" in lowered
+    ):
+        # "Wie viele Timer laufen?" is answered by the same timer listing,
+        # which states the count first.
         return TimerRequest(TimerOperation.LIST)
     if re.search(r"\b(?:wie\s+lange|restzeit|status|stand|läuft|laeuft)\b", lowered):
         operation = TimerOperation.STATUS

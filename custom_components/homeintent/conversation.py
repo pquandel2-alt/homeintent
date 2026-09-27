@@ -201,6 +201,7 @@ from .thermal_deadline import (
 from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
 from .nlu.utterance_meaning import render_maintain
+from .nlu.german_morphology import counted_passive
 from .nlu.unit_reasoning import normalize_measurement
 from .monitor_goal import MonitorRecord
 from .nlu.temporal_semantics import resolve_history_window, resolve_scheduled_datetime
@@ -3993,7 +3994,12 @@ class NluConversationEntity(
                     operation = active.slots.get("operation")
                     if operation == MemoryOperation.RESET.value:
                         deleted = await store.async_reset() if store is not None else 0
-                        response.async_set_speech(f"{deleted} gespeicherte Einträge wurden kontrolliert gelöscht.")
+                        response.async_set_speech(
+                            counted_passive(
+                                deleted, "gespeicherter Eintrag", "gespeicherte Einträge",
+                                "kontrolliert gelöscht",
+                            )
+                        )
                     elif operation == MemoryOperation.FORGET_PERSON.value:
                         person_id = active.slots.get("person_id")
                         deleted = (
@@ -4002,7 +4008,10 @@ class NluConversationEntity(
                             else 0
                         )
                         response.async_set_speech(
-                            f"{deleted} dir zugeordnete Einträge wurden kontrolliert gelöscht."
+                            counted_passive(
+                                deleted, "dir zugeordneter Eintrag", "dir zugeordnete Einträge",
+                                "kontrolliert gelöscht",
+                            )
                         )
                     elif operation == MemoryOperation.FORGET_PREFERENCE.value:
                         memory_id = active.slots.get("memory_id")
@@ -6066,7 +6075,9 @@ class NluConversationEntity(
             return (
                 "Es gab keine erledigten Einträge."
                 if not completed
-                else f"{len(completed)} erledigte Einträge wurden gelöscht."
+                else counted_passive(
+                    len(completed), "erledigter Eintrag", "erledigte Einträge", "gelöscht"
+                )
             )
 
         def matching_items(
@@ -6120,8 +6131,8 @@ class NluConversationEntity(
                 )
             count = len(selected)
             if request.operation is TodoOperation.COMPLETE:
-                return f"{count} Eintrag" + (" wurde" if count == 1 else "e wurden") + " als erledigt markiert."
-            return f"{count} Eintrag" + (" wurde" if count == 1 else "e wurden") + " aus der Liste entfernt."
+                return counted_passive(count, "Eintrag", "Einträge", "als erledigt markiert")
+            return counted_passive(count, "Eintrag", "Einträge", "aus der Liste entfernt")
 
         if request.operation is TodoOperation.MOVE:
             if request.destination_entity_id is None:

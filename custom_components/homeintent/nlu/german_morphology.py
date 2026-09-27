@@ -200,3 +200,16 @@ def definite_entity_phrase(name: str) -> tuple[str, str, str] | None:
     nominative, accusative, pronoun = _DEFINITE_ARTICLES[gender]
     stripped = name.strip()
     return f"{nominative} {stripped}", f"{accusative} {stripped}", pronoun
+
+
+def counted(count: int, singular: str, plural: str) -> str:
+    """"1 Eintrag", "2 Einträge", "kein Eintrag" - number agreement in one place."""
+    if count == 0:
+        return f"keine {plural}"
+    return f"{count} {singular if count == 1 else plural}"
+
+
+def counted_passive(count: int, singular: str, plural: str, participle: str) -> str:
+    """"1 Eintrag wurde gelöscht." / "2 Einträge wurden gelöscht."."""
+    verb = "wurde" if count == 1 else "wurden"
+    return f"{counted(count, singular, plural)} {verb} {participle}."

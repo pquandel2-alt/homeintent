@@ -173,7 +173,7 @@ PROPERTY_ENTRIES = (
     CatalogueEntry("speed", (r"stufe", r"geschwindigkeit", r"schneller", r"langsamer")),
     CatalogueEntry(
         "color",
-        (r"rot", r"grün", r"blau", r"gelb", r"orange", r"lila", r"violett", r"weiß", r"pink", r"rosa", r"türkis", r"cyan", r"warmweiß", r"kaltweiß"),
+        (r"rot", r"grün", r"blau", r"gelb", r"orange", r"lila", r"violett", r"weiß", r"pink", r"rosa", r"türkis", r"cyan", r"warmwei(?:ß|ss)", r"neutralwei(?:ß|ss)", r"tageslichtwei(?:ß|ss)", r"kaltwei(?:ß|ss)"),
     ),
     CatalogueEntry("position", (r"position", r"höhe", r"oeffnung", r"öffnung")),
     CatalogueEntry("volume", (r"lautstärke", r"lautstaerke", r"laut", r"leise")),
@@ -442,3 +442,29 @@ TIME_BOUND_WORDS = frozenset({
     "sonnenaufgang", "wenn", "sobald", "falls", "bis", "solange", "waehrend",
     "jeden", "jede", "jedes", "immer", "halb", "viertel",
 })
+
+# White tones -> colour temperature in Kelvin (lighting-industry values).
+# One table feeds the direct compiler, the Hassil slot list, automation
+# validation and every spoken preview.
+COLOR_TEMPERATURE_WORDS: dict[str, int] = {
+    "warmweiß": 2700,
+    "neutralweiß": 4000,
+    "tageslichtweiß": 5500,
+    "kaltweiß": 6500,
+}
+COLOR_TEMPERATURE_SPOKEN: dict[int, str] = {
+    kelvin: word for word, kelvin in COLOR_TEMPERATURE_WORDS.items()
+}
+
+# Device option lists (attribute reported by Home Assistant) and the one
+# registered service that selects a listed value: "Saugroboter auf leise",
+# "Ventilator auf Nacht", "Radio auf Bayern 3", "Heizprogramm auf Eco".
+OPTION_OPERATIONS: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("vacuum", "fan_speed_list"): ("vacuum", "set_fan_speed", "fan_speed"),
+    ("fan", "preset_modes"): ("fan", "set_preset_mode", "preset_mode"),
+    ("media_player", "source_list"): ("media_player", "select_source", "source"),
+    ("humidifier", "available_modes"): ("humidifier", "set_mode", "mode"),
+    ("climate", "preset_modes"): ("climate", "set_preset_mode", "preset_mode"),
+    ("select", "options"): ("select", "select_option", "option"),
+    ("water_heater", "operation_list"): ("water_heater", "set_operation_mode", "operation_mode"),
+}

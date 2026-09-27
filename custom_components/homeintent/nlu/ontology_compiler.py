@@ -42,6 +42,7 @@ from .semantic_catalog import (
     DEGREE_WORDS,
     GROUP_PREVIEW_THRESHOLD,
     ONTOLOGY_OPERATIONS,
+    OPTION_OPERATIONS,
     PROPERTY_GENUS,
     TIME_BOUND_WORDS,
     OperationTarget,
@@ -402,6 +403,70 @@ def _names(entities: Sequence[EntitySnapshot]) -> str:
     return ", ".join(labels[:-1]) + " und " + labels[-1]
 
 
+def _option_command(
+    document: object,
+    entities: Sequence[EntitySnapshot],
+    source_area: AreaSnapshot | None,
+) -> OntologyCommand | None:
+    """"<target> auf <listed option>": select a value the device reports.
+
+    The value must literally be one of the option list entries Home
+    Assistant exposes for the grounded device; nothing is invented.
+    """
+    source = getattr(getattr(document, "utterance"), "normalized_text")
+    tokens = tokenize_language(source)
+    positions = [index for index, token in enumerate(tokens) if token.canonical == "auf"]
+    if len(positions) != 1:
+        return None
+    split = positions[0]
+    value_tokens = [token for token in tokens[split + 1:] if token.is_word or token.is_number]
+    if not value_tokens or all(token.is_number for token in value_tokens):
+        return None
+    value_text = source[value_tokens[0].start:value_tokens[-1].end]
+    value_key = normalize_for_compare(value_text)
+    if not value_key or value_key in _FILLER_WORDS:
+        return None
+    lexicon = build_place_lexicon(entities)
+    descriptions, _residue = describe_with_residue(
+        tokens[:split], entities, lexicon=lexicon,
+        ignore=frozenset(_operation_words(normalize(source[:tokens[split].start]))[1] | _FILLER_WORDS),
+    )
+    if len(descriptions) != 1:
+        return None
+    place = lexicon.place_for_area(source_area.area_id) if source_area is not None else None
+    domains = frozenset(domain for domain, _ in OPTION_OPERATIONS)
+    resolution = resolve_description(descriptions[0], entities, source_area=place, domains=domains)
+    if resolution.outcome is not ResolutionOutcome.RESOLVED or len(resolution.entities) != 1:
+        return None
+    entity = resolution.entities[0]
+    for (domain, attribute), (service_domain, service, key) in OPTION_OPERATIONS.items():
+        if entity.domain != domain:
+            continue
+        options = entity.attributes.get(attribute) or ()
+        chosen = next(
+            (option for option in options if normalize_for_compare(str(option)) == value_key),
+            None,
+        )
+        if chosen is None:
+            continue
+        return OntologyCommand(results=(ParseResult(
+            frame=SemanticFrame(
+                intent=REGISTERED_OPERATION_INTENT,
+                target=TargetReference(entity.friendly_name, entity.entity_id, entity.domain),
+                area=None,
+                parameters={
+                    "service_domain": service_domain,
+                    "service_name": service,
+                    "service_data": {key: str(chosen)},
+                },
+                source_text=getattr(document, "source_text"),
+                action=SemanticAction.SET,
+            ),
+            resolved_entities=[entity],
+        ),))
+    return None
+
+
 def compile_ontology_command(
     document: object,
     entities: Sequence[EntitySnapshot],
@@ -422,6 +487,9 @@ def compile_ontology_command(
     ):
         # Time-bound commands belong to scheduling/automation.
         return None
+    option = _option_command(document, entities, source_area)
+    if option is not None:
+        return option
     clauses = _clause_meanings(document, entities)
     if not clauses:
         return None

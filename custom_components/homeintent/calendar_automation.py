@@ -16,6 +16,9 @@ class CalendarAutomationDraft:
     offset_minutes: int | None
     summary_contains: str | None
     action_text: str
+    # Without a named calendar a titled event ("der Termin Urlaub") is
+    # watched in every calendar; the title condition keeps it precise.
+    calendar_entity_ids: tuple[str, ...] = ()
 
 
 _CALENDAR_CUE_RE = re.compile(
@@ -88,8 +91,12 @@ def parse_calendar_automation_draft(
     if not _CALENDAR_CUE_RE.search(text):
         return None
     calendar = _resolve_calendar(text, entities)
+    all_calendars = tuple(entity for entity in entities if entity.domain == "calendar")
+    unnamed = calendar is None and len(all_calendars) > 1
     if calendar is None:
-        return None
+        if not unnamed:
+            return None
+        calendar = all_calendars[0]
     action_matches = list(_ACTION_START_RE.finditer(text))
     if not action_matches:
         return None
@@ -121,6 +128,9 @@ def parse_calendar_automation_draft(
             if offset_match.group(1).casefold() == "vor":
                 offset_minutes *= -1
     summary = _extract_summary(trigger_clause, calendar, event_start, offset_match)
+    if unnamed and summary is None:
+        return None
     return CalendarAutomationDraft(
-        calendar.entity_id, event, offset_minutes, summary, action_text
+        calendar.entity_id, event, offset_minutes, summary, action_text,
+        tuple(entity.entity_id for entity in all_calendars) if unnamed else (calendar.entity_id,),
     )

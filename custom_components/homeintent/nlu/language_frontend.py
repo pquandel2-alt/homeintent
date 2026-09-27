@@ -390,6 +390,31 @@ def analyse_language(
         # target without a copula.  "Hier ist es zu hell" keeps its copula
         # and stays a statement.
         utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+        and not re.match(
+            r"\s*(?:wer|was|wie|wo|wann|warum|wieso|welch\w*|ob)\b",
+            utterance.normalized_text,
+            re.I,
+        )
+    ):
+        words = [
+            normalize_for_compare(word)
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        ]
+        after_auf = words[words.index("auf") + 1:] if "auf" in words else []
+        if "auf" in words and after_auf and (
+            _ELLIPTICAL_DIRECTIVE_RE.search(utterance.normalized_text)
+            or not any(word.isdigit() for word in after_auf)
+        ) and (
+            _has_registry_mention(" ".join(words[:words.index("auf")]), entity_tuple)
+            or any(analyse_word(word) is not None for word in words[:words.index("auf")])
+        ):
+            # Verbless settings ("Saugroboter bitte auf leise", "Rollladen
+            # auf 40"): a target followed by "auf <value>" is a directive.
+            utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
     explicit_unmute = re.search(r"\bnicht\s+mehr\s+stumm\b", text, re.I) is not None
     if explicit_unmute:
         utterance = replace(utterance, polarity=Polarity.POSITIVE)

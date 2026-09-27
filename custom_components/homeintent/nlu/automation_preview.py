@@ -23,6 +23,7 @@ own spoken-response helpers already take.
 
 from __future__ import annotations
 
+from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
 from .action_model import ActionGroup, ActionModel, ActionType, ExecutionMode
 from .automation_model import (
@@ -72,7 +73,7 @@ _COLOR_SPOKEN_DE = {
     "red": "rot", "green": "grün", "blue": "blau", "yellow": "gelb", "orange": "orange",
     "purple": "lila", "white": "weiß", "pink": "pink", "turquoise": "türkis", "cyan": "cyan",
 }
-_COLOR_TEMP_SPOKEN_DE = {2700: "warmweiß", 6500: "kaltweiß"}
+_COLOR_TEMP_SPOKEN_DE = COLOR_TEMPERATURE_SPOKEN
 
 
 def _entity_lookup(entities: list[EntitySnapshot]) -> dict[str, EntitySnapshot]:
@@ -490,7 +491,8 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
     if model.calendar_schedule is not None:
         trigger_text = f"der Zeitpunkt „{model.calendar_schedule.spoken}“ erreicht ist"
     else:
-        trigger_text = " und ".join(
+        # Home Assistant fires on any one of several triggers.
+        trigger_text = " oder ".join(
             _speak_measured_trigger(t, entities)
             or _speak_trigger(t, entity_by_id, area_name_by_id)
             for t in model.triggers
