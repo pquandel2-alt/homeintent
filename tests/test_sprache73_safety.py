@@ -119,3 +119,17 @@ def test_s3_unclear_clause_blocks_everything_and_is_named(monkeypatch):
     turn = house.say("Mach das Bürolicht an und flausche den Teppich.")
     assert turn.calls == []
     assert "flausche den Teppich" in turn.speech
+
+
+# --- S4: "leiser" lowers the volume, it never pauses -----------------------
+
+@pytest.mark.parametrize("text,service", [
+    ("Mach die Musik in der Küche leiser.", "volume_down"),
+    ("Das Radio in der Küche bitte etwas lauter.", "volume_up"),
+    ("Stell das Küchenradio leiser.", "volume_down"),
+])
+def test_s4_volume_comparatives(monkeypatch, text, service):
+    house = HouseConversation(monkeypatch)
+    turn = house.say(text)
+    assert [(domain, name) for domain, name, _ in turn.calls] == [("media_player", service)]
+    assert "paused" not in turn.speech and "pausier" not in turn.speech
