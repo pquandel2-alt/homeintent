@@ -1014,6 +1014,14 @@ class NluConversationEntity(
                 return await self._async_handle_match_result(
                     user_input, response, need, entities
                 )
+            if pending is not None and pending.pending_clarification is None:
+                bound = self._engine.understand_discourse(
+                    language_document, entities, pending, understanding=understanding_context
+                )
+                if bound is not None:
+                    return await self._async_handle_bound_result(
+                        user_input, response, bound, entities
+                    )
             released = self._engine.understand_release(
                 language_document, entities, context=understanding_context
             )
@@ -2081,6 +2089,31 @@ class NluConversationEntity(
         return await self._async_handle_match_result(
             user_input, response, result, entities
         )
+
+    async def _async_handle_bound_result(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        result: MatchResult | CommandPlan,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        """Run one meaning-model result through the ordinary handlers."""
+        if user_input.text.strip().casefold().startswith("und ") and user_input.text.rstrip().endswith("?"):
+            # An elliptical "Und im Bad?" after an action repeats it; the
+            # question mark is not a request for information here.
+            user_input = replace(user_input, text=user_input.text.rstrip(" ?") + ".")
+        if isinstance(result, CommandPlan):
+            return await self._async_handle_command_plan(user_input, response, result, entities)
+        if result.failure_text is not None:
+            response.async_set_error(
+                intent.IntentResponseErrorCode.NO_VALID_TARGETS, result.failure_text
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        if result.clarification is not None:
+            return self._handle_clarification_result(user_input, response, result)
+        return await self._async_handle_match_result(user_input, response, result, entities)
 
     async def _async_handle_procedure_turn(
         self,

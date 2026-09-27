@@ -67,6 +67,7 @@ from .nlu.primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .nlu.normalize import normalize
 from .nlu.device_ontology import analyse_word
 from .nlu.ontology_compiler import compile_ontology_command, compile_release
+from .nlu.discourse_compiler import compile_discourse
 from .nlu.need_compiler import compile_need
 from .nlu.need_semantics import interpret_need
 from .nlu.place_model import PlaceKind, build_place_lexicon
@@ -119,6 +120,7 @@ from .nlu.meaning import SemanticTurn, analyse_turn
 from .nlu.semantic_utterance import (
     ClauseRole,
     Modality,
+    Polarity,
     PragmaticDisposition,
     SpeechAct,
     analyse_utterance,
@@ -1404,6 +1406,56 @@ class NluEngine:
                 clarification=compiled.clarification,
             )
         rendered = [self._build_match_result(parsed, entities) for parsed in compiled.results]
+        if not rendered or any(item is None or item.plan is None for item in rendered):
+            return None
+        items = tuple(item for item in rendered if item is not None)
+        if compiled.preview is not None:
+            return CommandPlan(items, confirmation_text=_ontology_preview_text(items, compiled.preview))
+        return items[0] if len(items) == 1 else CommandPlan(items)
+
+    def understand_discourse(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        context: ConversationContext | None,
+        *,
+        understanding: UnderstandingContext | None = None,
+    ) -> MatchResult | CommandPlan | None:
+        """Elliptical/referential command bound to the conversation context."""
+        utterance = document.utterance
+        if (
+            utterance.speech_act in {SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION}
+            or utterance.modality in {Modality.HYPOTHETICAL, Modality.UNCERTAIN, Modality.MAINTAIN}
+            or utterance.polarity is not Polarity.POSITIVE
+            or (
+                document.source_text.rstrip().endswith("?")
+                and not document.source_text.strip().casefold().startswith("und ")
+            )
+        ):
+            return None
+        compiled = compile_discourse(
+            document, entities, context,
+            source_area=understanding.source_area if understanding is not None else None,
+        )
+        if compiled is None:
+            return None
+        if compiled.message is not None:
+            return MatchResult(plan=None, response_text=compiled.message, failure_text=compiled.message)
+        if compiled.clarification is not None:
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        # "Und im Bad?" after an action repeats that action; its question
+        # mark is prosody of the ellipsis, not a request for information.
+        results = [
+            replace(parsed, frame=replace(
+                parsed.frame, source_text=parsed.frame.source_text.rstrip(" ?") + "."
+            ))
+            for parsed in compiled.results
+        ]
+        rendered = [self._build_match_result(parsed, entities) for parsed in results]
         if not rendered or any(item is None or item.plan is None for item in rendered):
             return None
         items = tuple(item for item in rendered if item is not None)
