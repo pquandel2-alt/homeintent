@@ -786,18 +786,22 @@ Heizbetrieb, offene Fenster und die Außentemperatur.
 Ergebnismenge oder den letzten Ort des Gesprächs:
 
 ```text
-Schalte die Nachttischlampe rechts ein.
-Die andere bitte auch.
+Du: Schalte die Nachttischlampe rechts ein.
+Assist: Nachttischlampe rechts eingeschaltet.
+Du: Die andere bitte auch.
+Assist: Nachttischlampe links eingeschaltet.
 ```
 
 ```text
-Wie warm ist es im Kinderzimmer?
-Dort bitte wärmer.
+Du: Wie warm ist es im Kinderzimmer?
+Du: Dort bitte wärmer.
+Assist: Heizung Kinderzimmer wärmer gestellt.
 ```
 
 ```text
-Mach es im Büro wärmer.
-Und im Bad?
+Du: Mach es im Büro wärmer.
+Du: Und im Bad?
+Assist: Heizung Badezimmer wärmer gestellt.
 ```
 
 **Modalität**: „Lass die Kücheninsel an“ tut nichts, „Die Kaffeemaschine
@@ -827,10 +831,10 @@ Nach einem verstandenen Befehl oder während einer Automationsvorschau kann der
 aufgelöste Plan abgefragt werden:
 
 ```text
-Du: Schalte in Küche und Flur alle Lichter aus, außer dem Nachtlicht.
+Du: Schalte in Küche und Flur alle Lichter aus, außer der Kücheninsel.
 Du: Was hast du verstanden?
 Assist: Ich habe Folgendes verstanden: Aktion: ausschalten; Orte: Küche,
-        Flur; ausgenommen: Nachtlicht; …
+        Flur; ausgenommen: Kücheninsel; …
 ```
 
 Die Erklärung verwendet bereits aufgelöste Fakten und startet keine Aktion.

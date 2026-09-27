@@ -259,3 +259,8 @@ def test_colloquial_particle_verbs(monkeypatch, sentence, target, service):
 def test_kind_without_operable_member_says_why(monkeypatch):
     turn = HouseConversation(monkeypatch).say("Mach die Tür zu.")
     assert turn.calls == [] and "Haustür" in turn.speech and "Sensor" in turn.speech
+
+
+def test_exception_at_another_place_is_named_honestly(monkeypatch):
+    turn = HouseConversation(monkeypatch).say("Schalte in Küche und Flur alle Lichter aus, außer dem Nachtlicht.")
+    assert turn.calls == [] and "Nachtlicht" in turn.speech and "Kinderzimmer" in turn.speech

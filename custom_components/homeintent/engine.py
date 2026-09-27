@@ -74,7 +74,7 @@ from .nlu.discourse_compiler import compile_discourse
 from .nlu.need_compiler import compile_need
 from .nlu.need_semantics import interpret_need
 from .nlu.place_model import PlaceKind, build_place_lexicon
-from .nlu.language_frontend import LanguageDocument, analyse_language
+from .nlu.language_frontend import LanguageDocument, analyse_language, tokenize_language
 from .nlu.parser import (
     ClarificationRequest,
     ParseContext,
@@ -761,6 +761,39 @@ def _unknown_exclusions(
             spoken = " ".join(name.split()[len(name.split()) - len(words):])
             unknown.append(spoken[:1].upper() + spoken[1:])
     return tuple(unknown)
+
+
+def _exclusions_outside_places(
+    positive: str, names: tuple[str, ...], entities: list[EntitySnapshot]
+) -> str | None:
+    """"… in Küche und Flur, außer dem Nachtlicht" with the Nachtlicht elsewhere."""
+    from .nlu.place_model import build_place_lexicon
+
+    places = [
+        mention.place
+        for mention in build_place_lexicon(entities).scan(
+            [token.canonical for token in tokenize_language(positive) if token.is_word]
+        )
+    ]
+    if not places:
+        return None
+    outside: list[str] = []
+    for name in names:
+        key = normalize_for_compare(name)
+        matches = [
+            entity for entity in entities
+            if normalize_for_compare(entity.friendly_name) == key
+            or key in {normalize_for_compare(alias) for alias in entity.aliases}
+        ]
+        if len(matches) == 1 and not any(place.contains(matches[0]) for place in places):
+            where = matches[0].area_name
+            outside.append(f"„{matches[0].friendly_name}“" + (f" (im Bereich {where})" if where else ""))
+    if not outside:
+        return None
+    return (
+        f"Die Ausnahme {' und '.join(outside)} liegt nicht an den genannten Orten. "
+        "Ich habe nichts ausgeführt."
+    )
 
 
 def _unresolved_exclusion_text(names: tuple[str, ...]) -> str:
@@ -2183,13 +2216,17 @@ class NluEngine:
     ) -> UnderstandingFeedback | None:
         """Return the structured counterpart of the spoken failure text."""
         if entities is not None and has_exclusion_clause(normalize(text)):
-            unknown = _unknown_exclusions(split_exclusion(normalize(text))[1], entities)
+            positive, excluded_names = split_exclusion(normalize(text))
+            unknown = _unknown_exclusions(excluded_names, entities)
             if unknown:
                 names = " und ".join(f"„{name}“" for name in unknown)
                 return UnderstandingFeedback(
                     ParseFailureReason.UNKNOWN_ENTITY,
                     f"Ich finde kein Gerät {names}. Ich habe nichts ausgeführt.",
                 )
+            elsewhere = _exclusions_outside_places(positive, excluded_names, entities)
+            if elsewhere:
+                return UnderstandingFeedback(ParseFailureReason.UNKNOWN_ENTITY, elsewhere)
         if entities is not None:
             honest = self._ontology_failure(text, entities)
             if honest is not None:
