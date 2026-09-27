@@ -26,6 +26,12 @@ from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.nlu.capabilities import derive_capabilities  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "data" / "testhaus.json"
+PHONES = ("notify.handy_philipp_nachricht", "notify.handy_anna_nachricht")
+PUSH_OPTIONS = {
+    "agent_notify_targets": list(PHONES),
+    "agent_delivery_channels": ["push"],
+    "allow_non_admin_automations": True,
+}
 
 
 @lru_cache(maxsize=1)
@@ -103,7 +109,8 @@ class HouseConversation:
     """Drive the real conversation entity against the stub test house."""
 
     def __init__(self, monkeypatch, entities: list[EntitySnapshot] | None = None,
-                 area: str | None = None, user: str | None = "admin") -> None:
+                 area: str | None = None, user: str | None = "admin",
+                 tmp_path: Path | None = None, options: dict | None = None) -> None:
         import _ha_stub
 
         _ha_stub.install()
@@ -114,8 +121,32 @@ class HouseConversation:
         from homeassistant.core import HomeAssistant
 
         self.entities = entities if entities is not None else house_entities()
-        self.entity = NluConversationEntity(ConfigEntry())
+        self.tmp_path = tmp_path
+        self.entity = NluConversationEntity(ConfigEntry(options=options or {}))
         self.entity.hass = HomeAssistant()
+        self.sink = None
+        if tmp_path is not None:
+            # Push setup exactly like sim/push_check.py: both phones are
+            # delivery targets and each user is bound to their own phone.
+            from _notify_sink import NotifySink
+            from homeintent.notification_target import (
+                NotificationTarget,
+                NotificationTargetKind,
+            )
+            from homeintent.user_context import UserContextStore
+
+            self.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+            self.sink = NotifySink.install(self.entity.hass, PHONES)
+            store = UserContextStore(tmp_path / "users.json")
+            for user_id, person, phone in (
+                ("admin", "person.philipp", PHONES[0]),
+                ("anna", "person.anna", PHONES[1]),
+            ):
+                asyncio.run(store.async_set_user(
+                    user_id, person_entity_id=person, confirmed=True,
+                    notification_targets=[NotificationTarget(phone, NotificationTargetKind.ENTITY)],
+                ))
+            self.entity._runtime_data.user_contexts = store
         monkeypatch.setattr(
             ha_conversation, "build_entity_snapshots", lambda hass, entry: self.entities
         )
@@ -143,6 +174,25 @@ class HouseConversation:
     def say(self, text: str) -> Turn:
         from homeassistant.components.conversation import ConversationInput
 
+        if self.sink is not None:
+            before_notify = len(self.sink.notify_calls)
+            before_other = len(self.sink.other_calls)
+            result = asyncio.run(self.entity._async_handle_message(
+                ConversationInput(
+                    text=text,
+                    conversation_id=self.conversation_id,
+                    context=types.SimpleNamespace(user_id=self.user) if self.user else None,
+                ),
+                chat_log=None,
+            ))
+            calls = [
+                ("notify", service, dict(data))
+                for service, data in self.sink.notify_calls[before_notify:]
+            ] + [
+                (domain, service, dict(data))
+                for domain, service, data in self.sink.other_calls[before_other:]
+            ]
+            return Turn(text, result.response.speech or "", result.response.response_type, calls)
         mock = self.entity.hass.services.async_call
         before = len(mock.await_args_list)
         result = asyncio.run(self.entity._async_handle_message(
@@ -158,3 +208,15 @@ class HouseConversation:
             for call in mock.await_args_list[before:]
         ]
         return Turn(text, result.response.speech or "", result.response.response_type, calls)
+
+
+    def automations(self) -> list[dict[str, Any]]:
+        """Automations written to ``automations.yaml`` by confirmed drafts."""
+        import yaml
+
+        if self.tmp_path is None:
+            return []
+        path = self.tmp_path / "automations.yaml"
+        if not path.exists():
+            return []
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or []

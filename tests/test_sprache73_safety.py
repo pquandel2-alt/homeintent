@@ -178,3 +178,41 @@ def test_s6_too_bright_without_lights_on_only_proposes(monkeypatch):
     turn = house.say("Hier ist es zu hell.")
     assert turn.calls == []
     assert turn.speech.startswith("Soll ich")
+
+
+# --- S7: a correction never jumps between kinds of devices -----------------
+
+from _testhaus import PUSH_OPTIONS  # noqa: E402
+
+
+@pytest.mark.parametrize("text", [
+    "Benachrichtige mich, wenn der Wassermelder auslöst.",
+    "Sag mir Bescheid, wenn der Leckagemelder anschlägt.",
+    "Gib mir Bescheid, falls der Wassersensor im Keller etwas meldet.",
+])
+def test_s7_water_detector_stays_a_water_detector(monkeypatch, tmp_path, text):
+    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
+    preview = house.say(text)
+    assert "Bewegung" not in preview.speech
+    assert "Wassermelder Keller" in preview.speech
+    house.say("Ja.")
+    [automation] = house.automations()
+    triggers = automation.get("triggers") or automation.get("trigger")
+    assert triggers[0]["entity_id"] == "binary_sensor.wassermelder_keller"
+
+
+def test_s7_unknown_detector_is_named_not_replaced(monkeypatch, tmp_path):
+    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
+    turn = house.say("Benachrichtige mich, wenn der Glitzermelder auslöst.")
+    assert "Bewegung" not in turn.speech
+    assert "glitzermelder" in turn.speech.casefold()
+    assert house.automations() == []
+
+
+def test_s7_phonetic_repair_stays_within_the_genus():
+    from homeintent.phonetic_correction import phonetic_suggestions
+
+    suggestions = phonetic_suggestions("Schalte den Wassermelder ein", house_entities())
+    assert all(
+        "motion" not in (item.entity.device_class or "") for item in suggestions
+    )

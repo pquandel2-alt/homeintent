@@ -446,6 +446,21 @@ def describe_state_event(
             f"{location} eine Bewegung erkannt wird",
             f"{sentence_initial(location)} wurde eine Bewegung erkannt.",
         )
+    if (
+        target.domain == "binary_sensor"
+        and trigger.state is SemanticState.ON
+        and target.device_class in _ALARM_REPORTS
+    ):
+        report = _ALARM_REPORTS[target.device_class]
+        single = _single_entity(target, entities)
+        subject = (
+            single.friendly_name if single is not None
+            else _group_subject(target, entities, _ALARM_NOUNS[target.device_class])
+        )
+        return StateEventPhrase(
+            f"{subject} {report} meldet",
+            f"{sentence_initial(subject)} meldet {report}.",
+        )
     participle = _PARTICIPLES.get(trigger.state)
     if participle is None:
         return None
@@ -458,9 +473,16 @@ def describe_state_event(
             f"{sentence_initial(subject)} wurde {participle}.",
         )
     noun = _EVENT_NOUNS.get((target.domain or "", target.device_class))
+    matches = _matching_entities(target, entities)
+    if noun is None and matches:
+        classes = {(item.domain, item.device_class) for item in matches}
+        if len(classes) == 1:
+            noun = _EVENT_NOUNS.get(next(iter(classes))) or _EVENT_NOUNS.get(
+                (next(iter(classes))[0], None)
+            )
     if noun is None:
         return None
-    location = _location(target, entities)
+    location = _location(target, entities) or _shared_location(matches)
     if location is None:
         return StateEventPhrase(
             f"{noun} {participle} wird", f"{sentence_initial(noun)} wurde {participle}."
@@ -469,6 +491,45 @@ def describe_state_event(
         f"{location} {noun} {participle} wird",
         f"{sentence_initial(location)} wurde {noun} {participle}.",
     )
+
+
+# Detector-style binary sensors report something; they are not "switched on".
+_ALARM_REPORTS: dict[str | None, str] = {
+    "moisture": "Wasser",
+    "smoke": "Rauch",
+    "gas": "Gas",
+    "carbon_monoxide": "Kohlenmonoxid",
+    "problem": "ein Problem",
+    "tamper": "eine Manipulation",
+}
+_ALARM_NOUNS: dict[str | None, str] = {
+    "moisture": "ein Wassermelder",
+    "smoke": "ein Rauchmelder",
+    "gas": "ein Gasmelder",
+    "carbon_monoxide": "ein CO-Melder",
+    "problem": "ein Sensor",
+    "tamper": "ein Sensor",
+}
+
+
+def _shared_location(matches: Sequence[EntitySnapshot]) -> str | None:
+    """Common area or floor of several trigger entities ("im Obergeschoss")."""
+    if not matches:
+        return None
+    areas = {item.area_name for item in matches}
+    if len(areas) == 1 and None not in areas:
+        return dative_location_phrase(next(iter(areas)) or "")
+    floors = {item.floor_name for item in matches}
+    if len(floors) == 1 and None not in floors:
+        return dative_location_phrase(next(iter(floors)) or "")
+    return None
+
+
+def _group_subject(
+    target: TriggerTarget, entities: Sequence[EntitySnapshot], noun: str
+) -> str:
+    location = _location(target, entities) or _shared_location(_matching_entities(target, entities))
+    return f"{noun} {location}" if location else noun
 
 
 def describe_event(

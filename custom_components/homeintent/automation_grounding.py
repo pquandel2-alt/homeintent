@@ -38,7 +38,9 @@ from .nlu.measurement import (
     is_valid_value,
     percent_property_for_domain,
 )
+from .nlu.place_model import Place, PlaceKind, PlaceLexicon, build_place_lexicon
 from .nlu.semantic_state import SemanticState
+from .nlu.target_resolution import genus_members
 
 
 class GroundingStatus(Enum):
@@ -69,6 +71,9 @@ class SubjectReading:
     modifiers: tuple[str, ...]
     quantifier: Quantifier
     implicit: bool  # "es", "etwas" or no subject at all
+    # A floor, level word or whole-house scope ("im Obergeschoss",
+    # "im Keller", "draußen") from the shared place model (7.3.0).
+    place: Place | None = None
 
 
 @dataclass(frozen=True)
@@ -132,8 +137,39 @@ def read_subject(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> Su
     keys = list(lowered)
     if _PLURAL_PARTITIVE_RE.match(" ".join(keys[:2])) or _PLURAL_PARTITIVE_RE.match(" ".join(keys[:3])):
         quantifier = Quantifier.ANY
+    scope: Place | None = None
+    noun_index = -1
+    lexicon = build_place_lexicon(entities)
+    exact_names: dict[str, list[EntitySnapshot]] = {}
+    for entity in entities:
+        for name in (entity.friendly_name, *entity.aliases):
+            key_name = normalize_for_compare(name)
+            if key_name and " " not in key_name:
+                exact_names.setdefault(key_name, []).append(entity)
+    normalized_keys = [normalize_for_compare(word) for word in tokens]
     while index < len(tokens):
         key = keys[index]
+        # Shared place model first: floors, floor aliases and level words
+        # ("im Obergeschoss", "im Keller", "oben", "draußen").
+        preposition = 0
+        while (
+            index + preposition < len(tokens)
+            and normalized_keys[index + preposition] in _PLACE_PREPOSITIONS
+            and preposition < 2
+        ):
+            preposition += 1
+        spoken_place = _scan_place(lexicon, normalized_keys[index + preposition:index + preposition + 3])
+        if spoken_place is not None and spoken_place[0].kind in {
+            PlaceKind.FLOOR, PlaceKind.HOUSE,
+        } | ({PlaceKind.AREA} if preposition else set()):
+            found_place, used = spoken_place
+            if found_place.kind is PlaceKind.AREA and len(found_place.area_ids) == 1:
+                area_id = next(iter(found_place.area_ids))
+                area = (area_id, found_place.name)
+            else:
+                scope = found_place
+            index += preposition + used
+            continue
         # Locative phrase: "im Büro", "in der Küche"
         locative = next(
             (
@@ -189,9 +225,32 @@ def read_subject(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> Su
         if key in {"von", "der", "und", "oder"}:
             index += 1
             continue
+        exact = exact_names.get(normalized_keys[index])
+        if exact is not None and noun is None:
+            # An exact registry name wins over compound splitting:
+            # "Terrassentür" is the device of that name, not "a door on the
+            # terrace" (7.3.0, Abschnitt 1).
+            entity = exact[0]
+            compound = split_compound(key)
+            noun = noun_class(key) or (compound[1] if compound is not None else None)
+            if noun is None:
+                noun = NounClass(entity.domain, entity.device_class)
+            noun_word = tokens[index]
+            modifiers.append(normalized_keys[index])
+            index += 1
+            continue
         entry = noun_class(key)
         if entry is not None and noun is None:
             noun, noun_word = entry, tokens[index]
+            noun_index = index
+            index += 1
+            continue
+        if entry is not None and noun is not None and noun_index == index - 1:
+            # German noun sequences are head-final: in "Handy Akku" the
+            # battery is the subject and "Handy" names whose it is.
+            modifiers.append(normalize_for_compare(noun_word or ""))
+            noun, noun_word = entry, tokens[index]
+            noun_index = index
             index += 1
             continue
         place = _match_area(tokens[index:index + 2], areas)
@@ -204,8 +263,11 @@ def read_subject(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> Su
             prefix, entry = compound
             noun, noun_word = entry, tokens[index]
             prefix_area = area_by_key(normalize_for_compare(prefix), areas)
+            prefix_place = lexicon.resolve_modifier(normalize_for_compare(prefix))
             if prefix_area is not None:
                 area = prefix_area
+            elif prefix_place is not None and prefix_place.kind is PlaceKind.FLOOR:
+                scope = prefix_place
             elif prefix.strip("-") in _OUTDOOR_WORDS or prefix.startswith("außen"):
                 modifiers.append("aussen")
             else:
@@ -226,8 +288,20 @@ def read_subject(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> Su
         unknown_location=unknown_location,
         modifiers=tuple(normalize_for_compare(item) for item in modifiers if item),
         quantifier=quantifier,
-        implicit=implicit and noun is None,
+        implicit=implicit and noun is None and scope is None,
+        place=scope,
     )
+
+
+_PLACE_PREPOSITIONS = frozenset({"im", "in", "der", "dem", "am", "auf", "beim"})
+
+
+def _scan_place(lexicon: PlaceLexicon, words: Sequence[str]) -> tuple[Place, int] | None:
+    for size in range(min(3, len(words)), 0, -1):
+        found = lexicon.phrases.get(" ".join(words[:size]))
+        if found is not None and found.kind is not PlaceKind.HERE:
+            return found, size
+    return None
 
 
 def area_by_key(key: str, areas: dict[str, tuple[str, str]]) -> tuple[str, str] | None:
@@ -254,17 +328,28 @@ def _match_area(
 # --- candidate selection ---------------------------------------------------------
 
 
-def _class_candidates(
+def subject_candidates(
     subject: SubjectReading, entities: Sequence[EntitySnapshot]
 ) -> list[EntitySnapshot]:
+    """Entities of the subject's genus at its place (shared with commands)."""
     noun = subject.noun
     assert noun is not None
+    if noun.genus is not None:
+        members = genus_members(noun.genus, entities)
+    else:
+        members = [
+            entity for entity in entities
+            if entity.domain == noun.domain
+            and (noun.device_class is None or entity.device_class == noun.device_class)
+        ]
     return [
-        entity for entity in entities
-        if entity.domain == noun.domain
-        and (noun.device_class is None or entity.device_class == noun.device_class)
-        and (subject.area_id is None or entity.area_id == subject.area_id)
+        entity for entity in members
+        if (subject.area_id is None or entity.area_id == subject.area_id)
+        and (subject.place is None or subject.place.contains(entity))
     ]
+
+
+_class_candidates = subject_candidates
 
 
 def _name_keys(entity: EntitySnapshot) -> tuple[str, ...]:
@@ -430,6 +515,18 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
     if roles.value is None and roles.state is None:
         return GroundedEvent(GroundingStatus.NOT_APPLICABLE, roles=roles)
     subject = read_subject(roles.subject_words, entities)
+    unknown_detector_words = tuple(
+        item for item in subject.modifiers if item not in {"bewegung", "eine", "ein"}
+    )
+    if roles.motion and subject.noun is None and unknown_detector_words:
+        # "…, wenn der Leckmelder auslöst": an unknown detector name is never
+        # corrected into another kind of detector (finding S7).
+        spoken = " ".join(unknown_detector_words)
+        return GroundedEvent(
+            GroundingStatus.NOT_FOUND,
+            question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät meinst du?",
+            subject=subject, roles=roles,
+        )
     if roles.motion and subject.noun is None:
         subject = SubjectReading(
             noun=noun_class("bewegungsmelder"), noun_word="Bewegungsmelder",
@@ -487,7 +584,10 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
     if roles.state is not None and roles.value is None:
         candidates = [entity for entity in candidates if _state_ok(entity, roles.state)]
     if not candidates:
-        where = f" {dative_location_phrase(subject.area_name)}" if subject.area_name else ""
+        where = (
+            f" {dative_location_phrase(subject.area_name)}" if subject.area_name
+            else f" {subject.place.label}" if subject.place is not None else ""
+        )
         noun = (subject.noun_word or "dieses Gerät").strip("-")
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
@@ -664,6 +764,7 @@ __all__ = (
     "choose_candidate",
     "ground_event",
     "read_subject",
+    "subject_candidates",
     "restrict_to",
     "target_for",
 )

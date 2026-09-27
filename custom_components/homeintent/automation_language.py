@@ -66,6 +66,13 @@ class PreparedText:
     repaired: bool
 
 
+# Verbs saying a detector fired ("auslöst", "anschlägt", "etwas meldet").
+_DETECTOR_EVENT_VERBS = frozenset({
+    "auslöst", "ausgelöst", "anschlägt", "angeschlagen", "reagiert", "meldet",
+    "gemeldet", "alarmiert", "anspringt", "angesprungen", "piept", "losgeht",
+})
+
+
 def prepare_automation_text(raw: str) -> PreparedText:
     """Repairs first (they need the hesitation markers), then shared normalization."""
     repair = resolve_repairs(raw)
@@ -768,7 +775,7 @@ def read_event_roles(event_text: str) -> EventRoles:
             motion, state = True, SemanticState.ON
         elif "bewegt" in keys and "sich" in keys:
             motion, state = True, SemanticState.ON
-        elif any(key in {"auslöst", "ausgelöst", "anschlägt", "reagiert"} for key in keys):
+        elif any(key in _DETECTOR_EVENT_VERBS for key in keys):
             motion, state = True, SemanticState.ON
         elif any(key.startswith(("bewegungsmelder", "bewegungssensor")) for key in keys) and any(
             key in _MOTION_VERBS for key in keys
@@ -782,7 +789,7 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         if key in _FULL_TRAVEL or key in _MOTION_VERBS or key in {
             "sich", "etwas", "bewegt", "auslöst", "ausgelöst", "anschlägt", "reagiert",
-        } or (motion and key == "bewegung"):
+        } or key in _DETECTOR_EVENT_VERBS or (motion and key == "bewegung"):
             if key == "etwas":
                 subject.append(word)
             continue

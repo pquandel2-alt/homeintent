@@ -1,11 +1,12 @@
 """One lexical normalization layer for natural automation language.
 
-Everything spelling-related that the 7.2.0 automation reader needs lives
-here, so no parser carries its own alias list (spec §50, §80):
+Everything spelling-related that the automation reader needs lives here,
+so no parser carries its own alias list (spec §50, §80):
 
-* device and property nouns with their grounded class
-  (``Rolllade``/``Rollade``/``Rollladen``/``Rolladen``/``Rollo``/``Jalousie``
-  all mean a cover; ``Temperatur`` a temperature sensor, ...);
+* device and property nouns with their grounded class - since 7.3.0 read
+  from the one genus ontology (``device_ontology``), so every lemma,
+  plural, colloquial word and compound known there works in automations
+  and notifications as well;
 * a few low-risk speech-to-text rejoins ("roll lade", "fünf zig");
 * same-turn self repair ("60, äh 50 Prozent", "das Küchenfenster, nein das
   Bürofenster") resolved to the corrected constituent only.
@@ -17,9 +18,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Mapping
 
-from .german_morphology import GrammaticalGender
+
+from .device_ontology import Gender, analyse_word, genus
+from .german_morphology import GrammaticalGender, entity_name_gender
 
 
 @dataclass(frozen=True)
@@ -32,61 +34,54 @@ class NounClass:
     plural: bool = False
     # A property noun names a *reading* ("Temperatur") rather than a device.
     property_noun: bool = False
+    # The ontology genus this noun denotes (candidate selection uses it).
+    genus: str | None = None
 
 
-_M, _F, _N = GrammaticalGender.MASCULINE, GrammaticalGender.FEMININE, GrammaticalGender.NEUTER
-
-_NOUNS: Mapping[str, NounClass] = {
-    # covers - every spelling users and STT produce
-    "rollladen": NounClass("cover", None, _M),
-    "rolladen": NounClass("cover", None, _M),
-    "rolllade": NounClass("cover", None, _F),
-    "rollade": NounClass("cover", None, _F),
-    "rollo": NounClass("cover", None, _N),
-    "rollos": NounClass("cover", None, _N, plural=True),
-    "rollläden": NounClass("cover", None, _M, plural=True),
-    "rolläden": NounClass("cover", None, _M, plural=True),
-    "jalousie": NounClass("cover", None, _F),
-    "jalousien": NounClass("cover", None, _F, plural=True),
-    # openings
-    "fenster": NounClass("binary_sensor", "window", _N),
-    "tür": NounClass("binary_sensor", "door", _F),
-    "türe": NounClass("binary_sensor", "door", _F),
-    "türen": NounClass("binary_sensor", "door", _F, plural=True),
-    "garagentor": NounClass("binary_sensor", "garage_door", _N),
-    "bewegungsmelder": NounClass("binary_sensor", "motion", _M),
-    "bewegungssensor": NounClass("binary_sensor", "motion", _M),
-    # actuators
-    "licht": NounClass("light", None, _N),
-    "lichter": NounClass("light", None, _N, plural=True),
-    "lampe": NounClass("light", None, _F),
-    "lampen": NounClass("light", None, _F, plural=True),
-    "leuchte": NounClass("light", None, _F),
-    "ventilator": NounClass("fan", None, _M),
-    "lüfter": NounClass("fan", None, _M),
-    "heizung": NounClass("climate", None, _F),
-    "thermostat": NounClass("climate", None, _N),
-    "lautsprecher": NounClass("media_player", None, _M),
-    "fernseher": NounClass("media_player", None, _M),
-    "steckdose": NounClass("switch", None, _F),
-    "kaffeemaschine": NounClass("switch", None, _F),
-    # readings
-    "temperatur": NounClass("sensor", "temperature", _F, property_noun=True),
-    "luftfeuchtigkeit": NounClass("sensor", "humidity", _F, property_noun=True),
-    "feuchtigkeit": NounClass("sensor", "humidity", _F, property_noun=True),
-    "luftfeuchte": NounClass("sensor", "humidity", _F, property_noun=True),
-    "akku": NounClass("sensor", "battery", _M, property_noun=True),
-    "akkustand": NounClass("sensor", "battery", _M, property_noun=True),
-    "batterie": NounClass("sensor", "battery", _F, property_noun=True),
-    "ladestand": NounClass("sensor", "battery", _M, property_noun=True),
+_GENDER = {
+    Gender.MASCULINE: GrammaticalGender.MASCULINE,
+    Gender.FEMININE: GrammaticalGender.FEMININE,
+    Gender.NEUTER: GrammaticalGender.NEUTER,
 }
-# Longest first, so "bewegungsmelder" wins over a shorter suffix.
-_SUFFIXES = tuple(sorted(_NOUNS, key=len, reverse=True))
+# The typed class a genus contributes to automation grounding.  Candidate
+# selection itself uses genus membership (``device_ontology``); this view
+# only keeps the historical NounClass contract (domain, class, gender).
+_PRIMARY_DOMAIN_ORDER = (
+    "binary_sensor", "sensor", "cover", "light", "fan", "climate", "media_player",
+    "switch", "lock", "vacuum", "lawn_mower", "valve", "humidifier",
+)
+
+
+def _noun_for_genus(key: str, plural: bool, word: str = "") -> NounClass:
+    item = genus(key)
+    lexical_gender = entity_name_gender(word) if word else None
+    domains = sorted(item.domains, key=lambda domain: (
+        _PRIMARY_DOMAIN_ORDER.index(domain) if domain in _PRIMARY_DOMAIN_ORDER else 99, domain
+    ))
+    domain = domains[0]
+    device_class = None
+    if item.device_classes is not None and len(item.device_classes) == 1:
+        device_class = next(iter(item.device_classes))
+    elif item.device_classes is not None and domain == "binary_sensor":
+        device_class = sorted(item.device_classes)[0]
+    if key == "garage_door":
+        device_class = "garage_door"
+    return NounClass(
+        domain,
+        device_class,
+        lexical_gender or _GENDER[item.gender],
+        plural=plural,
+        property_noun=item.sensor and item.domains == frozenset({"sensor"}),
+        genus=key,
+    )
 
 
 def noun_class(word: str) -> NounClass | None:
-    """Exact lexical lookup of one (case-insensitive) noun."""
-    return _NOUNS.get(word.casefold().strip(".,!?"))
+    """Exact lexical lookup of one noun through the genus ontology."""
+    analysis = analyse_word(word.casefold().strip(".,!?"))
+    if analysis is None or analysis.modifier is not None or analysis.universal:
+        return None
+    return _noun_for_genus(analysis.genera[0], analysis.plural, analysis.word)
 
 
 def split_compound(word: str) -> tuple[str, NounClass] | None:
@@ -99,14 +94,15 @@ def split_compound(word: str) -> tuple[str, NounClass] | None:
     lowered = word.casefold().strip(".,!?")
     if "-" in lowered:
         head, _, tail = lowered.rpartition("-")
-        entry = _NOUNS.get(tail)
+        entry = noun_class(tail)
         if entry is not None and head:
             return head, entry
-    for suffix in _SUFFIXES:
-        if lowered.endswith(suffix) and len(lowered) - len(suffix) >= 3:
-            prefix = lowered[: -len(suffix)]
-            return prefix, _NOUNS[suffix]
-    return None
+    analysis = analyse_word(lowered)
+    if analysis is None or analysis.modifier is None:
+        return None
+    return analysis.modifier, _noun_for_genus(
+        analysis.genera[0], analysis.plural, analysis.head or ""
+    )
 
 
 # --- speech-to-text rejoins ---------------------------------------------------

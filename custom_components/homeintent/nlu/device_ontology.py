@@ -194,7 +194,7 @@ GENERA: tuple[Genus, ...] = (
        {"sensor"}, {"power"}, sensor=True),
     _g("energy_sensor", "Energie|Energieverbrauch|Zähler|Stromzähler|Energiezähler", "Energiezähler",
        F, {"sensor"}, {"energy"}, extra_forms=("Zaehler",), sensor=True),
-    _g("battery_sensor", "Batterie|Akku|Batteriestand|Ladestand", "Batterien", F, {"sensor"},
+    _g("battery_sensor", "Batterie|Akku|Batteriestand|Ladestand|Akkustand|Akkuladung", "Batterien", F, {"sensor"},
        {"battery"}, extra_forms=("Akkus",), sensor=True),
     _g("illuminance_sensor", "Helligkeit|Helligkeitssensor|Lichtsensor|Beleuchtungsstärke", "Helligkeiten",
        F, {"sensor"}, {"illuminance"}, sensor=True),
@@ -223,8 +223,7 @@ COMPOUND_LINKS: tuple[str, ...] = ("es", "en", "er", "ns", "s", "n", "e", "")
 _NON_DEVICE_WORDS = frozenset(normalize_for_compare(word) for word in (
     "Anlage Anlagen Kiste Ding Sache Sachen Dinge Box Boxen Tor Tore Alarm Klima "
     "Strom Spot Birne Stecker Roboter Player Ablauf Stimmung Bewegung Anwesenheit Präsenz "
-    "Temperatur Feuchte Feuchtigkeit Energie Leistung Verbrauch Helligkeit Akku Batterie Zähler "
-    "Musik Fernsehen Lüftung Beschattung Verschattung"
+    "Verbrauch Musik Fernsehen Lüftung Beschattung Verschattung"
 ).split())
 _UNIVERSAL_WORDS = frozenset({"alles", "allem"})
 # Indefinite pronouns ("ist noch was an?") denote any everyday device.
@@ -349,6 +348,33 @@ def _mass_forms() -> frozenset[str]:
     )
 
 
+# Word formation for detectors: substance + detector head ("Leckage|melder",
+# "Flut|sensor", "Brand|warner").  The substance decides the genus.
+_DETECTOR_HEADS = ("melder", "sensor", "sensoren", "detektor", "warner", "fuehler", "alarm")
+_DETECTOR_SUBSTANCES: Mapping[str, str] = {
+    "wasser": "water_detector", "leck": "water_detector", "leckage": "water_detector",
+    "flut": "water_detector", "ueberschwemmung": "water_detector", "ueberflutung": "water_detector",
+    "feuchte": "water_detector", "nass": "water_detector",
+    "rauch": "smoke_detector", "brand": "smoke_detector", "feuer": "smoke_detector",
+    "gas": "co_detector", "co": "co_detector", "kohlenmonoxid": "co_detector",
+    "bewegung": "motion_detector", "bewegungs": "motion_detector",
+    "praesenz": "presence_detector", "anwesenheit": "presence_detector",
+    "fenster": "window", "tuer": "door",
+    "temperatur": "temperature_sensor", "feuchtigkeit": "humidity_sensor",
+}
+
+
+def _detector_genus(normalized: str) -> str | None:
+    for head in _DETECTOR_HEADS:
+        if normalized.endswith(head) and len(normalized) > len(head) + 1:
+            modifier = normalized[: -len(head)].rstrip("-")
+            for stem in modifier_stems(modifier):
+                key = _DETECTOR_SUBSTANCES.get(stem)
+                if key is not None:
+                    return key
+    return None
+
+
 def analyse_word(word: str) -> WordAnalysis | None:
     """Analyse one word as genus word, compound of a genus word, or neither."""
     normalized = normalize_for_compare(word).replace("-", "")
@@ -366,6 +392,9 @@ def analyse_word(word: str) -> WordAnalysis | None:
             plural=normalized in _plural_forms(),
             mass=normalized in _mass_forms(),
         )
+    detector = _detector_genus(normalized)
+    if detector is not None:
+        return WordAnalysis(normalized, (detector,), head=normalized)
     # Compound: longest genus form that ends the word and leaves a
     # modifier of at least three letters.
     best: tuple[str, tuple[str, ...]] | None = None
