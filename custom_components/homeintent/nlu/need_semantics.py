@@ -89,6 +89,9 @@ _MORE_OBJECTS: Mapping[str, NeedKind] = {
 _NON_ASSERTIVE = frozenset({
     "obwohl", "obgleich", "trotzdem", "wenn", "falls", "sobald", "ob", "dass",
     "merk", "merke", "merken", "notiere", "speichere", "erinnere", "vergiss",
+    # Past and counterfactual states are reports, not present needs.
+    "war", "waren", "warst", "gewesen", "gestern", "vorhin", "damals", "letzte", "letztes",
+    "waere", "waeren", "wuerde", "wuerden", "haette", "haetten", "koennte",
 })
 _EXPERIENCERS = frozenset({"mir", "mich", "ich", "uns", "wir"})
 _COPULAS = frozenset({"ist", "sind", "wird", "wirds", "isses"})
