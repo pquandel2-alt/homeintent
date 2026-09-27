@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.2.1** (Natural Language Automations + Live-Test-Fix)
+- Aktuelle Version: **7.3.0** (Sprachverständnis ohne Sprachmodell)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -1514,7 +1514,7 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.2.1:
+Geprüfter Release-Stand von Version 7.3.0:
 
 ```text
 4588 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
@@ -1563,7 +1563,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.2.1.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.3.0.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
