@@ -22,6 +22,7 @@ from .semantic_catalog import (
     PROPERTY_ENTRIES,
     regex_union,
 )
+from .word_cues import has_word
 
 
 class SpeechAct(Enum):
@@ -389,7 +390,7 @@ def analyse_utterance(text: str) -> SemanticUtterance:
             _COMPARATOR_CUE_RE.search(normalized)
             # "Im Büro etwas wärmer bitte": a comparative with a request
             # marker and without "als" asks for a change, not a comparison.
-            and not (re.search(r"\bbitte\b", normalized, re.I) and not re.search(r"\bals\b", normalized, re.I))
+            and not (has_word(normalized, "bitte") and not has_word(normalized, "als"))
         )
     ):
         speech_act = SpeechAct.QUERY

@@ -720,6 +720,72 @@ Mach die drei Lampen im Büro an.
 „Ein paar“ oder „einige“ führt nie zu einer zufälligen Auswahl. HomeIntent
 fragt nach den konkreten Gerätenamen.
 
+### Gattungen, Bedürfnisse, Sichten und Diskurs (seit 7.3)
+
+Ein Ziel ist eine Kombination aus **Gattung × Ort × Merkmal × Menge**, nicht
+nur ein Name. Eine Geräte-Ontologie (Daten, keine Satzschablonen) kennt
+deutsche Gattungswörter mit Plural, Umgangssprache und Komposita
+(„Lampe“, „Leuchte“, „Rollo“, „Jalousie“, „Glotze“, „Wohnzimmer|licht“,
+„Kinderzimmer|jalousie“, „Rauch|melder“). Orte sind Bereiche, Bereichs- und
+Etagenaliase („oben“, „unten“, „im Keller“, „draußen“) – in Befehlen,
+Abfragen, Automationen und Benachrichtigungen gleich.
+
+```text
+Mach die Leuchte im Kinderzimmer an.        → Rückfrage: zwei Lichter dort
+Fahre alle Jalousien im Obergeschoss hoch.  → alle Rollläden oben, kein Garagentor
+Mach im Büro den Ventilator an.             → „Im Büro gibt es keinen Ventilator.“
+Schalte im Wohnzimmer alle Lampen aus, bis auf die Stehlampe.
+Mach das Licht im Wohnzimmer neutral weiß.  → nur Lichter mit Farbtemperatur
+```
+
+**Bedürfnisse** werden als gewünschte Wirkung verstanden; der Ort kommt aus
+dem Satz, vom Satelliten oder aus dem Kontext:
+
+```text
+Ich friere.                  (Satellit Kinderzimmer) → Heizung dort +1 Grad
+Im Schlafzimmer bitte etwas kühler.
+Hier ist es muffig.          (Satellit Bad)          → Badlüfter an
+Es ist zu laut.              (Satellit Küche)        → Küchenradio leiser
+Ich gehe schlafen.                                   → Vorschlag: Skript Gute Nacht
+```
+
+Fragen, Verneinungen, Vergangenes und Hypothetisches („Gestern war mir
+kalt“, „Wäre es kalt, …“) lösen nie eine Aktion aus.
+
+**Situationssichten** beantworten Fragen über das Haus aus beobachteten
+Zuständen und führen nie etwas aus:
+
+```text
+Ist im Erdgeschoss noch etwas an?
+Ist alles abgeschlossen?
+Sollte ich lüften?                   (Schwellen: 60 % Feuchte, 1000 ppm CO2)
+Warum ist es im Büro so kalt?        (Ist-, Sollwert, Heizbetrieb, Fenster, außen)
+Ist jemand im Büro?
+Was kann ich im Wohnzimmer steuern?
+Welche Räume gibt es im Keller?
+Wie viele Fenster gibt es im Erdgeschoss?
+Was macht das Skript Kaffee kochen?
+Wofür ist das Hauptwasserventil?
+```
+
+**Diskurs**: Ellipsen und Verweise binden an das letzte Ziel, die letzte
+Ergebnismenge oder den letzten Ort des Gesprächs:
+
+```text
+Schalte die Nachttischlampe rechts ein.  →  Die andere bitte auch.
+Wie warm ist es im Kinderzimmer?         →  Dort bitte wärmer.
+Mach es im Büro wärmer.                  →  Und im Bad?
+Welche Lichter sind im Schlafzimmer?     →  Mach alle aus.
+```
+
+**Modalität**: „Lass die Kücheninsel an“ tut nichts, „Die Kaffeemaschine
+kann jetzt aus“ schaltet aus, „Ich wüsste gern, ob die Haustür zu ist“ ist
+eine Frage. **Zeitsprache**: „um halb sieben“, „um viertel vor neun“, „in
+zwei Stunden und 30 Minuten“ (in jeder Wortstellung) und „Weck mich um
+sieben mit Licht“ werden zu Automationen mit Vorschau – nie zu einer
+sofortigen Aktion. Die Architektur beschreibt
+[`docs/architecture-v13.md`](docs/architecture-v13.md).
+
 ### Abstufungen und Zahlen
 
 Prozentwerte, Grad Celsius und Gerätestufen werden intern als typisierte Werte

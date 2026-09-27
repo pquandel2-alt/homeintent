@@ -92,7 +92,7 @@ def parse_automation_structure_edit(text: str) -> AutomationStructureEditRequest
     else:
         tail = text[section_match.end():]
         tail = re.sub(r"\bhinzu(?:fügen|fuegen)?\b\s*$", "", tail, flags=re.IGNORECASE)
-        marker = re.search(r"\b(?:dass|wenn|sobald|falls)\b", tail, re.IGNORECASE)
+        marker = re.search(r"\b(?:dass|wenn|sobald|falls)\b", tail, re.I)
         if marker:
             payload = tail[marker.start():].strip(" .,!?") or None
     return AutomationStructureEditRequest(section, operation, payload)

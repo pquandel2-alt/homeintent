@@ -17,6 +17,7 @@ from .nlu.entity_resolution import (
 from .nlu.context import PendingSemanticCommand
 from .nlu.domain_operations import DOMAIN_WORDS
 from .service_call import ServiceCallPlan
+from .nlu.word_cues import has_word
 
 
 @dataclass(frozen=True)
@@ -58,13 +59,13 @@ def _spoken_domain(text: str) -> str | None:
 
 def _action(text: str, domain: str) -> tuple[str, str, str] | None:
     actions = []
-    if re.search(r"\b(?:an|ein|einschalt\w*|anmach\w*)\b", text, re.I):
+    if has_word(text, "an", "ein", "einschalt*", "anmach*"):
         actions.append(("homeassistant", "turn_on", "eingeschaltet"))
-    if re.search(r"\b(?:aus|ausschalt\w*|ausmach\w*)\b", text, re.I):
+    if has_word(text, "aus", "ausschalt*", "ausmach*"):
         actions.append(("homeassistant", "turn_off", "ausgeschaltet"))
-    if domain == "cover" and re.search(r"\b(?:hoch|öffn\w*)\b", text, re.I):
+    if domain == "cover" and has_word(text, "hoch", "oeffn*"):
         actions.append(("cover", "open_cover", "geöffnet"))
-    if domain == "cover" and re.search(r"\b(?:runter|herunter|schließ\w*)\b", text, re.I):
+    if domain == "cover" and has_word(text, "runter", "herunter", "schliess*"):
         actions.append(("cover", "close_cover", "geschlossen"))
     return actions[0] if len(actions) == 1 else None
 
@@ -185,7 +186,7 @@ def start_semantic_dialog(
             return SemanticDialogOutcome(pending=pending, question="Welche Heizung meinst du?")
 
     climate = _mentioned_entity(text, entities, frozenset({"climate"}))
-    if climate is not None and re.search(r"\b(?:temperatur|grad|stell\w*|regel\w*)\b", text, re.I):
+    if climate is not None and has_word(text, "temperatur", "grad", "stell*", "regel*"):
         pending = PendingSemanticCommand(
             "value", (climate,), "climate", "set_temperature", {}, "eingestellt"
         )

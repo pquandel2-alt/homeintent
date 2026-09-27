@@ -19,6 +19,7 @@ from .entity_resolution import ResolutionStatus, resolve_mentioned_target
 from .frame import Quantifier, SemanticFrame, TargetReference
 from .parser import ParseResult
 from .primitives import SemanticAction, SemanticProperty
+from .word_cues import has_phrase, has_word
 
 
 _SET_CUE = re.compile(r"\b(?:stell\w*|setz\w*|regel\w*|änder\w*|aender\w*|(?:aus)?wähl\w*|(?:aus)?waehl\w*)\b", re.I)
@@ -44,6 +45,11 @@ _REGISTERED_CUE = re.compile(
 def has_registered_operation_cue(text: str) -> bool:
     """Whether the utterance explicitly names a registered operation slot."""
     return _REGISTERED_CUE.search(text) is not None
+
+
+# Word cues shared with the other compilers (no raw-text patterns).
+_cue = has_word
+_phrase = has_phrase
 
 
 def _entity(
@@ -85,7 +91,7 @@ def _kind_at_place(
 def climate_in_named_area(text: str, entities: list[EntitySnapshot]) -> EntitySnapshot | None:
     """ "die Heizung in der Küche" -> the only climate entity of that room."""
     key = normalize_for_compare(text)
-    if not re.search(r"\b(?:\w*heizung|thermostat|klima\w*|heizkoerper)\b", key):
+    if not _cue(key, "*heizung", "thermostat", "klima*", "heizkoerper"):
         return None
     candidates = [
         entity for entity in entities
@@ -248,14 +254,14 @@ def compile_registered_operation(
                 action=SemanticAction.MUTE,
             )
         percent = _PERCENT.search(text)
-        if percent is not None and re.search(r"\blautstärke\b", text, re.I) and _SET_CUE.search(text):
+        if percent is not None and _cue(text, "lautstaerke") and _SET_CUE.search(text):
             return _result(text, player, "media_player", "volume_set", {"volume_level": int(percent.group(1)) / 100}, property_=SemanticProperty.VOLUME)
-        if re.search(r"\bquelle\b", text, re.I) and _SET_CUE.search(text):
+        if _cue(text, "quelle") and _SET_CUE.search(text):
             if (source := _option(text, player.attributes.get("source_list"))) is not None:
                 return _result(text, player, "media_player", "select_source", {"source": source})
         # "Schalte den Wohnzimmer TV auf Netflix": an offered source named
         # after "auf" selects it (F11).
-        if re.search(r"\b(?:schalt\w*|stell\w*|wechsl\w*|wechsel\w*|umschalt\w*)\b", text, re.I):
+        if _cue(text, "schalt*", "stell*", "wechsl*", "wechsel*", "umschalt*"):
             target = re.search(r"\bauf\s+(?P<value>.+?)\s*(?:um)?\s*[.!?]*$", text, re.I)
             if target is not None and (
                 source := _option(target.group("value"), player.attributes.get("source_list"))
@@ -264,7 +270,7 @@ def compile_registered_operation(
 
     vacuum = _entity(text, entities, {"vacuum"}, index)
     if vacuum is not None:
-        if re.search(r"\b(?:piep\w*|suchsignal)\b", text, re.I):
+        if _cue(text, "piep*", "suchsignal"):
             return _result(
                 text,
                 vacuum,
@@ -272,29 +278,27 @@ def compile_registered_operation(
                 "locate",
                 action=SemanticAction.LOCATE,
             )
-        if re.search(r"\b(?:ladestation|zurück\s+zur\s+station)\b", text, re.I) and re.search(r"\b(?:schick\w*|fahr\w*|soll\w*)\b", text, re.I):
+        if (_cue(text, "ladestation") or _phrase(text, "zurueck zur station")) and _cue(text, "schick*", "fahr*", "soll*"):
             return _result(text, vacuum, "vacuum", "return_to_base", action=SemanticAction.START)
-        if re.search(r"\bpaus\w*\b", text, re.I):
+        if _cue(text, "paus*"):
             return _result(text, vacuum, "vacuum", "pause", action=SemanticAction.PAUSE)
         if (speed := _option(text, vacuum.attributes.get("fan_speed_list"))) is not None and _SET_CUE.search(text):
             return _result(text, vacuum, "vacuum", "set_fan_speed", {"fan_speed": speed})
 
     fan = _entity(text, entities, {"fan"}, index)
     if fan is not None:
-        if (preset := _option(text, fan.attributes.get("preset_modes"))) is not None and re.search(
-            r"\b(?:preset|modus|stell\w*|wähl\w*|waehl\w*)\b", text, re.I
-        ):
+        if (preset := _option(text, fan.attributes.get("preset_modes"))) is not None and _cue(text, "preset", "modus", "stell*", "waehl*"):
             return _result(text, fan, "fan", "set_preset_mode", {"preset_mode": preset})
-        oscillating = re.search(r"\b(?:oszillier\w*|oszillation|schwenk\w*)\b", text, re.I)
+        oscillating = _cue(text, "oszillier*", "oszillation", "schwenk*")
         if oscillating is not None:
             on = re.search(
                 r"\b(?:an|ein|aktivier\w*|einschalt\w*)\b|^\s*lass\b(?!.*\bnicht\b)", text, re.I
             )
-            off = re.search(r"\b(?:aus|deaktivier\w*|ausschalt\w*|stopp\w*|nicht\s+mehr)\b", text, re.I)
+            off = (_cue(text, "aus", "deaktivier*", "ausschalt*", "stopp*") or _phrase(text, "nicht mehr"))
             if bool(on) != bool(off):
                 return _result(text, fan, "fan", "oscillate", {"oscillating": bool(on)})
         direction = re.search(r"\b(?:vorwärts|vorwaerts|rückwärts|rueckwaerts|forward|reverse)\b", text, re.I)
-        if direction is not None and re.search(r"\b(?:richtung|stell\w*|setz\w*)\b", text, re.I):
+        if direction is not None and _cue(text, "richtung", "stell*", "setz*"):
             forward = normalize_for_compare(direction.group(0)) in {"vorwaerts", "forward"}
             return _result(text, fan, "fan", "set_direction", {"direction": "forward" if forward else "reverse"})
 
@@ -303,7 +307,7 @@ def compile_registered_operation(
         percent = _PERCENT.search(text)
         # For a humidifier "auf 50 Prozent" can only mean its target humidity.
         if percent is not None and (
-            re.search(r"\b(?:luftfeuchtigkeit|feuchtigkeit)\b", text, re.I) or _SET_CUE.search(text)
+            _cue(text, "luftfeuchtigkeit", "feuchtigkeit") or _SET_CUE.search(text)
         ):
             value = int(percent.group(1))
             if not _bounded(humidifier, value, "min_humidity", "max_humidity", (0, 100)):
@@ -315,7 +319,7 @@ def compile_registered_operation(
     heater = _entity(text, entities, {"water_heater"}, index)
     if heater is not None:
         number = _NUMBER.search(text)
-        if number is not None and re.search(r"\b(?:grad|temperatur|warmwasser)\b", text, re.I):
+        if number is not None and _cue(text, "grad", "temperatur", "warmwasser"):
             value = float(number.group(1).replace(",", "."))
             if not _bounded(heater, value, "min_temp", "max_temp", (20, 90)):
                 return None
@@ -336,9 +340,7 @@ def compile_registered_operation(
             return _result(text, select, "select", "select_option", {"option": option})
 
     cover = _entity(text, entities, {"cover"}, index)
-    if cover is not None and (percent := _PERCENT.search(text)) is not None and re.search(
-        r"\b(?:lamellen|neigung|winkel|kippposition)\b", text, re.I
-    ):
+    if cover is not None and (percent := _PERCENT.search(text)) is not None and _cue(text, "lamellen", "neigung", "winkel", "kippposition"):
         return _result(
             text,
             cover,
@@ -350,10 +352,10 @@ def compile_registered_operation(
     valve = _entity(text, entities, {"valve"}, index)
     if valve is not None:
         percent = _PERCENT.search(text)
-        if percent is not None and re.search(r"\b(?:position|stell\w*|setz\w*|öffn\w*|oeffn\w*)\b", text, re.I):
+        if percent is not None and _cue(text, "position", "stell*", "setz*", "oeffn*"):
             return _result(text, valve, "valve", "set_valve_position", {"position": int(percent.group(1))}, action=SemanticAction.OPEN)
-        opening = re.search(r"\b(?:öffn\w*|oeffn\w*)\b", text, re.I)
-        closing = re.search(r"\b(?:schließ\w*|schliess\w*)\b", text, re.I)
+        opening = _cue(text, "oeffn*")
+        closing = _cue(text, "schliess*")
         if bool(opening) != bool(closing):
             try:
                 features = int(valve.attributes.get("supported_features", 0))
@@ -403,12 +405,12 @@ def compile_registered_operation(
     if camera is not None and player is None:
         # "auf dem Fernseher im Wohnzimmer": the player by kind and place.
         player = _kind_at_place(text, entities, frozenset({"media_player"}))
-    if camera is not None and player is not None and re.search(r"\b(?:zeig\w*|stream\w*|übertrag\w*|uebertrag\w*)\b", text, re.I):
+    if camera is not None and player is not None and _cue(text, "zeig*", "stream*", "uebertrag*"):
         return _result(text, camera, "camera", "play_stream", {"media_player": player.entity_id}, action=SemanticAction.START)
 
     notify = _entity(text, entities, {"notify"}, index)
     clause = None
-    if re.search(r"\b(?:send\w*|schick\w*|sag\w*|gib)\b", text, re.I):
+    if _cue(text, "send*", "schick*", "sag*", "gib"):
         # "Schick Anna eine Nachricht, dass das Essen fertig ist" (F13): the
         # shared notification grammar extracts recipient and message; a
         # named recipient must match exactly one notify entity.
@@ -423,7 +425,7 @@ def compile_registered_operation(
             and (target := resolve_notify_target(clause.recipient_name or "", entities)) is not None
         ):
             notify = next((item for item in entities if item.entity_id == target.entity_id), None)
-    if notify is not None and re.search(r"\b(?:send\w*|schick\w*|sag\w*|gib)\b", text, re.I):
+    if notify is not None and _cue(text, "send*", "schick*", "sag*", "gib"):
         if clause is not None and clause.message:
             return _result(
                 text, notify, "notify", "send_message", {"message": clause.message},

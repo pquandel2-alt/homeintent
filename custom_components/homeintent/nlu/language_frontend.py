@@ -31,6 +31,7 @@ from .semantic_utterance import (
 )
 from .temporal_semantics import TemporalExpression, analyse_temporal_semantics
 from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
+from .word_cues import has_word
 
 
 _TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
@@ -384,7 +385,7 @@ def analyse_language(
     if (
         utterance.speech_act is SpeechAct.STATEMENT
         and not utterance.normalized_text.rstrip().endswith("?")
-        and re.search(r"\b(?:nein|sondern|stattdessen|äh|aeh)\b", text, re.I)
+        and has_word(text, "nein", "sondern", "stattdessen", "aeh")
         and re.search(r"\d+(?:[,.]\d+)?", text)
         and semantics.values(SemanticKind.DOMAIN)
         and _has_registry_mention(utterance.normalized_text, entity_tuple)

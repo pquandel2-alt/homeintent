@@ -299,6 +299,7 @@ from .security_control import (
     user_display_name,
     user_is_admin,
 )
+from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
 from .execution_policy import (
     PolicyOutcome,
@@ -1638,7 +1639,7 @@ class NluConversationEntity(
         early_automation_result: (
             AutomationDeletionMatchResult | AutomationToggleMatchResult | None
         ) = None
-        if re.search(r"\bautomation\b", user_input.text, re.IGNORECASE) and (
+        if has_word(user_input.text, "automation") and (
             _AUTOMATION_DELETE_RE.search(user_input.text)
             or _AUTOMATION_DISABLE_RE.search(user_input.text)
             or _AUTOMATION_ENABLE_RE.search(user_input.text)
@@ -5622,7 +5623,7 @@ class NluConversationEntity(
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         text = user_input.text.strip()
-        if re.search(r"\b(?:abbrechen|abbruch|stopp|stop|vergiss)\b", text, re.I):
+        if has_word(text, "abbrechen", "abbruch", "stopp", "stop", "vergiss"):
             self._context_store.clear(user_input.conversation_id)
             response.async_set_speech("Abgebrochen. Der Automationsentwurf wurde verworfen.")
             return conversation.ConversationResult(

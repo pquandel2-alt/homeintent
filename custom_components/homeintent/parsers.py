@@ -77,6 +77,7 @@ from .service_call import (
     PERCENT_INTENTS,
     QUERY_INTENTS,
 )
+from .nlu.word_cues import has_word
 
 # The {name} wildcard captures everything between the fixed template words,
 # so "fahre die Rollade im Büro hoch" captures "Rollade im Büro" verbatim -
@@ -2033,7 +2034,7 @@ class StateQueryParser:
         locations_requested = bool(
             re.search(r"\b(wo|in welchen räumen|welche räume haben)\b", text, re.IGNORECASE)
         )
-        if re.search(r"\bbeide\b", text, re.IGNORECASE) and len(candidates) != 2:
+        if has_word(text, "beide") and len(candidates) != 2:
             return None  # "beide" is only truthful when exactly two targets exist
         area_snapshot = AreaSnapshot(
             area_id=area_id, name=area_name or area_id

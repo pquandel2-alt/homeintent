@@ -15,6 +15,7 @@ from enum import Enum, auto
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.entity_clarification import CandidateReplyKind, resolve_candidate_reply
 from .nlu.language_frontend import LanguageDocument
+from .nlu.word_cues import has_word
 
 
 class TodoOperation(Enum):
@@ -332,7 +333,7 @@ def parse_todo_request(
             due_date=due_date, description=description, priority=priority,
         )
     # Natural list query: "Was ist auf meiner Einkaufsliste?"
-    if re.search(r"\b(?:was|welche)\b", text, re.IGNORECASE):
+    if has_word(text, "was", "welche"):
         return TodoRequest(TodoOperation.LIST, entity_id=entity_id, candidates=candidates)
     return None
 

@@ -18,6 +18,7 @@ from .german_structure import ClauseKind, StructuralRelationKind
 from .language_frontend import LanguageDocument
 from .semantic_lexicon import SemanticKind
 from .semantic_utterance import SpeechAct
+from .word_cues import has_word
 
 
 @dataclass(frozen=True)
@@ -152,7 +153,7 @@ def build_compositional_plan(
         or not turn.safe_to_execute_directly
         or turn.coordination is not CoordinationKind.ADDITIVE
         or len(markers) != 1
-        or re.search(r"\b(?:außer|ausser|oder)\b", turn.source_text, re.I)
+        or has_word(turn.source_text, "ausser", "oder")
     ):
         return None
     targets = all_mentioned_entities(turn.source_text, entities, index=index)

@@ -85,6 +85,7 @@ from .semantic_state import (
     supports_state_predicate,
 )
 from .semantic_utterance import SpeechAct, analyse_utterance
+from .word_cues import has_word
 
 
 def _device_class_targets(
@@ -753,8 +754,8 @@ def _compile_relative_climate(
     entities: list[EntitySnapshot],
     world_model: WorldModel | None,
 ) -> ParseResult | None:
-    increase = re.search(r"\b(?:wärmer|waermer|erhöh\w*)\b", text, re.I)
-    decrease = re.search(r"\b(?:kälter|kaelter|senk\w*|reduzier\w*)\b", text, re.I)
+    increase = has_word(text, "waermer", "erhoeh*")
+    decrease = has_word(text, "kaelter", "senk*", "reduzier*")
     if bool(increase) == bool(decrease):
         return None
     named = mentioned_entities(
@@ -813,8 +814,8 @@ def _compile_relative_light(
     world_model: WorldModel | None,
 ) -> ParseResult | None:
     """Compile a bounded relative brightness command for exactly one light."""
-    increase = re.search(r"\bheller\b", text, re.I)
-    decrease = re.search(r"\bdunkler\b", text, re.I)
+    increase = has_word(text, "heller")
+    decrease = has_word(text, "dunkler")
     if bool(increase) == bool(decrease):
         return None
     location = resolve_semantic_location(text, entities, world_model)
@@ -1076,9 +1077,9 @@ def _compile_fan_speed(
     world_model: WorldModel | None,
 ) -> ParseResult | None:
     level = re.search(r"\b(?:stufe|stufen)\s+(10|[1-9])\b", text, re.I)
-    faster = re.search(r"\bschneller\b", text, re.I)
-    slower = re.search(r"\blangsamer\b", text, re.I)
-    if sum((level is not None, faster is not None, slower is not None)) != 1:
+    faster = has_word(text, "schneller")
+    slower = has_word(text, "langsamer")
+    if sum((level is not None, faster, slower)) != 1:
         return None
     entity = _single_named_capable_entity(
         text, entities, "fan", "FAN_SPEED", world_model
@@ -1089,7 +1090,7 @@ def _compile_fan_speed(
         intent = "HassFanSetSpeed"
         parameters: dict[str, object] = {"level": int(level.group(1))}
         direction = None
-    elif faster is not None:
+    elif faster:
         intent = "HassFanIncreaseSpeed"
         parameters = {}
         direction = SemanticDirection.INCREASE

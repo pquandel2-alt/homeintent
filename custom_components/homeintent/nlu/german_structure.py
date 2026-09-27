@@ -232,12 +232,12 @@ _VALUE_WORDS = frozenset({"halb", "die", "ein", "einen", "eine", "null", "voll"}
 
 def _value_follows(tokens: Sequence[StructuralToken], index: int) -> bool:
     following = index + 1
-    while following < len(tokens) and not (tokens[following].is_word or tokens[following].is_number):
+    while following < len(tokens) and not (tokens[following].is_word or tokens[following].canonical[:1].isdigit()):
         following += 1
     if following >= len(tokens):
         return False
     token = tokens[following]
-    if token.is_number:
+    if token.canonical[:1].isdigit():
         return True
     if token.canonical in {"halb", "null", "voll"}:
         return True

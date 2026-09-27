@@ -13,6 +13,7 @@ from ..floors import (
     resolve_floor_by_level_keyword,
     resolve_floor_scored,
 )
+from .word_cues import has_word
 
 if TYPE_CHECKING:
     from ..world_model import WorldModel
@@ -276,7 +277,7 @@ def resolve_coordinated_locations(
     an intersection into a union, and ``oder`` remains ambiguous instead of
     being interpreted as "both".
     """
-    if re.search(r"\bund\b", text, re.I) is None:
+    if not has_word(text, "und"):
         return None
     names = (
         {
@@ -317,7 +318,7 @@ def resolve_coordinated_locations(
         if index < len(mentions) - 1:
             next_start = mentions[index + 1][0]
             connector = text[end:next_start]
-            if re.search(r"\bund\b", connector, re.I) is None:
+            if not has_word(connector, "und"):
                 return None
         area_id, floor_id = location
         item = (spoken, area_id, floor_id)

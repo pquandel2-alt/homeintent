@@ -218,6 +218,7 @@ from .service_call import (
 )
 from .nlu.automation_operations import describe_registered_operation, describe_registered_result
 from .world_model import WorldModel
+from .nlu.word_cues import has_word
 
 _RESPONSE_GENERATOR = ResponseGenerator()
 
@@ -2834,7 +2835,7 @@ class NluEngine:
         if (
             discourse_group is not None
             and discourse_group.semantic_type == "entity"
-            and re.search(r"\b(?:davon|diese|jene)\b", normalized_reference, re.I)
+            and has_word(normalized_reference, "davon", "diese", "jene")
             and discourse_location is not None
             and (discourse_location[1] is not None or discourse_location[2] is not None)
             and world_model is not None
@@ -2878,7 +2879,7 @@ class NluEngine:
             and discourse_group.semantic_type == "area"
             and (
                 excludes_location
-                or re.search(r"\b(?:davon|diese|jene|welche)\b", normalized_reference, re.I)
+                or has_word(normalized_reference, "davon", "diese", "jene", "welche")
             )
             and discourse_location is not None
             and world_model is not None
@@ -2924,7 +2925,7 @@ class NluEngine:
         if (
             discourse_group is not None
             and discourse_group.semantic_type == "area"
-            and re.search(r"\b(?:davon|diese|jene|welche)\b", normalized_reference, re.I)
+            and has_word(normalized_reference, "davon", "diese", "jene", "welche")
             and world_model is not None
         ):
             analysis = analyse_semantics(normalized_reference)
@@ -3106,7 +3107,7 @@ class NluEngine:
         if len(domains) != 1:
             return None
 
-        if re.search(r"\bauch\b", normalized, re.I):
+        if has_word(normalized, "auch"):
             location = resolve_semantic_location(normalized, entities)
             if location is None:
                 return None
@@ -3547,7 +3548,7 @@ class NluEngine:
         normalized = normalize(text)
         normalized = re.sub(r"^nur\s+", "", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"^dass\s+", "wenn ", normalized, flags=re.IGNORECASE)
-        if not re.search(r"\b(?:wenn|falls|sofern)\b", normalized, re.IGNORECASE):
+        if not has_word(normalized, "wenn", "falls", "sofern"):
             normalized = "wenn " + normalized
         return self._automation_condition_parser.parse(
             normalized, create_parse_context(entities, world_model=world_model)
