@@ -22,6 +22,8 @@ Home-Assistant-free and strictly typed.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -109,14 +111,26 @@ _PLURAL_PARTITIVE_RE = re.compile(r"^(?:einer|eines|eine|irgendeiner)\s+(?:der|v
 
 
 def _area_index(entities: Sequence[EntitySnapshot]) -> dict[str, tuple[str, str]]:
+    # Normalise each distinct area once; registries repeat an area for
+    # every entity in it.
+    areas = tuple(dict.fromkeys(
+        (entity.area_id, entity.area_name, tuple(entity.area_aliases))
+        for entity in entities
+        if entity.area_id is not None and entity.area_name
+    ))
+    return _area_index_of(areas)
+
+
+@lru_cache(maxsize=16)
+def _area_index_of(
+    areas: tuple[tuple[str, str, tuple[str, ...]], ...],
+) -> dict[str, tuple[str, str]]:
     index: dict[str, tuple[str, str]] = {}
-    for entity in entities:
-        if entity.area_id is None or not entity.area_name:
-            continue
-        for name in (entity.area_name, *entity.area_aliases):
+    for area_id, area_name, aliases in areas:
+        for name in (area_name, *aliases):
             key = normalize_for_compare(name).strip()
             if key:
-                index.setdefault(key, (entity.area_id, entity.area_name))
+                index.setdefault(key, (area_id, area_name))
     return index
 
 

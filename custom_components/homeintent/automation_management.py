@@ -412,6 +412,17 @@ def select_automation_management(
                         if automation.referenced_entity_ids & scoped_ids
                     ),
                 )
+            described_ids = _described_entity_ids(spoken_name, entities)
+            if described_ids:
+                # "die Büro Rolllade": a kind at a place, not a name.
+                return AutomationManagementSelection(
+                    request,
+                    tuple(
+                        automation
+                        for automation in candidates
+                        if automation.referenced_entity_ids & described_ids
+                    ),
+                )
             return AutomationManagementSelection(
                 request,
                 (),
@@ -453,3 +464,17 @@ def _comparable_target(value: str, now: datetime) -> datetime:
 def format_scheduled_time(value: str) -> str:
     target = datetime.fromisoformat(value)
     return target.strftime("%d.%m.%Y um %H:%M Uhr")
+
+
+def _described_entity_ids(spoken: str, entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...]) -> set[str]:
+    """Entities a kind (+ place) description names, e.g. "Büro Rolllade"."""
+    from .nlu.language_frontend import tokenize_language
+    from .nlu.target_resolution import ResolutionOutcome, describe_with_residue, resolve_description
+
+    descriptions, residue = describe_with_residue(tokenize_language(spoken), list(entities))
+    if residue or len(descriptions) != 1 or descriptions[0].explicit:
+        return set()
+    resolution = resolve_description(descriptions[0], list(entities))
+    if resolution.outcome not in {ResolutionOutcome.RESOLVED, ResolutionOutcome.AMBIGUOUS}:
+        return set()
+    return {entity.entity_id for entity in resolution.entities}

@@ -731,23 +731,33 @@ Etagenaliase („oben“, „unten“, „im Keller“, „draußen“) – in B
 Abfragen, Automationen und Benachrichtigungen gleich.
 
 ```text
-Mach die Leuchte im Kinderzimmer an.        → Rückfrage: zwei Lichter dort
-Fahre alle Jalousien im Obergeschoss hoch.  → alle Rollläden oben, kein Garagentor
-Mach im Büro den Ventilator an.             → „Im Büro gibt es keinen Ventilator.“
+Mach die Leuchte im Kinderzimmer an.
+Fahre alle Jalousien im Obergeschoss hoch.
+Mach im Büro den Ventilator an.
 Schalte im Wohnzimmer alle Lampen aus, bis auf die Stehlampe.
-Mach das Licht im Wohnzimmer neutral weiß.  → nur Lichter mit Farbtemperatur
+Mach das Licht im Wohnzimmer neutral weiß.
 ```
+
+Im Testhaus fragt der erste Satz nach (im Kinderzimmer gibt es zwei
+Lichter), der zweite fährt nur die Rollläden oben (nie das Garagentor), der
+dritte antwortet „Im Büro gibt es keinen Ventilator.“ und der letzte stellt
+nur Lichter mit Farbtemperatur um.
 
 **Bedürfnisse** werden als gewünschte Wirkung verstanden; der Ort kommt aus
 dem Satz, vom Satelliten oder aus dem Kontext:
 
 ```text
-Ich friere.                  (Satellit Kinderzimmer) → Heizung dort +1 Grad
+Ich friere.
 Im Schlafzimmer bitte etwas kühler.
-Hier ist es muffig.          (Satellit Bad)          → Badlüfter an
-Es ist zu laut.              (Satellit Küche)        → Küchenradio leiser
-Ich gehe schlafen.                                   → Vorschlag: Skript Gute Nacht
+Hier ist es muffig.
+Es ist zu laut.
+Ich gehe schlafen.
 ```
+
+Am Satelliten im Kinderzimmer erhöht „Ich friere.“ die Heizung dort um ein
+Grad; „Hier ist es muffig.“ im Bad schaltet den Badlüfter ein; „Es ist zu
+laut.“ in der Küche stellt das Küchenradio leiser; „Ich gehe schlafen.“
+schlägt das Skript Gute Nacht vor.
 
 Fragen, Verneinungen, Vergangenes und Hypothetisches („Gestern war mir
 kalt“, „Wäre es kalt, …“) lösen nie eine Aktion aus.
@@ -758,8 +768,8 @@ Zuständen und führen nie etwas aus:
 ```text
 Ist im Erdgeschoss noch etwas an?
 Ist alles abgeschlossen?
-Sollte ich lüften?                   (Schwellen: 60 % Feuchte, 1000 ppm CO2)
-Warum ist es im Büro so kalt?        (Ist-, Sollwert, Heizbetrieb, Fenster, außen)
+Sollte ich lüften?
+Warum ist es im Büro so kalt?
 Ist jemand im Büro?
 Was kann ich im Wohnzimmer steuern?
 Welche Räume gibt es im Keller?
@@ -768,14 +778,26 @@ Was macht das Skript Kaffee kochen?
 Wofür ist das Hauptwasserventil?
 ```
 
+Lüften folgt dokumentierten Schwellen (60 % Luftfeuchtigkeit, 1000 ppm
+CO2); „Warum ist es kalt“ nennt nur belegte Fakten: Ist- und Sollwert,
+Heizbetrieb, offene Fenster und die Außentemperatur.
+
 **Diskurs**: Ellipsen und Verweise binden an das letzte Ziel, die letzte
 Ergebnismenge oder den letzten Ort des Gesprächs:
 
 ```text
-Schalte die Nachttischlampe rechts ein.  →  Die andere bitte auch.
-Wie warm ist es im Kinderzimmer?         →  Dort bitte wärmer.
-Mach es im Büro wärmer.                  →  Und im Bad?
-Welche Lichter sind im Schlafzimmer?     →  Mach alle aus.
+Schalte die Nachttischlampe rechts ein.
+Die andere bitte auch.
+```
+
+```text
+Wie warm ist es im Kinderzimmer?
+Dort bitte wärmer.
+```
+
+```text
+Mach es im Büro wärmer.
+Und im Bad?
 ```
 
 **Modalität**: „Lass die Kücheninsel an“ tut nichts, „Die Kaffeemaschine

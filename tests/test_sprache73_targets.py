@@ -233,3 +233,29 @@ def test_bis_auf_a_value_is_no_exception():
 ])
 def test_verbless_place_and_comparative_is_a_request(monkeypatch, sentence, entity_id):
     assert HouseConversation(monkeypatch).say(sentence).targets == {entity_id}
+
+
+@pytest.mark.parametrize("sentence,target,service", [
+    ("Kannste den Rollladen im Bad runtermachen?", "cover.badezimmer_rollladen", "close_cover"),
+    ("Zieh den Küchenrollladen hoch.", "cover.kuechenrollladen", "open_cover"),
+    ("Fahr die Markise aus.", "cover.markise", "open_cover"),
+    ("Dreh die Heizung im Kinderzimmer etwas hoch.", "climate.heizung_kinderzimmer", "set_temperature"),
+    ("Dreh das Radio in der Küche runter.", "media_player.kuechenradio", "volume_down"),
+    ("Mach mal Licht im Gäste-WC.", "light.gaeste_wc_licht", "turn_on"),
+    ("Mach's Küchenlicht an.", "light.kuechenlicht", "turn_on"),
+])
+def test_colloquial_particle_verbs(monkeypatch, sentence, target, service):
+    from _testhaus import with_states
+
+    entities = with_states(
+        house_entities(), media_player__kuechenradio="playing", cover__markise="closed",
+        cover__kuechenrollladen="closed", cover__badezimmer_rollladen="open",
+    )
+    turn = HouseConversation(monkeypatch, entities).say(sentence)
+    assert turn.targets == {target}, turn.speech
+    assert turn.calls[0][1] == service
+
+
+def test_kind_without_operable_member_says_why(monkeypatch):
+    turn = HouseConversation(monkeypatch).say("Mach die Tür zu.")
+    assert turn.calls == [] and "Haustür" in turn.speech and "Sensor" in turn.speech

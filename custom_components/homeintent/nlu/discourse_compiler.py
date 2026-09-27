@@ -202,7 +202,11 @@ def compile_discourse(
         actions, degree = previous_actions, previous_degree
         has_operation = True
     if not has_operation:
-        if not (word_set & _ALSO or words[0] == "und") or not (descriptions or word_set & _OTHER):
+        bare_other = bool(word_set & _OTHER) and not descriptions and len(words) <= 4
+        if not bare_other and (
+            not (word_set & _ALSO or words[0] == "und") or not (descriptions or word_set & _OTHER)
+        ):
+            # "Die andere." alone repeats the last operation on the partner.
             return None
         actions, degree = previous_actions, previous_degree
         if not actions and degree is None:

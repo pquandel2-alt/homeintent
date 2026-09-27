@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import re
 from typing import TYPE_CHECKING
 
@@ -148,6 +150,13 @@ def whole_home_phrase(
     return bare.group(0)
 
 
+@lru_cache(maxsize=32)
+def _named_location_pattern(names: frozenset[str]) -> re.Pattern[str]:
+    """One pattern for "im/in der/am <any known place>" (built once per registry)."""
+    alternatives = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+    return re.compile(rf"\b(?:im|in\s+der|in\s+dem|am|beim)\s+(?:{alternatives})\b", re.I)
+
+
 def resolve_semantic_location(
     text: str,
     entities: list[EntitySnapshot],
@@ -176,14 +185,9 @@ def resolve_semantic_location(
             if name
         }
     )
-    explicit_named_location = any(
-        re.search(
-            rf"\b(?:im|in\s+der|in\s+dem|am|beim)\s+{re.escape(name)}\b",
-            text,
-            re.I,
-        )
-        for name in names
-    )
+    explicit_named_location = bool(names) and _named_location_pattern(
+        frozenset(names)
+    ).search(text) is not None
     level = next(
         (
             match for match in _LEVEL_CUE_RE.finditer(text)

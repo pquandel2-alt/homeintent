@@ -104,3 +104,9 @@ def test_explicit_new_place_outranks_the_remembered_referent(monkeypatch, follow
     house = HouseConversation(monkeypatch, area="buro")
     house.say("Mach es etwas kühler.")
     assert house.say(followup).targets == expected
+
+
+def test_bare_other_repeats_the_last_operation(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    house.say("Mach die Nachttischlampe rechts an.")
+    assert house.say("Die andere.").targets == {"light.nachttischlampe_links"}

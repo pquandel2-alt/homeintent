@@ -177,13 +177,17 @@ def _view(text: str, words: list[str]) -> SituationView | None:
         return SituationView.STILL_ON
     if ws & _STILL and ws & _ON_WORDS and ws & {"was", "etwas", "irgendwas", "irgendetwas", "alles", "licht", "lichter", "geraete", "lampen"}:
         return SituationView.STILL_ON
+    if ws & {"brennt", "brennen"} and ws & {"irgendwo", "noch", "ueberall"}:
+        return SituationView.STILL_ON
     if ws & _VENTILATE:
         return SituationView.VENTILATE
     if ws & _WHY and ws & (_COLD | _WARM):
         return SituationView.WHY_TEMPERATURE
     if ws & _SECURE_WORDS or (ws & _CLOSED_WORDS and ws & {"alles", "ueberall", "haus", "wohnung"}):
         return SituationView.SECURE
-    if any(_contains(words, phrase) for phrase in _OVERVIEW_PHRASES):
+    if any(_contains(words, phrase) for phrase in _OVERVIEW_PHRASES) or (
+        words[0] == "was" and "los" in ws and not ws & {"mit"}
+    ):
         return SituationView.OVERVIEW
     if ws & _PRESENCE_WORDS and ("im" in ws or "in" in ws or "ist" in ws) and not ws & {"licht", "fenster", "tuer"}:
         return SituationView.PRESENCE
@@ -191,7 +195,7 @@ def _view(text: str, words: list[str]) -> SituationView | None:
         return SituationView.CONTROLLABLE
     if ws & _ROOM_NOUNS and words[0] in {"welche", "was", "wie"}:
         return SituationView.ROOMS
-    if _contains(words, _COUNT) and ws & {"gibt", "haben", "habe", "hab"}:
+    if _contains(words, _COUNT) and ws & {"gibt", "haben", "habe", "hab", "hat", "hast"}:
         return SituationView.COUNT
     return None
 
@@ -217,10 +221,21 @@ def answer_situation_view(
     return handler(words, entities, place, routine_steps)
 
 
+def _spoken_kinds(words: Sequence[str]) -> set[str]:
+    kinds: set[str] = set()
+    for word in words:
+        analysis = analyse_word(word)
+        if analysis is not None and analysis.genera != ("device",):
+            kinds.update(analysis.genera)
+    return kinds
+
+
 def _still_on(words, entities, place, _steps) -> ViewAnswer:
+    kinds = _spoken_kinds(words) or (set() if not set(words) & {"brennt", "brennen"} else {"light"})
     on = [
         entity for entity in _at(place, entities)
-        if entity_genera(entity) & _EVERYDAY and _is_on(entity)
+        if (entity_genera(entity) & kinds if kinds else entity_genera(entity) & _EVERYDAY)
+        and _is_on(entity)
     ]
     where = _where(place)
     if not on:
@@ -231,7 +246,31 @@ def _still_on(words, entities, place, _steps) -> ViewAnswer:
     )
 
 
+_SECURE_FUNCTION_WORDS = _SECURE_WORDS | _CLOSED_WORDS | frozenset({
+    "ist", "sind", "die", "der", "das", "den", "auch", "noch", "wirklich", "schon", "ob",
+    "weisst", "du", "haus", "wohnung", "alles", "alle", "ueberall",
+})
+
+
+def _named_locks(words, entities) -> list[EntitySnapshot]:
+    content = [word for word in words if len(word) >= 4 and word not in _SECURE_FUNCTION_WORDS]
+    locks = [entity for entity in entities if entity.domain == "lock"]
+    return [
+        entity for entity in locks
+        if any(word in normalize_for_compare(entity.friendly_name).replace(" ", "") for word in content)
+    ]
+
+
 def _secure(words, entities, place, _steps) -> ViewAnswer:
+    named = _named_locks(words, entities)
+    if named:
+        # "Ist die Haustür abgeschlossen?": the lock of that door.
+        parts = [
+            f"{entity.friendly_name} ist {'abgeschlossen' if entity.state == 'locked' else 'nicht abgeschlossen'}"
+            for entity in named
+        ]
+        head = "Ja" if all(entity.state == "locked" for entity in named) else "Nein"
+        return ViewAnswer(SituationView.SECURE, f"{head}, " + "; ".join(parts) + ".", tuple(named), place)
     local = _at(place, entities)
     unlocked = [entity for entity in local if entity.domain == "lock" and entity.state != "locked"]
     open_doors = [
@@ -270,7 +309,9 @@ def _secure(words, entities, place, _steps) -> ViewAnswer:
         return ViewAnswer(SituationView.SECURE, base + "." + alarm_text, tuple(locked), place)
     return ViewAnswer(
         SituationView.SECURE,
-        f"Nein. {_capital('; '.join(problems))}." + alarm_text,
+        f"Nein. {_capital('; '.join(problems))}."
+        + (f" Abgeschlossen sind: {_names(locked)}." if locked and not unlocked else "")
+        + alarm_text,
         tuple(unlocked + open_doors + open_gates + open_windows),
         place,
     )

@@ -495,6 +495,8 @@ def _compile_comparison_query(
     entities: list[EntitySnapshot],
     analysis: SemanticAnalysis,
     world_model: WorldModel | None = None,
+    *,
+    empty_answer: bool = False,
 ) -> ParseResult | None:
     """Compile a typed current-value comparison without a grammar parser."""
     comparators = analysis.values(SemanticKind.COMPARATOR)
@@ -568,7 +570,34 @@ def _compile_comparison_query(
         if (value := current_value(entity)) is not None and predicate(value)
     ]
     if not matches:
-        return None
+        if not candidates or not empty_answer:
+            return None
+        # A grounded empty answer: the kind exists here, none passes.
+        noun = {"light": "Lichter", "cover": "Rollläden", "climate": "Räume", "sensor": "Batterien"}[domain]
+        relation = {
+            "lt": "unter", "gt": "über", "lte": "höchstens", "gte": "mindestens",
+        }[comparator]
+        unit = "Grad" if has_temperature else "Prozent"
+        spoken = f"{threshold:g}".replace(".", ",")
+        if location is not None:
+            from .german_morphology import dative_location_phrase
+
+            place = dative_location_phrase(location[0])
+            answer = f"{place[:1].upper()}{place[1:]} liegen gerade keine {noun} {relation} {spoken} {unit}."
+        else:
+            answer = f"Gerade liegen keine {noun} {relation} {spoken} {unit}."
+        return ParseResult(
+            frame=SemanticFrame(
+                intent="HassQueryComparison",
+                target=TargetReference(text=domain, domain=domain),
+                area=None,
+                parameters={"comparison": Comparison(operator=comparator, value=threshold)},
+                source_text=text,
+                action=SemanticAction.QUERY,
+            ),
+            resolved_entities=[],
+            response_text=answer,
+        )
     return ParseResult(
         frame=SemanticFrame(
             intent="HassGetState" if domain == "sensor" else "HassQueryComparison",
@@ -588,6 +617,21 @@ def _compile_comparison_query(
         ),
         resolved_entities=matches,
     )
+
+
+def empty_comparison_answer(text: str, entities: list[EntitySnapshot]) -> str | None:
+    """"Keine Lichter über 90 Prozent": the grounded answer when nothing passes.
+
+    Only for the failure explanation after every compiler returned nothing;
+    the compiler itself keeps "no match -> no result".
+    """
+    from .normalize import normalize
+
+    normalized = normalize(text)
+    result = _compile_comparison_query(
+        normalized, entities, analyse_semantics(normalized), empty_answer=True
+    )
+    return result.response_text if result is not None and not result.resolved_entities else None
 
 
 def _tokens(text: str) -> set[str]:

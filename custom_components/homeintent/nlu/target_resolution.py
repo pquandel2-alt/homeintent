@@ -350,7 +350,12 @@ def describe_with_residue(
                 quantity = Quantity.ANY
             elif word in _PLURAL_ARTICLES:
                 article_plural = True
-            elif (number := (int(word) if word.isdigit() else german_number(word))) is not None and 2 <= number <= 20:
+            elif (
+                (number := (int(word) if word.isdigit() else german_number(word))) is not None
+                and 2 <= number <= 20
+                and not (index + 1 < len(words) and words[index + 1] in _NUMBER_UNITS)
+            ):
+                # "8 Uhr", "20 Minuten", "3 Grad" measure something else.
                 quantity, count = Quantity.COUNT, number
             elif (capability := _feature(word)) is not None:
                 features.add(capability)
@@ -575,7 +580,9 @@ def resolve_description(
             entity for entity in genus_members(extra, entities)
             if entity not in candidates
         )
+    unfit: list[EntitySnapshot] = []
     if domains is not None:
+        unfit = [entity for entity in candidates if entity.domain not in domains]
         candidates = [entity for entity in candidates if entity.domain in domains]
     place = description.place
     used_source_area = False
@@ -611,6 +618,21 @@ def resolve_description(
     candidates.sort(key=lambda entity: entity.entity_id)
     described = replace(description, place=place)
     if not candidates:
+        present = [entity for entity in unfit if place is None or place.contains(entity)]
+        if present:
+            # "Mach die Tür zu" with only door contacts: the kind exists,
+            # but nothing of it can carry the operation.
+            names = sorted(entity.friendly_name for entity in present)
+            listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
+            sensors = all(entity.domain in {"binary_sensor", "sensor"} for entity in present)
+            reason = (
+                "kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht"
+                if sensors else "unterstützen diese Aktion nicht"
+            )
+            return TargetResolution(
+                ResolutionOutcome.NONE, described,
+                message=f"{listed} {reason}. Ich habe nichts ausgeführt.",
+            )
         return TargetResolution(
             ResolutionOutcome.NONE,
             described,
@@ -653,6 +675,10 @@ def resolve_description(
     )
 
 
+_NUMBER_UNITS = frozenset({
+    "uhr", "prozent", "grad", "minute", "minuten", "stunde", "stunden", "sekunde",
+    "sekunden", "tag", "tage", "tagen", "watt", "stufe", "mal",
+})
 _COUNT_WORDS = {1: "ein", 2: "zwei", 3: "drei", 4: "vier", 5: "fünf", 6: "sechs"}
 
 

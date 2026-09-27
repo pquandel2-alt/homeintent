@@ -91,7 +91,7 @@ _NON_ASSERTIVE = frozenset({
     "merk", "merke", "merken", "notiere", "speichere", "erinnere", "vergiss",
     # Past and counterfactual states are reports, not present needs.
     "war", "waren", "warst", "gewesen", "gestern", "vorhin", "damals", "letzte", "letztes",
-    "waere", "waeren", "wuerde", "wuerden", "haette", "haetten", "koennte",
+    "waere", "waeren", "wuerde", "wuerden",
 })
 _EXPERIENCERS = frozenset({"mir", "mich", "ich", "uns", "wir"})
 _COPULAS = frozenset({"ist", "sind", "wird", "wirds", "isses"})

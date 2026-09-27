@@ -9,6 +9,8 @@ compound head (``*heizung`` -> Fußbodenheizung).
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from ..entities import normalize_for_compare
 
 __all__ = ("has_phrase", "has_word", "words_of")
@@ -16,12 +18,17 @@ __all__ = ("has_phrase", "has_word", "words_of")
 _STRIP = ".,!?;:\"'„“”()[]"
 
 
+@lru_cache(maxsize=2048)
+def _word_tuple(text: str) -> tuple[str, ...]:
+    return tuple(word.strip(_STRIP) for word in normalize_for_compare(text).split())
+
+
 def words_of(text: str) -> list[str]:
-    return [word.strip(_STRIP) for word in normalize_for_compare(text).split()]
+    return list(_word_tuple(text))
 
 
 def has_word(text: str, *forms: str) -> bool:
-    for word in words_of(text):
+    for word in _word_tuple(text):
         for form in forms:
             if form.startswith("*") and word.endswith(form[1:]):
                 return True

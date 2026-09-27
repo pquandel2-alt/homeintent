@@ -202,6 +202,7 @@ from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
 from .nlu.clock_language import normalize_clock_expressions, wake_request
 from .nlu.semantic_exclusion import canonical_exception_words
+from .nlu.normalize import expand_clitics
 from .nlu.german_morphology import dative_location_phrase
 from .nlu.place_model import build_place_lexicon
 from .nlu.device_ontology import analyse_word
@@ -797,7 +798,7 @@ class NluConversationEntity(
         self._world_model = self._world_model.with_house_graph(self._house_graph)
         understanding_context = UnderstandingContext(source_area=conversation_area)
         localized_text = materialize_local_reference(
-            canonical_exception_words(normalize_clock_expressions(user_input.text)),
+            canonical_exception_words(normalize_clock_expressions(expand_clitics(user_input.text))),
             conversation_area,
         )
         explicit_topic_switch = False

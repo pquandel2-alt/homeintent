@@ -44,6 +44,8 @@ from .automation_results import (
     AutomationToggleMatchResult,
 )
 from .entities import EntitySnapshot, normalize_for_compare
+from .nlu.semantic_compiler import empty_comparison_answer
+from .nlu.target_resolution import Quantity
 from .nlu.clock_language import split_relative_delay
 from .nlu.entity_resolution import (
     ResolutionStatus,
@@ -811,6 +813,28 @@ _NOTIFICATION_REQUEST_VERB_RE = re.compile(
 )
 
 
+def _ambiguous_kind_question(
+    document: LanguageDocument, entities: list[EntitySnapshot]
+) -> str | None:
+    """"Stelle den Ventilator auf Stufe 3" with two fans: ask, naming them.
+
+    Used only after every compiler failed, so it never replaces a result;
+    it turns "nicht eindeutig" into the concrete question.
+    """
+    from .nlu.target_resolution import ResolutionOutcome, describe_with_residue, resolve_description
+
+    descriptions, _residue = describe_with_residue(document.tokens, entities)
+    for description in descriptions:
+        if description.explicit or description.universal or description.quantity is not Quantity.ONE:
+            continue
+        resolution = resolve_description(description, entities)
+        if resolution.outcome is ResolutionOutcome.AMBIGUOUS and 1 < len(resolution.entities) <= 8:
+            names = [entity.friendly_name for entity in resolution.entities]
+            listed = ", ".join(names[:-1]) + " oder " + names[-1]
+            return f"Welches Gerät meinst du: {listed}? Ich habe nichts ausgeführt."
+    return None
+
+
 def _names_its_target(
     document: LanguageDocument, entity_id: str, entities: list[EntitySnapshot]
 ) -> bool:
@@ -1487,13 +1511,15 @@ class NluEngine:
     ) -> str | None:
         """Honest sentence for a command the genus model cannot ground."""
         document = analyse_language(text, entities, include_registry_compounds=False)
-        if (
-            document.utterance.speech_act is not SpeechAct.COMMAND
-            or not document.utterance.safe_to_execute_directly
-        ):
+        if document.utterance.speech_act is not SpeechAct.COMMAND:
             return None
+        if not document.utterance.safe_to_execute_directly:
+            # Asking which device is meant is safe for any command shape.
+            return _ambiguous_kind_question(document, entities) if document.temporal else None
         compiled = compile_ontology_command(document, entities)
-        return compiled.message if compiled is not None else None
+        if compiled is not None and compiled.message is not None:
+            return compiled.message
+        return _ambiguous_kind_question(document, entities)
 
     def _ontology_understanding(
         self,
@@ -2261,6 +2287,8 @@ class NluEngine:
                 "für HomeIntent freigegebenes Gerät gefunden.",
             )
         if analyse_utterance(text).speech_act is SpeechAct.QUERY:
+            if entities is not None and (empty := empty_comparison_answer(text, entities)) is not None:
+                return UnderstandingFeedback(ParseFailureReason.UNSUPPORTED_PROPERTY, empty)
             return UnderstandingFeedback(
                 ParseFailureReason.UNSUPPORTED_PROPERTY,
                 "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",

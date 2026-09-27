@@ -149,3 +149,47 @@ def test_routine_view_describes_configured_script_steps():
 ])
 def test_requests_are_never_views(request_text):
     assert answer_situation_view(request_text, house_entities()) is None
+
+
+@pytest.mark.parametrize("question,lock", [
+    ("Ist die Haustür abgeschlossen?", "lock.haustuerschloss"),
+    ("Weißt du, ob das Gartentor abgesperrt ist?", "lock.gartentor_schloss"),
+])
+@pytest.mark.parametrize("state,answer", [("locked", "Ja"), ("unlocked", "Nein")])
+def test_named_lock_question_answers_that_lock(monkeypatch, question, lock, state, answer):
+    turn = HouseConversation(monkeypatch, with_states(house_entities(), **{lock.replace(".", "__"): state})).say(question)
+    assert turn.calls == [] and turn.speech.startswith(answer), turn.speech
+    assert "Fenster" not in turn.speech
+
+
+@pytest.mark.parametrize("question", ["Brennt im Erdgeschoss noch irgendwo Licht?", "Sind unten noch Lampen an?"])
+def test_still_on_with_a_kind_lists_only_that_kind(monkeypatch, question):
+    entities = _quiet_house(light__stehlampe="on", switch__kaffeemaschine="on")
+    turn = HouseConversation(monkeypatch, entities).say(question)
+    assert "Stehlampe" in turn.speech and "Kaffeemaschine" not in turn.speech
+
+
+@pytest.mark.parametrize("question", ["Was ist gerade los?", "Was ist denn hier im Haus los?"])
+def test_overview_tolerates_fillers(monkeypatch, question):
+    turn = HouseConversation(monkeypatch).say(question)
+    assert turn.calls == [] and "Zu Hause" in turn.speech
+
+
+@pytest.mark.parametrize("question", ["Wie viele Fenster hat das Haus?", "Wie viele Heizungen haben wir?"])
+def test_count_with_possessive_verbs(question):
+    answer = answer_situation_view(question, house_entities())
+    assert answer is not None and answer.view is SituationView.COUNT
+
+
+@pytest.mark.parametrize("question", [
+    "Welche Lichter sind heller als 90 Prozent?", "Welche Lampen sind mindestens 95 Prozent hell?",
+])
+def test_threshold_query_without_match_answers_none(monkeypatch, question):
+    turn = HouseConversation(monkeypatch, _quiet_house()).say(question)
+    assert turn.calls == [] and "keine" in turn.speech
+
+
+@pytest.mark.parametrize("sentence", ["Stelle den Ventilator auf Stufe 2.", "Fahre morgen um 8 Uhr den Rollladen hoch."])
+def test_singular_kind_with_several_members_asks_by_name(monkeypatch, sentence):
+    turn = HouseConversation(monkeypatch).say(sentence)
+    assert turn.calls == [] and "?" in turn.speech

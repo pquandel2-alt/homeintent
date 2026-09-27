@@ -209,6 +209,30 @@ _STT_REWRITES = (
     (re.compile(r"\b(hoch|runter|herunter)\s+fahren\b", re.IGNORECASE), r"\1fahren"),
 )
 
+# Spoken clitics: the pronoun is fused onto the verb ("kannste", "mach's").
+# One table, expanded word by word before any meaning is read.
+_CLITICS = {
+    "kannste": "kannst du", "kannstes": "kannst du es", "haste": "hast du",
+    "willste": "willst du", "machste": "machst du", "biste": "bist du",
+    "mach's": "mach das", "machs": "mach das", "mach’s": "mach das",
+    "dreh's": "dreh das", "drehs": "dreh das", "schalt's": "schalt das",
+    "stell's": "stell das", "gibt's": "gibt es", "gibts": "gibt es",
+}
+_CLITIC_RE = re.compile(
+    r"(?<![\wäöüß'’])(" + "|".join(re.escape(key) for key in sorted(_CLITICS, key=len, reverse=True)) + r")(?![\wäöüß'’])",
+    re.IGNORECASE,
+)
+
+
+def _expand_clitic(match: re.Match[str]) -> str:
+    return _CLITICS[match.group(1).casefold()]
+
+
+def expand_clitics(text: str) -> str:
+    """"Kannste die Rollos …" -> "kannst du die Rollos …"."""
+    return _CLITIC_RE.sub(_expand_clitic, text)
+
+
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -251,6 +275,7 @@ def _unembed_question(text: str) -> str:
 
 def normalize(text: str) -> str:
     text = _unembed_question(text)
+    text = _CLITIC_RE.sub(_expand_clitic, text)
     text = _LEADING_DISCOURSE_FILLER_RE.sub("", text)
     text = _TRAILING_DISCOURSE_FILLER_RE.sub("", text)
     text = _HESITATION_RE.sub(" ", text)

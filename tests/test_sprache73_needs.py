@@ -120,3 +120,8 @@ def test_routine_statements_propose_the_matching_routine(monkeypatch, sentence, 
 def test_movie_need_starts_the_movie_scene(monkeypatch, sentence):
     turn = HouseConversation(monkeypatch).say(sentence)
     assert turn.targets == {"scene.filmabend"}
+
+
+@pytest.mark.parametrize("sentence", ["Ich hätte gern etwas mehr Wärme im Büro.", "Ich hätte gerne mehr Wärme im Büro."])
+def test_wish_for_more_warmth_is_a_need(monkeypatch, sentence):
+    assert HouseConversation(monkeypatch).say(sentence).targets == {"climate.heizung_buero"}

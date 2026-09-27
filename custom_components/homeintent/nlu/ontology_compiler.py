@@ -252,6 +252,33 @@ def _clause_meanings(
                 residue=residue,
             ))
             continue
+        genera_here = {key for item in descriptions for key in item.genera}
+        if (
+            actions in (frozenset({"open"}), frozenset({"close"}))
+            and degree is None
+            and any(word.startswith("dreh") for word in words_here)
+            and genera_here and not genera_here & _MOVABLE_GENERA
+        ):
+            # "Dreh die Heizung hoch", "Dreh das Radio runter": turning a
+            # control up or down changes the device's scalar property.
+            properties = {_GENUS_PROPERTY.get(key) for key in genera_here}
+            if len(properties) == 1 and None not in properties:
+                degree = (next(iter(properties)) or "", 1 if actions == {"open"} else -1)
+                actions = frozenset()
+        if (
+            not actions and degree is None and percent is None and temperature is None
+            and any(word.startswith("mach") for word in words_here)
+            and any(item.mass and "light" in item.genera for item in descriptions)
+            and not any(
+                words_here[index + 1] in {"licht", "beleuchtung"}
+                for index, word in enumerate(words_here[:-1])
+                if word in {"das", "die", "dem", "den"}
+            )
+        ):
+            # Only the article-less collocation "Licht machen" means switching
+            # on; "Mach das Licht" lacks its particle and stays unclear.
+            # "Mach (mal) Licht im Flur": making light is switching it on.
+            actions = frozenset({"turn_on"})
         meanings.append(ClauseMeaning(
             text=text,
             actions=actions,
@@ -288,6 +315,15 @@ def _clause_meanings(
             (*last.descriptions, *carried), last.residue,
         )
     return tuple(merged)
+
+
+# Genera that physically move ("hoch" opens them); every other genus turned
+# "hoch"/"runter" changes its scalar property instead.
+_MOVABLE_GENERA = frozenset({"shutter", "raffstore", "awning", "curtain", "garage_door", "window", "door", "valve"})
+_GENUS_PROPERTY = {
+    "heating": "temperature", "light": "brightness", "media": "volume", "tv": "volume",
+    "radio": "volume", "music": "volume", "fan": "speed",
+}
 
 
 def _within_reported_range(entity: EntitySnapshot, temperature: float) -> bool:

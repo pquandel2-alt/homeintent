@@ -95,7 +95,10 @@ ACTION_EXPRESSIONS: dict[str, tuple[str, ...]] = {
     "open": (
         r"hoch", r"oben", r"offen", r"hochfahr(?:e|en)?", r"hochgefahren",
         r"öffn(?:e|en|est|et)?", r"mach(?:e|en|st|t)?(?:\s+\w+){1,8}\s+auf",
-        r"aufmach(?:e|en|st|t)?",
+        r"aufmach(?:e|en|st|t)?", r"hochmach(?:e|en|st|t)?", r"hochzieh(?:e|en|st|t)?",
+        r"zieh(?:e|en|st|t)?(?:\s+\w+){1,8}\s+hoch",
+        # Awnings and blinds are extended ("ausfahren") and retracted.
+        r"ausfahr(?:e|en|st|t)?", r"fahr(?:e|en|st|t)?(?:\s+\w+){1,8}\s+aus(?=\s*[.!?]*\s*$)",
         # Sentence-final separable particle ("Bitte den Rollladen auf."):
         # never the preposition of a value ("auf 50 Prozent").
         r"auf(?=\s*[.!?]*\s*$)",
@@ -104,6 +107,9 @@ ACTION_EXPRESSIONS: dict[str, tuple[str, ...]] = {
         r"runter", r"herunter", r"nach\s+unten", r"runterfahr(?:e|en)?",
         r"herunterfahr(?:e|en)?", r"geschlossen", r"schließ(?:e|en|est|et)?",
         r"zumach(?:e|en|st|t)?", r"mach(?:e|en|st|t)?\s+(?:es\s+)?zu",
+        r"runtermach(?:e|en|st|t)?", r"runterzieh(?:e|en|st|t)?", r"einfahr(?:e|en|st|t)?",
+        r"zieh(?:e|en|st|t)?(?:\s+\w+){1,8}\s+runter",
+        r"fahr(?:e|en|st|t)?(?:\s+\w+){1,8}\s+ein(?=\s*[.!?]*\s*$)",
         r"zu(?!\s+öffn)",
     ),
     "turn_on": (
