@@ -62,8 +62,8 @@ und sicher, aber:
    Lexikon- und Grammatikpflege; offene Alltagssprache wächst schneller.
 
 Ein rein symbolisches System wird für **das Hausvokabular** sehr weit kommen, aber nie
-„wie ein LLM“ auf beliebige Formulierungen generalisieren. Deshalb empfehle ich einen
-Ausbau in drei Stufen. Das Sicherheitsmodell bleibt dabei unverändert: Jede Bedeutung
+„wie ein LLM“ auf beliebige Formulierungen generalisieren. Deshalb war ursprünglich ein
+Ausbau in drei Stufen vorgesehen (Stufen 2 und 3 inzwischen verworfen, siehe unten). Das Sicherheitsmodell bleibt dabei unverändert: Jede Bedeutung
 landet am Ende im selben typisierten Frame und läuft durch Validator, Richtlinie und
 Bestätigung.
 
@@ -96,36 +96,16 @@ Bestätigung.
 Erwartung: Das Hausvokabular wird breit abgedeckt, geschätzt 55–70 % des Korpus. Das
 Versprechen „ohne LLM zur Laufzeit“ bleibt erhalten.
 
-### Stufe 2 – Lokales Satz-Embedding als Kandidaten-Ranker (optional, ohne LLM)
+### Stufen 2 und 3 – verworfen
 
-Ein kleines, lokales, mehrsprachiges Satz-Embedding-Modell (ONNX, ca. 30–120 MB, CPU,
-~5–20 ms) bildet unbekannte Formulierungen auf die nächstgelegenen **bekannten
-Bedeutungen** ab (Beispielsätze je Frame-Typ plus Geräte-/Raumnamen). Das Ergebnis ist
-nur ein **Kandidat**; der symbolische Compiler muss ihn vollständig bestätigen (Ziel,
-Fähigkeit, Werte). Bei unsicherem Abstand folgt eine Rückfrage. Deterministisch,
-offline, per Option abschaltbar, als Zusatzpaket.
-
-### Stufe 3 – Optionale LLM-Brücke über `ai_task` (Opt-in, standardmäßig aus)
-
-Nur wenn Stufe 1 und 2 `UNSUPPORTED` liefern **und** der Nutzer eine AI-Task-Entität
-gewählt hat (lokal z. B. Ollama, oder Cloud):
-
-- HomeIntent ruft `ai_task.async_generate_data(…, structure=…)` mit einem **strikten
-  Schema** auf, das exakt seinen typisierten Bedeutungen entspricht (Befehl, Abfrage,
-  Automation). Übergeben werden nur Satz, freigegebene Entitäten mit Namen/Bereich/Fähigkeiten
-  und kurzer Kontext – keine Zustände privater Entitäten, keine Geheimnisse.
-- Die Antwort ist **nur ein Vorschlag**: Sie wird in einen `SemanticFrame` bzw. ein
-  `AutomationModel` überführt und läuft durch Validator, Richtlinie, Bestätigung und
-  Wirkungsprüfung. Das LLM ruft nie selbst Dienste auf. Kritische Aktionen verlangen immer
-  eine Bestätigung, wenn die Bedeutung vom LLM stammt.
-- **Lehrer-Schüler-Effekt:** Eine vom Nutzer bestätigte LLM-Deutung kann (nach
-  Rückfrage) als lokaler Alias/Paraphrase gespeichert werden; derselbe Satz geht danach
-  ohne LLM.
-- Zeitbudget mit sauberem Abbruch; ohne Netz/Modell verhält sich HomeIntent wie heute.
-
-Diese Stufe bringt echtes LLM-Niveau für freie Sprache, ändert aber das Produktversprechen
-„ohne LLM“. Deshalb Opt-in mit klarer Kennzeichnung in Antworten („über dein
-Sprachmodell verstanden“) und im Learning Center.
+**Entscheidung des Projektinhabers (27.09.2026): HomeIntent erhält kein LLM und kein
+ML-Modell, auch nicht optional.** Die ursprünglich vorgeschlagenen Stufen 2
+(Satz-Embedding) und 3 (LLM-Brücke über `ai_task`) entfallen. LLM-ähnliches
+Verständnis muss vollständig aus der deterministischen Sprachverarbeitung kommen;
+Stufe 1 wird dafür deutlich breiter angelegt (kompositionelle Zielauflösung,
+Gattungs-Ontologie, Etagen und Komposita überall, vollständige
+Benachrichtigungsbedeutung). Umsetzungsauftrag:
+[`sim/PROMPT_SPRACHVERSTAENDNIS.md`](../sim/PROMPT_SPRACHVERSTAENDNIS.md).
 
 ## 4. Messbarkeit
 
@@ -134,5 +114,5 @@ Sprachmodell verstanden“) und im Learning Center.
   Entwicklungskorpus.
 - Für die Abnahme wird zusätzlich ein **zweiter, unveröffentlichter Korpus** in der
   Test-Session verwendet.
-- Zielwerte: Stufe 1 ≥ 60 % ok und 0 sicherheitsrelevante Fehlgriffe; mit Stufe 3
-  ≥ 85 %. Die Latenz ohne LLM bleibt im heutigen Budget (p95 < 100 ms).
+- Zielwerte: ≥ 75 % ok und 0 falsche Geräteaktionen, ohne LLM; die Latenz bleibt im
+  heutigen Budget (p95 < 100 ms).

@@ -1,0 +1,1093 @@
+[
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Schalte das Küchenlicht ein.",
+  "speech": "Küchenlicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Kannst du das Küchenlicht anmachen?",
+  "speech": "Küchenlicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Wäre es möglich, das Küchenlicht einzuschalten?",
+  "speech": "Küchenlicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Ich hätte gerne das Küchenlicht an.",
+  "speech": "Küchenlicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Sorge bitte dafür, dass das Küchenlicht an ist.",
+  "speech": "Küchenlicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Das Küchenlicht soll an sein.",
+  "speech": "Küchenlicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Stelle die Heizung auf zweiundzwanzig Grad.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Fahre den Rollladen auf drei Viertel.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Natürliche Formulierungen ohne Satzschablonen",
+  "text": "Fahre den Rollladen zur Hälfte.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Ähnliche Namen und natürliche Auswahl",
+  "text": "Mach das Bürolicht an.",
+  "speech": "Bürolicht eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.buerolicht:turn_on"
+  ]
+ },
+ {
+  "section": "Ähnliche Namen und natürliche Auswahl",
+  "text": "Das zweite.",
+  "speech": "Das habe ich nicht verstanden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Mengen, Orte und Ausschlüsse",
+  "text": "Fahre beide Rollläden im Wohnzimmer hoch.",
+  "speech": "2 Rollläden geöffnet.",
+  "verdict": "ok",
+  "calls": [
+   "cover.wohnzimmer_rollladen_links:open_cover",
+   "cover.wohnzimmer_rollladen_rechts:open_cover"
+  ]
+ },
+ {
+  "section": "Mengen, Orte und Ausschlüsse",
+  "text": "Schalte alle Lichter in Küche und Flur aus.",
+  "speech": "3 Lichter ausgeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.flurlicht:turn_off",
+   "light.kuecheninsel:turn_off",
+   "light.kuechenlicht:turn_off"
+  ]
+ },
+ {
+  "section": "Mengen, Orte und Ausschlüsse",
+  "text": "Mach alle Lichter aus außer der Stehlampe.",
+  "speech": "22 Lichter ausgeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.aussenbeleuchtung:turn_off",
+   "light.badezimmerlicht:turn_off",
+   "light.buerolicht:turn_off",
+   "light.esszimmer_pendelleuchte:turn_off",
+   "light.flurlicht:turn_off",
+   "light.flurlicht_oben:turn_off",
+   "light.gaeste_wc_licht:turn_off",
+   "light.garagenlicht:turn_off",
+   "light.kellerlicht:turn_off",
+   "light.kinderzimmerlicht:turn_off",
+   "light.kuecheninsel:turn_off",
+   "light.kuechenlicht:turn_off",
+   "light.nachtlicht:turn_off",
+   "light.nachttischlampe_links:turn_off",
+   "light.nachttischlampe_rechts:turn_off",
+   "light.schlafzimmerlicht:turn_off",
+   "light.schreibtischlampe:turn_off",
+   "light.spiegelschrank:turn_off",
+   "light.terrassenlicht:turn_off",
+   "light.waschkuechenlicht:turn_off",
+   "light.wohnzimmer_deckenlicht:turn_off",
+   "light.wohnzimmer_led_streifen:turn_off"
+  ]
+ },
+ {
+  "section": "Mengen, Orte und Ausschlüsse",
+  "text": "Schalte alle Lichter aus, außer Kücheninsel und Nachtlicht.",
+  "speech": "21 Lichter ausgeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.aussenbeleuchtung:turn_off",
+   "light.badezimmerlicht:turn_off",
+   "light.buerolicht:turn_off",
+   "light.esszimmer_pendelleuchte:turn_off",
+   "light.flurlicht:turn_off",
+   "light.flurlicht_oben:turn_off",
+   "light.gaeste_wc_licht:turn_off",
+   "light.garagenlicht:turn_off",
+   "light.kellerlicht:turn_off",
+   "light.kinderzimmerlicht:turn_off",
+   "light.kuechenlicht:turn_off",
+   "light.nachttischlampe_links:turn_off",
+   "light.nachttischlampe_rechts:turn_off",
+   "light.schlafzimmerlicht:turn_off",
+   "light.schreibtischlampe:turn_off",
+   "light.spiegelschrank:turn_off",
+   "light.stehlampe:turn_off",
+   "light.terrassenlicht:turn_off",
+   "light.waschkuechenlicht:turn_off",
+   "light.wohnzimmer_deckenlicht:turn_off",
+   "light.wohnzimmer_led_streifen:turn_off"
+  ]
+ },
+ {
+  "section": "Mengen, Orte und Ausschlüsse",
+  "text": "Mach die drei Lampen im Büro an.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Abstufungen und Zahlen",
+  "text": "Mach die dimmbare Lampe etwas heller.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Abstufungen und Zahlen",
+  "text": "Mach die dimmbare Lampe deutlich heller.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Abstufungen und Zahlen",
+  "text": "Mach die Heizung im Büro stark wärmer.",
+  "speech": "Heizung Büro wärmer gestellt.",
+  "verdict": "ok",
+  "calls": [
+   "climate.heizung_buero:set_temperature"
+  ]
+ },
+ {
+  "section": "Abstufungen und Zahlen",
+  "text": "Fahre die Rolllade halb runter.",
+  "speech": "Ich habe mehrere passende Rollläden gefunden: 1. Badezimmer Rollladen; 2. Esszimmer Rollladen; 3. Kinderzimmer Rollladen; 4. Küchenrollladen; 5. Schlafzimmer Rollladen. Außerdem gibt es 2 weitere. Bitte grenze nach Bereich oder Etage ein.",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Abstufungen und Zahlen",
+  "text": "Fahre die Rolllade komplett hoch.",
+  "speech": "Ich habe mehrere passende Rollläden gefunden: 1. Badezimmer Rollladen; 2. Esszimmer Rollladen; 3. Kinderzimmer Rollladen; 4. Küchenrollladen; 5. Schlafzimmer Rollladen. Außerdem gibt es 2 weitere. Bitte grenze nach Bereich oder Etage ein.",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Erklärung statt Blackbox",
+  "text": "Schalte in Küche und Flur alle Lichter aus, außer dem Nachtlicht.",
+  "speech": "Ich habe Nachtlicht gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Erklärung statt Blackbox",
+  "text": "Was hast du verstanden?",
+  "speech": "In diesem Gespräch gibt es noch keinen verstandenen Befehl.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Mach das Wohnzimmerlicht an.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Fahre alle Rollläden im Erdgeschoss auf 50 Prozent.",
+  "speech": "5 Rollläden auf 50 Prozent gefahren.",
+  "verdict": "ok",
+  "calls": [
+   "cover.buero_raffstore:set_cover_position",
+   "cover.esszimmer_rollladen:set_cover_position",
+   "cover.kuechenrollladen:set_cover_position",
+   "cover.wohnzimmer_rollladen_links:set_cover_position",
+   "cover.wohnzimmer_rollladen_rechts:set_cover_position"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Stelle den Ventilator auf Stufe 3.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Stelle die Heizung im Wohnzimmer auf 21 Grad.",
+  "speech": "Heizung Wohnzimmer auf 21 Grad gestellt.",
+  "verdict": "ok",
+  "calls": [
+   "climate.heizung_wohnzimmer:set_temperature"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Wähle beim Heizprogramm Eco.",
+  "speech": "Heizprogramm: die Option auswählen – Option Eco.",
+  "verdict": "ok",
+  "calls": [
+   "select.heizprogramm:select_option"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Pausiere die Wiedergabe auf dem Wohnzimmer TV.",
+  "speech": "Wohnzimmer TV pausiert.",
+  "verdict": "ok",
+  "calls": [
+   "media_player.wohnzimmer_tv:media_pause"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Schicke den Saugroboter zur Ladestation.",
+  "speech": "Saugroboter: zur Ladestation fahren.",
+  "verdict": "ok",
+  "calls": [
+   "vacuum.saugroboter:return_to_base"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Aktiviere die Szene Filmabend.",
+  "speech": "Filmabend aktiviert.",
+  "verdict": "ok",
+  "calls": [
+   "light.stehlampe:turn_on",
+   "light.wohnzimmer_led_streifen:turn_on"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Stelle den Luftbefeuchter auf 45 Prozent.",
+  "speech": "Luftbefeuchter: die Zielfeuchte einstellen – Zielfeuchte 45 Prozent.",
+  "verdict": "ok",
+  "calls": [
+   "humidifier.luftbefeuchter:set_humidity"
+  ]
+ },
+ {
+  "section": "Unterstützte Geräte und Aktionen",
+  "text": "Zeige die Einfahrtkamera auf dem Wohnzimmer TV.",
+  "speech": "Das habe ich nicht verstanden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Ist das Badezimmerfenster geschlossen?",
+  "speech": "Nein, Badezimmerfenster ist nicht geschlossen.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Welchen Zustand hat das Badezimmerfenster?",
+  "speech": "Badezimmerfenster ist geöffnet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Sind alle Rollläden hochgefahren?",
+  "speech": "Nein, nicht alle Rollläden sind geöffnet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Sind im Erdgeschoss offene Fenster?",
+  "speech": "Nur Küchenfenster ist offen.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Ist irgendein Fenster offen?",
+  "speech": "Ja, es gibt 2 Fenster.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Ist kein Fenster offen?",
+  "speech": "Nein, mindestens eines der Fenster ist geöffnet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Wie viele Fenster sind im Erdgeschoss geöffnet?",
+  "speech": "1 Fenster ist geöffnet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Wo sind Fenster offen?",
+  "speech": "Badezimmer und Küche.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Was ist im Badezimmer eingeschaltet?",
+  "speech": "Im Badezimmer ist gerade nichts eingeschaltet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Ist das Radio in der Küche an?",
+  "speech": "Ja, Küchenradio ist eingeschaltet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Läuft der Saugroboter?",
+  "speech": "Nein, Saugroboter steht an der Ladestation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Aktueller Zustand",
+  "text": "Was macht der Mähroboter?",
+  "speech": "Mähroboter ist inaktiv.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Wie hoch ist die Temperatur im Erdgeschoss?",
+  "speech": "Temperatur Büro: 19,1 Grad; Temperatur Küche: 20,9 Grad; Temperatur Wohnzimmer: 20,4 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Welche Temperatur hat das Erdgeschoss?",
+  "speech": "Temperatur Büro: 19,2 Grad; Temperatur Küche: 20,9 Grad; Temperatur Wohnzimmer: 20,5 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Wie warm ist es im Wohnzimmer?",
+  "speech": "20,4 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Wie hoch ist die Luftfeuchtigkeit im Badezimmer?",
+  "speech": "68 Prozent.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Welche Batterien oben sind unter 20 Prozent?",
+  "speech": "Unter dem Grenzwert liegen: Batterie Fenstersensor Bad mit 14 Prozent und Batterie Rauchmelder oben mit 9 Prozent.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Welche Lichter sind mindestens 50 Prozent hell?",
+  "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Messwerte und Vergleiche",
+  "text": "Welches Gerät verbraucht gerade am meisten Strom?",
+  "speech": "Den höchsten aktuellen Wert hat Leistung Waschmaschine mit 1840 Watt.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Recorder-Statistiken",
+  "text": "Wie hoch war die durchschnittliche Temperatur im Wohnzimmer gestern?",
+  "speech": "Der Durchschnitt von Temperatur Wohnzimmer betrug gestern 20,6 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Recorder-Statistiken",
+  "text": "Was war heute der höchste Wert vom Stromverbrauch Haus?",
+  "speech": "Das Maximum von Stromverbrauch Haus betrug heute 597,3 Watt.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Recorder-Statistiken",
+  "text": "Wie hat sich der Energiezähler diese Woche verändert?",
+  "speech": "Die Veränderung von Energiezähler betrug diese Woche 94,2 Kilowattstunden.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Recorder-Statistiken",
+  "text": "War die Wohnzimmer Temperatur gestern niedriger als heute?",
+  "speech": "Temperatur Wohnzimmer lag heute bei 20 Grad; das sind 0,6 Grad niedriger als gestern.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Recorder-Statistiken",
+  "text": "Wie oft war das Badezimmerfenster gestern offen?",
+  "speech": "Für Badezimmerfenster liegen gestern keine Verlaufsdaten vor.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Recorder-Statistiken",
+  "text": "Wie lange war das Badezimmerfenster heute geöffnet?",
+  "speech": "Badezimmerfenster war heute insgesamt 1 Minute offen.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Wie hoch ist die Temperatur im Erdgeschoss?",
+  "speech": "Temperatur Büro: 19,1 Grad; Temperatur Küche: 20,9 Grad; Temperatur Wohnzimmer: 20,4 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Kannst du die Temperatur auf 22 Grad erhöhen?",
+  "speech": "Ich habe mehrere passende Heizungen gefunden: 1. Heizung Wohnzimmer; 2. Heizung Küche; 3. Heizung Büro. Welche meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Wie warm ist es im Wohnzimmer?",
+  "speech": "20,4 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Und in der Küche?",
+  "speech": "20,9 Grad.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Schalte das Wohnzimmerlicht ein.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Und jetzt wieder aus.",
+  "speech": "Das habe ich nicht verstanden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Schalte das Licht hier ein.",
+  "speech": "2 Lichter eingeschaltet.",
+  "verdict": "ok",
+  "calls": [
+   "light.kuecheninsel:turn_on",
+   "light.kuechenlicht:turn_on"
+  ]
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Fahre die Büro-Rolllade auf 40 Prozent.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Mach das rückgängig.",
+  "speech": "Es gibt keine kürzlich ausgeführte, sicher rückgängig machbare Aktion.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Stelle die Heizung im Büro ein.",
+  "speech": "Auf welche Temperatur soll ich Heizung Büro stellen?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Stelle auf 22 Grad.",
+  "speech": "Welche Heizung meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Gesprächskontext und Rückfragen",
+  "text": "Mach ein paar Lichter an.",
+  "speech": "Welche Geräte genau? Bitte nenne ihre Namen.",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Termin in einem Satz erstellen",
+  "text": "Trag nächsten Dienstag um 10 Uhr für eine Stunde Zahnarzt ein.",
+  "speech": "Ich habe mehrere passende Kalender gefunden: 1. Familie; 2. Müllabfuhr. Welchen meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Termin in einem Satz erstellen",
+  "text": "Erstelle am 25. August von 18 bis 20 Uhr den Termin Geburtstag.",
+  "speech": "Ich habe mehrere passende Kalender gefunden: 1. Familie; 2. Müllabfuhr. Welchen meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Termin in einem Satz erstellen",
+  "text": "Schreibe Urlaub morgen ganztägig in meinen Kalender ein.",
+  "speech": "Ich habe mehrere passende Kalender gefunden: 1. Familie; 2. Müllabfuhr. Welchen meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Fehlende Angaben im Dialog ergänzen",
+  "text": "Trag einen Termin ein.",
+  "speech": "Wie soll der Termin heißen?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Fehlende Angaben im Dialog ergänzen",
+  "text": "Zahnarzt.",
+  "speech": "An welchem Datum findet der Termin statt?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Fehlende Angaben im Dialog ergänzen",
+  "text": "Nächsten Dienstag.",
+  "speech": "Um wie viel Uhr beginnt der Termin? Du kannst auch ganztägig sagen.",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Fehlende Angaben im Dialog ergänzen",
+  "text": "Um 10 Uhr.",
+  "speech": "Wann endet der Termin oder wie lange dauert er?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Fehlende Angaben im Dialog ergänzen",
+  "text": "Eine Stunde.",
+  "speech": "Ich habe mehrere passende Kalender gefunden: 1. Familie; 2. Müllabfuhr. Welchen meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Was steht morgen in meinem Kalender?",
+  "speech": "Im abgefragten Zeitraum stehen keine Termine im Kalender.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Welche Termine habe ich am Wochenende?",
+  "speech": "Im abgefragten Zeitraum stehen keine Termine im Kalender.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Wann ist mein Zahnarzttermin?",
+  "speech": "Ich finde keinen Termin mit „Zahnarzt“ im abgefragten Zeitraum.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Habe ich morgen zwischen 14 und 16 Uhr Zeit?",
+  "speech": "Ja, zwischen 14:00 und 16:00 Uhr ist kein Termin eingetragen.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Verschiebe den Zahnarzttermin auf 11 Uhr.",
+  "speech": "Ich finde keinen eindeutig änderbaren passenden Termin.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Benenne den Termin Planung in Projektplanung um.",
+  "speech": "Ich finde keinen eindeutig änderbaren passenden Termin.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalender abfragen und verwalten",
+  "text": "Lösche den Termin Zahnarzt.",
+  "speech": "Ich finde keinen eindeutig änderbaren passenden Termin.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Mehrere Listeneinträge in einem Satz",
+  "text": "Füge Milch, Brot, Butter und Äpfel zur Einkaufsliste hinzu.",
+  "speech": "4 Einträge wurden zur Liste hinzugefügt: Milch, Brot, Butter, Äpfel.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Mehrere Listeneinträge in einem Satz",
+  "text": "Was steht auf meiner Einkaufsliste?",
+  "speech": "Auf der Liste stehen: Milch, Brot, Butter, Äpfel.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Mehrere Listeneinträge in einem Satz",
+  "text": "Markiere Milch und Brot als erledigt.",
+  "speech": "Ich habe mehrere passende Listen gefunden: 1. Einkaufsliste; 2. Arbeitsliste. Welche meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Mehrere Listeneinträge in einem Satz",
+  "text": "Entferne Milch und Brot von der Einkaufsliste.",
+  "speech": "2 Eintrage wurden aus der Liste entfernt.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Mehrere Listeneinträge in einem Satz",
+  "text": "Lösche alle erledigten Einträge.",
+  "speech": "Ich habe mehrere passende Listen gefunden: 1. Einkaufsliste; 2. Arbeitsliste. Welche meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Mehrere Listeneinträge in einem Satz",
+  "text": "Verschiebe Milch von der Einkaufsliste auf die Arbeitsliste.",
+  "speech": "Fehler beim Ausführen: Eintrag „Milch“ wurde nicht gefunden",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Timer",
+  "text": "Stelle einen Timer für 20 Minuten.",
+  "speech": "Wie soll der Timer heißen?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Timer",
+  "text": "Pizza.",
+  "speech": "Timer „Pizza“ für 20 Minuten gestartet.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Fertigstellungszeiten von Geräten",
+  "text": "Wann ist die Waschmaschine fertig?",
+  "speech": "Laut Waschmaschine fertig um ist die Fertigstellung heute um 12:02 Uhr.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zeitversetzte Einmal-Aufträge",
+  "text": "Fahre in 30 Sekunden die Rolllade im Büro auf 50 Prozent.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Zeitversetzte Einmal-Aufträge",
+  "text": "Schalte in fünf Minuten das Küchenlicht ein.",
+  "speech": "Automation erkannt: Wenn 5 Minuten vergangen sind, dann Küchenlicht einschalten. Diese Automation wird nach der ersten Ausführung automatisch gelöscht. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zeitversetzte Einmal-Aufträge",
+  "text": "Fahre in zwei Stunden und 30 Minuten die Rollläden herunter.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Kalendarische Einmal-Aufträge",
+  "text": "Fahre morgen um 8 Uhr die Rolllade hoch.",
+  "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Kalendarische Einmal-Aufträge",
+  "text": "Schalte heute Abend um 20 Uhr das Licht aus.",
+  "speech": "Automation erkannt: Wenn der Zeitpunkt „heute Abend um 20 Uhr“ erreicht ist, dann Licht ausschalten. Diese Automation wird nach der ersten Ausführung automatisch gelöscht. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalendarische Einmal-Aufträge",
+  "text": "Starte am Samstag um 10 Uhr den Staubsauger.",
+  "speech": "Automation erkannt: Wenn der Zeitpunkt „am Samstag um 10 Uhr“ erreicht ist, dann bei Saugroboter im Bereich Wohnzimmer die Reinigung starten. Diese Automation wird nach der ersten Ausführung automatisch gelöscht. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalendarische Einmal-Aufträge",
+  "text": "Aktiviere am 25. August um 18 Uhr die Szene Filmabend.",
+  "speech": "Automation erkannt: Wenn der Zeitpunkt „am 25. August um 18 Uhr“ erreicht ist, dann bei Filmabend die Szene aktivieren. Diese Automation wird nach der ersten Ausführung automatisch gelöscht. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Kalendarische Einmal-Aufträge",
+  "text": "Erinnere mich übermorgen früh an die Mülltonnen.",
+  "speech": "Zum Zeitpunkt „übermorgen früh“ sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: die Mülltonnen.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein.",
+  "speech": "Automation erkannt: Wenn Fenster im Bereich Küche wird geöffnet, dann Küchenlicht einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Wenn das Küchenfenster zehn Minuten offen bleibt, schalte das Licht ein.",
+  "speech": "Automation erkannt: Wenn Fenster im Bereich Küche wird geöffnet und dieser Zustand 10 Minuten bestehen bleibt, dann Licht einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Wenn die Temperatur unter 18 Grad fällt, schalte die Heizung ein.",
+  "speech": "Welche Heizung meinst du?",
+  "verdict": "ask",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Kannst du mich benachrichtigen, wenn die Außentemperatur 28 Grad beträgt?",
+  "speech": "Wenn die Außentemperatur 28 Grad erreicht, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Die Außentemperatur hat 28 Grad erreicht.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Kannst du Philipp benachrichtigen, wenn die Außentemperatur 28 Grad beträgt?",
+  "speech": "Wenn die Außentemperatur 28 Grad erreicht, sende ich eine Push-Benachrichtigung an „Handy Philipp“: „Die Außentemperatur hat 28 Grad erreicht.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Bei Sonnenuntergang schalte die Außenbeleuchtung ein.",
+  "speech": "Automation erkannt: Wenn es Sonnenuntergang ist, dann Licht im Bereich Garten einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Zehn Minuten vor dem Termin Müllabfuhr erinnere mich.",
+  "speech": "Wenn es 10 Minuten vor diesem Termin ist und der Kalendertitel „dem“ enthält, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Kalendertermin dem beginnt.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zustands-, Sonnen-, Zahlen- und Kalenderauslöser",
+  "text": "Wenn der Termin Urlaub beginnt, aktiviere die Szene Abwesend.",
+  "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Wiederholungen, Zeiträume und Laufbegrenzungen",
+  "text": "Jeden Werktag um 7 Uhr schalte das Küchenlicht ein.",
+  "speech": "Automation erkannt: Wenn es 07:00 Uhr ist und Montag oder Dienstag oder Mittwoch oder Donnerstag oder Freitag ist, dann Küchenlicht einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Wiederholungen, Zeiträume und Laufbegrenzungen",
+  "text": "Jeden zweiten Samstag um 10 Uhr schalte das Küchenlicht ein.",
+  "speech": "Automation erkannt: Wenn es 10:00 Uhr ist und Samstag ist und der angegebene Kalenderzeitraum erfüllt ist, dann Küchenlicht einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Wiederholungen, Zeiträume und Laufbegrenzungen",
+  "text": "Jeden Montag um 8 Uhr, nur zwischen Oktober und März, schalte das Licht ein.",
+  "speech": "Automation erkannt: Wenn es 08:00 Uhr ist und Montag ist und der angegebene Kalenderzeitraum erfüllt ist, dann Licht einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Wiederholungen, Zeiträume und Laufbegrenzungen",
+  "text": "Wenn das Fenster innerhalb von fünf Minuten zweimal geöffnet wird, schalte das Licht ein.",
+  "speech": "Automation erkannt: Wenn Fenster wird geöffnet und innerhalb von 5 Minuten ein zweites Mal eintritt, dann Licht einschalten. Soll diese Automation erstellt werden?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Wiederholungen, Zeiträume und Laufbegrenzungen",
+  "text": "Wiederhole die Automation für Küchenlicht nur dreimal.",
+  "speech": "Ich habe keine passende dauerhafte HomeIntent-Automation gefunden.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Erinnerungen",
+  "text": "Erinnere mich in 30 Minuten an die Waschmaschine.",
+  "speech": "In 30 Minuten sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: die Waschmaschine.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Erinnerungen",
+  "text": "Erinnere mich morgen um 18 Uhr an den Elternabend.",
+  "speech": "Zum Zeitpunkt „morgen um 18 Uhr“ sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: den Elternabend.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Erinnerungen",
+  "text": "Sag Philipp morgen um 8 Uhr Bescheid, dass das Fenster offen ist.",
+  "speech": "Zum Zeitpunkt „morgen um 8 Uhr“ sende ich eine Push-Benachrichtigung an „Handy Philipp“: „Das Fenster ist offen.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Erinnerungen",
+  "text": "Erinnere mich in 30 Minuten an die Waschmaschine, aber nicht zwischen 22 und 7 Uhr.",
+  "speech": "In 30 Minuten sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: die Waschmaschine aber nicht zwischen 22 und 7 Uhr.“ Soll ich das so einrichten?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Zeige nur HomeIntent-Automationen.",
+  "speech": "Es sind keine HomeIntent-Automationen vorhanden.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Wie viele HomeIntent-Automationen sind aktiv?",
+  "speech": "0 HomeIntent-Automationen sind aktiv.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Welche einmaligen Aufträge sind noch geplant?",
+  "speech": "Es sind keine passenden einmaligen Aufträge geplant.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Wann wird die Rolllade gefahren?",
+  "speech": "Ich habe das genannte Gerät nicht gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Welche Automation steuert die Büro Rolllade?",
+  "speech": "Ich habe das genannte Gerät nicht gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Was passiert, wenn das Küchenfenster geöffnet wird?",
+  "speech": "Ich finde keine passende Automation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Warum wurde die Automation für Büro Rollladen nicht ausgelöst?",
+  "speech": "Ich habe das genannte Gerät nicht gefunden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Aktiviere die Automation für Küchenlicht.",
+  "speech": "Ich habe keine Automation gefunden, die Küchenlicht steuert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Deaktiviere die Automation für Küchenlicht.",
+  "speech": "Ich habe keine Automation gefunden, die Küchenlicht steuert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Lösche die Automation für Küchenlicht.",
+  "speech": "Ich habe keine Automation gefunden, die Küchenlicht steuert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Verschiebe den Auftrag auf 20 Uhr.",
+  "speech": "Ich habe keinen passenden geplanten Auftrag gefunden.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Lösche alle abgelaufenen HomeIntent-Automationen.",
+  "speech": "Ich finde keinen eindeutig änderbaren passenden Termin.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Ändere bei der Automation für Küchenlicht nur die Aktion.",
+  "speech": "Ich finde keine änderbare HomeIntent-Automation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Füge der Automation für Küchenlicht eine weitere Aktion hinzu.",
+  "speech": "Ich finde keine änderbare HomeIntent-Automation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Verschiebe bei der Automation für Küchenlicht die zweite Aktion an die erste Stelle.",
+  "speech": "Ich finde keine änderbare HomeIntent-Automation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Ändere den Auslöser der Automation für Küchenlicht auf Sonnenuntergang.",
+  "speech": "Ich finde keine passende dauerhafte HomeIntent-Automation. Einmalige Aufträge werden aus Sicherheitsgründen nicht strukturell geändert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Füge der Automation für Küchenlicht die Bedingung hinzu, dass jemand zuhause ist.",
+  "speech": "Ich finde keine passende dauerhafte HomeIntent-Automation. Einmalige Aufträge werden aus Sicherheitsgründen nicht strukturell geändert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Entferne die zweite Bedingung der Automation für Küchenlicht.",
+  "speech": "Ich finde keine passende dauerhafte HomeIntent-Automation. Einmalige Aufträge werden aus Sicherheitsgründen nicht strukturell geändert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Lösche alle Bedingungen der Automation für Küchenlicht.",
+  "speech": "Ich finde keine passende dauerhafte HomeIntent-Automation. Einmalige Aufträge werden aus Sicherheitsgründen nicht strukturell geändert.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Dupliziere die Automation für Küchenlicht.",
+  "speech": "Ich finde keine passende HomeIntent-Automation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Pausiere die Automation für Küchenlicht bis morgen 20 Uhr.",
+  "speech": "Ich finde keine passende HomeIntent-Automation.",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Automationen verwalten",
+  "text": "Mache die letzte HomeIntent-Automationsänderung rückgängig.",
+  "speech": "Soll ich die letzte HomeIntent-Automationsänderung wirklich rückgängig machen?",
+  "verdict": "ok",
+  "calls": []
+ },
+ {
+  "section": "Zentrale Ausführungsrichtlinie",
+  "text": "Leselampe = light.wohnzimmer_sofa",
+  "speech": "Das habe ich nicht verstanden.",
+  "verdict": "fail",
+  "calls": []
+ },
+ {
+  "section": "Zentrale Ausführungsrichtlinie",
+  "text": "Sofalicht = light.wohnzimmer_sofa",
+  "speech": "Das habe ich nicht verstanden.",
+  "verdict": "fail",
+  "calls": []
+ }
+]
