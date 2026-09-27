@@ -468,3 +468,19 @@ OPTION_OPERATIONS: dict[tuple[str, str], tuple[str, str, str]] = {
     ("select", "options"): ("select", "select_option", "option"),
     ("water_heater", "operation_list"): ("water_heater", "set_operation_mode", "operation_mode"),
 }
+
+# Release modality: the speaker no longer needs a state.  "X muss/braucht/
+# soll nicht (mehr) an sein", "X kann/darf aus", "ich brauche X nicht mehr"
+# -> the operation that ends the state.  Keys are compare-normalized.
+RELEASE_MODALS = frozenset({"muss", "muessen", "braucht", "brauchen", "soll", "sollen"})
+PERMISSION_MODALS = frozenset({"kann", "koennen", "darf", "duerfen"})
+RELEASED_STATES: dict[str, str] = {
+    "an": "turn_off", "ein": "turn_off", "eingeschaltet": "turn_off",
+    "laufen": "turn_off", "brennen": "turn_off",
+    "offen": "close", "auf": "close", "geoeffnet": "close", "oben": "close",
+}
+PERMITTED_STATES: dict[str, str] = {
+    "aus": "turn_off", "ausgeschaltet": "turn_off", "ausgemacht": "turn_off",
+    "zu": "close", "runter": "close", "geschlossen": "close",
+}
+NEED_VERBS = frozenset({"brauche", "brauchen", "benoetige", "benoetigen"})

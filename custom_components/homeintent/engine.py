@@ -66,7 +66,7 @@ from .nlu.frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .nlu.primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .nlu.normalize import normalize
 from .nlu.device_ontology import analyse_word
-from .nlu.ontology_compiler import compile_ontology_command
+from .nlu.ontology_compiler import compile_ontology_command, compile_release
 from .nlu.need_compiler import compile_need
 from .nlu.need_semantics import interpret_need
 from .nlu.place_model import PlaceKind, build_place_lexicon
@@ -1377,6 +1377,39 @@ class NluEngine:
             (replace(first, response_text=outcome.reason or first.response_text),
              *(replace(item, response_text="") for item in rest))
         )
+
+    def understand_release(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        *,
+        context: UnderstandingContext | None = None,
+    ) -> MatchResult | CommandPlan | None:
+        """"Die Stehlampe muss nicht an sein" -> switch the Stehlampe off."""
+        frame = document.release
+        if frame is None:
+            return None
+        compiled = compile_release(
+            document, frame.object_text, frame.action, entities,
+            source_area=context.source_area if context is not None else None,
+        )
+        if compiled is None:
+            return None
+        if compiled.message is not None:
+            return MatchResult(plan=None, response_text=compiled.message, failure_text=compiled.message)
+        if compiled.clarification is not None:
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        rendered = [self._build_match_result(parsed, entities) for parsed in compiled.results]
+        if not rendered or any(item is None or item.plan is None for item in rendered):
+            return None
+        items = tuple(item for item in rendered if item is not None)
+        if compiled.preview is not None:
+            return CommandPlan(items, confirmation_text=_ontology_preview_text(items, compiled.preview))
+        return items[0] if len(items) == 1 else CommandPlan(items)
 
     def _ontology_failure(
         self, text: str, entities: list[EntitySnapshot]

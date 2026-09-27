@@ -227,7 +227,8 @@ FUNCTION_WORDS = frozenset(normalize_for_compare(word) for word in (
     "dreh drehe drehen setz setze setzen lass lasse "
     "etwas bisschen wenig ganz komplett vollständig vollstaendig wieder einfach kurz schnell "
     "prozent grad stufe position mein meine meinen unser unsere unseren dein deine "
-    "da dort hier drin mal eben halt ja okay ok nun also zwar gut na"
+    "da dort hier drin mal eben halt ja okay ok nun also zwar gut na "
+    "vielleicht eventuell irgendwann bald"
 ).split())
 
 

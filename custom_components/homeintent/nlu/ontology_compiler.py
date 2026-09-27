@@ -60,7 +60,7 @@ from .target_resolution import (
 )
 from .utterance_meaning import segment_clauses
 
-__all__ = ("OntologyCommand", "compile_ontology_command")
+__all__ = ("OntologyCommand", "compile_ontology_command", "compile_release")
 
 
 _ACTION_TO_SEMANTIC = {
@@ -493,6 +493,38 @@ def compile_ontology_command(
     clauses = _clause_meanings(document, entities)
     if not clauses:
         return None
+    return _compile_clauses(clauses, document, entities, source_area)
+
+
+def compile_release(
+    document: object,
+    object_text: str,
+    action: str,
+    entities: Sequence[EntitySnapshot],
+    *,
+    source_area: AreaSnapshot | None = None,
+) -> OntologyCommand | None:
+    """Ground a release ("X muss nicht an sein") as ``action`` on X."""
+    tokens = tokenize_language(object_text)
+    descriptions, residue = describe_with_residue(
+        tokens, entities, lexicon=build_place_lexicon(entities),
+        ignore=_FILLER_WORDS, names=_name_index(entities),
+    )
+    if not descriptions:
+        return None
+    clause = ClauseMeaning(
+        text=object_text, actions=frozenset({action}), degree=None, percent=None,
+        temperature=None, descriptions=descriptions, residue=residue,
+    )
+    return _compile_clauses((clause,), document, entities, source_area)
+
+
+def _compile_clauses(
+    clauses: Sequence[ClauseMeaning],
+    document: object,
+    entities: Sequence[EntitySnapshot],
+    source_area: AreaSnapshot | None,
+) -> OntologyCommand | None:
     unclear = [clause for clause in clauses if clause.residue]
     if unclear:
         if len(clauses) == 1:

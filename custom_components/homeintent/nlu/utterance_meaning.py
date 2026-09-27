@@ -20,6 +20,11 @@ from typing import Protocol, Sequence
 from .semantic_catalog import (
     MAINTAIN_BLOCKING_OBJECTS,
     MAINTAIN_VERB_FORMS,
+    NEED_VERBS,
+    PERMISSION_MODALS,
+    PERMITTED_STATES,
+    RELEASE_MODALS,
+    RELEASED_STATES,
     STATE_COMPLEMENT_WORDS,
 )
 from .semantic_lexicon import SemanticKind, analyse_semantics
@@ -185,3 +190,53 @@ def render_maintain(frames: Sequence[MaintainFrame]) -> str:
         for frame in frames
     ]
     return "In Ordnung. " + " ".join(parts) + " Ich ändere nichts."
+
+
+@dataclass(frozen=True)
+class ReleaseFrame:
+    """"Die Stehlampe muss nicht an sein" -> turn the Stehlampe off."""
+
+    object_text: str
+    action: str
+
+
+_RELEASE_SKIP = frozenset({"mehr", "jetzt", "gerade", "wirklich", "unbedingt", "ruhig", "gerne", "gern", "bitte"})
+_BE_VERBS = frozenset({"sein", "bleiben", "gehen", "werden", "gemacht", "geschaltet"})
+
+
+def release_frame(source: str, tokens: Sequence[_Token]) -> ReleaseFrame | None:
+    """Recognise the release modality over word classes, never templates."""
+    words = [index for index, token in enumerate(tokens) if token.is_word]
+    keys = [tokens[index].canonical for index in words]
+    if not keys:
+        return None
+
+    def text_of(start: int, end: int) -> str:
+        return source[tokens[words[start]].start:tokens[words[end - 1]].end]
+
+    # "ich brauche X nicht (mehr)" / "X brauche ich nicht mehr"
+    if "nicht" in keys and any(key in NEED_VERBS for key in keys):
+        verb = next(index for index, key in enumerate(keys) if key in NEED_VERBS)
+        negation = keys.index("nicht")
+        if keys[:1] == ["ich"] and verb == 1 and negation > verb + 1:
+            if all(key in _RELEASE_SKIP for key in keys[negation + 1:]):
+                return ReleaseFrame(text_of(verb + 1, negation), "turn_off")
+        if verb > 0 and keys[verb + 1:verb + 2] == ["ich"] and negation == verb + 2:
+            if all(key in _RELEASE_SKIP for key in keys[negation + 1:]):
+                return ReleaseFrame(text_of(0, verb), "turn_off")
+    # "X muss/braucht/soll nicht (mehr) an sein/bleiben"
+    for index, key in enumerate(keys):
+        if key in RELEASE_MODALS and index > 0 and keys[index + 1:index + 2] == ["nicht"]:
+            rest = [item for item in keys[index + 2:] if item not in _RELEASE_SKIP]
+            if rest and rest[-1] in _BE_VERBS:
+                rest = rest[:-1]
+            if len(rest) == 1 and rest[0] in RELEASED_STATES:
+                return ReleaseFrame(text_of(0, index), RELEASED_STATES[rest[0]])
+        # "X kann/darf (jetzt) aus/zu (sein/gehen/gemacht werden)"
+        if key in PERMISSION_MODALS and index > 0 and "nicht" not in keys:
+            rest = [item for item in keys[index + 1:] if item not in _RELEASE_SKIP]
+            while rest and rest[-1] in _BE_VERBS:
+                rest = rest[:-1]
+            if len(rest) == 1 and rest[0] in PERMITTED_STATES:
+                return ReleaseFrame(text_of(0, index), PERMITTED_STATES[rest[0]])
+    return None

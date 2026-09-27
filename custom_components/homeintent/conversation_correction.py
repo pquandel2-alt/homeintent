@@ -31,6 +31,41 @@ _SHORT_NEGATIVE_CORRECTION_RE = re.compile(
 )
 
 
+_MEANT_TAILS = (("meine", "ich"), ("meinte", "ich"), ("ist", "gemeint"), ("war", "gemeint"))
+
+
+def _canonical_correction(text: str) -> str:
+    """"Nicht X, Y meine ich" / "Y meine ich, nicht X" -> "ich meinte Y".
+
+    Word order variants of one correction meaning: the rejected constituent
+    is dropped, the meant one is kept.
+    """
+    parts = [part.strip(" .!?") for part in text.split(",")]
+    if len(parts) != 2:
+        return text
+    first, second = parts
+    first_words = first.split()
+    second_words = second.split()
+
+    def meant(words: list[str]) -> list[str] | None:
+        for tail in _MEANT_TAILS:
+            if tuple(word.casefold() for word in words[-2:]) == tail:
+                return words[:-2]
+        return None
+
+    if first_words[:1] and first_words[0].casefold() == "nicht":
+        kept = meant(second_words)
+        if kept is None and second_words[:1] and second_words[0].casefold() == "sondern":
+            kept = second_words[1:]
+        if kept:
+            return "ich meinte " + " ".join(kept)
+    if second_words[:1] and second_words[0].casefold() == "nicht":
+        kept = meant(first_words)
+        if kept:
+            return "ich meinte " + " ".join(kept)
+    return text
+
+
 class ConversationCorrectionResolver:
     """Retarget the previous action while retaining its validated meaning."""
 
@@ -50,7 +85,7 @@ class ConversationCorrectionResolver:
         if not previous.entities:
             return None
 
-        normalized = normalize(text)
+        normalized = _canonical_correction(normalize(text))
         match = _CORRECTION_RE.match(normalized)
         if match is None:
             match = _SHORT_NEGATIVE_CORRECTION_RE.match(normalized)

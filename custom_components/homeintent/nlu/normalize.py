@@ -212,7 +212,45 @@ _STT_REWRITES = (
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
+_EMBEDDING_SHELLS = (
+    ("ich", "frage", "mich"), ("ich", "frag", "mich"), ("ich", "wüsste", "gern"),
+    ("ich", "wüsste", "gerne"), ("ich", "wuesste", "gern"), ("ich", "möchte", "wissen"),
+    ("ich", "moechte", "wissen"), ("ich", "will", "wissen"), ("weißt", "du"),
+    ("weisst", "du"), ("kannst", "du", "mir", "sagen"), ("sag", "mir", "mal"),
+    ("mich", "würde", "interessieren"), ("mich", "interessiert"),
+)
+_EMBEDDED_WH = frozenset({"wie", "wo", "was", "wann", "warum", "wieso", "welche", "welcher", "welches", "wieviel", "wer"})
+_WH_PHRASE_WORDS = frozenset({"warm", "kalt", "hell", "viel", "viele", "lange", "spät", "spaet", "hoch", "feucht", "laut"})
+
+
+def _unembed_question(text: str) -> str:
+    """"Ich frage mich, ob das Fenster offen ist" -> "ist das Fenster offen?".
+
+    An embedded question keeps its verb last; the question it embeds has the
+    finite verb first (yes/no) or after the wh-phrase.  Pure word order, no
+    meaning is added or removed.
+    """
+    words = text.strip().rstrip(".!?").replace(",", " ").split()
+    lowered = [word.casefold() for word in words]
+    for shell in _EMBEDDING_SHELLS:
+        if tuple(lowered[:len(shell)]) != shell:
+            continue
+        rest, keys = words[len(shell):], lowered[len(shell):]
+        if len(rest) < 3:
+            return text
+        finite = rest[-1]
+        if keys[0] == "ob":
+            body = rest[1:-1]
+            return f"{finite} {' '.join(body)}?"
+        if keys[0] in _EMBEDDED_WH:
+            head = 2 if len(keys) > 3 and keys[1] in _WH_PHRASE_WORDS else 1
+            return f"{' '.join(rest[:head])} {finite} {' '.join(rest[head:-1])}?".replace("  ", " ")
+        return text
+    return text
+
+
 def normalize(text: str) -> str:
+    text = _unembed_question(text)
     text = _LEADING_DISCOURSE_FILLER_RE.sub("", text)
     text = _TRAILING_DISCOURSE_FILLER_RE.sub("", text)
     text = _HESITATION_RE.sub(" ", text)

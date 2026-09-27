@@ -30,7 +30,7 @@ from .semantic_utterance import (
     analyse_utterance,
 )
 from .temporal_semantics import TemporalExpression, analyse_temporal_semantics
-from .utterance_meaning import MaintainFrame, maintain_frames
+from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
 
 
 _TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
@@ -91,6 +91,8 @@ class LanguageDocument:
     temporal: tuple[TemporalExpression, ...]
     # One optional maintenance frame per coordinated clause ("lass X an").
     maintain: tuple[MaintainFrame | None, ...] = ()
+    # "X muss nicht an sein" / "X kann aus": the state is no longer needed.
+    release: ReleaseFrame | None = None
 
     @property
     def maintained(self) -> tuple[MaintainFrame, ...]:
@@ -451,4 +453,10 @@ def analyse_language(
         structure=structure,
         temporal=analyse_temporal_semantics(tokens),
         maintain=maintain,
+        release=(
+            release_frame(text, tokens)
+            if utterance.speech_act is not SpeechAct.AUTOMATION
+            and not text.rstrip().endswith("?")
+            else None
+        ),
     )

@@ -151,6 +151,10 @@ _WISH_RE = re.compile(
     r"ich\s+wünsche\s+mir)\b",
     re.I,
 )
+_POLITE_REQUEST_SHELL_RE = re.compile(
+    r"^\s*(?:bitte\s+)?(?:kannst|könntest|koenntest|würdest|wuerdest|magst)\s+du\b",
+    re.I,
+)
 _POLITE_RE = re.compile(
     r"\b(?:bitte|kannst\s+du|könntest\s+du|koenntest\s+du|"
     r"wäre\s+es\s+möglich|waere\s+es\s+moeglich)\b",
@@ -266,6 +270,10 @@ def _modality(text: str) -> Modality:
     if _HYPOTHETICAL_RE.search(text):
         return Modality.HYPOTHETICAL
     if _UNCERTAIN_RE.search(text):
+        # Inside a polite request shell ("Könntest du vielleicht mal ...")
+        # the hedge is politeness, not uncertainty about the wish.
+        if _POLITE_REQUEST_SHELL_RE.match(text):
+            return Modality.POLITE
         return Modality.UNCERTAIN
     if _WISH_RE.search(text):
         return Modality.WISH

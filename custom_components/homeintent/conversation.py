@@ -1014,6 +1014,26 @@ class NluConversationEntity(
                 return await self._async_handle_match_result(
                     user_input, response, need, entities
                 )
+            released = self._engine.understand_release(
+                language_document, entities, context=understanding_context
+            )
+            if isinstance(released, CommandPlan):
+                return await self._async_handle_command_plan(
+                    user_input, response, released, entities
+                )
+            if released is not None and released.failure_text is not None:
+                response.async_set_error(
+                    intent.IntentResponseErrorCode.NO_VALID_TARGETS, released.failure_text
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            if released is not None and released.clarification is not None:
+                return self._handle_clarification_result(user_input, response, released)
+            if released is not None:
+                return await self._async_handle_match_result(
+                    user_input, response, released, entities
+                )
 
         if (
             active_dialog is None
