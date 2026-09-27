@@ -55,6 +55,7 @@ from .query_command import (
     RelationalOperator,
     RelationConstraint,
     RelationFilterExpression,
+    QueryExpression,
     SetExpression,
     SetOperator,
     SortDirection,
@@ -67,6 +68,7 @@ from .query_command import (
     ReasoningTrace,
 )
 from .query_executor import QueryExecutor
+from .place_model import OUTDOOR_REFERENCE_WORDS, outdoor_area_ids
 from .normalize import normalize
 from .semantic_exclusion import has_exclusion_clause, split_exclusion
 from .semantic_graph import SemanticEdgeKind, SemanticGraph, SemanticNodeKind
@@ -454,6 +456,23 @@ def project_semantic_reasoning_query(
             if area_target or "locations" in scopes:
                 source = SourceExpression(QueryTarget(kind=QueryTargetKind.AREA))
                 output_kind = QueryTargetKind.AREA
+                outdoor = outdoor_area_ids(entities)
+                if outdoor and not words & OUTDOOR_REFERENCE_WORDS:
+                    # "Wo ist es am kältesten?" compares rooms; the garden
+                    # only counts when the question refers to outdoors (S5).
+                    snapshots = {area.area_id: area for area in world_model.areas}
+                    excluded: QueryExpression | None = None
+                    for area_id in sorted(outdoor):
+                        if area_id not in snapshots:
+                            continue
+                        item = SourceExpression(QueryTarget(
+                            kind=QueryTargetKind.AREA, area=snapshots[area_id]
+                        ))
+                        excluded = item if excluded is None else SetExpression(
+                            excluded, SetOperator.UNION, item
+                        )
+                    if excluded is not None:
+                        source = SetExpression(source, SetOperator.DIFFERENCE, excluded)
             elif classes:
                 source = _entity_source(str(classes[0][0]), str(classes[0][1]))
             else:

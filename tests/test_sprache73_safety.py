@@ -133,3 +133,21 @@ def test_s4_volume_comparatives(monkeypatch, text, service):
     turn = house.say(text)
     assert [(domain, name) for domain, name, _ in turn.calls] == [("media_player", service)]
     assert "paused" not in turn.speech and "pausier" not in turn.speech
+
+
+# --- S5: superlatives compare rooms unless outdoors is meant ---------------
+
+@pytest.mark.parametrize("text,expected", [
+    ("Wo ist es gerade am kältesten?", "Kellerraum"),
+    ("In welchem Raum ist es am kältesten?", "Kellerraum"),
+    ("Wo ist es am wärmsten?", "Badezimmer"),
+])
+def test_s5_superlative_compares_indoor_rooms(monkeypatch, text, expected):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert expected in turn.speech
+    assert "Garten" not in turn.speech and turn.calls == []
+
+
+def test_s5_outdoor_reference_includes_the_garden(monkeypatch):
+    turn = HouseConversation(monkeypatch).say("Wo ist es draußen am kältesten?")
+    assert "Garten" in turn.speech

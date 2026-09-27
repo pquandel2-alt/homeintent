@@ -291,3 +291,25 @@ def build_place_lexicon(entities: Iterable[EntitySnapshot]) -> PlaceLexicon:
                 tuple(entity.floor_aliases),
             )
     return _build(tuple(sorted(areas.values())), tuple(sorted(floors.values())))
+
+
+OUTDOOR_REFERENCE_WORDS = frozenset({
+    "draussen", "aussen", "aussentemperatur", "ausserhalb", "freien", "garten",
+    "terrasse", "balkon", "hof", "einfahrt",
+})
+
+
+def outdoor_area_ids(entities: Iterable[EntitySnapshot]) -> frozenset[str]:
+    """Areas that are outdoors by their own or their floor's name."""
+    found: set[str] = set()
+    for entity in entities:
+        if entity.area_id is None or entity.area_id in found:
+            continue
+        names = (entity.area_name or "", entity.floor_name or "", *entity.area_aliases)
+        if any(
+            marker in normalize_for_compare(name)
+            for name in names
+            for marker in ("aussen", "draussen", "garten", "terrasse", "balkon", "garage", "hof", "einfahrt")
+        ):
+            found.add(entity.area_id)
+    return frozenset(found)
