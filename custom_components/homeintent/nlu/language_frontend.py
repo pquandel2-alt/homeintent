@@ -19,7 +19,8 @@ from ..phonetic_correction import phonetic_suggestions
 from .german_structure import ClauseKind, GermanStructuralAnalysis, analyse_german_structure
 from .normalize import normalize
 from .semantic_lexicon import SemanticAnalysis, SemanticKind, analyse_semantics
-from .semantic_catalog import CANONICAL_SPELLING_FORMS
+from .semantic_catalog import CANONICAL_SPELLING_FORMS, DEGREE_WORDS
+from .device_ontology import analyse_word
 from .semantic_utterance import (
     Polarity,
     PragmaticDisposition,
@@ -367,6 +368,27 @@ def analyse_language(
         # is directive only when the target is a real unique registry name.
         # The repair projector still checks slot/unit compatibility and the
         # normal validator/capability/policy pipeline remains authoritative.
+        utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act is SpeechAct.STATEMENT
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+        and any(
+            normalize_for_compare(word) in DEGREE_WORDS
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        )
+        and (
+            _has_registry_mention(utterance.normalized_text, entity_tuple)
+            or any(
+                analyse_word(word) is not None
+                for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+            )
+        )
+    ):
+        # Verbless comparative requests ("Das Radio bitte etwas lauter",
+        # "Die Stehlampe heller") are directives: a degree word plus a
+        # target without a copula.  "Hier ist es zu hell" keeps its copula
+        # and stays a statement.
         utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
     explicit_unmute = re.search(r"\bnicht\s+mehr\s+stumm\b", text, re.I) is not None
     if explicit_unmute:

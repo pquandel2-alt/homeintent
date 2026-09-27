@@ -32,6 +32,10 @@ REGISTERED_AUTOMATION_OPERATIONS: dict[tuple[str, str], AutomationOperationSpec]
     ("media_player", "volume_mute"): _spec("media_player", "is_volume_muted"),
     ("media_player", "volume_set"): _spec("media_player", "volume_level"),
     ("media_player", "select_source"): _spec("media_player", "source"),
+    ("media_player", "turn_on"): _spec("media_player"),
+    ("media_player", "turn_off"): _spec("media_player"),
+    ("media_player", "volume_up"): _spec("media_player"),
+    ("media_player", "volume_down"): _spec("media_player"),
     ("vacuum", "start"): _spec("vacuum"),
     ("vacuum", "pause"): _spec("vacuum"),
     ("vacuum", "stop"): _spec("vacuum"),
@@ -76,6 +80,10 @@ _OPERATION_LABELS_DE = {
     ("media_player", "volume_mute"): "die Stummschaltung einstellen",
     ("media_player", "volume_set"): "die Lautstärke einstellen",
     ("media_player", "select_source"): "die Quelle auswählen",
+    ("media_player", "turn_on"): "einschalten",
+    ("media_player", "turn_off"): "ausschalten",
+    ("media_player", "volume_up"): "lauter stellen",
+    ("media_player", "volume_down"): "leiser stellen",
     ("vacuum", "start"): "die Reinigung starten",
     ("vacuum", "pause"): "die Reinigung pausieren",
     ("vacuum", "stop"): "die Reinigung stoppen",
@@ -121,6 +129,24 @@ _DATA_LABELS_DE = {
     "option": "Option", "position": "Position", "media_player": "Wiedergabeziel",
     "message": "Nachricht", "is_volume_muted": "Stummschaltung",
 }
+
+
+# Completed-action wording for operations whose preview label is a bare
+# verb ("einschalten"): "Wohnzimmer TV eingeschaltet." reads naturally.
+_OPERATION_DONE_DE = {
+    ("media_player", "turn_on"): "eingeschaltet",
+    ("media_player", "turn_off"): "ausgeschaltet",
+    ("media_player", "volume_up"): "lauter gestellt",
+    ("media_player", "volume_down"): "leiser gestellt",
+}
+
+
+def describe_registered_result(
+    entity_name: str, service_domain: str | None, service_name: str | None
+) -> str | None:
+    """Past-tense confirmation for simple verb operations, else ``None``."""
+    done = _OPERATION_DONE_DE.get((service_domain or "", service_name or ""))
+    return f"{entity_name} {done}." if done is not None else None
 
 
 def describe_registered_operation(

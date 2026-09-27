@@ -345,3 +345,100 @@ __all__ = [
     "catalogue_expression_groups",
     "regex_union",
 ]
+
+
+# --- 7.3.0 ontology operations -------------------------------------------
+# One spoken operation (lexical ACTION value) applied to one device domain.
+# Values are either a standard intent or a registered service operation
+# ``("svc", domain, service)``.  Missing pairs are unsupported and are never
+# guessed.  The legacy ``INTENT_BY_DOMAIN_ACTION`` table stays unchanged; this
+# table serves the genus-based compiler, which also knows that a television
+# is switched with media_player.turn_on and a vacuum "aus" means stop.
+OperationTarget = tuple[str, ...]
+ONTOLOGY_OPERATIONS: dict[tuple[str, str], OperationTarget] = {
+    **{(domain, "turn_on"): ("HassTurnOn",) for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
+    **{(domain, "turn_off"): ("HassTurnOff",) for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
+    **{(domain, "toggle"): ("HassToggle",) for domain in ("light", "switch", "fan", "humidifier", "input_boolean")},
+    ("media_player", "turn_on"): ("svc", "media_player", "turn_on"),
+    ("media_player", "turn_off"): ("svc", "media_player", "turn_off"),
+    ("media_player", "start"): ("HassMediaPlay",),
+    ("media_player", "play"): ("HassMediaPlay",),
+    ("media_player", "pause"): ("HassMediaPause",),
+    ("media_player", "stop"): ("HassMediaStop",),
+    ("media_player", "mute"): ("HassMediaMute",),
+    ("cover", "open"): ("HassOpenCover",),
+    ("cover", "close"): ("HassCloseCover",),
+    ("valve", "open"): ("HassOpenValve",),
+    ("valve", "close"): ("HassCloseValve",),
+    ("valve", "turn_on"): ("HassOpenValve",),
+    ("valve", "turn_off"): ("HassCloseValve",),
+    ("vacuum", "start"): ("HassVacuumStart",),
+    ("vacuum", "turn_on"): ("HassVacuumStart",),
+    ("vacuum", "stop"): ("HassVacuumStop",),
+    ("vacuum", "turn_off"): ("HassVacuumStop",),
+    ("vacuum", "pause"): ("svc", "vacuum", "pause"),
+    ("vacuum", "locate"): ("HassVacuumLocate",),
+    ("lawn_mower", "start"): ("svc", "lawn_mower", "start_mowing"),
+    ("lawn_mower", "turn_on"): ("svc", "lawn_mower", "start_mowing"),
+    ("lawn_mower", "stop"): ("svc", "lawn_mower", "dock"),
+    ("lawn_mower", "turn_off"): ("svc", "lawn_mower", "dock"),
+    ("lawn_mower", "pause"): ("svc", "lawn_mower", "pause"),
+    # "Schalte <Skript> ein" is not a script start (existing contract);
+    # scripts run with starten/ausführen/aktivieren.
+    ("script", "start"): ("HassRunScript",),
+    ("scene", "start"): ("HassActivateScene",),
+    ("scene", "turn_on"): ("HassActivateScene",),
+    ("button", "press"): ("HassPressButton",),
+    ("lock", "lock"): ("HassLock",),
+    ("lock", "unlock"): ("HassUnlock",),
+}
+
+# Comparative adjectives: word -> (property, direction).  "etwas kühler"
+# lowers a heating setpoint, "leiser" lowers a player's volume - never
+# pauses it.  The property also implies the genus when no device is named
+# ("Mach es im Kinderzimmer etwas kühler").
+DEGREE_WORDS: dict[str, tuple[str, int]] = {
+    "heller": ("brightness", 1),
+    "dunkler": ("brightness", -1),
+    "waermer": ("temperature", 1),
+    "kuehler": ("temperature", -1),
+    "kaelter": ("temperature", -1),
+    "lauter": ("volume", 1),
+    "leiser": ("volume", -1),
+    "schneller": ("speed", 1),
+    "langsamer": ("speed", -1),
+}
+DEGREE_OPERATIONS: dict[tuple[str, str, int], OperationTarget] = {
+    ("light", "brightness", 1): ("HassLightBrighten",),
+    ("light", "brightness", -1): ("HassLightDim",),
+    ("climate", "temperature", 1): ("HassClimateIncreaseTemperature",),
+    ("climate", "temperature", -1): ("HassClimateDecreaseTemperature",),
+    ("media_player", "volume", 1): ("svc", "media_player", "volume_up"),
+    ("media_player", "volume", -1): ("svc", "media_player", "volume_down"),
+    ("fan", "speed", 1): ("HassFanIncreaseSpeed",),
+    ("fan", "speed", -1): ("HassFanDecreaseSpeed",),
+}
+# Genus implied by a property when the sentence names only a place.
+PROPERTY_GENUS: dict[str, str] = {
+    "brightness": "light",
+    "temperature": "heating",
+    "volume": "media",
+    "speed": "fan",
+}
+# A group operation over more targets than this, or over several device
+# kinds, is previewed and needs a "Ja" before anything runs.
+GROUP_PREVIEW_THRESHOLD = 5
+
+# Words that make a command time-bound ("um 21:30 Uhr", "morgen", "abends",
+# "später").  A time-bound command is an automation or schedule and never
+# runs as an immediate service call from the genus compiler.
+TIME_BOUND_WORDS = frozenset({
+    "uhr", "morgen", "uebermorgen", "heute", "heut", "abend", "abends", "morgens",
+    "mittags", "nachmittags", "vormittags", "nachts", "spaeter", "nachher",
+    "minute", "minuten", "stunde", "stunden", "sekunde", "sekunden", "taeglich",
+    "montags", "dienstags", "mittwochs", "donnerstags", "freitags", "samstags",
+    "sonntags", "montag", "dienstag", "mittwoch", "donnerstag", "freitag",
+    "samstag", "sonntag", "wochenende", "werktags", "sonnenuntergang",
+    "sonnenaufgang", "wenn", "sobald", "falls", "bis", "solange", "waehrend",
+    "jeden", "jede", "jedes", "immer", "halb", "viertel",
+})

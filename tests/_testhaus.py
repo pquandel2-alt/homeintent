@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import types
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -102,7 +103,7 @@ class HouseConversation:
     """Drive the real conversation entity against the stub test house."""
 
     def __init__(self, monkeypatch, entities: list[EntitySnapshot] | None = None,
-                 area: str | None = None) -> None:
+                 area: str | None = None, user: str | None = "admin") -> None:
         import _ha_stub
 
         _ha_stub.install()
@@ -128,6 +129,16 @@ class HouseConversation:
                 lambda hass, user_input: AreaSnapshot(area, area_name or area),
             )
         self.conversation_id = "testhaus"
+        self.user = user
+        users = {
+            "admin": types.SimpleNamespace(id="admin", name="Philipp", is_admin=True),
+            "anna": types.SimpleNamespace(id="anna", name="Anna", is_admin=False),
+        }
+
+        async def get_user(user_id: str):
+            return users.get(user_id)
+
+        self.entity.hass.auth = types.SimpleNamespace(async_get_user=get_user)
 
     def say(self, text: str) -> Turn:
         from homeassistant.components.conversation import ConversationInput
@@ -135,7 +146,11 @@ class HouseConversation:
         mock = self.entity.hass.services.async_call
         before = len(mock.await_args_list)
         result = asyncio.run(self.entity._async_handle_message(
-            ConversationInput(text=text, conversation_id=self.conversation_id),
+            ConversationInput(
+                text=text,
+                conversation_id=self.conversation_id,
+                context=types.SimpleNamespace(user_id=self.user) if self.user else None,
+            ),
             chat_log=None,
         ))
         calls = [

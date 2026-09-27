@@ -240,6 +240,16 @@ def _connector_at(
 def _is_relative_start(tokens: Sequence[StructuralToken], token_index: int) -> bool:
     if tokens[token_index].canonical not in _RELATIVE_WORDS:
         return False
+    following = token_index + 1
+    if (
+        tokens[token_index].canonical in {"der", "die", "das"}
+        and following < len(tokens)
+        and tokens[following].is_word
+        and tokens[following].text[:1].isupper()
+    ):
+        # ", das Küchenlicht aus": an article before a capitalized noun opens
+        # a coordinated object, not a relative clause (", die noch an sind").
+        return False
     previous = token_index - 1
     while previous >= 0 and tokens[previous].is_word is False:
         if tokens[previous].canonical == ",":

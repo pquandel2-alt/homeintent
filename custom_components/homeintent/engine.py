@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from hassil import Intents
 
@@ -65,6 +65,8 @@ from .nlu.degree_semantics import extract_degree
 from .nlu.frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .nlu.primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .nlu.normalize import normalize
+from .nlu.device_ontology import analyse_word
+from .nlu.ontology_compiler import compile_ontology_command
 from .nlu.language_frontend import LanguageDocument, analyse_language
 from .nlu.parser import (
     ClarificationRequest,
@@ -208,7 +210,7 @@ from .service_call import (
     REGISTERED_OPERATION_INTENT,
     ServiceCallPlan,
 )
-from .nlu.automation_operations import describe_registered_operation
+from .nlu.automation_operations import describe_registered_operation, describe_registered_result
 from .world_model import WorldModel
 
 _RESPONSE_GENERATOR = ResponseGenerator()
@@ -633,6 +635,10 @@ class MatchResult:
     context_entities: tuple[EntitySnapshot, ...] = ()
     context_predicate: str | None = None
     explanation_text: str | None = None
+    # An understood command that cannot be grounded honestly ("Im Büro gibt
+    # es keinen Ventilator."). Never executable; spoken instead of the
+    # generic "nicht verstanden".
+    failure_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -660,6 +666,59 @@ class CommandPlan:
     """
 
     commands: tuple[MatchResult, ...]
+    # Group operations over several device kinds or many targets are
+    # previewed first; the plan runs only after an explicit "Ja".
+    confirmation_text: str | None = None
+
+
+# Sentinel: the genus model proved the legacy reading incomplete.
+_REFUSED: Any = object()
+
+_PREVIEW_VERBS = {
+    "HassTurnOn": "einschalten",
+    "HassTurnOff": "ausschalten",
+    "HassToggle": "umschalten",
+    "HassOpenCover": "öffnen",
+    "HassCloseCover": "schließen",
+    "HassOpenValve": "öffnen",
+    "HassCloseValve": "schließen",
+    "HassMediaPlay": "abspielen",
+    "HassMediaPause": "pausieren",
+    "HassMediaStop": "stoppen",
+    "HassVacuumStart": "starten",
+    "HassVacuumStop": "stoppen",
+    "HassLightBrighten": "heller stellen",
+    "HassLightDim": "dunkler stellen",
+    "HassClimateIncreaseTemperature": "wärmer stellen",
+    "HassClimateDecreaseTemperature": "kühler stellen",
+}
+
+
+def _preview_verb(item: MatchResult) -> str:
+    frame = item.frame
+    if frame is None:
+        return "schalten"
+    if frame.intent == REGISTERED_OPERATION_INTENT:
+        return describe_registered_operation(
+            frame.parameters.get("service_domain"),
+            frame.parameters.get("service_name"),
+            frame.parameters.get("service_data") or {},
+        )
+    if frame.intent == "HassSetPercentage":
+        return f"auf {frame.parameters.get('percent')} Prozent stellen"
+    if frame.intent == "HassClimateSetTemperature":
+        return f"auf {frame.parameters.get('temperature'):g} Grad stellen"
+    return _PREVIEW_VERBS.get(frame.intent, "schalten")
+
+
+def _ontology_preview_text(results: Sequence[MatchResult], targets: str) -> str:
+    """"Soll ich A, B und C ausschalten?" for a previewed group operation."""
+    verbs: list[str] = []
+    for item in results:
+        verb = _preview_verb(item)
+        if verb not in verbs:
+            verbs.append(verb)
+    return f"Soll ich {targets} {' bzw. '.join(verbs)}?"
 
 
 def _no_automation_text(entity: EntitySnapshot | None) -> str:
@@ -1221,9 +1280,158 @@ class NluEngine:
             # never discard the time semantics and execute the remainder.
             result = None
             authority = UnderstandingAuthority.NONE
+        ontology_result = self._ontology_understanding(
+            document, entities, context, result
+        )
+        if ontology_result is _REFUSED:
+            result = None
+            authority = UnderstandingAuthority.NONE
+        elif ontology_result is not None:
+            result = ontology_result
+            authority = UnderstandingAuthority.V8_SEMANTIC
         return self._direct_understanding_outcome(
             text, document, interpreted, result, entities, authority
         )
+
+    def _ontology_failure(
+        self, text: str, entities: list[EntitySnapshot]
+    ) -> str | None:
+        """Honest sentence for a command the genus model cannot ground."""
+        document = analyse_language(text, entities, include_registry_compounds=False)
+        if (
+            document.utterance.speech_act is not SpeechAct.COMMAND
+            or not document.utterance.safe_to_execute_directly
+        ):
+            return None
+        compiled = compile_ontology_command(document, entities)
+        return compiled.message if compiled is not None else None
+
+    def _ontology_understanding(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        context: UnderstandingContext | None,
+        legacy: MatchResult | CommandPlan | None,
+    ) -> MatchResult | CommandPlan | None:
+        """Genus/place/quantity understanding in the shared direct path.
+
+        The established compilers keep authority for everything they
+        resolve.  The ontology compiler answers when they found nothing,
+        and takes precedence where their result is provably incomplete:
+        an unspecific "alles" (only the ontology knows which kinds belong
+        to it) and coordinated clauses of which the legacy result dropped
+        some (finding S3: never lose a clause silently).
+        """
+        utterance = document.utterance
+        if (
+            utterance.speech_act is not SpeechAct.COMMAND
+            or not utterance.safe_to_execute_directly
+            or document.temporal
+        ):
+            return None
+        universal = any(
+            (analysis := analyse_word(token.canonical)) is not None
+            and analysis.genera == ("device",)
+            and not analysis.indefinite
+            for token in document.tokens
+            if token.is_word
+        )
+        coordinated = any(
+            token.canonical in {",", "und", "sowie"} for token in document.tokens
+        )
+        if (
+            isinstance(legacy, MatchResult)
+            and legacy.plan is not None
+            and isinstance(legacy.plan.entity_id, str)
+            and not universal
+            and not coordinated
+        ):
+            # One grounded single-target command cannot be too broad and
+            # cannot have dropped a clause.
+            return None
+        compiled = compile_ontology_command(
+            document,
+            entities,
+            source_area=context.source_area if context is not None else None,
+        )
+        if compiled is None:
+            return None
+        if legacy is not None and not universal:
+            legacy_commands = (
+                legacy.commands if isinstance(legacy, CommandPlan) else (legacy,)
+            )
+            legacy_targets = {
+                entity_id
+                for command in legacy_commands
+                if command.plan is not None
+                for entity_id in (
+                    (command.plan.entity_id,)
+                    if isinstance(command.plan.entity_id, str)
+                    else tuple(command.plan.entity_id)
+                )
+            }
+            compiled_targets = {
+                entity.entity_id
+                for parsed in compiled.results
+                for entity in parsed.resolved_entities
+            }
+            drops_clause = (
+                compiled.clauses > 1
+                and len(compiled.results) > sum(
+                    1 for command in legacy_commands if command.plan is not None
+                )
+            )
+            # A legacy domain word ("Rollos" -> every cover) may reach
+            # devices outside the spoken genus (garage door, awning).  The
+            # genus reading is then strictly narrower and wins.
+            too_broad = bool(
+                compiled_targets
+                and legacy_targets
+                and compiled_targets < legacy_targets
+            )
+            if (
+                compiled.message is not None
+                and compiled.clauses > 1
+                and len(legacy_commands) < compiled.clauses
+            ):
+                # The legacy reading covers fewer clauses than were spoken:
+                # refuse instead of executing a subset (finding S3).  The
+                # honest sentence is spoken via understanding_feedback().
+                return _REFUSED
+            if not (compiled.executable and (drops_clause or too_broad)):
+                return None
+        if compiled.message is not None:
+            # Honest non-results are spoken through understanding_feedback();
+            # the direct outcome itself stays "no payload".
+            return None
+        if compiled.clarification is not None:
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        rendered: list[MatchResult] = []
+        for parsed in compiled.results:
+            item = self._build_match_result(parsed, entities)
+            if item is None or item.plan is None:
+                return None
+            rendered.append(item)
+        if not rendered:
+            return None
+        if compiled.preview is not None:
+            kept = (
+                " Unverändert bleiben: "
+                + join_german([entity.friendly_name for entity in compiled.kept])
+                + "."
+                if compiled.kept else ""
+            )
+            return CommandPlan(
+                tuple(rendered),
+                confirmation_text=_ontology_preview_text(rendered, compiled.preview) + kept,
+            )
+        if len(rendered) == 1:
+            return rendered[0]
+        return CommandPlan(tuple(rendered))
 
     def _semantic_multi_result(
         self,
@@ -1735,6 +1943,10 @@ class NluEngine:
         self, text: str, entities: list[EntitySnapshot] | None = None
     ) -> UnderstandingFeedback | None:
         """Return the structured counterpart of the spoken failure text."""
+        if entities is not None:
+            honest = self._ontology_failure(text, entities)
+            if honest is not None:
+                return UnderstandingFeedback(ParseFailureReason.UNKNOWN_ENTITY, honest)
         if re.search(
             r"\b(?:heute|morgen|übermorgen|am\s+\S+)\s+"
             r"(?:gegen|irgendwann)\s+(?:früh|morgens|abends?|nachts)\b",
@@ -4621,9 +4833,14 @@ class NluEngine:
             registered_plan = map_to_service_call(command)
             if registered_plan is None:
                 return None
+            done_text = describe_registered_result(
+                join_german([entity.friendly_name for entity in matched]),
+                registered_plan.domain,
+                registered_plan.service,
+            )
             return MatchResult(
                 plan=registered_plan,
-                response_text=(
+                response_text=done_text or (
                     f"{matched[0].friendly_name}: "
                     f"{describe_registered_operation(registered_plan.domain, registered_plan.service, registered_plan.data)}."
                 ),

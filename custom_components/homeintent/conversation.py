@@ -1943,6 +1943,18 @@ class NluConversationEntity(
         if result is None:
             return await self._async_handle_no_match(user_input, response, entities)
 
+        if isinstance(result, MatchResult) and result.failure_text is not None:
+            # Understood, but honestly not groundable ("Im Büro gibt es
+            # keinen Ventilator."): say exactly that, never execute.
+            self._context_store.clear(user_input.conversation_id)
+            response.async_set_error(
+                intent.IntentResponseErrorCode.NO_VALID_TARGETS,
+                result.failure_text,
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
         if (
             isinstance(result, MatchResult)
             and result.plan is None
@@ -5282,7 +5294,12 @@ class NluConversationEntity(
                     response=response,
                     conversation_id=user_input.conversation_id,
                 )
-            if policy.outcome is PolicyOutcome.CONFIRM:
+            if (
+                policy.outcome is PolicyOutcome.CONFIRM
+                and result.confirmation_text is None
+            ):
+                # A previewed group plan is confirmed as a whole below; every
+                # other multi-command plan needs one confirmation per action.
                 self._context_store.clear(user_input.conversation_id)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
@@ -5291,6 +5308,35 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response,
                     conversation_id=user_input.conversation_id,
+                )
+        if result.confirmation_text is not None:
+            plans = [
+                sub_result.plan for sub_result in result.commands
+                if sub_result.plan is not None
+            ]
+            if plans:
+                success = " ".join(
+                    sub_result.response_text for sub_result in result.commands
+                )
+                self._context_store.set(
+                    user_input.conversation_id,
+                    ConversationContext(
+                        last_command=None,
+                        last_entities=(),
+                        last_area=None,
+                        pending_clarification=None,
+                        pending_service_confirmation=PendingServiceConfirmation(
+                            plans[0],
+                            success,
+                            actor_id,
+                            None,
+                            tuple(plans[1:]),
+                        ),
+                    ),
+                )
+                response.async_set_speech(result.confirmation_text)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
                 )
         self._context_store.clear(user_input.conversation_id)
         response_parts: list[str] = []
@@ -7074,18 +7120,34 @@ class NluConversationEntity(
                 entities,
                 requested_by_user_id=current_user_id,
             )
+            is_admin = await user_is_admin(self.hass, user_input)
             execution = await async_execute_service_plan(
                 self.hass,
                 confirmation.plan,
                 entities,
                 self.entry.options,
-                is_admin=await user_is_admin(self.hass, user_input),
+                is_admin=is_admin,
                 user_id=current_user_id,
                 confirmed=True,
                 audit_trail=self._audit_trail,
                 audit_actor_id=current_user_id,
                 effect_monitor=self._runtime_data.effect_monitor,
             )
+            for additional in confirmation.additional_plans:
+                if not execution.executed:
+                    break
+                execution = await async_execute_service_plan(
+                    self.hass,
+                    additional,
+                    entities,
+                    self.entry.options,
+                    is_admin=is_admin,
+                    user_id=current_user_id,
+                    confirmed=True,
+                    audit_trail=self._audit_trail,
+                    audit_actor_id=current_user_id,
+                    effect_monitor=self._runtime_data.effect_monitor,
+                )
             if not execution.executed:
                 _LOGGER.error(
                     "Confirmed service call %s.%s on %s failed: %s",
