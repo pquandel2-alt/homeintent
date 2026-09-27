@@ -200,6 +200,7 @@ from .thermal_deadline import (
 )
 from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
+from .nlu.utterance_meaning import render_maintain
 from .nlu.unit_reasoning import normalize_measurement
 from .monitor_goal import MonitorRecord
 from .nlu.temporal_semantics import resolve_history_window, resolve_scheduled_datetime
@@ -268,6 +269,7 @@ from .nlu.ha_automation_generator import (
 from .nlu.language_frontend import LanguageDocument, analyse_language
 from .nlu.response_generator import _automation_label
 from .nlu.semantic_utterance import (
+    Modality,
     SpeechAct,
     analyse_utterance,
     is_contextual_followup,
@@ -944,6 +946,18 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+
+        if (
+            active_dialog is None
+            and language_document.utterance.modality is Modality.MAINTAIN
+            and language_document.maintained
+        ):
+            # "Lass das Licht an": keeping a state is never an operation,
+            # whatever router would otherwise read the particle "an".
+            response.async_set_speech(render_maintain(language_document.maintained))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
 
         if (
             active_dialog is None

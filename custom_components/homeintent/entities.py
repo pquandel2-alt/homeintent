@@ -50,6 +50,8 @@ class EntitySnapshot:
     # already the only hass-free channel areas.py's resolver reads from - see
     # hass_entities.py::_area_aliases() for how this is populated live.
     area_aliases: tuple[str, ...] = ()
+    # HA Floor Registry aliases ("OG", "oben") of the entity's floor.
+    floor_aliases: tuple[str, ...] = ()
     attributes: Mapping[str, Any] = field(default_factory=dict)
     capabilities: frozenset[str] = field(default_factory=frozenset)
     last_changed: datetime | None = None

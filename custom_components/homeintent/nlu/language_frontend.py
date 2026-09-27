@@ -24,10 +24,12 @@ from .semantic_utterance import (
     Polarity,
     PragmaticDisposition,
     SemanticUtterance,
+    Modality,
     SpeechAct,
     analyse_utterance,
 )
 from .temporal_semantics import TemporalExpression, analyse_temporal_semantics
+from .utterance_meaning import MaintainFrame, maintain_frames
 
 
 _TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
@@ -86,6 +88,12 @@ class LanguageDocument:
     semantics: SemanticAnalysis
     structure: GermanStructuralAnalysis
     temporal: tuple[TemporalExpression, ...]
+    # One optional maintenance frame per coordinated clause ("lass X an").
+    maintain: tuple[MaintainFrame | None, ...] = ()
+
+    @property
+    def maintained(self) -> tuple[MaintainFrame, ...]:
+        return tuple(frame for frame in self.maintain if frame is not None)
 
     @property
     def normalized_text(self) -> str:
@@ -367,6 +375,11 @@ def analyse_language(
         utterance = replace(utterance, polarity=Polarity.NEGATIVE)
     tokens = tokenize_language(text)
     structure = analyse_german_structure(tokens)
+    maintain, _clause_ranges = maintain_frames(text, tokens)
+    if maintain and all(frame is not None for frame in maintain):
+        # Keeping a state is never an operation, whatever particle
+        # ("an", "zu", "auf") the clause ends with.
+        utterance = replace(utterance, modality=Modality.MAINTAIN)
     if (
         utterance.polarity is Polarity.NEGATIVE
         and structure.negations
@@ -390,4 +403,5 @@ def analyse_language(
         semantics=semantics,
         structure=structure,
         temporal=analyse_temporal_semantics(tokens),
+        maintain=maintain,
     )

@@ -92,6 +92,15 @@ def _area_info(
     return area_id, area.name, tuple(sorted(area.aliases))
 
 
+def _floor_aliases(hass: HomeAssistant, floor_id: str | None) -> tuple[str, ...]:
+    """Floor Registry aliases ("OG", "oben") of one floor, sorted."""
+    if floor_id is None:
+        return ()
+    floor = fr.async_get(hass).async_get_floor(floor_id)
+    aliases = getattr(floor, "aliases", None) if floor is not None else None
+    return tuple(sorted(str(alias) for alias in aliases or ()))
+
+
 def _floor_info(
     hass: HomeAssistant, area_id: str | None
 ) -> tuple[str | None, str | None, int | None]:
@@ -158,6 +167,7 @@ def build_entity_snapshots(
                     *custom_aliases.get(entity_id, ()),
                 ))),
                 area_aliases=area_aliases,
+                floor_aliases=_floor_aliases(hass, floor_id),
                 attributes=state.attributes,
                 capabilities=frozenset(c.name for c in capabilities),
                 last_changed=getattr(state, "last_changed", None),

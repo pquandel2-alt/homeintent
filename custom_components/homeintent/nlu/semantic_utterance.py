@@ -39,6 +39,8 @@ class Modality(Enum):
     WISH = auto()
     HYPOTHETICAL = auto()
     UNCERTAIN = auto()
+    # "Lass das Licht an": keep the current state; never an operation.
+    MAINTAIN = auto()
 
 
 class Polarity(Enum):
@@ -80,7 +82,11 @@ class SemanticUtterance:
     def safe_to_execute_directly(self) -> bool:
         return (
             self.speech_act is SpeechAct.COMMAND
-            and self.modality not in {Modality.HYPOTHETICAL, Modality.UNCERTAIN}
+            and self.modality not in {
+                Modality.HYPOTHETICAL,
+                Modality.UNCERTAIN,
+                Modality.MAINTAIN,
+            }
             and self.polarity is Polarity.POSITIVE
         )
 

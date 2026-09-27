@@ -98,6 +98,32 @@ STATE_ENTRIES = (
     ),
 )
 
+# Resultative complements that describe a state an object should *keep*
+# after a verb of letting/leaving ("lass das Licht an", "lass die Tür zu").
+# Keys are compare-normalized single words; the value is the state that is
+# preserved.  Directional particles ("runter", "herunter", "hoch") are not
+# listed: "lass die Rollläden runter" is the separable verb herunterlassen,
+# i.e. an operation, not a maintenance.
+STATE_COMPLEMENT_WORDS: dict[str, SemanticState] = {
+    "an": SemanticState.ON,
+    "eingeschaltet": SemanticState.ON,
+    "brennen": SemanticState.ON,
+    "laufen": SemanticState.ACTIVE,
+    "zu": SemanticState.CLOSED,
+    "geschlossen": SemanticState.CLOSED,
+    "unten": SemanticState.CLOSED,
+    "auf": SemanticState.OPEN,
+    "offen": SemanticState.OPEN,
+    "geoeffnet": SemanticState.OPEN,
+    "oben": SemanticState.OPEN,
+    "so": SemanticState.UNKNOWN,
+}
+
+# Imperative/hortative forms of "lassen" (to leave/keep).  "lass uns" is
+# the first-person hortative ("let us ...") and never a maintenance.
+MAINTAIN_VERB_FORMS = frozenset({"lass", "lasse", "lasst", "lassen"})
+MAINTAIN_BLOCKING_OBJECTS = frozenset({"uns", "mich"})
+
 QUANTIFIER_ENTRIES = (
     CatalogueEntry("all", (r"alle\w*", r"sämtliche\w*", r"jede\w*", r"überall", r"die\s+ganzen")),
     CatalogueEntry("both", (r"beide\w*",)),
@@ -307,6 +333,9 @@ __all__ = [
     "QUERY_SCOPE_ENTRIES",
     "SEMANTIC_RESOLUTION_WORDS",
     "STATE_ENTRIES",
+    "STATE_COMPLEMENT_WORDS",
+    "MAINTAIN_VERB_FORMS",
+    "MAINTAIN_BLOCKING_OBJECTS",
     "V7_AUTHORITATIVE_DIRECT_CAPABILITIES",
     "V7_AUTHORITATIVE_COMMAND_CAPABILITIES",
     "V7_AUTHORITATIVE_QUERY_CAPABILITIES",

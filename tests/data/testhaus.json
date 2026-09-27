@@ -1,0 +1,2962 @@
+[
+ {
+  "entity_id": "alarm_control_panel.alarmanlage",
+  "state": "disarmed",
+  "attributes": {
+   "code_format": null,
+   "changed_by": null,
+   "code_arm_required": false,
+   "friendly_name": "Alarmanlage",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "automation.flurlicht_bei_bewegung",
+  "state": "on",
+  "attributes": {
+   "id": "1700000000001",
+   "mode": "single",
+   "current": 0,
+   "friendly_name": "Flurlicht bei Bewegung"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "automation.rollladen_abends_schliessen",
+  "state": "on",
+  "attributes": {
+   "id": "1700000000002",
+   "mode": "single",
+   "current": 0,
+   "friendly_name": "Rollläden abends schließen"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "binary_sensor.badezimmerfenster",
+  "state": "on",
+  "attributes": {
+   "device_class": "window",
+   "friendly_name": "Badezimmerfenster"
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.bewegung_flur",
+  "state": "off",
+  "attributes": {
+   "device_class": "motion",
+   "friendly_name": "Bewegungsmelder Flur"
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.buerofenster",
+  "state": "off",
+  "attributes": {
+   "device_class": "window",
+   "friendly_name": "Bürofenster"
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.haustuer",
+  "state": "off",
+  "attributes": {
+   "device_class": "door",
+   "friendly_name": "Haustür"
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.kinderzimmerfenster",
+  "state": "off",
+  "attributes": {
+   "device_class": "window",
+   "friendly_name": "Kinderzimmerfenster"
+  },
+  "aliases": [],
+  "area_id": "kinderzimmer",
+  "area_name": "Kinderzimmer",
+  "area_aliases": [
+   "Zimmer von Lena"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.kuechenfenster",
+  "state": "on",
+  "attributes": {
+   "device_class": "window",
+   "friendly_name": "Küchenfenster"
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.praesenz_buero",
+  "state": "off",
+  "attributes": {
+   "device_class": "occupancy",
+   "friendly_name": "Präsenz Büro"
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.praesenz_schlafzimmer",
+  "state": "off",
+  "attributes": {
+   "device_class": "occupancy",
+   "friendly_name": "Präsenz Schlafzimmer"
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.praesenz_wohnzimmer",
+  "state": "on",
+  "attributes": {
+   "device_class": "occupancy",
+   "friendly_name": "Präsenz Wohnzimmer"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.rauchmelder_flur",
+  "state": "off",
+  "attributes": {
+   "device_class": "smoke",
+   "friendly_name": "Rauchmelder Flur"
+  },
+  "aliases": [],
+  "area_id": "flur_obergeschoss",
+  "area_name": "Flur Obergeschoss",
+  "area_aliases": [
+   "Flur oben"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.schlafzimmerfenster",
+  "state": "off",
+  "attributes": {
+   "device_class": "window",
+   "friendly_name": "Schlafzimmerfenster"
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.terrassentuer",
+  "state": "off",
+  "attributes": {
+   "device_class": "door",
+   "friendly_name": "Terrassentür"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.wassermelder_keller",
+  "state": "off",
+  "attributes": {
+   "device_class": "moisture",
+   "friendly_name": "Wassermelder Keller"
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "binary_sensor.wohnzimmerfenster",
+  "state": "off",
+  "attributes": {
+   "device_class": "window",
+   "friendly_name": "Wohnzimmerfenster"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "button.kaffeemaschine_entkalken",
+  "state": "unknown",
+  "attributes": {
+   "friendly_name": "Kaffeemaschine entkalken"
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "button.tuerklingel_stumm",
+  "state": "unknown",
+  "attributes": {
+   "friendly_name": "Türklingel stummschalten"
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "calendar.familie",
+  "state": "off",
+  "attributes": {
+   "friendly_name": "Familie",
+   "supported_features": 7
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "calendar.mullabfuhr",
+  "state": "off",
+  "attributes": {
+   "friendly_name": "Müllabfuhr",
+   "supported_features": 7
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "climate.heizung_badezimmer",
+  "state": "heat",
+  "attributes": {
+   "hvac_modes": [
+    "heat",
+    "auto",
+    "off"
+   ],
+   "min_temp": 5,
+   "max_temp": 30,
+   "target_temp_step": 0.5,
+   "preset_modes": [
+    "comfort",
+    "eco",
+    "boost",
+    "away"
+   ],
+   "current_temperature": 22.0,
+   "temperature": 22.0,
+   "hvac_action": "idle",
+   "preset_mode": "comfort",
+   "friendly_name": "Heizung Badezimmer",
+   "supported_features": 401
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "climate.heizung_buero",
+  "state": "heat",
+  "attributes": {
+   "hvac_modes": [
+    "heat",
+    "auto",
+    "off"
+   ],
+   "min_temp": 5,
+   "max_temp": 30,
+   "target_temp_step": 0.5,
+   "preset_modes": [
+    "comfort",
+    "eco",
+    "boost",
+    "away"
+   ],
+   "current_temperature": 20.5,
+   "temperature": 20.5,
+   "hvac_action": "idle",
+   "preset_mode": "comfort",
+   "friendly_name": "Heizung Büro",
+   "supported_features": 401
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "climate.heizung_kinderzimmer",
+  "state": "heat",
+  "attributes": {
+   "hvac_modes": [
+    "heat",
+    "auto",
+    "off"
+   ],
+   "min_temp": 5,
+   "max_temp": 30,
+   "target_temp_step": 0.5,
+   "preset_modes": [
+    "comfort",
+    "eco",
+    "boost",
+    "away"
+   ],
+   "current_temperature": 20.0,
+   "temperature": 20.0,
+   "hvac_action": "idle",
+   "preset_mode": "comfort",
+   "friendly_name": "Heizung Kinderzimmer",
+   "supported_features": 401
+  },
+  "aliases": [],
+  "area_id": "kinderzimmer",
+  "area_name": "Kinderzimmer",
+  "area_aliases": [
+   "Zimmer von Lena"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "climate.heizung_kueche",
+  "state": "heat",
+  "attributes": {
+   "hvac_modes": [
+    "heat",
+    "auto",
+    "off"
+   ],
+   "min_temp": 5,
+   "max_temp": 30,
+   "target_temp_step": 0.5,
+   "preset_modes": [
+    "comfort",
+    "eco",
+    "boost",
+    "away"
+   ],
+   "current_temperature": 20.0,
+   "temperature": 20.0,
+   "hvac_action": "idle",
+   "preset_mode": "comfort",
+   "friendly_name": "Heizung Küche",
+   "supported_features": 401
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "climate.heizung_schlafzimmer",
+  "state": "heat",
+  "attributes": {
+   "hvac_modes": [
+    "heat",
+    "auto",
+    "off"
+   ],
+   "min_temp": 5,
+   "max_temp": 30,
+   "target_temp_step": 0.5,
+   "preset_modes": [
+    "comfort",
+    "eco",
+    "boost",
+    "away"
+   ],
+   "current_temperature": 18.0,
+   "temperature": 18.0,
+   "hvac_action": "idle",
+   "preset_mode": "comfort",
+   "friendly_name": "Heizung Schlafzimmer",
+   "supported_features": 401
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "climate.heizung_wohnzimmer",
+  "state": "heat",
+  "attributes": {
+   "hvac_modes": [
+    "heat",
+    "auto",
+    "off"
+   ],
+   "min_temp": 5,
+   "max_temp": 30,
+   "target_temp_step": 0.5,
+   "preset_modes": [
+    "comfort",
+    "eco",
+    "boost",
+    "away"
+   ],
+   "current_temperature": 21.0,
+   "temperature": 21.0,
+   "hvac_action": "idle",
+   "preset_mode": "comfort",
+   "friendly_name": "Heizung Wohnzimmer",
+   "supported_features": 401
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "cover.badezimmer_rollladen",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Badezimmer Rollladen",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "cover.buero_raffstore",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "current_tilt_position": 50,
+   "device_class": "blind",
+   "friendly_name": "Büro Raffstore",
+   "supported_features": 191
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "cover.esszimmer_rollladen",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Esszimmer Rollladen",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "esszimmer",
+  "area_name": "Esszimmer",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "cover.garagentor",
+  "state": "closed",
+  "attributes": {
+   "is_closed": true,
+   "device_class": "garage",
+   "friendly_name": "Garagentor",
+   "supported_features": 11
+  },
+  "aliases": [],
+  "area_id": "garage",
+  "area_name": "Garage",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "cover.kinderzimmer_rollladen",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Kinderzimmer Rollladen",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "kinderzimmer",
+  "area_name": "Kinderzimmer",
+  "area_aliases": [
+   "Zimmer von Lena"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "cover.kuechenrollladen",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Küchenrollladen",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "cover.markise",
+  "state": "closed",
+  "attributes": {
+   "is_closed": true,
+   "current_position": 0,
+   "device_class": "awning",
+   "friendly_name": "Markise",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "terrasse",
+  "area_name": "Terrasse",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "cover.schlafzimmer_rollladen",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Schlafzimmer Rollladen",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "cover.wohnzimmer_rollladen_links",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Wohnzimmer Rollladen links",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "cover.wohnzimmer_rollladen_rechts",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "current_position": 100,
+   "device_class": "shutter",
+   "friendly_name": "Wohnzimmer Rollladen rechts",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "device_tracker.handy_anna",
+  "state": "home",
+  "attributes": {
+   "tracking_type": "connection",
+   "in_zones": [
+    "zone.home"
+   ],
+   "source_type": "router",
+   "friendly_name": "Handy Anna"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "device_tracker.handy_philipp",
+  "state": "home",
+  "attributes": {
+   "tracking_type": "connection",
+   "in_zones": [
+    "zone.home"
+   ],
+   "source_type": "router",
+   "friendly_name": "Handy Philipp"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "fan.badluefter",
+  "state": "off",
+  "attributes": {
+   "preset_modes": null,
+   "percentage": 0,
+   "percentage_step": 33.333333333333336,
+   "preset_mode": null,
+   "friendly_name": "Badlüfter",
+   "supported_features": 49
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "fan.deckenventilator",
+  "state": "off",
+  "attributes": {
+   "preset_modes": [
+    "Nacht",
+    "Turbo",
+    "Natur"
+   ],
+   "direction": "forward",
+   "oscillating": false,
+   "percentage": 0,
+   "percentage_step": 20.0,
+   "preset_mode": null,
+   "friendly_name": "Deckenventilator",
+   "supported_features": 63
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "humidifier.luftbefeuchter",
+  "state": "off",
+  "attributes": {
+   "min_humidity": 30,
+   "max_humidity": 70,
+   "available_modes": [
+    "normal",
+    "eco",
+    "Schlaf"
+   ],
+   "current_humidity": 38,
+   "humidity": 45,
+   "mode": "normal",
+   "friendly_name": "Luftbefeuchter",
+   "supported_features": 1
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "input_boolean.gaestemodus",
+  "state": "off",
+  "attributes": {
+   "editable": false,
+   "friendly_name": "Gästemodus"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "input_boolean.urlaubsmodus",
+  "state": "off",
+  "attributes": {
+   "editable": false,
+   "friendly_name": "Urlaubsmodus"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "input_number.poolheizung_soll",
+  "state": "26.0",
+  "attributes": {
+   "min": 18.0,
+   "max": 32.0,
+   "step": 0.5,
+   "mode": "slider",
+   "initial": 26.0,
+   "editable": false,
+   "unit_of_measurement": "°C",
+   "friendly_name": "Poolheizung Solltemperatur"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "lawn_mower.maehroboter",
+  "state": "docked",
+  "attributes": {
+   "friendly_name": "Mähroboter",
+   "supported_features": 7
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "light.aussenbeleuchtung",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Außenbeleuchtung",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "light.badezimmerlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Badezimmerlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.buerolicht",
+  "state": "off",
+  "attributes": {
+   "min_color_temp_kelvin": 2200,
+   "max_color_temp_kelvin": 6500,
+   "supported_color_modes": [
+    "color_temp"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "color_temp_kelvin": null,
+   "hs_color": null,
+   "rgb_color": null,
+   "xy_color": null,
+   "friendly_name": "Bürolicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.esszimmer_pendelleuchte",
+  "state": "off",
+  "attributes": {
+   "min_color_temp_kelvin": 2200,
+   "max_color_temp_kelvin": 6500,
+   "supported_color_modes": [
+    "color_temp"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "color_temp_kelvin": null,
+   "hs_color": null,
+   "rgb_color": null,
+   "xy_color": null,
+   "friendly_name": "Esszimmer Pendelleuchte",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "esszimmer",
+  "area_name": "Esszimmer",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.flurlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "onoff"
+   ],
+   "color_mode": null,
+   "friendly_name": "Flurlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.flurlicht_oben",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Flurlicht oben",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "flur_obergeschoss",
+  "area_name": "Flur Obergeschoss",
+  "area_aliases": [
+   "Flur oben"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.gaeste_wc_licht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "onoff"
+   ],
+   "color_mode": null,
+   "friendly_name": "Gäste-WC Licht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "gaste_wc",
+  "area_name": "Gäste-WC",
+  "area_aliases": [
+   "Gästeklo"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.garagenlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "onoff"
+   ],
+   "color_mode": null,
+   "friendly_name": "Garagenlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "garage",
+  "area_name": "Garage",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "light.kellerlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "onoff"
+   ],
+   "color_mode": null,
+   "friendly_name": "Kellerlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "kellerraum",
+  "area_name": "Kellerraum",
+  "area_aliases": [],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "light.kinderzimmerlicht",
+  "state": "off",
+  "attributes": {
+   "min_color_temp_kelvin": 2200,
+   "max_color_temp_kelvin": 6500,
+   "supported_color_modes": [
+    "color_temp",
+    "hs"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "color_temp_kelvin": null,
+   "hs_color": null,
+   "rgb_color": null,
+   "xy_color": null,
+   "friendly_name": "Kinderzimmerlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "kinderzimmer",
+  "area_name": "Kinderzimmer",
+  "area_aliases": [
+   "Zimmer von Lena"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.kuecheninsel",
+  "state": "on",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": "brightness",
+   "brightness": 180,
+   "friendly_name": "Kücheninsel",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.kuechenlicht",
+  "state": "on",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": "brightness",
+   "brightness": 180,
+   "friendly_name": "Küchenlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.nachtlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Nachtlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "kinderzimmer",
+  "area_name": "Kinderzimmer",
+  "area_aliases": [
+   "Zimmer von Lena"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.nachttischlampe_links",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Nachttischlampe links",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.nachttischlampe_rechts",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Nachttischlampe rechts",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.schlafzimmerlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Schlafzimmerlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.schreibtischlampe",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Schreibtischlampe",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.spiegelschrank",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "onoff"
+   ],
+   "color_mode": null,
+   "friendly_name": "Spiegelschrank",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "light.stehlampe",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Stehlampe",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.terrassenlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Terrassenlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "terrasse",
+  "area_name": "Terrasse",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "light.waschkuechenlicht",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "onoff"
+   ],
+   "color_mode": null,
+   "friendly_name": "Waschküchenlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "light.wohnzimmer_deckenlicht",
+  "state": "off",
+  "attributes": {
+   "min_color_temp_kelvin": 2200,
+   "max_color_temp_kelvin": 6500,
+   "supported_color_modes": [
+    "color_temp"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "color_temp_kelvin": null,
+   "hs_color": null,
+   "rgb_color": null,
+   "xy_color": null,
+   "friendly_name": "Wohnzimmer Deckenlicht",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "light.wohnzimmer_led_streifen",
+  "state": "off",
+  "attributes": {
+   "min_color_temp_kelvin": 2200,
+   "max_color_temp_kelvin": 6500,
+   "supported_color_modes": [
+    "color_temp",
+    "hs"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "color_temp_kelvin": null,
+   "hs_color": null,
+   "rgb_color": null,
+   "xy_color": null,
+   "friendly_name": "LED-Streifen Wohnzimmer",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "lock.gartentor_schloss",
+  "state": "locked",
+  "attributes": {
+   "friendly_name": "Gartentor",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "lock.haustuerschloss",
+  "state": "locked",
+  "attributes": {
+   "friendly_name": "Haustürschloss",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "media_player.kuechenradio",
+  "state": "playing",
+  "attributes": {
+   "source_list": [
+    "Radio Bob",
+    "Bayern 3",
+    "Deutschlandfunk"
+   ],
+   "volume_level": 0.3,
+   "is_volume_muted": false,
+   "media_title": "Morgenmagazin",
+   "source": "Radio Bob",
+   "friendly_name": "Küchenradio",
+   "supported_features": 24509
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "media_player.lautsprecher_schlafzimmer",
+  "state": "idle",
+  "attributes": {
+   "source_list": [
+    "Spotify",
+    "Einschlafgeräusche"
+   ],
+   "volume_level": 0.3,
+   "is_volume_muted": false,
+   "source": "Spotify",
+   "friendly_name": "Lautsprecher Schlafzimmer",
+   "supported_features": 24509
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "media_player.wohnzimmer_tv",
+  "state": "off",
+  "attributes": {
+   "source_list": [
+    "HDMI 1",
+    "Netflix",
+    "YouTube",
+    "Tagesschau"
+   ],
+   "friendly_name": "Wohnzimmer TV",
+   "supported_features": 24509
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "notify.handy_anna_nachricht",
+  "state": "unknown",
+  "attributes": {
+   "friendly_name": "Handy Anna",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "notify.handy_philipp_nachricht",
+  "state": "unknown",
+  "attributes": {
+   "friendly_name": "Handy Philipp",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "number.poolpumpe_drehzahl",
+  "state": "1200",
+  "attributes": {
+   "min": 0,
+   "max": 3000,
+   "step": 100,
+   "mode": "auto",
+   "unit_of_measurement": "U/min",
+   "friendly_name": "Poolpumpe Drehzahl"
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "person.anna",
+  "state": "home",
+  "attributes": {
+   "editable": true,
+   "id": "anna",
+   "device_trackers": [
+    "device_tracker.handy_anna"
+   ],
+   "in_zones": [
+    "zone.home"
+   ],
+   "source": "device_tracker.handy_anna",
+   "user_id": "cb96f951d18e4ffeb217e9ce828e021c",
+   "friendly_name": "Anna"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "person.lena",
+  "state": "unknown",
+  "attributes": {
+   "editable": true,
+   "id": "lena",
+   "device_trackers": [],
+   "in_zones": [],
+   "user_id": "e88193cc93f849568a5af64f6e87d145",
+   "friendly_name": "Lena"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "person.philipp",
+  "state": "home",
+  "attributes": {
+   "editable": true,
+   "id": "philipp",
+   "device_trackers": [
+    "device_tracker.handy_philipp"
+   ],
+   "in_zones": [
+    "zone.home"
+   ],
+   "source": "device_tracker.handy_philipp",
+   "user_id": "4767c3c921954bc08d8f04cc0099fa63",
+   "friendly_name": "Philipp"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "scene.abwesend",
+  "state": "unknown",
+  "attributes": {
+   "entity_id": [
+    "light.wohnzimmer_deckenlicht",
+    "light.kuechenlicht",
+    "light.buerolicht"
+   ],
+   "id": "szene_abwesend",
+   "friendly_name": "Abwesend"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "scene.filmabend",
+  "state": "unknown",
+  "attributes": {
+   "entity_id": [
+    "light.wohnzimmer_deckenlicht",
+    "light.wohnzimmer_led_streifen",
+    "light.stehlampe"
+   ],
+   "id": "szene_filmabend",
+   "friendly_name": "Filmabend"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "scene.guten_morgen",
+  "state": "unknown",
+  "attributes": {
+   "entity_id": [
+    "light.kuechenlicht",
+    "switch.kaffeemaschine"
+   ],
+   "id": "szene_guten_morgen",
+   "friendly_name": "Guten Morgen"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "script.gute_nacht",
+  "state": "off",
+  "attributes": {
+   "mode": "single",
+   "current": 0,
+   "friendly_name": "Gute Nacht"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "script.kaffee_kochen",
+  "state": "off",
+  "attributes": {
+   "mode": "single",
+   "current": 0,
+   "friendly_name": "Kaffee kochen"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "select.heizprogramm",
+  "state": "Komfort",
+  "attributes": {
+   "options": [
+    "Komfort",
+    "Eco",
+    "Abwesend",
+    "Urlaub"
+   ],
+   "friendly_name": "Heizprogramm"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.aussentemperatur",
+  "state": "12.3",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Außentemperatur"
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "sensor.backup_backup_manager_zustand",
+  "state": "idle",
+  "attributes": {
+   "options": [
+    "idle",
+    "create_backup",
+    "blocked",
+    "receive_backup",
+    "restore_backup"
+   ],
+   "device_class": "enum",
+   "friendly_name": "Backup Backup-Manager-Zustand"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.backup_letztes_erfolgreiches_automatisches_backup",
+  "state": "unknown",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Backup Letztes erfolgreiches automatisches Backup"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.backup_letztes_versuchtes_automatisches_backup",
+  "state": "unknown",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Backup Letztes versuchtes automatisches Backup"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.backup_nachstes_geplantes_automatisches_backup",
+  "state": "unknown",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Backup Nächstes geplantes automatisches Backup"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.batterie_bewegungsmelder_flur",
+  "state": "61",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "battery",
+   "friendly_name": "Batterie Bewegungsmelder Flur"
+  },
+  "aliases": [],
+  "area_id": "flur",
+  "area_name": "Flur",
+  "area_aliases": [
+   "Diele",
+   "Eingang"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.batterie_fenster_bad",
+  "state": "14",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "battery",
+   "friendly_name": "Batterie Fenstersensor Bad"
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.batterie_fenster_kueche",
+  "state": "88",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "battery",
+   "friendly_name": "Batterie Fenstersensor Küche"
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.batterie_rauchmelder_oben",
+  "state": "9",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "battery",
+   "friendly_name": "Batterie Rauchmelder oben"
+  },
+  "aliases": [],
+  "area_id": "flur_obergeschoss",
+  "area_name": "Flur Obergeschoss",
+  "area_aliases": [
+   "Flur oben"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.co2_wohnzimmer",
+  "state": "812",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "ppm",
+   "device_class": "carbon_dioxide",
+   "friendly_name": "CO2 Wohnzimmer"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.energiezaehler",
+  "state": "18234.7",
+  "attributes": {
+   "state_class": "total_increasing",
+   "unit_of_measurement": "kWh",
+   "device_class": "energy",
+   "friendly_name": "Energiezähler"
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "sensor.helligkeit_aussen",
+  "state": "5400",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "lx",
+   "device_class": "illuminance",
+   "friendly_name": "Helligkeit außen"
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "sensor.leistung_kaffeemaschine",
+  "state": "3",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "W",
+   "device_class": "power",
+   "friendly_name": "Leistung Kaffeemaschine"
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.leistung_trockner",
+  "state": "0",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "W",
+   "device_class": "power",
+   "friendly_name": "Leistung Trockner"
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "sensor.leistung_waschmaschine",
+  "state": "1840",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "W",
+   "device_class": "power",
+   "friendly_name": "Leistung Waschmaschine"
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "sensor.luftfeuchtigkeit_badezimmer",
+  "state": "68",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "humidity",
+   "friendly_name": "Luftfeuchtigkeit Badezimmer"
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.luftfeuchtigkeit_schlafzimmer",
+  "state": "52",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "humidity",
+   "friendly_name": "Luftfeuchtigkeit Schlafzimmer"
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.luftfeuchtigkeit_wohnzimmer",
+  "state": "47",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "%",
+   "device_class": "humidity",
+   "friendly_name": "Luftfeuchtigkeit Wohnzimmer"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.stromverbrauch_haus",
+  "state": "432",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "W",
+   "device_class": "power",
+   "friendly_name": "Stromverbrauch Haus"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.sun_next_dawn",
+  "state": "2026-09-28T04:32:47+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Sun Nächste Morgendämmerung"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.sun_next_dusk",
+  "state": "2026-09-27T17:37:05+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Sun Nächste Abenddämmerung"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.sun_next_midnight",
+  "state": "2026-09-27T23:04:23+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Sun Nächste Mitternacht"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.sun_next_noon",
+  "state": "2026-09-27T11:04:52+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Sun Nächster Höchststand"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.sun_next_rising",
+  "state": "2026-09-28T05:05:32+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Sun Nächster Aufgang"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.sun_next_setting",
+  "state": "2026-09-27T17:04:25+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Sun Nächster Untergang"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "sensor.temperatur_badezimmer",
+  "state": "22.0",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Badezimmer"
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.temperatur_buero",
+  "state": "20.5",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Büro"
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.temperatur_keller",
+  "state": "14.6",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Keller"
+  },
+  "aliases": [],
+  "area_id": "kellerraum",
+  "area_name": "Kellerraum",
+  "area_aliases": [],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "sensor.temperatur_kinderzimmer",
+  "state": "20.0",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Kinderzimmer"
+  },
+  "aliases": [],
+  "area_id": "kinderzimmer",
+  "area_name": "Kinderzimmer",
+  "area_aliases": [
+   "Zimmer von Lena"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.temperatur_kueche",
+  "state": "20.0",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Küche"
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.temperatur_schlafzimmer",
+  "state": "18.0",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Schlafzimmer"
+  },
+  "aliases": [],
+  "area_id": "schlafzimmer",
+  "area_name": "Schlafzimmer",
+  "area_aliases": [],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "sensor.temperatur_wohnzimmer",
+  "state": "21.0",
+  "attributes": {
+   "state_class": "measurement",
+   "unit_of_measurement": "°C",
+   "device_class": "temperature",
+   "friendly_name": "Temperatur Wohnzimmer"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "sensor.waschmaschine_fertig",
+  "state": "2026-09-27T11:03:36+00:00",
+  "attributes": {
+   "device_class": "timestamp",
+   "friendly_name": "Waschmaschine fertig um"
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "sensor.waschmaschine_status",
+  "state": "running",
+  "attributes": {
+   "friendly_name": "Waschmaschine Status"
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "switch.fernseher_steckdose",
+  "state": "on",
+  "attributes": {
+   "friendly_name": "Steckdose Fernseher"
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "switch.gartenpumpe",
+  "state": "off",
+  "attributes": {
+   "friendly_name": "Gartenpumpe"
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "switch.heizluefter_bad",
+  "state": "off",
+  "attributes": {
+   "friendly_name": "Heizlüfter"
+  },
+  "aliases": [],
+  "area_id": "badezimmer",
+  "area_name": "Badezimmer",
+  "area_aliases": [
+   "Bad"
+  ],
+  "floor_id": "obergeschoss",
+  "floor_name": "Obergeschoss",
+  "floor_level": 1,
+  "floor_aliases": [
+   "OG",
+   "oben"
+  ]
+ },
+ {
+  "entity_id": "switch.kaffeemaschine",
+  "state": "off",
+  "attributes": {
+   "friendly_name": "Kaffeemaschine"
+  },
+  "aliases": [],
+  "area_id": "kuche",
+  "area_name": "Küche",
+  "area_aliases": [],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "timer.waschgang",
+  "state": "idle",
+  "attributes": {
+   "duration": "1:30:00",
+   "editable": false,
+   "last_transition": null,
+   "friendly_name": "Waschgang"
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "todo.arbeitsliste",
+  "state": "0",
+  "attributes": {
+   "friendly_name": "Arbeitsliste",
+   "supported_features": 127
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "todo.einkaufsliste",
+  "state": "0",
+  "attributes": {
+   "friendly_name": "Einkaufsliste",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
+ },
+ {
+  "entity_id": "vacuum.saugroboter",
+  "state": "docked",
+  "attributes": {
+   "fan_speed_list": [
+    "leise",
+    "normal",
+    "stark",
+    "maximal"
+   ],
+   "fan_speed": "normal",
+   "friendly_name": "Saugroboter",
+   "supported_features": 12860
+  },
+  "aliases": [],
+  "area_id": "wohnzimmer",
+  "area_name": "Wohnzimmer",
+  "area_aliases": [
+   "Stube"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
+  "entity_id": "valve.bewaesserung",
+  "state": "closed",
+  "attributes": {
+   "is_closed": true,
+   "current_position": 0,
+   "friendly_name": "Bewässerung Garten",
+   "supported_features": 15
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
+  "entity_id": "valve.hauptwasserventil",
+  "state": "open",
+  "attributes": {
+   "is_closed": false,
+   "friendly_name": "Hauptwasserventil",
+   "supported_features": 3
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ },
+ {
+  "entity_id": "water_heater.warmwasserspeicher",
+  "state": "eco",
+  "attributes": {
+   "min_temp": 35,
+   "max_temp": 65,
+   "operation_list": [
+    "eco",
+    "performance",
+    "off"
+   ],
+   "current_temperature": 48,
+   "temperature": 50,
+   "target_temp_high": null,
+   "target_temp_low": null,
+   "operation_mode": "eco",
+   "friendly_name": "Warmwasserspeicher",
+   "supported_features": 11
+  },
+  "aliases": [],
+  "area_id": "hauswirtschaftsraum",
+  "area_name": "Hauswirtschaftsraum",
+  "area_aliases": [
+   "Waschküche"
+  ],
+  "floor_id": "keller",
+  "floor_name": "Keller",
+  "floor_level": -1,
+  "floor_aliases": [
+   "Untergeschoss"
+  ]
+ }
+]
