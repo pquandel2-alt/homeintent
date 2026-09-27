@@ -220,6 +220,7 @@ from .nlu.action_model import (
 from .agent_delivery import AgentDelivery
 from .notification_request import NotificationRequest, async_deliver_notification_request
 from .notification_target import (
+    named_notification_targets,
     NotificationTargetResolver,
     resolution_failure_text,
 )
@@ -4938,6 +4939,9 @@ class NluConversationEntity(
             self.entry.options,
             self._runtime_data.user_contexts,
             label_for=lambda target_id: labels.get(target_id, ""),
+            named_targets=named_notification_targets(
+                entities, self._runtime_data.user_contexts
+            ),
         )
 
     def _materialize_presence_speaker(

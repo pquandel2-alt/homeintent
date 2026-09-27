@@ -148,6 +148,10 @@ def _operation_words(analysis_text: str) -> tuple[frozenset[str], frozenset[str]
     return frozenset(actions), frozenset(words)
 
 
+_PLACE_GLUE_WORDS = frozenset({
+    "im", "in", "der", "dem", "den", "die", "das", "am", "an", "aus", "ein", "zu",
+    "auf", "hoch", "runter", "bitte", "auch",
+})
 _SUBORDINATING_OR_EXCEPTING = frozenset({
     "dass", "ob", "wo", "wohin", "woher", "weil", "damit", "obwohl", "nachdem",
     "bevor", "welche", "welcher", "welches", "dessen", "deren", "ausser",
@@ -182,7 +186,21 @@ def _clause_meanings(
     lexicon = build_place_lexicon(entities)
     names = _name_index(entities)
     meanings: list[ClauseMeaning] = []
+    ranges: list[tuple[int, int]] = []
     for start, end in segment_clauses(tokens):
+        words_here = [token.canonical for token in tokens[start:end] if token.is_word]
+        place_words = {
+            word for mention in lexicon.scan(words_here)
+            for word in words_here[mention.token_start:mention.token_end]
+        }
+        if ranges and words_here and all(
+            word in place_words or word in _PLACE_GLUE_WORDS for word in words_here
+        ):
+            # "in Küche und Flur aus": a coordinated place, not a clause.
+            ranges[-1] = (ranges[-1][0], end)
+            continue
+        ranges.append((start, end))
+    for start, end in ranges:
         clause_tokens = tokens[start:end]
         if not any(token.is_word for token in clause_tokens):
             continue

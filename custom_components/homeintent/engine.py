@@ -779,7 +779,7 @@ _NEGATED_NOTIFICATION_RE = re.compile(
 
 
 _NOTIFICATION_REQUEST_VERB_RE = re.compile(
-    r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|sag\w*|gib|geb\w*|meld\w*|"
+    r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|schreib\w*|sag\w*|gib|geb\w*|meld\w*|"
     r"ping\w*|mach\w*|kannst|könntest|koenntest|würdest|wuerdest|möchte|moechte|will|hätte|"
     r"haette|erinner\w*)\b",
     re.IGNORECASE,
@@ -3986,12 +3986,19 @@ class NluEngine:
             or _CALENDAR_TIME_RE.search(text)
         ):
             return None
-        if not _NOTIFICATION_REQUEST_VERB_RE.search(text):
-            # "Bescheid." / "Nachricht an mich." alone are fragments, not a
-            # request to send something now.
-            return None
         clause = parse_notification_clause(text)
-        if clause is None or clause.recipient_kind is NotificationRecipientKind.EXPLICIT_TARGET:
+        if clause is None:
+            return None
+        if clause.message is None and not _NOTIFICATION_REQUEST_VERB_RE.search(text):
+            # "Bescheid." / "Nachricht an mich." alone are fragments, not a
+            # request to send something now; with dictated content ("Nachricht
+            # an Anna: Bin gleich da.") the request is complete.
+            return None
+        if (
+            clause.recipient_kind is NotificationRecipientKind.EXPLICIT_TARGET
+            and clause.message is None
+        ):
+            # A message to another person needs its content.
             return None
         return clause
 

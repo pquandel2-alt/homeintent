@@ -70,6 +70,7 @@ class PreparedText:
 _DETECTOR_EVENT_VERBS = frozenset({
     "auslöst", "ausgelöst", "anschlägt", "angeschlagen", "reagiert", "meldet",
     "gemeldet", "alarmiert", "anspringt", "angesprungen", "piept", "losgeht",
+    "alarm", "schlägt", "geschlagen", "anschlagen",
 })
 
 
@@ -306,6 +307,8 @@ def segment_event_automation(text: str, action_ok: ActionCheck) -> EventActionFr
                 trailing.group("message").strip().strip(_QUOTE_OPEN + _QUOTE_CLOSE).strip() or None
             )
             event_text = trailing.group("event").strip(" ,")
+        elif is_notification_text(head):
+            event_text, trailing_message = _split_dictated_content(event_text)
         if not event_text:
             return None
         return EventActionFrame(
@@ -313,6 +316,24 @@ def segment_event_automation(text: str, action_ok: ActionCheck) -> EventActionFr
             trailing_message=trailing_message,
         )
     return None
+
+
+def _split_dictated_content(event_text: str) -> tuple[str, str | None]:
+    """"das Küchenfenster geöffnet wird, dass ich lüften soll" -> event + text.
+
+    Dictated content is inert message data; it is separated before the event
+    is grounded so its words are never read as a device or a command.
+    """
+    from .notification_language import message_from_dass_content
+
+    words = event_text.split()
+    for index, word in enumerate(words[1:], start=1):
+        if word.casefold().strip(",") == "dass" and words[index - 1].endswith(","):
+            event = " ".join(words[:index]).strip(" ,")
+            message = message_from_dass_content(" ".join(words[index + 1:]))
+            if event and message:
+                return event, message
+    return event_text, None
 
 
 def _segment_event_first(

@@ -210,6 +210,12 @@ class TriggerModel:
     # ``delay_seconds`` this maps to Home Assistant's native trigger ``for``
     # field and therefore cancels when the state changes back early.
     for_seconds: int | None = None
+    # "wenn die Waschmaschine fertig ist": the appliance the (power/running)
+    # trigger stands for, used only to word previews and messages.
+    appliance_label: str | None = None
+    # STATE triggers on a free-text status sensor: the exact raw states that
+    # mean the semantic ``state`` ("finished", "fertig", ...).
+    raw_to: tuple[str, ...] = ()
     # Require one further equivalent trigger event within this window.
     # This models "zweimal innerhalb von ..." using HA wait_for_trigger.
     repeat_within_seconds: int | None = None

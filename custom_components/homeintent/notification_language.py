@@ -77,83 +77,68 @@ class NotificationClause:
 
 
 # --- lexical layer -----------------------------------------------------------
+#
+# The reader works on tokens and German valency frames: a notification verb
+# class (accusative "benachrichtigen", dative "schicken/schreiben", "Bescheid
+# sagen/geben"), a recipient in the case the verb demands, an optional message
+# object and an optional content complement (":" text, quoted text, "dass"
+# clause, "mit dem Text ...").  One tokenizer, no sentence patterns.
 
-_MODAL_WRAPPER_RE = re.compile(
-    r"^(?:kannst|könntest|koenntest|würdest|wuerdest|magst)\s+du\s+", re.IGNORECASE
-)
-# Pragmatic particles that never change the meaning of a notification head.
-_PARTICLE_RE = re.compile(
-    r"\b(?:bitte|mal|doch|kurz|einfach|gleich|sofort|jetzt|nochmal|noch\s+mal|"
-    r"vielleicht|eben|eigentlich|dann)\b",
-    re.IGNORECASE,
-)
-_CHANNEL_RE = re.compile(
-    r"\b(?:(?:aufs|auf\s+(?:das|mein|dein))\s+(?:handy|iphone|smartphone|telefon)|"
-    r"(?:per|über|via)\s+(?:push(?:[\s-]?nachricht)?|benachrichtigung|app|handy)|"
-    r"als\s+push(?:[\s-]?(?:nachricht|benachrichtigung))?)\b",
-    re.IGNORECASE,
-)
-_NOUN = r"(?:nachricht|benachrichtigung|meldung|mitteilung|notification|info|warnung)"
-_OBJECT = (
-    r"(?:(?:eine|die|ne)\s+)?(?P<test>test[\s-]?)?(?:push[\s-]?)?" + _NOUN
-)
-_RECIPIENT = r"(?P<recipient>[a-zäöüß][\wäöüß-]*)"
-_ACCUSATIVE_VERB = r"(?:benachrichtig(?:e|en|er)?|informier(?:e|en|er)?)"
-_DATIVE_VERB = r"(?:schick(?:e|en|er)?|send(?:e|en|er)?|mach(?:e)?)"
-_BESCHEID_VERB = r"(?:sag(?:e|en)?|gib|geb(?:e|en)?)"
+_TOKEN_RE = re.compile(r"[„\"“”«»‚‘’']|[\wäöüßÄÖÜ]+(?:-[\wäöüßÄÖÜ]+)*|[:,;.!?]")
 
-_HEAD_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        # benachrichtige mich / informiere Philipp
-        rf"{_ACCUSATIVE_VERB}\s+{_RECIPIENT}",
-        # schick mir eine Testbenachrichtigung
-        rf"{_DATIVE_VERB}\s+{_RECIPIENT}\s+{_OBJECT}",
-        # schick eine Push-Nachricht an Philipp
-        rf"{_DATIVE_VERB}\s+{_OBJECT}\s+an\s+(?:den\s+|die\s+|das\s+)?{_RECIPIENT}",
-        # sag mir Bescheid / gib Philipp Bescheid
-        rf"{_BESCHEID_VERB}\s+{_RECIPIENT}\s+bescheid",
-        # (kannst du) mich benachrichtigen (lassen)
-        rf"{_RECIPIENT}\s+(?:benachrichtigen|informieren)(?:\s+lassen)?",
-        # (kannst du) mir eine Nachricht schicken
-        rf"{_RECIPIENT}\s+{_OBJECT}\s+(?:schicken|senden|zukommen\s+lassen)",
-        # (kannst du) mir Bescheid sagen/geben
-        rf"{_RECIPIENT}\s+bescheid\s+(?:sagen|geben)",
-        # (bitte) eine Nachricht an mich - verbless request
-        rf"{_OBJECT}\s+an\s+{_RECIPIENT}",
-        # schick mir ne Push / schick mir was
-        rf"{_DATIVE_VERB}\s+{_RECIPIENT}\s+(?:(?:eine|ne)\s+)?(?:push|was|etwas)",
-        # schick mir (aufs Handy) Bescheid
-        rf"{_DATIVE_VERB}\s+{_RECIPIENT}\s+bescheid",
-        # two-word addressee, anchored by the message noun/"Bescheid":
-        # "schick Onkel Herbert eine Nachricht", "sag Tante Erna Bescheid"
-        rf"{_DATIVE_VERB}\s+(?P<recipient>[A-ZÄÖÜ][\wäöüß-]*\s+[A-ZÄÖÜ][\wäöüß-]*)\s+{_OBJECT}",
-        rf"{_BESCHEID_VERB}\s+(?P<recipient>[A-ZÄÖÜ][\wäöüß-]*\s+[A-ZÄÖÜ][\wäöüß-]*)\s+bescheid",
-        rf"{_ACCUSATIVE_VERB}\s+(?P<recipient>[A-ZÄÖÜ][\wäöüß-]*\s+[A-ZÄÖÜ][\wäöüß-]*)",
-    )
-)
-# First-person wishes: "ich möchte eine Nachricht bekommen", "ich will
-# benachrichtigt werden", "ich hätte gern eine Benachrichtigung".  They only
-# ever address the speaker.
-_SELF_WISH_RE = re.compile(
-    r"(?:ich\s+(?:möchte|moechte|will|würde|wuerde|hätte|haette|wäre|waere)"
-    r"|(?:möchte|moechte|will|hätte|haette)\s+ich)\s+"
-    r"(?:(?:sehr\s+)?(?:gern|gerne)\s+|dankbar\s+für\s+)?"
-    r"(?:"
-    r"(?:(?:eine|ne|die)\s+)?(?:push[\s-]?)?" + _NOUN + r"(?:\s+(?:bekommen|erhalten|haben))?"
-    r"|(?:benachrichtigt|informiert|gewarnt|verständigt)\s+werden"
-    r")",
-    re.IGNORECASE,
-)
-# "melde dich (bei mir)", "ping mich (an)", "gib Bescheid"
-_SELF_CONTACT_RE = re.compile(
-    r"(?:meld(?:e)?\s+dich(?:\s+bei\s+mir)?|ping\s+mich(?:\s+an)?|(?:gib|sag|sage)\s+bescheid)",
-    re.IGNORECASE,
-)
-# "Sag mir" is stripped by ``normalize()`` as a politeness prefix, which
-# leaves a bare "Bescheid" that still unambiguously means "tell me".
-_BARE_BESCHEID_RE = re.compile(r"bescheid(?:\s+(?:sagen|geben))?", re.IGNORECASE)
-_REMINDER_HEAD_RE = re.compile(r"erinner(?:e|n|st)?\s+" + _RECIPIENT, re.IGNORECASE)
+
+@dataclass(frozen=True)
+class _Tok:
+    surface: str
+    key: str
+    start: int
+    end: int
+
+    @property
+    def is_word(self) -> bool:
+        return self.key[:1].isalnum()
+
+
+def _tokenize(text: str) -> list[_Tok]:
+    return [
+        _Tok(match.group(0), match.group(0).casefold(), match.start(), match.end())
+        for match in _TOKEN_RE.finditer(text)
+    ]
+
+
+_MODAL_WRAPPERS = frozenset({"kannst", "könntest", "koenntest", "würdest", "wuerdest", "magst"})
+_PARTICLES = frozenset({
+    "bitte", "mal", "doch", "kurz", "einfach", "gleich", "sofort", "jetzt", "nochmal",
+    "vielleicht", "eben", "eigentlich", "dann",
+})
+_DEVICES = frozenset({"handy", "iphone", "smartphone", "telefon", "tablet", "ipad"})
+_PUSH_WORDS = frozenset({
+    "push", "push-nachricht", "pushnachricht", "benachrichtigung", "app", "handy",
+    "push-benachrichtigung", "pushbenachrichtigung",
+})
+_ACCUSATIVE_VERBS = frozenset({
+    "benachrichtige", "benachrichtigen", "benachrichtiger", "benachrichtig",
+    "informiere", "informieren", "informierer", "informier", "warne", "warn",
+})
+_DATIVE_VERBS = frozenset({
+    "schick", "schicke", "schicken", "schicker", "send", "sende", "senden", "sender",
+    "mach", "mache", "schreib", "schreibe", "schreiben", "schreiber",
+})
+# Verbs whose dative recipient needs no message noun when content follows
+# ("Schreib Anna, dass ...", "Schick mir aufs Handy: ...").
+_WRITING_VERBS = frozenset({"schreib", "schreibe", "schreiben", "schreiber"})
+_BESCHEID_VERBS = frozenset({"sag", "sage", "sagen", "gib", "geb", "gebe", "geben"})
+_MESSAGE_NOUNS = frozenset({
+    "nachricht", "benachrichtigung", "meldung", "mitteilung", "notification", "info",
+    "warnung", "push", "push-nachricht", "pushnachricht", "push-benachrichtigung",
+    "pushbenachrichtigung", "sms", "textnachricht", "nachrichten",
+})
+_ARTICLES = frozenset({"eine", "die", "ne", "kurze", "kleine"})
+_WISH_MODALS = frozenset({
+    "möchte", "moechte", "will", "würde", "wuerde", "hätte", "haette", "wäre", "waere",
+})
+_PASSIVE_PARTICIPLES = frozenset({"benachrichtigt", "informiert", "gewarnt", "verständigt"})
+_RECEIVE = frozenset({"bekommen", "erhalten", "haben"})
 
 # Words that can follow a verb but are never a recipient.
 _NOT_A_RECIPIENT = frozenset({
@@ -163,37 +148,11 @@ _NOT_A_RECIPIENT = frozenset({
     "falls", "was", "wie", "wo", "wann", "warum", "welche", "welcher", "welches",
     "sie", "ihn", "ihm", "ihr", "dir", "dich", "du", "ich", "euch",
 })
-
-_EXPLICIT_TEXT_RE = re.compile(
-    r"^(?P<head>.+?)\s+mit\s+(?:dem\s+text|der\s+nachricht|dem\s+inhalt|"
-    r"folgendem\s+text|folgender\s+nachricht|text)\s*:?\s+(?P<message>.+)$",
-    re.IGNORECASE,
-)
-_COLON_RE = re.compile(r"^(?P<head>[^:]+?)\s*:\s*(?P<message>.+)$")
-_QUOTED_RE = re.compile(
-    r"^(?P<head>[^„\"“«]+?)\s*,?\s*[„\"“«](?P<message>[^„\"“”«»]+)[“”\"»]$"
-)
-_DASS_RE = re.compile(r"^(?P<head>.+?)\s*,?\s+dass\s+(?P<content>.+)$", re.IGNORECASE)
-_NAMED_MESSAGE_RE = re.compile(
-    rf"^(?P<head>{_DATIVE_VERB}\s+{_RECIPIENT})\s+die\s+nachricht\s+(?P<message>.+)$",
-    re.IGNORECASE,
-)
-_REMINDER_TASK_RE = re.compile(
-    r"^(?P<head>erinner\w*\s+\S+)\s+daran\s*,?\s+(?P<task>.+?)\s+"
-    r"(?:zu\s+(?P<verb>[\wäöüß]+)|(?P<particle>[\wäöüß]+?)zu(?P<stem>[\wäöüß]+en))$",
-    re.IGNORECASE,
-)
-_REMINDER_DARAN_DASS_RE = re.compile(
-    r"^(?P<head>erinner\w*\s+\S+)\s+daran\s*,?\s+dass\s+(?P<content>.+)$", re.IGNORECASE
-)
-_REMINDER_AN_RE = re.compile(
-    r"^(?P<head>erinner\w*\s+\S+)\s+an\s+(?P<thing>.+)$", re.IGNORECASE
-)
-_SELF_TASK_RE = re.compile(
-    r"^ich\s+(?P<task>.+?)\s+(?:soll|sollte|muss|müsste|muesste|darf|wollte)$",
-    re.IGNORECASE,
-)
 _QUOTES = "\"'„“”‚‘’«»"
+_EXPLICIT_TEXT_MARKERS: tuple[tuple[str, ...], ...] = (
+    ("mit", "dem", "text"), ("mit", "der", "nachricht"), ("mit", "dem", "inhalt"),
+    ("mit", "folgendem", "text"), ("mit", "folgender", "nachricht"), ("mit", "text"),
+)
 
 
 def parse_notification_clause(text: str) -> NotificationClause | None:
@@ -204,90 +163,265 @@ def parse_notification_clause(text: str) -> NotificationClause | None:
     clause = _strip_edges(text)
     if not clause:
         return None
-    modal = _MODAL_WRAPPER_RE.match(clause)
-    if modal is not None:
-        clause = clause[modal.end():]
+    tokens = _tokenize(clause)
+    if len(tokens) >= 2 and tokens[0].key in _MODAL_WRAPPERS and tokens[1].key == "du":
+        clause = clause[tokens[2].start:] if len(tokens) > 2 else ""
+        tokens = _tokenize(clause)
+    if not tokens:
+        return None
 
-    reminder = _parse_reminder(clause)
+    reminder = _parse_reminder(clause, tokens)
     if reminder is not None:
         return reminder
 
-    head = clause
-    message: str | None = None
-    for pattern in (_EXPLICIT_TEXT_RE, _NAMED_MESSAGE_RE, _COLON_RE, _QUOTED_RE):
-        match = pattern.match(clause)
-        if match is not None:
-            head, message = match.group("head"), _literal_message(match.group("message"))
-            if pattern is _NAMED_MESSAGE_RE:
-                head = f"{head} eine Nachricht"  # "schick mir die Nachricht X"
-            elif pattern is _QUOTED_RE:
-                head = re.sub(r"\s+die\s+nachricht$", "", head.strip(), flags=re.IGNORECASE)
-                if re.fullmatch(rf"{_DATIVE_VERB}\s+{_RECIPIENT}", _clean_head(head), re.IGNORECASE):
-                    head = f"{head} eine Nachricht"  # schick mir „Fenster zu!"
-            break
-    else:
-        dass = _DASS_RE.match(clause)
-        if dass is not None:
-            head, message = dass.group("head"), message_from_dass_content(dass.group("content"))
+    head, message, implied_object = _split_content(clause, tokens)
     if message is not None and not message:
         return None
-
-    parsed = _parse_head(head)
+    parsed = _parse_head(head, content=message is not None or implied_object)
     if parsed is None:
         return None
     kind, name, test = parsed
     return NotificationClause(kind, name, message, test=test and message is None)
 
 
-def _parse_head(head: str) -> tuple[NotificationRecipientKind, str | None, bool] | None:
-    cleaned = _clean_head(head)
-    if (
-        _BARE_BESCHEID_RE.fullmatch(cleaned)
-        or _SELF_WISH_RE.fullmatch(cleaned)
-        or _SELF_CONTACT_RE.fullmatch(cleaned)
-    ):
-        return NotificationRecipientKind.CURRENT_USER, None, False
-    for pattern in _HEAD_PATTERNS:
-        match = pattern.fullmatch(cleaned)
-        if match is None:
+def _split_content(
+    clause: str, tokens: list[_Tok]
+) -> tuple[list[_Tok], str | None, bool]:
+    """Separate the notification head from dictated content."""
+    keys = [token.key for token in tokens]
+    for marker in _EXPLICIT_TEXT_MARKERS:
+        for index in range(len(keys) - len(marker)):
+            if tuple(keys[index:index + len(marker)]) == marker:
+                rest = index + len(marker)
+                if rest < len(tokens) and tokens[rest].key == ":":
+                    rest += 1
+                if rest < len(tokens):
+                    return tokens[:index], _literal_message(clause[tokens[rest].start:]), False
+    # "schick mir die Nachricht X": the message follows its own noun.
+    for index in range(1, len(keys) - 2):
+        if keys[index] == "die" and keys[index + 1] == "nachricht" and keys[0] in _DATIVE_VERBS:
+            if tokens[index + 2].key != ":" and tokens[index + 2].surface[:1] not in _QUOTES:
+                return tokens[:index], _literal_message(clause[tokens[index + 2].start:]), True
+    for index, token in enumerate(tokens):
+        if token.key == ":" and index + 1 < len(tokens):
+            return tokens[:index], _literal_message(clause[tokens[index + 1].start:]), False
+    for index, token in enumerate(tokens):
+        if token.surface in _QUOTES and index + 1 < len(tokens):
+            closing = next(
+                (item for item in tokens[index + 1:] if item.surface in _QUOTES), None
+            )
+            end = closing.start if closing is not None else len(clause)
+            head = tokens[:index]
+            if len(head) >= 2 and [item.key for item in head[-2:]] == ["die", "nachricht"]:
+                head = head[:-2]
+            return head, _literal_message(clause[tokens[index + 1].start:end]), True
+    for index, token in enumerate(tokens):
+        if token.key == "dass" and index > 0 and index + 1 < len(tokens):
+            head = tokens[:index]
+            return head, message_from_dass_content(clause[tokens[index + 1].start:]), False
+    return tokens, None, False
+
+
+def _clean(tokens: list[_Tok]) -> list[_Tok]:
+    """Remove channel phrases ("aufs Handy", "per Push"), particles, commas."""
+    cleaned: list[_Tok] = []
+    index = 0
+    while index < len(tokens):
+        key = tokens[index].key
+        following = tokens[index + 1].key if index + 1 < len(tokens) else ""
+        after = tokens[index + 2].key if index + 2 < len(tokens) else ""
+        if key == "aufs" and following in _DEVICES:
+            index += 2
             continue
-        recipient = _recipient(match.group("recipient"))
-        if recipient is None:
-            return None
-        kind, name = recipient
-        test = "test" in match.groupdict() and match.group("test") is not None
-        return kind, name, test
+        if key == "auf" and following in {"das", "mein", "dein"} and after in _DEVICES:
+            index += 3
+            continue
+        if key in {"per", "über", "via"} and following in _PUSH_WORDS:
+            index += 2
+            continue
+        if key == "als" and following.startswith("push"):
+            index += 2
+            continue
+        if key in _PARTICLES or not tokens[index].is_word:
+            index += 1
+            continue
+        cleaned.append(tokens[index])
+        index += 1
+    return cleaned
+
+
+def _recipient_at(
+    tokens: list[_Tok], index: int, *, two_words: bool = False
+) -> tuple[tuple[NotificationRecipientKind, str | None], int] | None:
+    if index >= len(tokens):
+        return None
+    if (
+        two_words
+        and index + 1 < len(tokens)
+        and tokens[index].surface[:1].isupper()
+        and tokens[index + 1].surface[:1].isupper()
+    ):
+        pair = _recipient(f"{tokens[index].surface} {tokens[index + 1].surface}")
+        if pair is not None:
+            return pair, 2
+    single = _recipient(tokens[index].surface)
+    return (single, 1) if single is not None else None
+
+
+def _object_length(keys: Sequence[str], index: int) -> tuple[int, bool] | None:
+    """Length of "[eine] [Test-][Push-]Nachricht" at ``index`` and its test flag."""
+    position = index
+    while position < len(keys) and keys[position] in _ARTICLES:
+        position += 1
+    test = False
+    if position < len(keys) and keys[position] == "test":
+        test, position = True, position + 1
+    if position < len(keys) and keys[position] == "push" and position + 1 < len(keys) and (
+        keys[position + 1] in _MESSAGE_NOUNS
+    ):
+        position += 1
+    if position >= len(keys):
+        return None
+    noun = keys[position]
+    base = noun.removeprefix("test-").removeprefix("test")
+    if noun in _MESSAGE_NOUNS or base in _MESSAGE_NOUNS:
+        return position + 1 - index, test or noun != base
     return None
 
 
-def _parse_reminder(clause: str) -> NotificationClause | None:
-    task = _REMINDER_TASK_RE.match(clause)
-    message: str | None
-    if task is not None:
-        head = task.group("head")
-        # "den Kuchen rauszuholen" -> separable verb "rausholen".
-        verb = task.group("verb") or f"{task.group('particle')}{task.group('stem')}"
-        message = _reminder_message(f"{task.group('task')} {verb}")
-    elif (daran := _REMINDER_DARAN_DASS_RE.match(clause)) is not None:
-        head = daran.group("head")
-        message = message_from_dass_content(daran.group("content"))
-    elif (about := _REMINDER_AN_RE.match(clause)) is not None:
-        head = about.group("head")
-        message = _reminder_message(about.group("thing"))
-    elif (dass := _DASS_RE.match(clause)) is not None and _REMINDER_HEAD_RE.fullmatch(
-        _clean_head(dass.group("head"))
-    ):
-        head = dass.group("head")
-        message = message_from_dass_content(dass.group("content"))
-    else:
-        head, message = clause, None
-    match = _REMINDER_HEAD_RE.fullmatch(_clean_head(head))
-    if match is None:
+def _parse_head(
+    raw: list[_Tok], *, content: bool = False
+) -> tuple[NotificationRecipientKind, str | None, bool] | None:
+    tokens = _clean(raw)
+    keys = [token.key for token in tokens]
+    current = NotificationRecipientKind.CURRENT_USER
+    if not keys:
         return None
-    recipient = _recipient(match.group("recipient"))
-    if recipient is None or message == "":
+    # Bare or self-directed forms: "Bescheid", "melde dich (bei mir)",
+    # "ping mich (an)", "gib Bescheid", "ich möchte eine Nachricht bekommen".
+    if keys in (["bescheid"], ["bescheid", "sagen"], ["bescheid", "geben"]):
+        return current, None, False
+    if keys[:2] in (["melde", "dich"], ["meld", "dich"]) and keys[2:] in ([], ["bei", "mir"]):
+        return current, None, False
+    if keys[:2] == ["ping", "mich"] and keys[2:] in ([], ["an"]):
+        return current, None, False
+    if keys in (["gib", "bescheid"], ["sag", "bescheid"], ["sage", "bescheid"]):
+        return current, None, False
+    wish = _self_wish(keys)
+    if wish is not None:
+        return current, None, wish
+    verb = keys[0]
+    if verb in _ACCUSATIVE_VERBS:
+        found = _recipient_at(tokens, 1, two_words=True)
+        if found is not None and 1 + found[1] == len(keys):
+            return found[0][0], found[0][1], False
+        return None
+    if verb in _DATIVE_VERBS:
+        found = _recipient_at(tokens, 1, two_words=True)
+        if found is not None:
+            (kind, name), used = found
+            rest = keys[1 + used:]
+            obj = _object_length(keys, 1 + used)
+            if obj is not None and 1 + used + obj[0] == len(keys):
+                return kind, name, obj[1]
+            if used == 1 and rest in (["push"], ["ne", "push"], ["eine", "push"], ["was"], ["etwas"], ["bescheid"]):
+                return kind, name, False
+            if used == 1 and not rest and (content or verb in _WRITING_VERBS):
+                return kind, name, False
+        obj = _object_length(keys, 1)
+        if obj is not None and 1 + obj[0] < len(keys) and keys[1 + obj[0]] == "an":
+            position = 2 + obj[0]
+            if position < len(keys) and keys[position] in {"den", "die", "das"}:
+                position += 1
+            found = _recipient_at(tokens, position)
+            if found is not None and position + found[1] == len(keys):
+                return found[0][0], found[0][1], obj[1]
+        return None
+    if verb in _BESCHEID_VERBS:
+        found = _recipient_at(tokens, 1, two_words=True)
+        if found is not None and keys[1 + found[1]:] == ["bescheid"]:
+            return found[0][0], found[0][1], False
+        return None
+    # Recipient first (modal infinitive): "mich benachrichtigen (lassen)",
+    # "mir eine Nachricht schicken", "mir Bescheid sagen".
+    found = _recipient_at(tokens, 0)
+    if found is not None:
+        (kind, name), used = found
+        rest = keys[used:]
+        if rest in (["benachrichtigen"], ["informieren"], ["benachrichtigen", "lassen"], ["informieren", "lassen"]):
+            return kind, name, False
+        if rest in (["bescheid", "sagen"], ["bescheid", "geben"]):
+            return kind, name, False
+        obj = _object_length(keys, used)
+        if obj is not None:
+            tail = keys[used + obj[0]:]
+            if tail in (["schicken"], ["senden"], ["schreiben"], ["zukommen", "lassen"]):
+                return kind, name, obj[1]
+    # Verbless: "(eine) Nachricht an mich", "Push an Anna".
+    obj = _object_length(keys, 0)
+    if obj is not None and obj[0] < len(keys) and keys[obj[0]] == "an":
+        found = _recipient_at(tokens, obj[0] + 1)
+        if found is not None and obj[0] + 1 + found[1] == len(keys):
+            return found[0][0], found[0][1], obj[1]
+    return None
+
+
+def _self_wish(keys: Sequence[str]) -> bool | None:
+    """"ich möchte eine Nachricht (bekommen)" / "ich will benachrichtigt werden"."""
+    if len(keys) < 3:
+        return None
+    if keys[0] == "ich" and keys[1] in _WISH_MODALS:
+        rest = list(keys[2:])
+    elif keys[0] in _WISH_MODALS and keys[1] == "ich":
+        rest = list(keys[2:])
+    else:
+        return None
+    while rest and rest[0] in {"sehr", "gern", "gerne"}:
+        rest.pop(0)
+    if rest[:2] == ["dankbar", "für"]:
+        rest = rest[2:]
+    if len(rest) == 2 and rest[0] in _PASSIVE_PARTICIPLES and rest[1] == "werden":
+        return False
+    obj = _object_length(rest, 0)
+    if obj is not None and (
+        not rest[obj[0]:] or (len(rest[obj[0]:]) == 1 and rest[obj[0]] in _RECEIVE)
+    ):
+        return obj[1]
+    return None
+
+
+def _parse_reminder(clause: str, tokens: list[_Tok]) -> NotificationClause | None:
+    words = [token for token in tokens if token.is_word]
+    if len(words) < 2 or not words[0].key.startswith("erinner"):
+        return None
+    recipient = _recipient(words[1].surface)
+    if recipient is None:
         return None
     kind, name = recipient
+    rest_tokens = [token for token in tokens if token.start >= words[1].end]
+    rest_words = [token for token in rest_tokens if token.is_word]
+    message: str | None = None
+    if rest_words and rest_words[0].key == "daran":
+        after = [token for token in rest_words[1:]]
+        if after and after[0].key == "dass":
+            message = message_from_dass_content(clause[after[0].end:])
+        elif len(after) >= 2 and after[-2].key == "zu":
+            task = clause[after[0].start:after[-2].start].strip()
+            message = _reminder_message(f"{task} {after[-1].surface}")
+        elif after and "zu" in after[-1].key[2:-2] and after[-1].key.endswith("en"):
+            particle, _, stem = after[-1].surface.partition("zu")
+            task = clause[after[0].start:after[-1].start].strip()
+            message = _reminder_message(f"{task} {particle}{stem}")
+        else:
+            return None
+    elif rest_words and rest_words[0].key == "an":
+        message = _reminder_message(clause[rest_words[0].end:])
+    elif rest_words and rest_words[0].key == "dass":
+        message = message_from_dass_content(clause[rest_words[0].end:])
+    elif rest_words:
+        return None
+    if message == "":
+        return None
     return NotificationClause(kind, name, message, reminder=True)
 
 
@@ -301,25 +435,18 @@ def _recipient(token: str) -> tuple[NotificationRecipientKind, str | None] | Non
         return NotificationRecipientKind.CURRENT_USER, None
     if lowered == "uns":
         return NotificationRecipientKind.HOUSEHOLD, None
-    if lowered in _NOT_A_RECIPIENT:
+    if lowered in _NOT_A_RECIPIENT or not lowered[:1].isalpha():
         return None
     return NotificationRecipientKind.EXPLICIT_TARGET, token
 
 
-def _clean_head(head: str) -> str:
-    cleaned = _CHANNEL_RE.sub(" ", head)
-    cleaned = _PARTICLE_RE.sub(" ", cleaned)
-    cleaned = re.sub(r"[,;]", " ", cleaned)
-    return re.sub(r"\s+", " ", cleaned).strip(" .!?")
-
-
 def _strip_edges(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().strip(" .!?")
+    return " ".join(text.split()).strip().strip(" .!?")
 
 
 def _literal_message(raw: str) -> str:
     """An explicitly dictated text is kept verbatim (only quotes trimmed)."""
-    message = raw.strip().strip(_QUOTES).strip()
+    message = raw.strip().strip(_QUOTES).strip().rstrip(_QUOTES).strip()
     if not message or len(message) > MAX_MESSAGE_LENGTH:
         return ""
     return message
@@ -350,9 +477,21 @@ _DETERMINERS = frozenset({
     "kein", "keine", "alle", "jedes", "jede", "jeder", "irgendein", "irgendeine",
 })
 _SINGLE_WORD_SUBJECTS = frozenset({
-    "es", "er", "sie", "wir", "man", "jemand", "niemand", "dort", "hier",
+    "ich", "du", "es", "er", "sie", "wir", "man", "jemand", "niemand", "dort", "hier",
     "jetzt", "heute", "gerade", "da",
 })
+
+
+_SELF_TASK_MODALS = frozenset({"soll", "sollte", "muss", "müsste", "muesste", "darf", "wollte"})
+_FINITE_ENDINGS = ("e", "t", "st", "en")
+
+
+def _looks_finite(word: str) -> bool:
+    """Verb-final position of a subordinate clause: a lower-case verb form."""
+    lowered = word.casefold()
+    if lowered in _FINITE_VERBS:
+        return True
+    return word[:1].islower() and lowered.endswith(_FINITE_ENDINGS) and len(lowered) > 3
 
 
 def message_from_dass_content(content: str) -> str:
@@ -361,16 +500,21 @@ def message_from_dass_content(content: str) -> str:
     "im Wohnzimmer ein Fenster offen ist" -> "Im Wohnzimmer ist ein Fenster
     offen."  A self-directed task ("ich den Backofen prüfen soll") becomes the
     same reminder text "erinnere mich daran, den Backofen zu prüfen" yields.
-    Anything the verb-second rule cannot place safely stays verbatim.
+    The finite verb of the subordinate clause moves to second position
+    ("ich gleich komme" -> "Ich komme gleich."); anything the verb-second
+    rule cannot place safely stays verbatim.
     """
     cleaned = content.strip().strip(" ,.!?").strip(_QUOTES).strip()
     if not cleaned or len(cleaned) > MAX_MESSAGE_LENGTH:
         return ""
-    task = _SELF_TASK_RE.fullmatch(cleaned)
-    if task is not None:
-        return _reminder_message(task.group("task"))
     tokens = cleaned.split()
-    if len(tokens) >= 3 and tokens[-1].casefold() in _FINITE_VERBS:
+    if (
+        len(tokens) >= 3
+        and tokens[0].casefold() == "ich"
+        and tokens[-1].casefold() in _SELF_TASK_MODALS
+    ):
+        return _reminder_message(" ".join(tokens[1:-1]))
+    if len(tokens) >= 3 and _looks_finite(tokens[-1]):
         first = _first_constituent_length(tokens)
         if first is not None and first < len(tokens) - 1:
             tokens = [*tokens[:first], tokens[-1], *tokens[first:-1]]
@@ -536,13 +680,54 @@ def describe_event(
     trigger: TriggerModel, entities: Sequence[EntitySnapshot]
 ) -> StateEventPhrase | None:
     """Describe a STATE or NUMERIC_STATE trigger's event for people."""
+    if trigger.appliance_label:
+        subject = trigger.appliance_label
+        return StateEventPhrase(f"{subject} fertig ist", f"{sentence_initial(subject)} ist fertig.")
     if trigger.type is TriggerType.STATE:
-        return describe_state_event(trigger, entities)
+        phrase = describe_state_event(trigger, entities)
+        if phrase is not None and trigger.for_seconds and trigger.state in _STATE_ADJECTIVES:
+            return _with_duration(phrase, trigger)
+        return phrase
     if trigger.type is TriggerType.NUMERIC_STATE:
         return describe_numeric_event(trigger, entities)
     if trigger.type is TriggerType.PRESENCE:
         return describe_presence_event(trigger, entities)
     return None
+
+
+_STATE_ADJECTIVES: dict[SemanticState, str] = {
+    SemanticState.OPEN: "offen",
+    SemanticState.CLOSED: "geschlossen",
+    SemanticState.ON: "an",
+    SemanticState.OFF: "aus",
+}
+
+
+def spoken_duration(seconds: int) -> str:
+    """600 -> "10 Minuten", 3600 -> "1 Stunde", 90 -> "90 Sekunden"."""
+    if seconds % 3600 == 0:
+        hours = seconds // 3600
+        return f"{hours} Stunde" if hours == 1 else f"{hours} Stunden"
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return f"{minutes} Minute" if minutes == 1 else f"{minutes} Minuten"
+    return f"{seconds} Sekunden"
+
+
+def _with_duration(phrase: StateEventPhrase, trigger: TriggerModel) -> StateEventPhrase:
+    """"das Küchenfenster länger als 10 Minuten offen ist"."""
+    assert trigger.state is not None and trigger.for_seconds is not None
+    participle = _PARTICIPLES.get(trigger.state, "")
+    adjective = _STATE_ADJECTIVES[trigger.state]
+    duration = spoken_duration(int(trigger.for_seconds))
+    suffix = f" {participle} wird"
+    if not phrase.subordinate.endswith(suffix):
+        return phrase
+    subject = phrase.subordinate[: -len(suffix)]
+    return StateEventPhrase(
+        f"{subject} länger als {duration} {adjective} ist",
+        f"{sentence_initial(subject)} ist seit {duration} {adjective}.",
+    )
 
 
 def describe_presence_event(
@@ -732,21 +917,21 @@ def trigger_message(
     return message_from_trigger_text(trigger_text)
 
 
+_TRIGGER_CONNECTORS = frozenset({"wenn", "sobald", "falls"})
+
+
 def message_from_trigger_text(trigger_text: str) -> str:
     """Grammatical fallback when only the spoken trigger clause is known."""
-    content = re.sub(
-        r"^(?:wenn|sobald|falls)\s+", "", trigger_text.strip(), flags=re.IGNORECASE
-    ).strip(" ,.!?")
+    words = trigger_text.strip().strip(" ,.!?").split()
+    if words and words[0].casefold() in _TRIGGER_CONNECTORS:
+        words = words[1:]
+    content = " ".join(words).strip(" ,.!?")
     if not content:
         return "Auslöser eingetreten."
-    passive = re.fullmatch(
-        r"(?P<subject>.+?)\s+(?P<participle>\S+)\s+(?P<aux>wird|werden)", content, re.IGNORECASE
-    )
-    if passive is not None:
-        aux = "wurde" if passive.group("aux").casefold() == "wird" else "wurden"
-        return _as_sentence(
-            f"{passive.group('subject')} {aux} {passive.group('participle')}"
-        )
+    words = content.split()
+    if len(words) >= 3 and words[-1].casefold() in {"wird", "werden"}:
+        aux = "wurde" if words[-1].casefold() == "wird" else "wurden"
+        return _as_sentence(f"{' '.join(words[:-2])} {aux} {words[-2]}")
     return message_from_dass_content(content) or "Auslöser eingetreten."
 
 

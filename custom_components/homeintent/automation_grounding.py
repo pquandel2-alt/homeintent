@@ -41,6 +41,7 @@ from .nlu.measurement import (
 from .nlu.place_model import Place, PlaceKind, PlaceLexicon, build_place_lexicon
 from .nlu.semantic_state import SemanticState
 from .nlu.target_resolution import genus_members
+from .situation_detection import APPLIANCE_FINISHED_STATES, APPLIANCE_RUNNING_STATES
 
 
 class GroundingStatus(Enum):
@@ -513,6 +514,9 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
     if roles.presence is not None:
         return _ground_presence(roles, entities)
     if roles.value is None and roles.state is None:
+        finished = _ground_appliance_finished(roles, entities)
+        if finished is not None:
+            return finished
         return GroundedEvent(GroundingStatus.NOT_APPLICABLE, roles=roles)
     subject = read_subject(roles.subject_words, entities)
     unknown_detector_words = tuple(
@@ -609,6 +613,96 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                 subject=subject, roles=roles,
             )
     return _project(roles, subject, candidates, entities)
+
+
+_FINISHED_WORDS = frozenset({"fertig", "durch", "beendet", "feddich", "fertiggewaschen"})
+_APPLIANCE_IDLE_WATTS = 5.0
+_APPLIANCE_IDLE_SECONDS = 60
+
+
+def _ground_appliance_finished(
+    roles: EventRoles, entities: Sequence[EntitySnapshot]
+) -> GroundedEvent | None:
+    """"wenn die Waschmaschine fertig ist": the run of a named appliance ends.
+
+    Observable evidence only: a power sensor of that appliance dropping below
+    the idle threshold for a minute (the proactive detector's rule), or its
+    running binary sensor switching off.
+    """
+    keys = [normalize_for_compare(word) for word in roles.subject_words]
+    if not any(key in _FINISHED_WORDS for key in keys):
+        return None
+    names = [
+        key for key in keys
+        if key not in _FINISHED_WORDS and key not in _DEFINITE_WORDS and key not in _ANY_WORDS
+    ]
+    if len(names) != 1:
+        return None
+    appliance = names[0]
+
+    def named(entity: EntitySnapshot) -> bool:
+        return appliance in normalize_for_compare(entity.friendly_name).replace("-", " ").split()
+
+    power = [
+        entity for entity in entities
+        if entity.domain == "sensor" and entity.device_class == "power" and named(entity)
+    ]
+    running = [
+        entity for entity in entities
+        if entity.domain == "binary_sensor" and entity.device_class in {"running", "power", None}
+        and named(entity)
+    ]
+    label = next(
+        (word for word in roles.subject_words if normalize_for_compare(word) == appliance),
+        appliance,
+    )
+    article = next(
+        (word.casefold() for word in roles.subject_words if word.casefold() in _DEFINITE_WORDS),
+        "",
+    )
+    spoken = f"{article} {label}".strip()
+    status = [
+        entity for entity in entities
+        if entity.domain == "sensor" and entity.device_class is None and not entity.unit
+        and named(entity)
+        and entity.state.casefold() in APPLIANCE_RUNNING_STATES | APPLIANCE_FINISHED_STATES
+    ]
+    if len(status) == 1:
+        # An observed program status is stronger evidence than a power value.
+        trigger = TriggerModel(
+            type=TriggerType.STATE,
+            target=TriggerTarget(domain="sensor", entity_id=status[0].entity_id),
+            state=SemanticState.INACTIVE,
+            raw_to=tuple(sorted(APPLIANCE_FINISHED_STATES)),
+            appliance_label=spoken,
+        )
+        return GroundedEvent(GroundingStatus.RESOLVED, trigger=trigger, candidates=(status[0],), roles=roles)
+    if len(power) == 1:
+        trigger = TriggerModel(
+            type=TriggerType.NUMERIC_STATE,
+            target=TriggerTarget(domain="sensor", device_class="power", entity_id=power[0].entity_id),
+            comparator=NumericComparator.BELOW,
+            threshold=_APPLIANCE_IDLE_WATTS,
+            for_seconds=_APPLIANCE_IDLE_SECONDS,
+            appliance_label=spoken,
+        )
+        return GroundedEvent(GroundingStatus.RESOLVED, trigger=trigger, candidates=(power[0],), roles=roles)
+    if len(running) == 1:
+        trigger = TriggerModel(
+            type=TriggerType.STATE,
+            target=TriggerTarget(domain="binary_sensor", entity_id=running[0].entity_id),
+            state=SemanticState.OFF,
+            appliance_label=spoken,
+        )
+        return GroundedEvent(GroundingStatus.RESOLVED, trigger=trigger, candidates=(running[0],), roles=roles)
+    return GroundedEvent(
+        GroundingStatus.NOT_FOUND,
+        question=(
+            f"Für „{label}“ finde ich keinen Leistungs- oder Betriebssensor, "
+            "an dem ich das Ende erkennen kann."
+        ),
+        roles=roles,
+    )
 
 
 _SPEAKER_WORDS = frozenset({"ich", "mich"})

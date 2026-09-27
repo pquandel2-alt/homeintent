@@ -57,10 +57,17 @@ class NotificationRequest:
     message: str
     title: str = DEFAULT_NOTIFICATION_TITLE
     test: bool = False
+    # Spoken person name for an EXPLICIT_TARGET recipient ("Schreib Anna").
+    recipient_name: str | None = None
 
     @classmethod
     def from_clause(cls, clause: NotificationClause) -> NotificationRequest:
-        return cls(clause.recipient_kind, clause.resolved_message(), test=clause.test)
+        return cls(
+            clause.recipient_kind,
+            clause.resolved_message(),
+            test=clause.test,
+            recipient_name=clause.recipient_name,
+        )
 
     @classmethod
     def test_push(cls) -> NotificationRequest:
@@ -102,9 +109,17 @@ class NotificationOutcome:
         return self.resolution.reason
 
     def spoken(self) -> str:
+        name = self.request.recipient_name
         if self.stage is NotificationStage.DELIVERED:
+            if name and not self.request.test:
+                return f"Die Nachricht an {name} wurde gesendet."
             return TEST_NOTIFICATION_SENT_TEXT if self.request.test else NOTIFICATION_SENT_TEXT
         if self.stage is NotificationStage.RECIPIENT_UNRESOLVED:
+            if name and self.resolution.reason == "named_recipient_unbound":
+                return (
+                    f"Für {name} finde ich kein zugeordnetes Handy. "
+                    "Ich habe nichts gesendet."
+                )
             return resolution_failure_text(self.resolution)
         if self.stage is NotificationStage.TARGET_UNAVAILABLE:
             return NOTIFICATION_TARGET_UNAVAILABLE_TEXT
@@ -130,7 +145,7 @@ async def async_deliver_notification_request(
     delivery: AgentDelivery,
     user_id: str | None,
 ) -> NotificationOutcome:
-    resolution = resolver.resolve(request.recipient, user_id)
+    resolution = resolver.resolve(request.recipient, user_id, name=request.recipient_name)
     if not resolution.resolved:
         _LOGGER.info("Push request not delivered: %s", resolution.reason)
         return NotificationOutcome(NotificationStage.RECIPIENT_UNRESOLVED, request, resolution)

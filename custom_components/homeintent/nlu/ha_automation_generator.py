@@ -270,6 +270,15 @@ def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> 
             return None, GenerationError.ENTITY_NOT_FOUND
         domain = trigger.target.domain or candidates[0].domain
         device_class = trigger.target.device_class or candidates[0].device_class
+        if trigger.raw_to:
+            config = {
+                "trigger": "state",
+                "entity_id": _entity_id_field(candidates),
+                "to": list(trigger.raw_to),
+            }
+            if trigger.for_seconds is not None:
+                config["for"] = {"seconds": trigger.for_seconds}
+            return identified(config), None
         to_raw = _raw_state_for_semantic(domain, device_class, trigger.state)
         if to_raw is None:
             return None, GenerationError.UNSUPPORTED_STATE

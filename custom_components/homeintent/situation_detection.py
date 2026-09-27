@@ -46,6 +46,9 @@ _APPLIANCE_FINISHED = frozenset({
     "fertig", "beendet", "programmende", "program_finished",
 })
 _UNRELIABLE = frozenset({"unknown", "unavailable", ""})
+# Public views for language grounding ("wenn die Waschmaschine fertig ist").
+APPLIANCE_RUNNING_STATES = _APPLIANCE_RUNNING
+APPLIANCE_FINISHED_STATES = _APPLIANCE_FINISHED
 
 
 @dataclass(frozen=True)
