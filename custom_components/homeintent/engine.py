@@ -44,6 +44,7 @@ from .automation_results import (
     AutomationToggleMatchResult,
 )
 from .entities import EntitySnapshot, normalize_for_compare
+from .nlu.clock_language import split_relative_delay
 from .nlu.entity_resolution import (
     ResolutionStatus,
     ResolveStatus,
@@ -3436,6 +3437,19 @@ class NluEngine:
             resolve_registry=False,
         )
         direct = self._interpreted_match_result(interpreted, context.entities)
+        # The genus reading applies to delayed and scheduled actions exactly
+        # as to immediate ones: "die Rollläden" never reaches the garage door.
+        narrowed = self._ontology_understanding(document, context.entities, None, direct)
+        if narrowed is _REFUSED:
+            return None
+        if narrowed is not None:
+            commands = narrowed.commands if isinstance(narrowed, CommandPlan) else (narrowed,)
+            lifted = tuple(
+                self._action_from_direct_match(command, context.entities) for command in commands
+            )
+            if lifted and all(item is not None for item in lifted):
+                return tuple(item for item in lifted if item is not None)
+            return None
         action = self._action_from_direct_match(direct, context.entities)
         if action is not None:
             return (action,)
@@ -4158,7 +4172,7 @@ class NluEngine:
                 projected,
                 model=replace(projected.model, source_text=text),
             )
-        if not _RELATIVE_TIME_RE.search(text):
+        if not _RELATIVE_TIME_RE.search(text) and split_relative_delay(text) is None:
             return None
 
         normalized = normalize(text)
@@ -4174,6 +4188,9 @@ class NluEngine:
 
         parsed = None
         decomposed = self._relative_time_command_parser.decompose(normalized)
+        if decomposed is None:
+            # Any word order: "Schließe in 150 Minuten die Rollläden".
+            decomposed = split_relative_delay(normalized)
         if decomposed is not None:
             command_text, offset_seconds = decomposed
             actions = self._parse_action_semantically(command_text, parse_context)
@@ -4385,7 +4402,14 @@ class NluEngine:
                 )
             else:
                 target = TriggerTarget(domain=domain, entity_id=entity.entity_id)
-        elif result.command.area is not None and frame.quantifier is not None:
+        elif (
+            result.command.area is not None and frame.quantifier is not None
+            and {entity.entity_id for entity in entities} == {
+                candidate.entity_id for candidate in available_entities
+                if candidate.domain == domain
+                and candidate.area_id == result.command.area.area_id
+            }
+        ):
             target = TriggerTarget(
                 domain=domain,
                 area_id=result.command.area.area_id,
@@ -4394,20 +4418,34 @@ class NluEngine:
             )
         elif frame.quantifier is not None:
             floor_ids = {entity.floor_id for entity in entities}
-            if len(floor_ids) != 1 or None in floor_ids:
+            if len(floor_ids) != 1 or None in floor_ids or {
+                entity.entity_id for entity in entities
+            } != {
+                candidate.entity_id for candidate in available_entities
+                if candidate.domain == domain and candidate.floor_id in floor_ids
+            }:
                 # TriggerTarget must retain a real scope; never turn an
                 # arbitrary concrete list into an all-house automation.
-                return None
+                # The exact, validated list keeps it ("die Rollläden" ->
+                # the eight shutters, not garage door and awning).
+                target = TriggerTarget(
+                    domain=domain,
+                    entity_ids=tuple(entity.entity_id for entity in entities),
+                )
+            else:
+                target = TriggerTarget(
+                    domain=domain,
+                    floor_id=next(iter(floor_ids)),
+                    quantifier=frame.quantifier.kind,
+                    quantifier_count=frame.quantifier.value,
+                )
+        else:
+            # An exact concrete list stays exact; it is never broadened to
+            # every entity of the domain.
             target = TriggerTarget(
                 domain=domain,
-                floor_id=next(iter(floor_ids)),
-                quantifier=frame.quantifier.kind,
-                quantifier_count=frame.quantifier.value,
+                entity_ids=tuple(entity.entity_id for entity in entities),
             )
-        else:
-            # TriggerTarget cannot represent an arbitrary concrete list.
-            # Refuse instead of broadening it to every entity in the house.
-            return None
 
         plan = result.plan
         if plan.domain == "cover" and plan.service == "open_cover":

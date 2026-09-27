@@ -200,6 +200,11 @@ from .thermal_deadline import (
 )
 from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
+from .nlu.clock_language import normalize_clock_expressions, wake_request
+from .nlu.german_morphology import dative_location_phrase
+from .nlu.place_model import build_place_lexicon
+from .nlu.device_ontology import analyse_word
+from .nlu.target_resolution import genus_members
 from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain
 from .nlu.german_morphology import counted_passive
@@ -790,7 +795,7 @@ class NluConversationEntity(
         self._world_model = self._world_model.with_house_graph(self._house_graph)
         understanding_context = UnderstandingContext(source_area=conversation_area)
         localized_text = materialize_local_reference(
-            user_input.text, conversation_area
+            normalize_clock_expressions(user_input.text), conversation_area
         )
         explicit_topic_switch = False
         if pending is not None:
@@ -804,6 +809,34 @@ class NluConversationEntity(
                 localized_text = (
                     f"{replacement.group('verb')} {replacement.group('rest')}"
                 )
+        wake = wake_request(localized_text)
+        if wake is not None:
+            # "Weck mich um sieben mit Licht": a wake request is a timed
+            # switch-on of its instrument at the speaker's place.
+            clock, instrument = wake
+            words = [
+                normalize_for_compare(part.strip(".,!?;:")) for part in instrument.split()
+            ]
+            named = any(
+                normalize_for_compare(entity.friendly_name) in normalize_for_compare(instrument)
+                for entity in entities
+            )
+            has_place = bool(build_place_lexicon(entities).scan(words))
+            kinds = [analysis for word in words if (analysis := analyse_word(word)) is not None]
+            unique = len(kinds) == 1 and len(genus_members(kinds[0].genera[0], entities)) == 1
+            if not named and not has_place and not unique:
+                if conversation_area is None:
+                    article, _, noun = instrument.partition(" ")
+                    dative = {"das": "dem", "die": "der"}.get(article.casefold(), article)
+                    response.async_set_speech(
+                        f"In welchem Raum soll ich dich mit {dative} {noun} wecken? "
+                        f"Sag zum Beispiel: Weck mich {clock} mit {dative} {noun} im Schlafzimmer."
+                    )
+                    return conversation.ConversationResult(
+                        response=response, conversation_id=user_input.conversation_id
+                    )
+                instrument = f"{instrument} {dative_location_phrase(conversation_area.name)}"
+            localized_text = f"{clock[:1].upper()}{clock[1:]} schalte {instrument} ein."
         if localized_text != user_input.text:
             user_input = replace(user_input, text=localized_text)
         language_document = analyse_language(user_input.text, entities)

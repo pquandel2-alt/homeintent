@@ -23,6 +23,7 @@ own spoken-response helpers already take.
 
 from __future__ import annotations
 
+from .device_ontology import entity_genera, genus
 from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
 from .action_model import ActionGroup, ActionModel, ActionType, ExecutionMode
@@ -56,6 +57,12 @@ _DOMAIN_NOUN_DE = {
     "number": "Regler", "input_number": "Zahlenhelfer", "select": "Auswahl",
     "valve": "Ventil", "lawn_mower": "Mähroboter", "scene": "Szene",
     "camera": "Kamera", "notify": "Benachrichtigungsziel",
+}
+_PLURAL_NOUN_DE = {
+    "Licht": "Lichter", "Schalter": "Schalter", "Ventilator": "Ventilatoren",
+    "Rollladen": "Rollläden", "Heizung": "Heizungen", "Sensor": "Sensoren",
+    "Medienplayer": "Medienplayer", "Ventil": "Ventile", "Fenster": "Fenster",
+    "Tür": "Türen", "Gerät": "Geräte", "Steckdose": "Steckdosen",
 }
 _DEVICE_CLASS_NOUN_DE = {
     "window": "Fenster", "door": "Tür", "garage_door": "Garagentor", "opening": "Öffnung",
@@ -96,6 +103,11 @@ def _format_delay(seconds: int | None) -> str:
     if seconds % 3600 == 0 and seconds != 0:
         hours = seconds // 3600
         return "1 Stunde" if hours == 1 else f"{hours} Stunden"
+    if seconds > 3600 and seconds % 60 == 0:
+        hours, minutes = divmod(seconds // 60, 60)
+        hour_text = "1 Stunde" if hours == 1 else f"{hours} Stunden"
+        minute_text = "1 Minute" if minutes == 1 else f"{minutes} Minuten"
+        return f"{hour_text} und {minute_text}"
     if seconds % 60 == 0 and seconds != 0:
         minutes = seconds // 60
         return "1 Minute" if minutes == 1 else f"{minutes} Minuten"
@@ -103,7 +115,11 @@ def _format_delay(seconds: int | None) -> str:
 
 
 def _speak_target(
-    target: TriggerTarget | None, entity_by_id: dict[str, EntitySnapshot], area_name_by_id: dict[str, str]
+    target: TriggerTarget | None,
+    entity_by_id: dict[str, EntitySnapshot],
+    area_name_by_id: dict[str, str],
+    *,
+    prefer_name: bool = False,
 ) -> str:
     if target is None:
         return "unbekanntes Gerät"
@@ -111,11 +127,26 @@ def _speak_target(
         entity = entity_by_id.get(target.entity_id)
         name = entity.friendly_name if entity is not None else target.entity_id
     elif target.entity_ids:
-        name = ", ".join(
+        names = [
             entity_by_id[entity_id].friendly_name
             if entity_id in entity_by_id else entity_id
             for entity_id in target.entity_ids
-        )
+        ]
+        if len(names) > 2:
+            members = [entity_by_id[item] for item in target.entity_ids if item in entity_by_id]
+            shared = (
+                frozenset.intersection(*(entity_genera(member) for member in members)) - {"device"}
+                if members else frozenset()
+            )
+            label = min(
+                (genus(key) for key in shared),
+                key=lambda item: (item.parent is None, item.key),
+                default=None,
+            )
+            noun = f" {label.plural}" if label is not None else ""
+            name = f"alle {len(names)}{noun} ({', '.join(names[:-1])} und {names[-1]})"
+        else:
+            name = " und ".join(names)
     else:
         noun = (
             _DEVICE_CLASS_NOUN_DE.get(target.device_class)
@@ -128,8 +159,20 @@ def _speak_target(
                 if target.domain is not None
                 else "Gerät"
             )
+        members = [
+            entity for entity in entity_by_id.values()
+            if (target.domain is None or entity.domain == target.domain)
+            and (target.device_class is None or entity.device_class == target.device_class)
+            and target.area_id is not None and entity.area_id == target.area_id
+        ]
+        if (
+            prefer_name and target.quantifier is None and len(members) == 1
+            and not target.exclude_entity_ids
+        ):
+            # One concrete device in the room: say its name, not its class.
+            return members[0].friendly_name
         if target.quantifier == "all":
-            name = f"alle {noun}"
+            name = f"alle {_PLURAL_NOUN_DE.get(noun, noun)}"
         elif target.quantifier == "both":
             name = f"beide {noun}"
         elif target.quantifier == "count" and target.quantifier_count is not None:
@@ -291,10 +334,29 @@ def _speak_condition_node(
     return joiner.join(f"({_speak_condition_node(c, entity_by_id, area_name_by_id)})" for c in node.children)
 
 
+_OPEN_CLOSE_DOMAINS = frozenset({"cover"})
+
+
+def _action_domain(action: ActionModel, entity_by_id: dict[str, EntitySnapshot]) -> str | None:
+    target = action.target
+    if target is None:
+        return None
+    if target.domain is not None:
+        return target.domain
+    ids = (target.entity_id,) if target.entity_id is not None else target.entity_ids
+    domains = {entity_by_id[item].domain for item in ids if item in entity_by_id}
+    return next(iter(domains)) if len(domains) == 1 else None
+
+
 def _speak_action_leaf(
     action: ActionModel, entity_by_id: dict[str, EntitySnapshot], area_name_by_id: dict[str, str]
 ) -> str:
     target = _speak_target(action.target, entity_by_id, area_name_by_id) if action.target is not None else None
+    domain = _action_domain(action, entity_by_id)
+    if action.type is ActionType.TURN_ON and domain in _OPEN_CLOSE_DOMAINS:
+        return f"{target} öffnen"
+    if action.type is ActionType.TURN_OFF and domain in _OPEN_CLOSE_DOMAINS:
+        return f"{target} schließen"
     if action.type is ActionType.TURN_ON:
         text = f"{target} einschalten"
         if action.duration_seconds:
@@ -321,7 +383,12 @@ def _speak_action_leaf(
     if action.type is ActionType.REGISTERED_SERVICE:
         from .automation_operations import describe_registered_operation
 
-        return f"bei {target} {describe_registered_operation(action.service_domain, action.service_name, action.service_data)}"
+        described = describe_registered_operation(action.service_domain, action.service_name, action.service_data)
+        if " " not in described:
+            # A plain verb names the one device: "Küchenradio einschalten".
+            named = _speak_target(action.target, entity_by_id, area_name_by_id, prefer_name=True)
+            return f"{named} {described}"
+        return f"bei {target} {described}"
     if action.type is ActionType.NOTIFY:
         if action.recipient is not None and action.recipient.label:
             return (
