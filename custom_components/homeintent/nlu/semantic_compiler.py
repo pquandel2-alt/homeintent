@@ -168,7 +168,7 @@ _STOP_WORDS = {
     "im", "in", "am", "auf", "aus", "an", "zu", "und", "sind", "ist",
     "alle", "sämtliche", "sämtlichen", "jede", "jeden", "jedes", "beide",
     "zeigt", "zeigen", "welche", "welcher", "welches",
-    "ganz", "um", "außer", "ausser", "mit", "ausnahme", "bei",
+    "ganz", "um", "außer", "ausser", "mit", "ausnahme", "ausgenommen", "bei",
     "hoch", "noch", "vorhanden", "vorhandene", "vorhandenes", "stehen",
     "steht", "sag", "sage", "ob", "zustand", "status", "sensor", "gerät", "geräte",
     "verbraucht", "verbrauchen", "anzeigt", "also", "außerdem", "ausserdem", "okay", "ok", "gut", "nun", "na",

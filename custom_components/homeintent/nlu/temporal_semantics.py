@@ -95,6 +95,14 @@ def analyse_temporal_semantics(
             # Device directions ("nach oben fahren") and the presence
             # phrase "nach Hause" are not temporal AFTER scopes.
             relation = None
+        if (
+            word == "bis"
+            and index + 1 < len(words)
+            and words[index + 1] == "auf"
+            and not (index + 2 < len(words) and _number(words[index + 2]) is not None)
+        ):
+            # "bis auf die Stehlampe" is an exception, not an UNTIL scope.
+            relation = None
         if relation is not None:
             found.append(TemporalExpression(relation, index, index + 1, word))
         if index + 2 < len(words):

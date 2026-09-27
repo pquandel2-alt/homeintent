@@ -148,9 +148,9 @@ def compile_need(
             )
             for entity in heating
         )
-        setpoints = [
-            entity.attributes.get("temperature") for entity in heating
-            if isinstance(entity.attributes.get("temperature"), (int, float))
+        setpoints: list[float] = [
+            float(value) for entity in heating
+            if isinstance(value := entity.attributes.get("temperature"), (int, float))
         ]
         target = (
             f" auf {format_spoken_number(float(setpoints[0]) + (1 if warmer else -1))} Grad"

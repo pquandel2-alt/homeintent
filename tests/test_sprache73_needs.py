@@ -8,7 +8,6 @@ never operate.  Sentences are built here, not taken from ``sim/``.
 
 from __future__ import annotations
 
-import itertools
 
 import pytest
 

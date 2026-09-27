@@ -62,6 +62,26 @@ def _entity(
     )
 
 
+def _kind_at_place(
+    text: str, entities: list[EntitySnapshot], domains: frozenset[str]
+) -> EntitySnapshot | None:
+    """The single device of ``domains`` a kind word + place describes."""
+    from .language_frontend import tokenize_language
+    from .target_resolution import ResolutionOutcome, describe_with_residue, resolve_description
+
+    descriptions, _residue = describe_with_residue(tokenize_language(text), entities)
+    found = [
+        resolution.entities[0]
+        for description in descriptions
+        if not description.explicit
+        and (resolution := resolve_description(description, entities, domains=domains)).outcome
+        is ResolutionOutcome.RESOLVED
+        and len(resolution.entities) == 1
+        and resolution.entities[0].domain in domains
+    ]
+    return found[0] if len(found) == 1 else None
+
+
 def climate_in_named_area(text: str, entities: list[EntitySnapshot]) -> EntitySnapshot | None:
     """ "die Heizung in der Küche" -> the only climate entity of that room."""
     key = normalize_for_compare(text)
@@ -380,6 +400,9 @@ def compile_registered_operation(
             return _result(text, helper_timer, "timer", service, action=action)
 
     camera = _entity(text, entities, {"camera"}, index)
+    if camera is not None and player is None:
+        # "auf dem Fernseher im Wohnzimmer": the player by kind and place.
+        player = _kind_at_place(text, entities, frozenset({"media_player"}))
     if camera is not None and player is not None and re.search(r"\b(?:zeig\w*|stream\w*|übertrag\w*|uebertrag\w*)\b", text, re.I):
         return _result(text, camera, "camera", "play_stream", {"media_player": player.entity_id}, action=SemanticAction.START)
 

@@ -91,12 +91,14 @@ def parse_calendar_automation_draft(
     if not _CALENDAR_CUE_RE.search(text):
         return None
     calendar = _resolve_calendar(text, entities)
-    all_calendars = tuple(entity for entity in entities if entity.domain == "calendar")
+    all_calendars: tuple[EntitySnapshot, ...] = tuple(
+        entity for entity in entities if entity.domain == "calendar"
+    )
     unnamed = calendar is None and len(all_calendars) > 1
     if calendar is None:
         if not unnamed:
             return None
-        calendar = all_calendars[0]
+        calendar = next(iter(all_calendars))
     action_matches = list(_ACTION_START_RE.finditer(text))
     if not action_matches:
         return None

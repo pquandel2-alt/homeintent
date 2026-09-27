@@ -150,9 +150,16 @@ def describe_registered_result(
 
 
 def describe_registered_operation(
-    service_domain: str | None, service_name: str | None, data: Mapping[str, object]
+    service_domain: str | None,
+    service_name: str | None,
+    data: Mapping[str, object],
+    names: Mapping[str, str] | None = None,
 ) -> str:
-    """Return a German preview for an already validated operation."""
+    """Return a German preview for an already validated operation.
+
+    ``names`` maps entity ids in the data (a stream's media player) to the
+    names spoken back; ids are never read out when a name is known.
+    """
     label = _OPERATION_LABELS_DE.get((service_domain or "", service_name or ""), "die Aktion ausführen")
     details: list[str] = []
     for key, value in data.items():
@@ -169,6 +176,8 @@ def describe_registered_operation(
             spoken_value = f"„{value.strip().rstrip('.!')}“"
         elif isinstance(value, bool):
             spoken_value = "ein" if value else "aus"
+        elif isinstance(value, str) and names and value in names:
+            spoken_value = names[value]
         details.append(f"{_DATA_LABELS_DE.get(key, key)} {spoken_value}")
     return label + (" – " + ", ".join(details) if details else "")
 

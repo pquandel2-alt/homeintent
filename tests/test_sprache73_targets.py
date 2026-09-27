@@ -201,3 +201,35 @@ def test_white_tone_reaches_every_capable_light(monkeypatch, tone, kelvin, shape
 def test_white_tone_on_incapable_light_says_so(monkeypatch):
     turn = HouseConversation(monkeypatch).say("Stell die Stehlampe auf warmweiß.")
     assert turn.calls == [] and "Stehlampe" in turn.speech and "warmweiß" in turn.speech
+
+
+@pytest.mark.parametrize("connector", ["außer", "bis auf", "ausgenommen", "mit Ausnahme von"])
+def test_exception_connectors_are_synonyms(monkeypatch, connector):
+    from _testhaus import with_states
+
+    entities = with_states(house_entities(), light__stehlampe="on", light__wohnzimmer_deckenlicht="on")
+    turn = HouseConversation(monkeypatch, entities).say(
+        f"Schalte im Wohnzimmer alle Lampen aus, {connector} die Stehlampe."
+    )
+    assert "light.stehlampe" not in turn.targets
+    assert "light.wohnzimmer_deckenlicht" in turn.targets
+    unknown = HouseConversation(monkeypatch, entities).say(
+        f"Schalte im Büro alle Lampen aus, {connector} die Zimmerpalme."
+    )
+    assert unknown.calls == [] and "Zimmerpalme" in unknown.speech
+
+
+def test_bis_auf_a_value_is_no_exception():
+    from custom_components.homeintent.nlu.semantic_exclusion import canonical_exception_words
+
+    text = "Fahre den Küchenrollladen bis auf 50 Prozent runter."
+    assert canonical_exception_words(text) == text
+
+
+@pytest.mark.parametrize("sentence,entity_id", [
+    ("Im Schlafzimmer bitte etwas kühler.", "climate.heizung_schlafzimmer"),
+    ("Im Büro etwas wärmer bitte.", "climate.heizung_buero"),
+    ("Im Kinderzimmer bitte ein bisschen wärmer.", "climate.heizung_kinderzimmer"),
+])
+def test_verbless_place_and_comparative_is_a_request(monkeypatch, sentence, entity_id):
+    assert HouseConversation(monkeypatch).say(sentence).targets == {entity_id}

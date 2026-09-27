@@ -5109,7 +5109,7 @@ class NluEngine:
                 plan=registered_plan,
                 response_text=done_text or (
                     f"{matched[0].friendly_name}: "
-                    f"{describe_registered_operation(registered_plan.domain, registered_plan.service, registered_plan.data)}."
+                    f"{describe_registered_operation(registered_plan.domain, registered_plan.service, registered_plan.data, {entity.entity_id: entity.friendly_name for entity in entities})}."
                 ),
                 frame=frame,
                 command=command,

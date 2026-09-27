@@ -103,6 +103,17 @@ class LanguageDocument:
         return self.variants[1].text if len(self.variants) > 1 else self.source_text
 
 
+def _has_place_mention(text: str, entities: tuple[EntitySnapshot, ...]) -> bool:
+    """"Im Schlafzimmer bitte etwas kühler": a place carries the target."""
+    from .place_model import PlaceKind, build_place_lexicon
+
+    words = [normalize_for_compare(word) for word in re.findall(r"[\wäöüß]+", text)]
+    return any(
+        mention.place.kind is PlaceKind.AREA or mention.place.kind is PlaceKind.FLOOR
+        for mention in build_place_lexicon(entities).scan(words)
+    )
+
+
 _SEPARABLE_PARTICLES = frozenset({"an", "aus", "auf", "zu", "ein", "hoch", "runter"})
 _SUBJECT_PRONOUNS = frozenset({"ich", "du", "wir", "ihr", "er", "man"})
 _INTERROGATIVES = frozenset({
@@ -325,6 +336,10 @@ def analyse_language(
         is not PragmaticDisposition.ASK_BEFORE_ACTION
         and semantics.values(SemanticKind.PROPERTY)
         and not semantics.values(SemanticKind.COMMAND_MARKER)
+        and not any(
+            normalize_for_compare(word) in DEGREE_WORDS
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        )
     ):
         # Compact dashboard/voice noun phrases such as ``Temperatur Küche``
         # are read requests. The query compiler still requires one typed
@@ -393,6 +408,7 @@ def analyse_language(
                 analyse_word(word) is not None
                 for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
             )
+            or _has_place_mention(utterance.normalized_text, entity_tuple)
         )
     ):
         # Verbless comparative requests ("Das Radio bitte etwas lauter",

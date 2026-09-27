@@ -371,15 +371,15 @@ def describe_with_residue(
                 # "beide Rollladen": a quantity makes the kind word a kind,
                 # even when one device happens to be named "Rollladen".
                 kind, payload = "genus", as_genus
-        if kind == "explicit":
-            descriptions.append(TargetDescription(
-                explicit=tuple(matches),
-                explicit_name=phrase,
-                quantity=Quantity.ALL if quantity is Quantity.ALL else Quantity.ONE,
-                token_start=positions[start],
-                token_end=positions[end - 1] + 1,
-            ))
-            continue
+            else:
+                descriptions.append(TargetDescription(
+                    explicit=tuple(matches),
+                    explicit_name=phrase,
+                    quantity=Quantity.ALL if quantity is Quantity.ALL else Quantity.ONE,
+                    token_start=positions[start],
+                    token_end=positions[end - 1] + 1,
+                ))
+                continue
         analysis = payload
         genera = tuple(getattr(analysis, "genera"))
         plural = bool(getattr(analysis, "plural"))

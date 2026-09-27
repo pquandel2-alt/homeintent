@@ -600,3 +600,108 @@ S("reg-kelvin", "Regression", "Farbtemperatur warmweiß",
   say("Stelle das Bürolicht auf warmweiß.", calls=["light.buerolicht:turn_on"], none=["fehler"]))
 S("reg-notify-entity-unknown", "Regression", "Nachricht an Notify-Entity im Zustand unknown",
   say("Schicke an Handy Anna die Nachricht Abendessen ist fertig.", notify="Abendessen"))
+
+
+# ================================================ 17. Sprache 7.3 (eigene Sätze je Fähigkeit)
+L73 = "Sprache 7.3"
+# Sicherheitsfehler S1-S7
+S("s73-s1-maintain", L73, "S1: „lass … an“ ist Beibehaltung, keine Aktion",
+  say("Lass die Kücheninsel an.", no_calls=True),
+  say("Lass das Licht in der Küche bitte an.", no_calls=True))
+S("s73-s2-everything-room", L73, "S2: „alles“ im Raum = schaltbare Alltagsgeräte mit Vorschau",
+  say("Mach im Schlafzimmer alles aus.", no_calls=True, any=["soll"], none=["heizung schlafzimmer aus"]),
+  say(YES, calls=["light.schlafzimmerlicht:turn_off", "fan.deckenventilator:turn_off"],
+      not_calls=["climate.heizung_schlafzimmer:set_hvac_mode", "climate.heizung_schlafzimmer:turn_off"]))
+S("s73-s3-three-clauses", L73, "S3: drei Befehle in einem Satz, keiner fällt weg",
+  say("Schalte das Küchenlicht ein, mach die Stehlampe an und fahre den Esszimmer Rollladen runter.", settle=4,
+      calls=["light.kuechenlicht:turn_on", "light.stehlampe:turn_on", "cover.esszimmer_rollladen:close_cover"]))
+S("s73-s4-quieter-not-pause", L73, "S4: leiser heißt Lautstärke senken, nicht pausieren",
+  say("Mach das Radio in der Küche leiser.", not_calls=["media_player.kuechenradio:media_pause"], none=["paused"]))
+S("s73-s5-indoor-superlative", L73, "S5: Superlativ ohne Außenbezug vergleicht nur Innenräume",
+  say("Welcher Raum ist am wärmsten?", no_calls=True, none=["garten", "außen"]))
+S("s73-s6-too-bright", L73, "S6: „zu hell“ wirkt statt Werte vorzulesen",
+  service("light.turn_on", {"entity_id": "light.stehlampe", "brightness_pct": 80}),
+  say("Im Wohnzimmer ist es mir zu hell.", none=["lux"],
+      any=["gedimmt", "dunkler", "heruntergefahren", "geschlossen", "gestellt", "gesenkt"]))
+S("s73-s7-detector-kind", L73, "S7: Meldergattung bleibt erhalten (Rauch ≠ Bewegung)",
+  say("Benachrichtige mich, wenn der Rauchmelder auslöst.", any=["rauchmelder"], none=["bewegungsmelder"]),
+  say("Nein."))
+# Restlücken R1-R9
+S("s73-r1-cooler", L73, "R1: „ein wenig kühler“ senkt den Sollwert",
+  say("Mach es im Büro ein wenig kühler.", calls=["climate.heizung_buero:set_temperature"]))
+S("s73-r2-cooler-no-device", L73, "R2: Ort + Komparativ ohne Gerät",
+  say("Im Schlafzimmer bitte etwas kühler.", calls=["climate.heizung_schlafzimmer:set_temperature"]))
+S("s73-r3-vacuum-option", L73, "R3: Saugstufe ohne das Wort „Saugstufe“",
+  say("Stell den Saugroboter auf maximal.", calls=["vacuum.saugroboter:set_fan_speed"]))
+S("s73-r4-tv-genus", L73, "R4: Fernseher/TV/Glotze als Gattung",
+  service("media_player.turn_on", {"entity_id": "media_player.wohnzimmer_tv"}),
+  say("Schalte die Glotze aus.", calls=["media_player.wohnzimmer_tv:turn_off"]))
+S("s73-r5-white-tone", L73, "R5: kaltweiß/neutralweiß",
+  say("Mach das Deckenlicht im Wohnzimmer kaltweiß.", calls=["light.wohnzimmer_deckenlicht:turn_on"]),
+  say("Stell die Pendelleuchte im Esszimmer auf neutral weiß.", calls=["light.esszimmer_pendelleuchte:turn_on"]))
+S("s73-r6-timer-count", L73, "R6: Anzahl laufender Timer",
+  say("Wie viele Timer sind gerade aktiv?", no_calls=True, none=["nicht verstanden"]))
+S("s73-r7-unknown-exclusion", L73, "R7: unbekannter Name in der Ausnahme wird korrekt genannt",
+  say("Schalte im Büro alle Lampen aus, bis auf die Zimmerpalme.", no_calls=True, any=["zimmerpalme"]))
+S("s73-r8-threshold-query", L73, "R8: Vergleich mit Schwelle",
+  service("light.turn_on", {"entity_id": "light.stehlampe", "brightness_pct": 60}),
+  say("Welche Lampen sind heller als 30 Prozent?", type="query_answer", no_calls=True, any=["stehlampe"]))
+S("s73-r9-calendar-trigger", L73, "R9: Kalendertermin als Auslöser",
+  say("Wenn der Termin Zahnarzt anfängt, schalte das Flurlicht ein.", any=["zahnarzt"], no_calls=True),
+  say("Nein."))
+# §1 Kompositionelle Zielauflösung
+S("s73-1-singular-asks", L73, "§1: Einzahl bei mehreren Geräten der Gattung → Rückfrage",
+  say("Mach die Leuchte im Kinderzimmer an.", no_calls=True, any=["welche", "meinst"]))
+S("s73-1-plural-floor", L73, "§1: Plural + Etage = alle der Gattung dort",
+  say("Fahre alle Jalousien im Obergeschoss hoch.", settle=4,
+      calls=["cover.schlafzimmer_rollladen:open_cover", "cover.kinderzimmer_rollladen:open_cover",
+             "cover.badezimmer_rollladen:open_cover"], not_calls=["cover.garagentor:open_cover"]))
+S("s73-1-missing-genus", L73, "§1: fehlende Gattung am Ort wird ehrlich benannt",
+  say("Mach im Büro den Ventilator an.", no_calls=True, all=["büro", "ventilator"]))
+S("s73-1-three-lamps", L73, "§1: Zahl + Gattung + Raum",
+  say("Schalte die drei Lampen im Büro ein.",
+      calls=["light.buerolicht:turn_on", "light.schreibtischlampe:turn_on", "light.deckenfluter_buero:turn_on"]))
+# §2 Bedürfnisse
+S("s73-2-freezing", L73, "§2: „Ich friere“ am Satelliten",
+  say("Ich friere.", device="Kinderzimmer", calls=["climate.heizung_kinderzimmer:set_temperature"]))
+S("s73-2-stale-air", L73, "§2: muffige Luft → Lüfter des Raums",
+  say("Hier ist es muffig.", device="Badezimmer", calls=["fan.badluefter:turn_on"]))
+# §3 Situationssichten
+S("s73-3-still-on", L73, "§3: noch an je Etage",
+  say("Ist im Erdgeschoss noch etwas an?", type="query_answer", no_calls=True, any=["küchenradio"]))
+S("s73-3-ventilate", L73, "§3: Lüften nach dokumentierten Schwellen",
+  say("Sollte ich lüften?", no_calls=True, any=["badezimmer"]))
+S("s73-3-rooms-floor", L73, "§3: Räume je Etage",
+  say("Welche Räume gibt es im Keller?", no_calls=True, all=["hauswirtschaftsraum", "kellerraum"]))
+S("s73-3-secure", L73, "§3: abgeschlossen/zu nennt offene Fenster",
+  say("Ist alles abgeschlossen?", no_calls=True, any=["küchenfenster"]))
+S("s73-3-script", L73, "§3: was macht ein Skript (aus der HA-Konfiguration)",
+  say("Was macht das Skript Kaffee kochen?", no_calls=True, any=["kaffeemaschine"]))
+S("s73-3-presence", L73, "§3: Präsenz je Raum",
+  say("Ist jemand im Büro?", no_calls=True, any=["nein", "niemand"]))
+# §4 Diskurs
+S("s73-4-other-one", L73, "§4: „die andere“ = Partnergerät",
+  say("Schalte die Nachttischlampe rechts ein.", calls=["light.nachttischlampe_rechts:turn_on"]),
+  say("Die andere bitte auch.", calls=["light.nachttischlampe_links:turn_on"], only_calls=True))
+S("s73-4-deictic-place", L73, "§4: „dort“ = letzter Ort",
+  say("Wie warm ist es im Kinderzimmer?", no_calls=True),
+  say("Dort bitte wärmer.", calls=["climate.heizung_kinderzimmer:set_temperature"]))
+# §5 Modalität
+S("s73-5-release", L73, "§5: „kann jetzt aus“ = ausschalten",
+  service("switch.turn_on", {"entity_id": "switch.kaffeemaschine"}),
+  say("Die Kaffeemaschine kann jetzt aus.", calls=["switch.kaffeemaschine:turn_off"], only_calls=True))
+S("s73-5-embedded-question", L73, "§5: eingebettete Frage bleibt Frage",
+  say("Ich wüsste gern, ob die Haustür zu ist.", no_calls=True, any=["haustür"]))
+# §6 Benachrichtigungen
+S("s73-6-tell-anna", L73, "§6: „Schreib Anna, dass …“ geht an Annas Handy",
+  say("Schreib Anna, dass das Essen fertig ist.", notify="Essen"))
+# §7 Zeitsprache
+S("s73-7-quarter-to", L73, "§7: „viertel vor neun“ wird eine Zeitautomation, nie sofort",
+  say("Schalte um viertel vor neun die Esszimmer Pendelleuchte aus.", no_calls=True, any=["08:45"]),
+  say("Nein."))
+S("s73-7-delay-plural", L73, "§7: Verzögerung in beliebiger Wortstellung, Plural mit Vorschau",
+  say("Schließe in einer halben Stunde die Rollläden im Erdgeschoss.", no_calls=True, any=["30 minuten"], none=["garagentor", "markise"]),
+  say("Nein."))
+S("s73-7-camera", L73, "Einfahrtkamera auf dem Fernseher (README-Gegenstück)",
+  service("media_player.turn_on", {"entity_id": "media_player.wohnzimmer_tv"}),
+  say("Zeig die Einfahrtkamera auf dem Fernseher im Wohnzimmer.", calls=["media_player.wohnzimmer_tv:play_media"]))

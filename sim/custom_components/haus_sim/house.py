@@ -50,6 +50,7 @@ HOUSE: list[tuple[str, str, str, str | None, dict[str, Any]]] = [
     ("light", "gaeste_wc_licht", "Gäste-WC Licht", "Gäste-WC", {}),
     ("light", "buerolicht", "Bürolicht", "Büro", CT),
     ("light", "schreibtischlampe", "Schreibtischlampe", "Büro", DIM),
+    ("light", "deckenfluter_buero", "Deckenfluter", "Büro", DIM),
     ("light", "schlafzimmerlicht", "Schlafzimmerlicht", "Schlafzimmer", DIM),
     ("light", "nachttischlampe_links", "Nachttischlampe links", "Schlafzimmer", DIM),
     ("light", "nachttischlampe_rechts", "Nachttischlampe rechts", "Schlafzimmer", DIM),
@@ -146,6 +147,7 @@ HOUSE: list[tuple[str, str, str, str | None, dict[str, Any]]] = [
     ("number", "poolpumpe_drehzahl", "Poolpumpe Drehzahl", "Garten", {"min": 0, "max": 3000, "step": 100, "value": 1200, "unit": "U/min"}),
     ("button", "kaffeemaschine_entkalken", "Kaffeemaschine entkalken", "Küche", {}),
     ("button", "tuerklingel_stumm", "Türklingel stummschalten", "Flur", {}),
+    ("camera", "einfahrtkamera", "Einfahrtkamera", "Garten", {}),
     # --- Personen / Kommunikation ---------------------------------------
     ("device_tracker", "handy_philipp", "Handy Philipp", None, {"home": True}),
     ("device_tracker", "handy_anna", "Handy Anna", None, {"home": True}),

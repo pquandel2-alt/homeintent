@@ -384,7 +384,13 @@ def analyse_utterance(text: str) -> SemanticUtterance:
     # command branch above still wins whenever an executable operation is
     # present.
     elif _PROPERTY_CUE_RE.search(normalized) and (
-        normalized.rstrip().endswith("?") or _COMPARATOR_CUE_RE.search(normalized)
+        normalized.rstrip().endswith("?")
+        or (
+            _COMPARATOR_CUE_RE.search(normalized)
+            # "Im Büro etwas wärmer bitte": a comparative with a request
+            # marker and without "als" asks for a change, not a comparison.
+            and not (re.search(r"\bbitte\b", normalized, re.I) and not re.search(r"\bals\b", normalized, re.I))
+        )
     ):
         speech_act = SpeechAct.QUERY
     elif _PROPERTY_NOUN_QUERY_RE.search(normalized):
