@@ -26,7 +26,7 @@
  },
  {
   "entity_id": "automation.flurlicht_bei_bewegung",
-  "state": "on",
+  "state": "off",
   "attributes": {
    "id": "1700000000001",
    "mode": "single",
@@ -421,6 +421,25 @@
   "floor_aliases": []
  },
  {
+  "entity_id": "camera.einfahrtkamera",
+  "state": "idle",
+  "attributes": {
+   "friendly_name": "Einfahrtkamera",
+   "supported_features": 2
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
   "entity_id": "climate.heizung_badezimmer",
   "state": "heat",
   "attributes": {
@@ -438,7 +457,7 @@
     "boost",
     "away"
    ],
-   "current_temperature": 22.0,
+   "current_temperature": 21.9,
    "temperature": 22.0,
    "hvac_action": "idle",
    "preset_mode": "comfort",
@@ -477,9 +496,9 @@
     "boost",
     "away"
    ],
-   "current_temperature": 20.5,
+   "current_temperature": 19.2,
    "temperature": 20.5,
-   "hvac_action": "idle",
+   "hvac_action": "heating",
    "preset_mode": "comfort",
    "friendly_name": "Heizung Büro",
    "supported_features": 401
@@ -516,7 +535,7 @@
     "boost",
     "away"
    ],
-   "current_temperature": 20.0,
+   "current_temperature": 20.1,
    "temperature": 20.0,
    "hvac_action": "idle",
    "preset_mode": "comfort",
@@ -555,7 +574,7 @@
     "boost",
     "away"
    ],
-   "current_temperature": 20.0,
+   "current_temperature": 20.9,
    "temperature": 20.0,
    "hvac_action": "idle",
    "preset_mode": "comfort",
@@ -592,7 +611,7 @@
     "boost",
     "away"
    ],
-   "current_temperature": 18.0,
+   "current_temperature": 18.1,
    "temperature": 18.0,
    "hvac_action": "idle",
    "preset_mode": "comfort",
@@ -629,9 +648,9 @@
     "boost",
     "away"
    ],
-   "current_temperature": 21.0,
+   "current_temperature": 20.5,
    "temperature": 21.0,
-   "hvac_action": "idle",
+   "hvac_action": "heating",
    "preset_mode": "comfort",
    "friendly_name": "Heizung Wohnzimmer",
    "supported_features": 401
@@ -1159,6 +1178,32 @@
   ]
  },
  {
+  "entity_id": "light.deckenfluter_buero",
+  "state": "off",
+  "attributes": {
+   "supported_color_modes": [
+    "brightness"
+   ],
+   "color_mode": null,
+   "brightness": null,
+   "friendly_name": "Deckenfluter",
+   "supported_features": 0
+  },
+  "aliases": [],
+  "area_id": "buro",
+  "area_name": "Büro",
+  "area_aliases": [
+   "Arbeitszimmer"
+  ],
+  "floor_id": "erdgeschoss",
+  "floor_name": "Erdgeschoss",
+  "floor_level": 0,
+  "floor_aliases": [
+   "EG",
+   "unten"
+  ]
+ },
+ {
   "entity_id": "light.esszimmer_pendelleuchte",
   "state": "off",
   "attributes": {
@@ -1345,13 +1390,13 @@
  },
  {
   "entity_id": "light.kuecheninsel",
-  "state": "on",
+  "state": "off",
   "attributes": {
    "supported_color_modes": [
     "brightness"
    ],
-   "color_mode": "brightness",
-   "brightness": 180,
+   "color_mode": null,
+   "brightness": null,
    "friendly_name": "Kücheninsel",
    "supported_features": 0
   },
@@ -1369,13 +1414,13 @@
  },
  {
   "entity_id": "light.kuechenlicht",
-  "state": "on",
+  "state": "off",
   "attributes": {
    "supported_color_modes": [
     "brightness"
    ],
-   "color_mode": "brightness",
-   "brightness": 180,
+   "color_mode": null,
+   "brightness": null,
    "friendly_name": "Küchenlicht",
    "supported_features": 0
   },
@@ -1869,7 +1914,7 @@
     "zone.home"
    ],
    "source": "device_tracker.handy_anna",
-   "user_id": "cb96f951d18e4ffeb217e9ce828e021c",
+   "user_id": "01d5aa99d76d48bdac7e57f7e9b6897d",
    "friendly_name": "Anna"
   },
   "aliases": [],
@@ -1889,7 +1934,7 @@
    "id": "lena",
    "device_trackers": [],
    "in_zones": [],
-   "user_id": "e88193cc93f849568a5af64f6e87d145",
+   "user_id": "adceecfdb67f442d9c9e3b451c54ca42",
    "friendly_name": "Lena"
   },
   "aliases": [],
@@ -1914,7 +1959,7 @@
     "zone.home"
    ],
    "source": "device_tracker.handy_philipp",
-   "user_id": "4767c3c921954bc08d8f04cc0099fa63",
+   "user_id": "c6ce4b2d53574092b84e57a3c2b13318",
    "friendly_name": "Philipp"
   },
   "aliases": [],
@@ -2492,7 +2537,7 @@
  },
  {
   "entity_id": "sensor.sun_next_noon",
-  "state": "2026-09-27T11:04:52+00:00",
+  "state": "2026-09-28T11:04:31+00:00",
   "attributes": {
    "device_class": "timestamp",
    "friendly_name": "Sun Nächster Höchststand"
@@ -2540,7 +2585,7 @@
  },
  {
   "entity_id": "sensor.temperatur_badezimmer",
-  "state": "22.0",
+  "state": "21.9",
   "attributes": {
    "state_class": "measurement",
    "unit_of_measurement": "°C",
@@ -2563,7 +2608,7 @@
  },
  {
   "entity_id": "sensor.temperatur_buero",
-  "state": "20.5",
+  "state": "19.2",
   "attributes": {
    "state_class": "measurement",
    "unit_of_measurement": "°C",
@@ -2606,7 +2651,7 @@
  },
  {
   "entity_id": "sensor.temperatur_kinderzimmer",
-  "state": "20.0",
+  "state": "20.1",
   "attributes": {
    "state_class": "measurement",
    "unit_of_measurement": "°C",
@@ -2629,7 +2674,7 @@
  },
  {
   "entity_id": "sensor.temperatur_kueche",
-  "state": "20.0",
+  "state": "20.9",
   "attributes": {
    "state_class": "measurement",
    "unit_of_measurement": "°C",
@@ -2650,7 +2695,7 @@
  },
  {
   "entity_id": "sensor.temperatur_schlafzimmer",
-  "state": "18.0",
+  "state": "18.1",
   "attributes": {
    "state_class": "measurement",
    "unit_of_measurement": "°C",
@@ -2671,7 +2716,7 @@
  },
  {
   "entity_id": "sensor.temperatur_wohnzimmer",
-  "state": "21.0",
+  "state": "20.5",
   "attributes": {
    "state_class": "measurement",
    "unit_of_measurement": "°C",
@@ -2694,7 +2739,7 @@
  },
  {
   "entity_id": "sensor.waschmaschine_fertig",
-  "state": "2026-09-27T11:03:36+00:00",
+  "state": "2026-09-27T15:57:05+00:00",
   "attributes": {
    "device_class": "timestamp",
    "friendly_name": "Waschmaschine fertig um"
