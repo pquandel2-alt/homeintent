@@ -29,7 +29,7 @@ from ..areas import AreaSnapshot
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..service_call import REGISTERED_OPERATION_INTENT
 from .degree_semantics import extract_degree
-from .device_ontology import GENERA, entity_genera, genus
+from .device_ontology import GENERA, analyse_word, entity_genera, genus
 from .frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .german_structure import ClauseKind
 from .language_frontend import tokenize_language
@@ -202,6 +202,27 @@ def _clause_meanings(
             ranges[-1] = (ranges[-1][0], end)
             continue
         ranges.append((start, end))
+    # "Schalte in Küche | und Flur alle Lichter aus": a leading segment that
+    # ends in a place and holds no device word coordinates its place with
+    # the next segment.
+    joined: list[tuple[int, int]] = []
+    for start, end in ranges:
+        if joined:
+            previous_start, previous_end = joined[-1]
+            previous_words = [
+                token.canonical for token in tokens[previous_start:previous_end] if token.is_word
+            ]
+            mentions = lexicon.scan(previous_words)
+            if (
+                mentions
+                and mentions[-1].token_end == len(previous_words)
+                and not any(analyse_word(word) is not None for word in previous_words)
+                and not _operation_words(normalize(" ".join(previous_words)))[0]
+            ):
+                joined[-1] = (previous_start, end)
+                continue
+        joined.append((start, end))
+    ranges = joined
     for start, end in ranges:
         clause_tokens = tokens[start:end]
         if not any(token.is_word for token in clause_tokens):
@@ -580,6 +601,51 @@ def _tone_command(
     return OntologyCommand(results=results, kept=kept, clauses=1)
 
 
+def _with_exceptions(
+    document: object,
+    entities: Sequence[EntitySnapshot],
+    source_area: AreaSnapshot | None,
+) -> OntologyCommand | None:
+    """"Alle Lichter in Küche und Flur aus, außer der Kücheninsel".
+
+    The positive command is compiled on its own; every named exception must
+    be exactly one registry device among its targets, otherwise ``None``
+    (the honest explanation is given by the failure feedback).
+    """
+    from dataclasses import replace as _replace
+
+    from .language_frontend import analyse_language
+    from .semantic_exclusion import has_exclusion_clause, split_exclusion
+
+    source = getattr(getattr(document, "utterance"), "normalized_text")
+    if not has_exclusion_clause(source):
+        return None
+    positive, names = split_exclusion(source)
+    if not names or positive.strip() == source.strip():
+        return None
+    compiled = compile_ontology_command(
+        analyse_language(positive, entities), entities, source_area=source_area,
+    )
+    if compiled is None or not compiled.executable:
+        return None
+    index = _name_index(entities)
+    targets = {entity.entity_id for result in compiled.results for entity in result.resolved_entities}
+    excluded: set[str] = set()
+    for name in names:
+        matches = index.phrases.get(normalize_for_compare(name))
+        if not matches or len(matches) != 1 or matches[0].entity_id not in targets:
+            return None
+        excluded.add(matches[0].entity_id)
+    results = []
+    for result in compiled.results:
+        kept = [entity for entity in result.resolved_entities if entity.entity_id not in excluded]
+        if kept:
+            results.append(_replace(result, resolved_entities=kept))
+    if not results:
+        return None
+    return _replace(compiled, results=tuple(results))
+
+
 def compile_ontology_command(
     document: object,
     entities: Sequence[EntitySnapshot],
@@ -600,6 +666,9 @@ def compile_ontology_command(
     ):
         # Time-bound commands belong to scheduling/automation.
         return None
+    excepted = _with_exceptions(document, entities, source_area)
+    if excepted is not None:
+        return excepted
     option = _option_command(document, entities, source_area)
     if option is not None:
         return option

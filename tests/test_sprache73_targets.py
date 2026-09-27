@@ -264,3 +264,31 @@ def test_kind_without_operable_member_says_why(monkeypatch):
 def test_exception_at_another_place_is_named_honestly(monkeypatch):
     turn = HouseConversation(monkeypatch).say("Schalte in Küche und Flur alle Lichter aus, außer dem Nachtlicht.")
     assert turn.calls == [] and "Nachtlicht" in turn.speech and "Kinderzimmer" in turn.speech
+
+
+@pytest.mark.parametrize("shape", [
+    "Schalte in {a} und {b} alle Lichter aus.",
+    "Schalte alle Lichter in {a} und {b} aus.",
+    "In {a} und {b} bitte alle Lichter aus.",
+])
+@pytest.mark.parametrize("a,b", [("Küche", "Flur"), ("Wohnzimmer", "Esszimmer"), ("Büro", "Küche")])
+def test_coordinated_places_keep_every_place(monkeypatch, shape, a, b):
+    areas = {e.area_name: e.area_id for e in _entities() if e.area_name}
+    expected = {
+        e.entity_id for e in genus_members("light", list(_entities()))
+        if e.area_id in {areas[a], areas[b]}
+    }
+    house = HouseConversation(monkeypatch)
+    turn = house.say(shape.format(a=a, b=b))
+    if turn.calls == [] and len(expected) > 5:
+        turn = house.say("Ja")  # larger groups are previewed first
+    assert turn.targets == expected, turn.speech
+
+
+@pytest.mark.parametrize("shape", [
+    "Schalte in Küche und Flur alle Lichter aus, außer der Kücheninsel.",
+    "Schalte alle Lichter in Küche und Flur aus, bis auf die Kücheninsel.",
+])
+def test_exception_across_coordinated_places(monkeypatch, shape):
+    turn = HouseConversation(monkeypatch).say(shape)
+    assert turn.targets == {"light.flurlicht", "light.kuechenlicht"}
