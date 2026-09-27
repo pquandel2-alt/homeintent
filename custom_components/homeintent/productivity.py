@@ -78,7 +78,8 @@ _LIST_RE = re.compile(
     r"artikel|einträge|eintraege|punkte))\b", re.IGNORECASE
 )
 _COMPLETE_RE = re.compile(
-    r"\b(?:erledig(?:e|t|en)|hak(?:e|t)?\s+ab|abhaken|markier(?:e|t)?(?:\s+als\s+erledigt)?)\b",
+    r"\b(?:erledig(?:e|t|en)|hak(?:e|t)?\s+ab|hak(?:e|t)?(?=\s.+\bab\b)|abhaken|"
+    r"markier(?:e|t)?(?:\s+als\s+erledigt)?)\b",
     re.IGNORECASE,
 )
 _REMOVE_RE = re.compile(
@@ -86,7 +87,15 @@ _REMOVE_RE = re.compile(
     re.IGNORECASE,
 )
 _CLEAR_COMPLETED_RE = re.compile(
-    r"\b(?:alle\s+)?erledigten?\b.*\b(?:entfern|lösch|loesch|aufräum|aufraeum|weg)",
+    r"\b(?:alle\s+)?erledigten?\b.*\b(?:entfern|lösch|loesch|aufräum|aufraeum|weg)|"
+    r"\b(?:entfern\w*|lösch\w*|loesch\w*|räum\w*|raeum\w*)\b.*\b(?:alle\s+)?erledigten\b",
+    re.IGNORECASE,
+)
+# Unmistakable list operations even without the word "Liste" (F27):
+# "Markiere Milch und Brot als erledigt", "Lösche alle erledigten Einträge".
+_TODO_OPERATION_CUE_RE = re.compile(
+    r"\bals\s+erledigt\b|\babhaken\b|\bhak(?:e|t)?\b.+\bab\b|\berledigten\s+"
+    r"(?:einträge|eintraege|punkte|sachen|aufgaben|artikel)\b",
     re.IGNORECASE,
 )
 _PREPOSITION_RE = re.compile(
@@ -271,7 +280,11 @@ def parse_todo_request(
 ) -> TodoRequest | None:
     todo_entities = tuple(entity for entity in entities if entity.domain == "todo")
     mentioned_lists = _mentioned_entities(text, todo_entities)
-    if not _TODO_NOUN_RE.search(text) and not mentioned_lists:
+    if (
+        not _TODO_NOUN_RE.search(text)
+        and not mentioned_lists
+        and not (todo_entities and _TODO_OPERATION_CUE_RE.search(text))
+    ):
         return None
     move_match = _MOVE_RE.search(text)
     if move_match is not None and len(mentioned_lists) == 2:

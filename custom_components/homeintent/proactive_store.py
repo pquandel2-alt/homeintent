@@ -179,6 +179,10 @@ class SituationStore:
         return store
 
 
+# Records of one routing pass are written microseconds apart.
+_SAME_DECISION_SECONDS = 1.0
+
+
 class ProactiveHistoryStore:
     """Bounded explainability log; decisions and reason codes only."""
 
@@ -187,6 +191,32 @@ class ProactiveHistoryStore:
         self._counter = 0
 
     def append(self, record: HistoryRecord) -> None:
+        last = self._items[-1] if self._items else None
+        if (
+            last is not None
+            and record.recipient_user_id is not None
+            and last.recipient_user_id is not None
+            and not last.addressed_to(record.recipient_user_id)
+            and abs((record.timestamp - last.timestamp).total_seconds()) <= _SAME_DECISION_SECONDS
+            and replace(
+                last,
+                record_id=record.record_id,
+                recipient_user_id=record.recipient_user_id,
+                other_recipient_user_ids=(),
+                timestamp=record.timestamp,
+            ) == record
+        ):
+            # The same decision for another household member (same
+            # situation, channel, result, reasons and moment, i.e. one
+            # routing pass) extends the existing entry instead of
+            # duplicating it (F25).
+            self._items[-1] = replace(
+                last,
+                other_recipient_user_ids=(
+                    *last.other_recipient_user_ids, record.recipient_user_id,
+                ),
+            )
+            return
         self._items.append(record)
 
     def next_id(self, now: datetime) -> str:
@@ -358,6 +388,7 @@ def _history_dict(item: HistoryRecord) -> dict[str, object]:
         "subject_label": item.subject_label,
         "decision": item.decision.value,
         "recipient_user_id": item.recipient_user_id,
+        "other_recipient_user_ids": list(item.other_recipient_user_ids),
         "channel": item.channel.value,
         "timestamp": item.timestamp.isoformat(),
         "priority": int(item.priority),
@@ -391,6 +422,7 @@ def _history_from(raw: object) -> HistoryRecord | None:
             str(value.get("result", ""))[:200], _strings(value.get("reasons"))[:12],
             _text(value.get("acknowledgement")), _text(value.get("related_run_id")),
             _evidence(value.get("evidence")), _text(value.get("model_ref")),
+            _strings(value.get("other_recipient_user_ids"))[:16],
         )
     except (KeyError, ValueError, TypeError):
         return None

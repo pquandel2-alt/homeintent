@@ -57,14 +57,23 @@ class AttentionStateStore:
         self._group_deadline: dict[str, datetime] = {}
 
     # -- recording -----------------------------------------------------------
-    def record_delivery(self, recipient: str, dedupe_key: str, now: datetime) -> None:
-        history = self._deliveries.pop(recipient, None) or deque[datetime](
-            maxlen=MAX_DELIVERIES_PER_RECIPIENT
-        )
-        history.append(now)
-        self._deliveries[recipient] = history
-        while len(self._deliveries) > MAX_RECIPIENTS:
-            self._deliveries.popitem(last=False)
+    def record_delivery(
+        self, recipient: str, dedupe_key: str, now: datetime, *, counts_for_budget: bool = True,
+    ) -> None:
+        """Remember a delivery for dedupe and, unless exempt, for the budget.
+
+        A critical alarm bypasses every attention limit, so it must not use
+        up the ordinary budget either: a washer finishing right after a
+        smoke alarm is still delivered on its own, not grouped away (F28).
+        """
+        if counts_for_budget:
+            history = self._deliveries.pop(recipient, None) or deque[datetime](
+                maxlen=MAX_DELIVERIES_PER_RECIPIENT
+            )
+            history.append(now)
+            self._deliveries[recipient] = history
+            while len(self._deliveries) > MAX_RECIPIENTS:
+                self._deliveries.popitem(last=False)
         self._key_last.pop(dedupe_key, None)
         self._key_last[dedupe_key] = now
         while len(self._key_last) > MAX_TRACKED_KEYS:

@@ -238,10 +238,59 @@ def format_spoken_number(value: object) -> str:
     return rendered.replace(".", ",")
 
 
+# Starter set of commonly seen HA units spoken in German; unknown units are
+# still spoken raw (e.g. "42 mbar"), never crash.
+SPOKEN_UNITS_DE = {
+    "°C": "Grad", "°F": "Grad Fahrenheit", "%": "Prozent", "hPa": "Hektopascal",
+    "lx": "Lux", "W": "Watt", "kW": "Kilowatt", "Wh": "Wattstunden",
+    "kWh": "Kilowattstunden", "ppm": "ppm",
+}
+
+
+def spoken_unit(unit: str | None) -> str | None:
+    """German spoken form of a Home Assistant unit of measurement."""
+    if not unit:
+        return None
+    return SPOKEN_UNITS_DE.get(unit, unit)
+
+
+# German words for raw Home Assistant states, so that no English enum value
+# ("closed", "paused", "running") is ever spoken (F16).
+SPOKEN_STATES_DE: dict[str, str] = {
+    "on": "eingeschaltet", "off": "ausgeschaltet", "open": "geöffnet",
+    "closed": "geschlossen", "opening": "öffnet gerade", "closing": "schließt gerade",
+    "locked": "verriegelt", "unlocked": "entriegelt", "locking": "wird verriegelt",
+    "unlocking": "wird entriegelt", "jammed": "blockiert", "playing": "spielt",
+    "paused": "pausiert", "idle": "inaktiv", "standby": "im Bereitschaftsmodus",
+    "buffering": "puffert", "cleaning": "reinigt", "docked": "an der Ladestation",
+    "returning": "fährt zur Ladestation", "mowing": "mäht", "error": "meldet einen Fehler",
+    "home": "zuhause", "not_home": "nicht zuhause", "away": "abwesend",
+    "heat": "im Heizbetrieb", "cool": "im Kühlbetrieb", "heat_cool": "im Automatikbetrieb",
+    "auto": "im Automatikbetrieb", "dry": "im Entfeuchtungsbetrieb", "fan_only": "im Lüfterbetrieb",
+    "eco": "im Eco-Modus", "performance": "im Leistungsmodus",
+    "armed_away": "scharf (abwesend)", "armed_home": "scharf (zuhause)",
+    "armed_night": "scharf (Nacht)", "disarmed": "unscharf", "triggered": "ausgelöst",
+    "pending": "wartet", "arming": "wird scharf geschaltet",
+    "active": "aktiv", "running": "läuft", "finished": "fertig", "stopped": "gestoppt",
+    "unknown": "unbekannt", "unavailable": "nicht verfügbar",
+    "above_horizon": "über dem Horizont", "below_horizon": "unter dem Horizont",
+}
+
+
+def spoken_state(state: str) -> str:
+    """German spoken form of a raw HA state; unknown values stay as given."""
+    return SPOKEN_STATES_DE.get(state.casefold(), state)
+
+
 # Domains whose state is the timestamp of their last activation. "unknown" is
 # their normal state until they are triggered for the first time and says
 # nothing about the device being unreachable.
 ACTIVATION_TIMESTAMP_DOMAINS = frozenset({"scene", "button", "input_button"})
+
+# Domains whose state never describes a current device condition: activation
+# timestamps above, notify entities (timestamp of the last message, "unknown"
+# until the first one) and scripts. "unknown" must not block an action there.
+STATELESS_ACTION_DOMAINS = ACTIVATION_TIMESTAMP_DOMAINS | frozenset({"notify", "script"})
 
 
 def normalize_for_compare(text: str) -> str:
@@ -256,6 +305,22 @@ def normalize_for_compare(text: str) -> str:
     folded = folded.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
     return " ".join(folded.split())
 
+
+
+OUTDOOR_MARKERS = ("aussen", "draussen", "garten", "terrasse", "balkon")
+
+
+def is_outdoor_entity(entity: EntitySnapshot) -> bool:
+    """Whether a device is outdoors by its name, area or floor ("Außentemperatur")."""
+    names = (
+        entity.friendly_name, entity.area_name or "", entity.floor_name or "",
+        *entity.area_aliases,
+    )
+    return any(
+        marker in normalize_for_compare(name)
+        for name in names
+        for marker in OUTDOOR_MARKERS
+    )
 
 def _score_name_pair(
     spoken: str,

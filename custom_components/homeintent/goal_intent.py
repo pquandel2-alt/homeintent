@@ -26,7 +26,9 @@ _WINDOW = frozenset({"fenster", "fenstern", "fensterkontakt", "fensterkontakte"}
 _LIGHT = frozenset({"licht", "lichter", "lampe", "lampen", "leuchte", "leuchten"})
 
 
-def classify_intent(document: LanguageDocument) -> IntentClass:
+def classify_intent(
+    document: LanguageDocument, routine_names: Mapping[str, str] | None = None
+) -> IntentClass:
     """Classify the requested semantic product, not just its leading verb."""
     words = _words(document)
     has_condition = any(
@@ -41,6 +43,10 @@ def classify_intent(document: LanguageDocument) -> IntentClass:
     if words & {"angenehmer", "gemuetlicher", "komfortabler"}:
         return IntentClass.GOAL
     if words & _PREPARE and words & {"schlafengehen", "filmabend", "nacht", "abwesenheit"}:
+        return IntentClass.GOAL
+    if routine_names and _stored_routine(document, routine_names) is not None and (
+        words & _PREPARE or words & _START_ROUTINE
+    ):
         return IntentClass.GOAL
     if document.utterance.speech_act is SpeechAct.QUERY:
         return IntentClass.QUERY
@@ -58,9 +64,32 @@ def interpret_goal(
     voice_area_id: str | None = None,
     household_person_ids: Iterable[str] = (),
     person_name_bindings: Mapping[str, tuple[str, ...]] | None = None,
+    routine_names: Mapping[str, str] | None = None,
+    area_names: Mapping[str, str] | None = None,
 ) -> GoalModel | None:
-    """Build one typed goal without selecting services or guessing bindings."""
+    """Build one typed goal without selecting services or guessing bindings.
+
+    ``routine_names`` maps normalized names of the caller's stored routines
+    to their ids and ``area_names`` maps normalized area names and aliases of
+    the Area Registry to area ids (F14); without them only the built-in
+    vocabulary is known.
+    """
     words = _words(document)
+    stored_routine = _stored_routine(document, routine_names or {})
+    if stored_routine is not None and (words & _PREPARE or words & _START_ROUTINE):
+        return GoalModel(
+            GoalKind.PREPARE_ROUTINE,
+            {"routine_name": stored_routine, "excluded_area_names": _exclusion_names(document)},
+            goal_id=f"goal_{uuid.uuid4().hex}",
+            routine_id=stored_routine,
+            confirmation_required=True,
+            provenance=GoalProvenance(
+                document.source_text,
+                current_user_id,
+                conversation_id,
+                semantic_graph_ref=_semantic_reference(document),
+            ),
+        )
     provenance = GoalProvenance(
         document.source_text,
         current_user_id,
@@ -99,7 +128,7 @@ def interpret_goal(
 
     if _is_result_temperature_goal(words):
         value = _temperature_value(document)
-        scope = GoalScope(domain="climate", area_id=_spoken_area(words))
+        scope = GoalScope(domain="climate", area_id=_spoken_area(words, document, area_names))
         criteria = () if value is None else (
             SuccessCriterion(
                 "measured-room-temperature", "measured_property", scope,
@@ -338,11 +367,39 @@ def _routine_name(words: frozenset[str]) -> str | None:
     return None
 
 
-def _spoken_area(words: frozenset[str]) -> str | None:
+def _spoken_area(
+    words: frozenset[str],
+    document: LanguageDocument | None = None,
+    area_names: Mapping[str, str] | None = None,
+) -> str | None:
+    if area_names and document is not None:
+        # Area Registry names and aliases, longest first ("Flur oben" before
+        # "Flur"), matched on whole words of the utterance (F14).
+        text = f" {' '.join(token.canonical for token in document.tokens if token.is_word)} "
+        for name in sorted(area_names, key=len, reverse=True):
+            if name and f" {name} " in text:
+                return area_names[name]
+        return None
     for candidate in ("wohnzimmer", "schlafzimmer", "kueche", "bad"):
         if candidate in words:
             return candidate
     return None
+
+
+_START_ROUTINE = frozenset({"starte", "start", "fuehre", "aktiviere", "routine", "beginne"})
+
+
+def _stored_routine(document: LanguageDocument, routine_names: Mapping[str, str]) -> str | None:
+    """The id of the one stored routine named in the utterance, if any."""
+    if not routine_names:
+        return None
+    text = f" {' '.join(token.canonical for token in document.tokens if token.is_word)} "
+    matches = {
+        routine_id
+        for name, routine_id in routine_names.items()
+        if name and f" {name} " in text
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
 
 
 def _exclusion_names(document: LanguageDocument) -> tuple[str, ...]:

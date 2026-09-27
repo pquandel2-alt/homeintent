@@ -148,6 +148,8 @@ def test_calendar_agenda_query_uses_get_events_response(monkeypatch):
 
     assert "Zahnarzt" in result.response.speech
     entity.hass.services.async_call.assert_awaited_once()
+    # Reading the calendar is a question, not an action (F22).
+    assert result.response.response_type == "query_answer"
 
 
 def test_calendar_delete_is_refused_when_calendar_lacks_capability(monkeypatch):

@@ -1,0 +1,23 @@
+- id: szene_filmabend
+  name: Filmabend
+  entities:
+    light.wohnzimmer_deckenlicht: "off"
+    light.wohnzimmer_led_streifen:
+      state: "on"
+      brightness: 60
+    light.stehlampe:
+      state: "on"
+      brightness: 40
+- id: szene_abwesend
+  name: Abwesend
+  entities:
+    light.wohnzimmer_deckenlicht: "off"
+    light.kuechenlicht: "off"
+    light.buerolicht: "off"
+- id: szene_guten_morgen
+  name: Guten Morgen
+  entities:
+    light.kuechenlicht:
+      state: "on"
+      brightness: 200
+    switch.kaffeemaschine: "on"

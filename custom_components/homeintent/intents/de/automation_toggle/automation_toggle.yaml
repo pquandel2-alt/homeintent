@@ -20,11 +20,13 @@ intents:
     data:
       - sentences:
           - "deaktiviere die automation für {name}"
+          - "deaktiviere die automation {name}"
           - "deaktiviere die automation die {name} schaltet"
           - "deaktiviere die automation die {name} steuert"
   HassAutomationEnable:
     data:
       - sentences:
           - "aktiviere die automation für {name}"
+          - "aktiviere die automation {name}"
           - "aktiviere die automation die {name} schaltet"
           - "aktiviere die automation die {name} steuert"

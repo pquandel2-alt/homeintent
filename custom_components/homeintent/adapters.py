@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
-from typing import Awaitable, Callable, Iterable, Mapping, Protocol, Sequence, cast
+from typing import Awaitable, Callable, Iterable, Mapping, Protocol, Sequence, TypeVar, cast
 
 from .const import (
     CONF_FRIGATE_ENABLED,
@@ -25,6 +25,19 @@ from .agent_config_validation import validate_mqtt_topic
 
 
 _LOGGER = logging.getLogger(__name__)
+
+_ListenerT = TypeVar("_ListenerT", bound=Callable[..., object])
+
+
+def _event_loop_callback(func: _ListenerT) -> _ListenerT:
+    """Mark a listener like ``homeassistant.core.callback`` (F2).
+
+    Without the marker Home Assistant runs a plain function in the executor,
+    where the evidence sink is not thread safe. Setting the same attribute
+    keeps this module free of a Home Assistant import.
+    """
+    setattr(func, "_hass_callback", True)
+    return func
 
 
 class _EntryLike(Protocol):
@@ -309,16 +322,24 @@ class StructuredAdapterRuntime:
         self._sink(evidence)
 
     async def async_start(self) -> Callable[[], None]:
+        @_event_loop_callback
+        def _on_state_changed(event: _EventLike) -> None:
+            self._handle_state_changed(event)
+
+        @_event_loop_callback
+        def _on_frigate_event(event: _EventLike) -> None:
+            self._handle_frigate_event(event)
+
         unsubscribers: list[Callable[[], None]] = []
         bus = getattr(self._hass, "bus", None)
         listen = bus.async_listen if bus is not None else None
         if listen is not None and bool(
             self._entry.options.get(CONF_HA_SOURCES_ENABLED, False)
         ):
-            unsubscribers.append(listen("state_changed", self._handle_state_changed))
+            unsubscribers.append(listen("state_changed", _on_state_changed))
         if bool(self._entry.options.get(CONF_FRIGATE_ENABLED, False)):
             if listen is not None:
-                unsubscribers.append(listen("frigate_events", self._handle_frigate_event))
+                unsubscribers.append(listen("frigate_events", _on_frigate_event))
             mqtt_unsubscribe = await self._async_subscribe_mqtt()
             if mqtt_unsubscribe is not None:
                 unsubscribers.append(mqtt_unsubscribe)
@@ -400,9 +421,13 @@ class StructuredAdapterRuntime:
         except ValueError:
             _LOGGER.warning("Frigate MQTT topic is invalid")
             return None
+        @_event_loop_callback
+        def _on_mqtt_message(message: _MessageLike) -> None:
+            self._handle_mqtt_message(message)
+
         try:
             unsubscribe = await mqtt.async_subscribe(
-                self._hass, validated_topic, self._handle_mqtt_message, qos=0
+                self._hass, validated_topic, _on_mqtt_message, qos=0
             )
         except Exception:  # noqa: BLE001 - optional integration boundary
             _LOGGER.warning("Could not subscribe to Frigate MQTT metadata", exc_info=True)

@@ -1,0 +1,6983 @@
+{
+ "dev-light-onoff": {
+  "id": "dev-light-onoff",
+  "category": "Geräte",
+  "title": "Licht ein/aus/umschalten",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte das Küchenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 45.4,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Mach das Küchenlicht aus.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.8,
+    "speech": "Küchenlicht ausgeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_off"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schalte die Stehlampe um.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.5,
+    "speech": "Stehlampe umgeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.stehlampe:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-light-brightness": {
+  "id": "dev-light-brightness",
+  "category": "Geräte",
+  "title": "Helligkeit absolut/relativ",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle die Stehlampe auf 30 Prozent.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.6,
+    "speech": "Stehlampe auf 30 Prozent Helligkeit gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.stehlampe:turn_on {\"brightness\": 76}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Mach die Stehlampe etwas heller.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.2,
+    "speech": "Stehlampe um 5 Prozent heller gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.stehlampe:turn_on {\"brightness\": 89}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.stehlampe:turn_on {\"brightness\": 89}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Dimme die Stehlampe auf zehn Prozent.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.5,
+    "speech": "Stehlampe auf 10 Prozent Helligkeit gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.stehlampe:turn_on {\"brightness\": 26}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-light-color": {
+  "id": "dev-light-color",
+  "category": "Geräte",
+  "title": "Farbe und Farbtemperatur",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach den LED-Streifen im Wohnzimmer blau.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 56.2,
+    "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.wohnzimmer_led_streifen:turn_on",
+     "light.wohnzimmer_led_streifen=off statt on"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle das Wohnzimmer Deckenlicht auf warmweiß.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.4,
+    "speech": "Fehler beim Ausführen: not a valid option at 'kelvin'",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.wohnzimmer_deckenlicht:turn_on"
+    ]
+   },
+   {
+    "step": {
+     "say": "Mach die Schreibtischlampe rot.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 42.3,
+    "speech": "Ich habe Schreibtischlampe gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-switch": {
+  "id": "dev-switch",
+  "category": "Geräte",
+  "title": "Schalter",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte die Kaffeemaschine ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.4,
+    "speech": "Kaffeemaschine eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "switch.kaffeemaschine:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ist die Kaffeemaschine an?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.0,
+    "speech": "Ja, Kaffeemaschine ist eingeschaltet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-cover-position": {
+  "id": "dev-cover-position",
+  "category": "Geräte",
+  "title": "Rollläden öffnen/schließen/Position",
+  "steps": [
+   {
+    "step": {
+     "say": "Fahre den Küchenrollladen runter.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 25.8,
+    "speech": "Küchenrollladen wird geschlossen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.kuechenrollladen:close_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Fahre den Küchenrollladen auf 40 Prozent.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 25.1,
+    "speech": "Küchenrollladen auf 40 Prozent gefahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.kuechenrollladen:set_cover_position {\"position\": 40}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Fahre den Küchenrollladen komplett hoch.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 26.5,
+    "speech": "Küchenrollladen wird geöffnet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.kuechenrollladen:open_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-cover-fractions": {
+  "id": "dev-cover-fractions",
+  "category": "Geräte",
+  "title": "Bruchteile und Zahlwörter",
+  "steps": [
+   {
+    "step": {
+     "say": "Fahre den Schlafzimmer Rollladen zur Hälfte.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 42.6,
+    "speech": "Schlafzimmer Rollladen auf 50 Prozent gefahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.schlafzimmer_rollladen:set_cover_position {\"position\": 50}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Fahre den Schlafzimmer Rollladen auf drei Viertel.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 46.6,
+    "speech": "Schlafzimmer Rollladen auf 75 Prozent gefahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.schlafzimmer_rollladen:set_cover_position {\"position\": 75}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-cover-tilt": {
+  "id": "dev-cover-tilt",
+  "category": "Geräte",
+  "title": "Lamellen Raffstore",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle die Lamellen vom Büro Raffstore auf 20 Prozent.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.0,
+    "speech": "Büro Raffstore: die Lamellenposition einstellen – Lamellenposition 20 Prozent.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.buero_raffstore:set_cover_tilt_position {\"tilt_position\": 20}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-garage-confirm": {
+  "id": "dev-garage-confirm",
+  "category": "Geräte",
+  "title": "Garagentor nur nach Bestätigung",
+  "steps": [
+   {
+    "step": {
+     "say": "Öffne das Garagentor.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.9,
+    "speech": "Soll ich wirklich Garagentor öffnen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 8
+    },
+    "latency_ms": 23.9,
+    "speech": "Garagentor wird geöffnet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.garagentor:open_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schließ das Garagentor.",
+     "user": "admin",
+     "settle": 8
+    },
+    "latency_ms": 23.5,
+    "speech": "Soll ich wirklich Garagentor schließen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   }
+  ],
+  "passed": true
+ },
+ "dev-climate": {
+  "id": "dev-climate",
+  "category": "Geräte",
+  "title": "Heizung Solltemperatur/Preset/Modus",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle die Heizung im Wohnzimmer auf 22 Grad.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.5,
+    "speech": "Heizung Wohnzimmer auf 22 Grad gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "climate.heizung_wohnzimmer:set_temperature {\"temperature\": 22.0, \"entity_id\": [\"climate.heizung_wohnzimmer\"]}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Stelle die Heizung im Büro auf zweiundzwanzig Grad.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.3,
+    "speech": "Heizung Büro auf 22 Grad gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "climate.heizung_buero:set_temperature {\"temperature\": 22.0, \"entity_id\": [\"climate.heizung_buero\"]}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Mach die Heizung im Schlafzimmer stark wärmer.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 95.2,
+    "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: climate.heizung_schlafzimmer:set_temperature"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle die Heizung in der Küche auf Eco.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 55.8,
+    "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: climate.heizung_kueche:set_preset_mode",
+     "climate.heizung_kueche.preset_mode='comfort' statt 'eco'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Schalte die Heizung im Badezimmer aus.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.3,
+    "speech": "Heizung Badezimmer ausgeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "climate.heizung_badezimmer:set_hvac_mode \"off\""
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-climate-missing-value": {
+  "id": "dev-climate-missing-value",
+  "category": "Geräte",
+  "title": "Fehlende Temperatur wird erfragt",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle die Heizung im Büro ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.1,
+    "speech": "Heizung Büro eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "climate.heizung_buero:set_hvac_mode \"heat\""
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['welche temperatur', 'auf welche']",
+     "Unerwartete Aufrufe: ['climate.heizung_buero:set_hvac_mode']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Auf 21 Grad.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.6,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-fan": {
+  "id": "dev-fan",
+  "category": "Geräte",
+  "title": "Ventilator Stufe/Preset/Oszillation",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle den Deckenventilator auf Stufe 3.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.0,
+    "speech": "Deckenventilator auf Stufe 3 gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "fan.deckenventilator:turn_on {\"percentage\": 60, \"preset_mode\": null}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: fan.deckenventilator:set_percentage"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle den Deckenventilator auf Nacht.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 46.0,
+    "speech": "Ich habe Deckenventilator gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "fan.deckenventilator.preset_mode=None statt 'Nacht'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Schalte beim Deckenventilator die Oszillation ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 58.4,
+    "speech": "Ich habe Deckenventilator gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schalte den Badlüfter ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.2,
+    "speech": "Badlüfter eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "fan.badluefter:turn_on {\"percentage\": null, \"preset_mode\": null}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-media": {
+  "id": "dev-media",
+  "category": "Geräte",
+  "title": "Media Player",
+  "steps": [
+   {
+    "step": {
+     "say": "Pausiere das Küchenradio.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.7,
+    "speech": "Küchenradio pausiert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "media_player.kuechenradio:media_pause"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Bitte weiterspielen.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 382.3,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: media_player.kuechenradio:media_play"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle die Lautstärke vom Küchenradio auf 20 Prozent.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.6,
+    "speech": "Küchenradio: die Lautstärke einstellen – Lautstärke 20 Prozent.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "media_player.kuechenradio:volume_set 0.2"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schalte den Wohnzimmer TV auf Netflix.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 44.6,
+    "speech": "Ich habe Wohnzimmer TV gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "media_player.wohnzimmer_tv.source=None statt 'Netflix'"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "dev-vacuum": {
+  "id": "dev-vacuum",
+  "category": "Geräte",
+  "title": "Saugroboter",
+  "steps": [
+   {
+    "step": {
+     "say": "Starte den Saugroboter.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.4,
+    "speech": "Saugroboter gestartet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "vacuum.saugroboter:start"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Läuft der Saugroboter?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.5,
+    "speech": "Ja, Saugroboter reinigt gerade.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Stelle beim Saugroboter die Saugstufe auf stark.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 80.1,
+    "speech": "Ich habe Saugroboter gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "vacuum.saugroboter.fan_speed='normal' statt 'stark'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Schicke den Saugroboter zur Ladestation.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.5,
+    "speech": "Saugroboter: zur Ladestation fahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "vacuum.saugroboter:return_to_base"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-lawnmower": {
+  "id": "dev-lawnmower",
+  "category": "Geräte",
+  "title": "Mähroboter",
+  "steps": [
+   {
+    "step": {
+     "say": "Starte den Mähroboter.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.7,
+    "speech": "Mähroboter: das Mähen starten.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "lawn_mower.maehroboter:start_mowing"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Was macht der Mähroboter?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.5,
+    "speech": "Mähroboter ist aktiv.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schick den Mähroboter zurück zur Ladestation.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.4,
+    "speech": "Mähroboter: zur Ladestation fahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "lawn_mower.maehroboter:dock"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-lock": {
+  "id": "dev-lock",
+  "category": "Sicherheit",
+  "title": "Schloss: verriegeln direkt, entriegeln nur mit Bestätigung",
+  "steps": [
+   {
+    "step": {
+     "say": "Entriegle das Haustürschloss.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.4,
+    "speech": "Soll ich wirklich Haustürschloss aufschließen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.5,
+    "speech": "Haustürschloss aufgeschlossen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "lock.haustuerschloss:unlock"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Verriegle die Haustür.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 36.6,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: lock.haustuerschloss:lock",
+     "lock.haustuerschloss=unlocked statt locked"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "dev-lock-deny": {
+  "id": "dev-lock-deny",
+  "category": "Sicherheit",
+  "title": "Entriegeln abgelehnt mit Nein",
+  "steps": [
+   {
+    "step": {
+     "say": "Schließ das Gartentor auf.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.3,
+    "speech": "Soll ich wirklich Gartentor aufschließen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Nein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.3,
+    "speech": "Abgebrochen. Es wurde nichts ausgeführt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-valve": {
+  "id": "dev-valve",
+  "category": "Geräte",
+  "title": "Ventile nach Bestätigung",
+  "steps": [
+   {
+    "step": {
+     "say": "Öffne die Bewässerung im Garten.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.9,
+    "speech": "Soll ich wirklich Bewässerung Garten öffnen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.0,
+    "speech": "Bewässerung Garten wird geöffnet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "valve.bewaesserung:set_valve_position 100"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-humidifier": {
+  "id": "dev-humidifier",
+  "category": "Geräte",
+  "title": "Luftbefeuchter",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle den Luftbefeuchter auf 50 Prozent.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 78.5,
+    "speech": "Welche Luftfeuchtigkeit in Prozent möchtest du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "humidifier.luftbefeuchter.humidity=45 statt 50"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle den Luftbefeuchter auf den Modus Schlaf.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.3,
+    "speech": "Luftbefeuchter: den Modus einstellen – Modus Schlaf.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "humidifier.luftbefeuchter:set_mode \"Schlaf\""
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-waterheater": {
+  "id": "dev-waterheater",
+  "category": "Geräte",
+  "title": "Warmwasserspeicher",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle den Warmwasserspeicher auf 55 Grad.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 75.6,
+    "speech": "Welche Heizung meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "water_heater.warmwasserspeicher.temperature=50 statt 55"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle den Warmwasserspeicher auf performance.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 64.6,
+    "speech": "Auf welche Temperatur soll ich das Warmwasser stellen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "water_heater.warmwasserspeicher.operation_mode='eco' statt 'performance'"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "dev-select-number": {
+  "id": "dev-select-number",
+  "category": "Geräte",
+  "title": "Select / Number / Input-Helfer",
+  "steps": [
+   {
+    "step": {
+     "say": "Wähle beim Heizprogramm Eco.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 45.8,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "select.heizprogramm=Komfort statt Eco"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle die Poolpumpe Drehzahl auf 1800.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 49.4,
+    "speech": "Welchen Wert soll ich einstellen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "number.poolpumpe_drehzahl=1200 statt 1800.0"
+    ]
+   },
+   {
+    "step": {
+     "say": "Stelle die Poolheizung Solltemperatur auf 28 Grad.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.3,
+    "speech": "Poolheizung Solltemperatur: den Wert einstellen – Wert 28.0.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schalte den Gästemodus ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 36.3,
+    "speech": "Gästemodus eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "dev-button": {
+  "id": "dev-button",
+  "category": "Geräte",
+  "title": "Taste nach Bestätigung",
+  "steps": [
+   {
+    "step": {
+     "say": "Drücke Kaffeemaschine entkalken.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.4,
+    "speech": "Soll ich wirklich Kaffeemaschine entkalken drücken?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.1,
+    "speech": "Kaffeemaschine entkalken gedrückt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "button.kaffeemaschine_entkalken:press"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-scene-script": {
+  "id": "dev-scene-script",
+  "category": "Geräte",
+  "title": "Szene und Skript",
+  "steps": [
+   {
+    "step": {
+     "say": "Aktiviere die Szene Filmabend.",
+     "user": "admin",
+     "settle": 2
+    },
+    "latency_ms": 37.9,
+    "speech": "Filmabend aktiviert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.wohnzimmer_led_streifen:turn_on {\"brightness\": 60}",
+     "light.stehlampe:turn_on {\"brightness\": 40}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Starte das Skript Kaffee kochen.",
+     "user": "admin",
+     "settle": 2
+    },
+    "latency_ms": 32.3,
+    "speech": "Kaffee kochen ausgeführt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "switch.kaffeemaschine:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-alarm": {
+  "id": "dev-alarm",
+  "category": "Sicherheit",
+  "title": "Alarmanlage scharf schalten (kritisch)",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte die Alarmanlage scharf.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.2,
+    "speech": "Soll ich wirklich Alarmanlage für Abwesenheit scharf geschaltet?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.9,
+    "speech": "Alarmanlage für Abwesenheit scharf geschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "alarm_control_panel.alarmanlage:arm_away"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "dev-notify-entity": {
+  "id": "dev-notify-entity",
+  "category": "Geräte",
+  "title": "Nachricht an benanntes Notify-Ziel",
+  "steps": [
+   {
+    "step": {
+     "say": "Schicke an Handy Anna die Nachricht Abendessen ist fertig.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.0,
+    "speech": "Fehler beim Ausführen: Mindestens ein Ziel meldet keinen verlässlichen aktuellen Zustand.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'Abendessen ist fertig' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "nl-paraphrase-0": {
+  "id": "nl-paraphrase-0",
+  "category": "Sprache",
+  "title": "Paraphrase: Kannst du das Küchenlicht anmachen?",
+  "steps": [
+   {
+    "step": {
+     "say": "Kannst du das Küchenlicht anmachen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 45.3,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-paraphrase-1": {
+  "id": "nl-paraphrase-1",
+  "category": "Sprache",
+  "title": "Paraphrase: Wäre es möglich, das Küchenlicht einzuschalten?",
+  "steps": [
+   {
+    "step": {
+     "say": "Wäre es möglich, das Küchenlicht einzuschalten?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.6,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-paraphrase-2": {
+  "id": "nl-paraphrase-2",
+  "category": "Sprache",
+  "title": "Paraphrase: Ich hätte gerne das Küchenlicht an.",
+  "steps": [
+   {
+    "step": {
+     "say": "Ich hätte gerne das Küchenlicht an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.9,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-paraphrase-3": {
+  "id": "nl-paraphrase-3",
+  "category": "Sprache",
+  "title": "Paraphrase: Sorge bitte dafür, dass das Küchenlicht an ist.",
+  "steps": [
+   {
+    "step": {
+     "say": "Sorge bitte dafür, dass das Küchenlicht an ist.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.6,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-paraphrase-4": {
+  "id": "nl-paraphrase-4",
+  "category": "Sprache",
+  "title": "Paraphrase: Das Küchenlicht soll an sein.",
+  "steps": [
+   {
+    "step": {
+     "say": "Das Küchenlicht soll an sein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.1,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-paraphrase-5": {
+  "id": "nl-paraphrase-5",
+  "category": "Sprache",
+  "title": "Paraphrase: Küchenlicht an.",
+  "steps": [
+   {
+    "step": {
+     "say": "Küchenlicht an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.2,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-paraphrase-6": {
+  "id": "nl-paraphrase-6",
+  "category": "Sprache",
+  "title": "Paraphrase: Licht in der Küche an bitte.",
+  "steps": [
+   {
+    "step": {
+     "say": "Licht in der Küche an bitte.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.7,
+    "speech": "Ich habe mehrere passende Lichter gefunden: 1. Kücheninsel; 2. Küchenlicht. Welches meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.kuechenlicht:turn_on",
+     "light.kuechenlicht=off statt on"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "nl-paraphrase-7": {
+  "id": "nl-paraphrase-7",
+  "category": "Sprache",
+  "title": "Paraphrase: Mach mal bitte in der Küche das Licht an.",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach mal bitte in der Küche das Licht an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.4,
+    "speech": "Ich habe mehrere passende Lichter gefunden: 1. Kücheninsel; 2. Küchenlicht. Welches meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.kuechenlicht:turn_on",
+     "light.kuechenlicht=off statt on"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "nl-word-order": {
+  "id": "nl-word-order",
+  "category": "Sprache",
+  "title": "Freie Wortstellung",
+  "steps": [
+   {
+    "step": {
+     "say": "Im Erdgeschoss bitte alle Rollläden hochfahren.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 31.1,
+    "speech": "5 Rollläden geöffnet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.esszimmer_rollladen:open_cover",
+     "cover.buero_raffstore:open_cover",
+     "cover.kuechenrollladen:open_cover",
+     "cover.wohnzimmer_rollladen_links:open_cover",
+     "cover.wohnzimmer_rollladen_rechts:open_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Nach oben fahren sollen im Obergeschoss alle Rollläden.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 24.1,
+    "speech": "3 Rollläden geöffnet.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "nl-negation": {
+  "id": "nl-negation",
+  "category": "Sprache",
+  "title": "Negation führt nichts aus",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach das Küchenlicht nicht an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.4,
+    "speech": "Ich habe den Satz als unsicheren oder verneinten Befehl erkannt und führe nichts aus.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-hypothetical": {
+  "id": "nl-hypothetical",
+  "category": "Sprache",
+  "title": "Hypothetisch führt nichts aus",
+  "steps": [
+   {
+    "step": {
+     "say": "Wenn ich wollte, könnte ich das Küchenlicht einschalten.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 75.8,
+    "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ich überlege, ob ich das Wohnzimmer Deckenlicht anmache.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 59.0,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-whatif": {
+  "id": "nl-whatif",
+  "category": "Sprache",
+  "title": "Was-passiert-wenn-Frage bleibt lesend",
+  "steps": [
+   {
+    "step": {
+     "say": "Was passiert, wenn die Bewegung im Flur erkannt wird?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 59.9,
+    "speech": "Ich habe das genannte Gerät nicht gefunden.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-typo": {
+  "id": "nl-typo",
+  "category": "Sprache",
+  "title": "Tipp-/ASR-Fehler",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte das Küchenlihct ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 90.2,
+    "speech": "Meintest du Küchenlicht?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Schalte das Kuechenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.0,
+    "speech": "Küchenlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-alias": {
+  "id": "nl-alias",
+  "category": "Sprache",
+  "title": "Entity-Alias (Leselampe) und Bereichsalias (Bad, Stube)",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach die Leselampe an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.5,
+    "speech": "Stehlampe eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.stehlampe:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Mach das Licht im Bad an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.4,
+    "speech": "Badezimmerlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.badezimmerlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.spiegelschrank:turn_on"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie warm ist es in der Stube?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 47.7,
+    "speech": "unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "nl-offtopic": {
+  "id": "nl-offtopic",
+  "category": "Sprache",
+  "title": "Themenfremd / Unsinn / Englisch",
+  "steps": [
+   {
+    "step": {
+     "say": "Wer hat die Fußball-WM 2014 gewonnen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.1,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Blubb flurp zack.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 42.2,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Turn on the kitchen light.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 45.1,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "nl-explain": {
+  "id": "nl-explain",
+  "category": "Sprache",
+  "title": "Was hast du verstanden?",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte in Küche und Flur alle Lichter aus, außer dem Flurlicht.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.1,
+    "speech": "2 Lichter ausgeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was hast du verstanden?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.6,
+    "speech": "Ich habe Folgendes verstanden: Aktion: ausschalten; Ziel: Kücheninsel, Küchenlicht; Bereich: Küche; Ausgenommen: Flurlicht.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-floor-all": {
+  "id": "set-floor-all",
+  "category": "Mengen/Orte",
+  "title": "Alle Rollläden im Erdgeschoss auf 50 %",
+  "steps": [
+   {
+    "step": {
+     "say": "Fahre alle Rollläden im Erdgeschoss auf 50 Prozent.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 47.7,
+    "speech": "5 Rollläden auf 50 Prozent gefahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.esszimmer_rollladen:set_cover_position {\"position\": 50}",
+     "cover.buero_raffstore:set_cover_position {\"position\": 50}",
+     "cover.kuechenrollladen:set_cover_position {\"position\": 50}",
+     "cover.wohnzimmer_rollladen_links:set_cover_position {\"position\": 50}",
+     "cover.wohnzimmer_rollladen_rechts:set_cover_position {\"position\": 50}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-both": {
+  "id": "set-both",
+  "category": "Mengen/Orte",
+  "title": "Beide Rollläden im Wohnzimmer",
+  "steps": [
+   {
+    "step": {
+     "say": "Fahre beide Rollläden im Wohnzimmer runter.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 30.8,
+    "speech": "2 Rollläden geschlossen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.wohnzimmer_rollladen_rechts:close_cover",
+     "cover.wohnzimmer_rollladen_links:close_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-two-areas": {
+  "id": "set-two-areas",
+  "category": "Mengen/Orte",
+  "title": "Lichter in Küche und Flur",
+  "steps": [
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": [
+       "light.kuechenlicht",
+       "light.kuecheninsel",
+       "light.flurlicht",
+       "light.buerolicht"
+      ]
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F329X1X6EHP0EDKXFYQY2R",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Schalte alle Lichter in Küche und Flur aus.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.3,
+    "speech": "3 Lichter ausgeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kuechenlicht:turn_off",
+     "light.kuecheninsel:turn_off",
+     "light.flurlicht:turn_off"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-except": {
+  "id": "set-except",
+  "category": "Mengen/Orte",
+  "title": "Alle Lichter aus außer …",
+  "steps": [
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": [
+       "light.stehlampe",
+       "light.wohnzimmer_deckenlicht",
+       "light.nachtlicht",
+       "light.kuechenlicht"
+      ]
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F32AYEQ48XQJ9JQ9XH9VEX",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Mach alle Lichter aus außer der Stehlampe und dem Nachtlicht.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 37.6,
+    "speech": "22 Lichter ausgeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.terrassenlicht:turn_off",
+     "light.schreibtischlampe:turn_off",
+     "light.nachttischlampe_links:turn_off",
+     "light.waschkuechenlicht:turn_off",
+     "light.kellerlicht:turn_off",
+     "light.gaeste_wc_licht:turn_off",
+     "light.wohnzimmer_led_streifen:turn_off",
+     "light.spiegelschrank:turn_off",
+     "light.flurlicht:turn_off",
+     "light.buerolicht:turn_off",
+     "light.flurlicht_oben:turn_off",
+     "light.badezimmerlicht:turn_off",
+     "light.kinderzimmerlicht:turn_off",
+     "light.kuechenlicht:turn_off",
+     "light.nachttischlampe_rechts:turn_off",
+     "light.aussenbeleuchtung:turn_off",
+     "light.schlafzimmerlicht:turn_off",
+     "light.nachtlicht:turn_off",
+     "light.kuecheninsel:turn_off",
+     "light.esszimmer_pendelleuchte:turn_off",
+     "light.wohnzimmer_deckenlicht:turn_off",
+     "light.garagenlicht:turn_off"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Verbotener Aufruf: light.nachtlicht:turn_off",
+     "light.nachtlicht=off statt on"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "set-few": {
+  "id": "set-few",
+  "category": "Mengen/Orte",
+  "title": "„Ein paar Lichter“ wird nicht geraten",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach ein paar Lichter an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 74.6,
+    "speech": "Welche Geräte genau? Bitte nenne ihre Namen.",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-number": {
+  "id": "set-number",
+  "category": "Mengen/Orte",
+  "title": "Die drei Lampen im Schlafzimmer",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach die drei Lampen im Schlafzimmer an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.6,
+    "speech": "3 Lichter eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.nachttischlampe_rechts:turn_on",
+     "light.schlafzimmerlicht:turn_on",
+     "light.nachttischlampe_links:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-upstairs": {
+  "id": "set-upstairs",
+  "category": "Mengen/Orte",
+  "title": "Etagen-Alias „oben“",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte oben alle Lichter an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 56.7,
+    "speech": "8 Lichter eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.nachttischlampe_rechts:turn_on",
+     "light.flurlicht_oben:turn_on",
+     "light.schlafzimmerlicht:turn_on",
+     "light.nachttischlampe_links:turn_on",
+     "light.nachtlicht:turn_on",
+     "light.badezimmerlicht:turn_on",
+     "light.kinderzimmerlicht:turn_on",
+     "light.spiegelschrank:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "set-max-targets": {
+  "id": "set-max-targets",
+  "category": "Sicherheit",
+  "title": "Ganzes Haus: Grenze gleichzeitiger Ziele",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte im ganzen Haus alle Lichter ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 154.7,
+    "speech": "23 Lichter eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "amb-nightstand": {
+  "id": "amb-nightstand",
+  "category": "Dialog",
+  "title": "Nachttischlampe links/rechts → Rückfrage → Auswahl",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach die Nachttischlampe an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 53.2,
+    "speech": "Ich habe mehrere passende Lichter gefunden: 1. Nachttischlampe links; 2. Nachttischlampe rechts. Welches meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Die linke.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.4,
+    "speech": "Nachttischlampe links eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.nachttischlampe_links:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "amb-ordinal": {
+  "id": "amb-ordinal",
+  "category": "Dialog",
+  "title": "Auswahl per Ordinalzahl",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach die Nachttischlampe an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 54.1,
+    "speech": "Ich habe mehrere passende Lichter gefunden: 1. Nachttischlampe links; 2. Nachttischlampe rechts. Welches meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Die zweite.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.0,
+    "speech": "Nachttischlampe rechts eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.nachttischlampe_rechts:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "amb-invalid-choice": {
+  "id": "amb-invalid-choice",
+  "category": "Dialog",
+  "title": "Ungültige Auswahl verwirft Rückfrage nicht",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach die Nachttischlampe an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 62.2,
+    "speech": "Ich habe mehrere passende Lichter gefunden: 1. Nachttischlampe links; 2. Nachttischlampe rechts. Welches meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Die fünfte.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.6,
+    "speech": "Das konnte ich keinem der angebotenen Geräte eindeutig zuordnen. Ich habe mehrere passende Lichter gefunden: 1. Nachttischlampe links; 2. Nachttischlampe rechts. Welches meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Die rechte.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.9,
+    "speech": "Nachttischlampe rechts eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.nachttischlampe_rechts:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "amb-generic-light": {
+  "id": "amb-generic-light",
+  "category": "Dialog",
+  "title": "„Mach das Licht an“ ohne Raum",
+  "steps": [
+   {
+    "step": {
+     "say": "Mach das Licht an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 39.4,
+    "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "ctx-here": {
+  "id": "ctx-here",
+  "category": "Dialog",
+  "title": "„hier“ über Satellitenbereich (Büro)",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte das Licht hier ein.",
+     "user": "admin",
+     "settle": 1.0,
+     "device": "Büro"
+    },
+    "latency_ms": 28.6,
+    "speech": "Bürolicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.buerolicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "ctx-roomless-cover": {
+  "id": "ctx-roomless-cover",
+  "category": "Dialog",
+  "title": "Raumloser Rollladenbefehl im Satellitenraum",
+  "steps": [
+   {
+    "step": {
+     "say": "Fahr den Rollladen auf 30 Prozent.",
+     "user": "admin",
+     "settle": 4,
+     "device": "Schlafzimmer"
+    },
+    "latency_ms": 35.5,
+    "speech": "Schlafzimmer Rollladen auf 30 Prozent gefahren.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.schlafzimmer_rollladen:set_cover_position {\"position\": 30}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "ctx-followup-area": {
+  "id": "ctx-followup-area",
+  "category": "Dialog",
+  "title": "Folgefrage „Und in der Küche?“",
+  "steps": [
+   {
+    "step": {
+     "say": "Wie warm ist es im Wohnzimmer?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.9,
+    "speech": "unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Und im Büro?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.4,
+    "speech": "unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "ctx-query-then-command": {
+  "id": "ctx-query-then-command",
+  "category": "Dialog",
+  "title": "Temperaturfrage → Erhöhung",
+  "steps": [
+   {
+    "step": {
+     "say": "Wie warm ist es im Büro?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.6,
+    "speech": "unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Kannst du die Temperatur auf 23 Grad erhöhen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 91.3,
+    "speech": "Heizung Büro auf 23 Grad gestellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "climate.heizung_buero:set_temperature {\"temperature\": 23.0, \"entity_id\": [\"climate.heizung_buero\"]}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "ctx-undo": {
+  "id": "ctx-undo",
+  "category": "Dialog",
+  "title": "Rückgängig machen",
+  "steps": [
+   {
+    "step": {
+     "say": "Fahre den Esszimmer Rollladen auf 40 Prozent.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 29.0,
+    "speech": "Esszimmer Rollladen auf 40 Prozent gefahren.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Mach das rückgängig.",
+     "user": "admin",
+     "settle": 4
+    },
+    "latency_ms": 24.8,
+    "speech": "Die letzte Aktion wurde rückgängig gemacht.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "cover.esszimmer_rollladen:set_cover_position {\"position\": 100}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "ctx-pronoun": {
+  "id": "ctx-pronoun",
+  "category": "Dialog",
+  "title": "Pronomen „es“ auf zuletzt genanntes Gerät",
+  "steps": [
+   {
+    "step": {
+     "say": "Starte das Küchenradio.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.1,
+    "speech": "Küchenradio spielt weiter.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Kannst du es pausieren?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 63.3,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: media_player.kuechenradio:media_pause"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "ctx-correction": {
+  "id": "ctx-correction",
+  "category": "Dialog",
+  "title": "Korrektur „nein, im Esszimmer“",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte das Licht im Büro an.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.8,
+    "speech": "Bürolicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.buerolicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Nein, ich meinte im Esszimmer.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 35.2,
+    "speech": "Esszimmer Pendelleuchte eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.buerolicht:turn_off",
+     "light.esszimmer_pendelleuchte:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "q-state": {
+  "id": "q-state",
+  "category": "Abfragen",
+  "title": "Zustandsfragen",
+  "steps": [
+   {
+    "step": {
+     "say": "Ist das Badezimmerfenster geschlossen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 29.1,
+    "speech": "Nein, Badezimmerfenster ist nicht geschlossen.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welchen Zustand hat das Badezimmerfenster?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.4,
+    "speech": "Badezimmerfenster ist geöffnet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ist irgendein Fenster offen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.6,
+    "speech": "Ja, es gibt 2 Fenster.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ist kein Fenster offen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.3,
+    "speech": "Nein, mindestens eines der Fenster ist geöffnet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie viele Fenster sind im Erdgeschoss geöffnet?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.7,
+    "speech": "1 Fenster ist geöffnet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Sind im Erdgeschoss offene Fenster?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.8,
+    "speech": "Nur Küchenfenster ist offen.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wo sind Fenster offen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.1,
+    "speech": "Badezimmer und Küche.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ist die Haustür zu?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.4,
+    "speech": "Ja, Haustür ist geschlossen.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "q-covers": {
+  "id": "q-covers",
+  "category": "Abfragen",
+  "title": "Rollladen-Abfragen",
+  "steps": [
+   {
+    "step": {
+     "say": "Sind alle Rollläden hochgefahren?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 43.8,
+    "speech": "Nein, nicht alle Rollläden sind geöffnet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche Rollläden gibt es im Erdgeschoss?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.2,
+    "speech": "Ja, es gibt 5 Rollläden.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält nicht 'küchenrollladen'",
+     "Antwort enthält nicht 'esszimmer'",
+     "Antwort enthält unerwartet 'ja, es gibt'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Ist das Garagentor offen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.2,
+    "speech": "Nein, es gibt keine Garagentore.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "q-area-on": {
+  "id": "q-area-on",
+  "category": "Abfragen",
+  "title": "Was ist im Raum eingeschaltet?",
+  "steps": [
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": [
+       "light.badezimmerlicht"
+      ]
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F33RVGY1GPWZ0X97T19FST",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "switch.turn_on",
+     "data": {
+      "entity_id": [
+       "switch.heizluefter_bad"
+      ]
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F33RVKZ7Y31EFX4TZ6VY1V",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Was ist im Badezimmer eingeschaltet?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.3,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält nicht 'badezimmerlicht'",
+     "Antwort enthält nicht 'heizlüfter'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Ist das Radio in der Küche an?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.4,
+    "speech": "Ja, Küchenradio ist eingeschaltet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "q-measure": {
+  "id": "q-measure",
+  "category": "Abfragen",
+  "title": "Messwerte",
+  "steps": [
+   {
+    "step": {
+     "say": "Wie warm ist es im Wohnzimmer?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.2,
+    "speech": "unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie hoch ist die Luftfeuchtigkeit im Badezimmer?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.3,
+    "speech": "68 Prozent.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie warm ist es draußen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 68.5,
+    "speech": "Ich finde in Home Assistant keine Wetter-Entität.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['12']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie hoch ist die Temperatur im Obergeschoss?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 31.2,
+    "speech": "Temperatur Badezimmer: unknown Grad; Temperatur Kinderzimmer: unknown Grad; Temperatur Schlafzimmer: unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie hoch ist der CO2-Wert im Wohnzimmer?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 415.7,
+    "speech": "unknown Grad.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['812']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie viel Strom verbraucht das Haus gerade?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 64.3,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält keins von ['432']"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "q-battery": {
+  "id": "q-battery",
+  "category": "Abfragen",
+  "title": "Batterien unter Schwelle",
+  "steps": [
+   {
+    "step": {
+     "say": "Welche Batterien sind unter 20 Prozent?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.8,
+    "speech": "Unter dem Grenzwert liegen: Batterie Fenstersensor Bad mit 14 Prozent und Batterie Rauchmelder oben mit 9 Prozent.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche Batterien oben sind unter 20 Prozent?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.6,
+    "speech": "Unter dem Grenzwert liegen: Batterie Fenstersensor Bad mit 14 Prozent und Batterie Rauchmelder oben mit 9 Prozent.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "q-compare": {
+  "id": "q-compare",
+  "category": "Abfragen",
+  "title": "Vergleiche und Superlative",
+  "steps": [
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": "light.stehlampe",
+      "brightness_pct": 80
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F343EHKMAQDGCVC9M1QWQF",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": "light.wohnzimmer_deckenlicht",
+      "brightness_pct": 20
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F343ENCTKNC9MEK11XM5CB",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Welche Lichter im Wohnzimmer sind heller als 50 Prozent?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.5,
+    "speech": "Stehlampe: 80 Prozent.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welches Gerät verbraucht gerade am meisten Strom?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.1,
+    "speech": "Den höchsten aktuellen Wert hat Energiezähler mit 18234.7 Watt.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['waschmaschine']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Welcher Raum ist am wärmsten?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.6,
+    "speech": "Kellerraum.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['bad']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie hoch ist die durchschnittliche Temperatur im Haus?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 54.5,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält keins von ['grad']"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "q-appliance": {
+  "id": "q-appliance",
+  "category": "Abfragen",
+  "title": "Fertigstellungszeit Waschmaschine",
+  "steps": [
+   {
+    "step": {
+     "say": "Wann ist die Waschmaschine fertig?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.7,
+    "speech": "Laut Waschmaschine fertig um ist die Fertigstellung heute um 17:32 Uhr.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "q-readiness": {
+  "id": "q-readiness",
+  "category": "Abfragen",
+  "title": "Bereitschaftscheck",
+  "steps": [
+   {
+    "step": {
+     "say": "Ist HomeIntent bereit?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.7,
+    "speech": "HomeIntent sieht 127 freigegebene Entities: 71 steuerbar, 53 lesbar und 5 verwaltbar. 0 steuerbare Geräte haben keinen Bereich; 0 Entities gehören zu noch nicht unterstützten Domänen.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "q-count-on": {
+  "id": "q-count-on",
+  "category": "Abfragen",
+  "title": "Wie viele Lichter sind an?",
+  "steps": [
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": [
+       "light.kuechenlicht",
+       "light.flurlicht",
+       "light.buerolicht"
+      ]
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F349H9VMR27S6Q5V154GAV",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Wie viele Lichter sind an?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.9,
+    "speech": "3 Lichter sind eingeschaltet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche davon sind im Erdgeschoss?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.5,
+    "speech": "3 Lichter sind eingeschaltet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält nicht 'küchenlicht'",
+     "Antwort enthält nicht 'flurlicht'",
+     "Antwort enthält nicht 'bürolicht'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Schalte die aus.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 69.8,
+    "speech": "Keine passenden Ergebnisse.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.kuechenlicht:turn_off",
+     "Aufruf fehlt: light.flurlicht:turn_off",
+     "Aufruf fehlt: light.buerolicht:turn_off"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "q-persons": {
+  "id": "q-persons",
+  "category": "Abfragen",
+  "title": "Wer ist zu Hause?",
+  "steps": [
+   {
+    "step": {
+     "say": "Wer ist zu Hause?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 29.0,
+    "speech": "Zuhause: Philipp, Anna.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "set": "device_tracker.handy_anna",
+     "value": "not_home",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "say": "Ist Anna zu Hause?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.7,
+    "speech": "Anna ist laut Home Assistant nicht zuhause.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "q-climate-state": {
+  "id": "q-climate-state",
+  "category": "Abfragen",
+  "title": "Heizungsabfragen",
+  "steps": [
+   {
+    "step": {
+     "say": "Auf wie viel Grad ist die Heizung im Wohnzimmer gestellt?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.9,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält keins von ['21']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Heizt die Heizung im Büro gerade?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.8,
+    "speech": "Ja, Heizung Büro meldet den Zustand „heat“.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "stat-mean": {
+  "id": "stat-mean",
+  "category": "Statistik",
+  "title": "Recorder: Mittelwert/Min/Max/Veränderung",
+  "steps": [
+   {
+    "step": {
+     "say": "Wie hoch war die durchschnittliche Temperatur im Wohnzimmer gestern?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.6,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält keins von ['grad']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Was war gestern der höchste Wert vom Stromverbrauch Haus?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.6,
+    "speech": "Für Stromverbrauch Haus liegen gestern keine Statistikdaten vor.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['watt', ' w']",
+     "Antwort enthält unerwartet 'keine'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie hat sich der Energiezähler diese Woche verändert?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.8,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält keins von ['kwh', 'kilowattstunden']"
+    ]
+   },
+   {
+    "step": {
+     "say": "War die Temperatur im Wohnzimmer gestern niedriger als vorgestern?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 48.2,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie kalt war es gestern draußen minimal?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 212.9,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antworttyp error statt ['query_answer']",
+     "Antwort enthält keins von ['grad']"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "stat-history": {
+  "id": "stat-history",
+  "category": "Statistik",
+  "title": "Recorder: Zustandsdauer/Wechsel heute",
+  "steps": [
+   {
+    "step": {
+     "set": "binary_sensor.wohnzimmerfenster",
+     "value": "on",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "wait": 2
+    }
+   },
+   {
+    "step": {
+     "set": "binary_sensor.wohnzimmerfenster",
+     "value": "off",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "wait": 1
+    }
+   },
+   {
+    "step": {
+     "set": "binary_sensor.wohnzimmerfenster",
+     "value": "on",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "wait": 2
+    }
+   },
+   {
+    "step": {
+     "set": "binary_sensor.wohnzimmerfenster",
+     "value": "off",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "wait": 2
+    }
+   },
+   {
+    "step": {
+     "say": "Wie oft war das Wohnzimmerfenster heute offen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.1,
+    "speech": "Wohnzimmerfenster war heute 2-mal offen.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie lange war das Wohnzimmerfenster heute geöffnet?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.1,
+    "speech": "Wohnzimmerfenster war heute insgesamt 0 Minuten offen.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "cal-oneshot": {
+  "id": "cal-oneshot",
+  "category": "Kalender",
+  "title": "Termin in einem Satz + Bestätigung",
+  "steps": [
+   {
+    "step": {
+     "say": "Trag nächsten Dienstag um 10 Uhr für eine Stunde Zahnarzt in den Kalender Familie ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.8,
+    "speech": "Termin „Zahnarzt“, Dienstag, 29. September 2026, 10:00 bis 11:00 Uhr, Kalender „Familie“. Soll ich den Termin eintragen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 29.3,
+    "speech": "Der Termin wurde eingetragen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wann ist mein Zahnarzttermin?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.5,
+    "speech": "„Zahnarzt“ ist am 29.9. um 10:00 Uhr.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "cal-dialog": {
+  "id": "cal-dialog",
+  "category": "Kalender",
+  "title": "Termin im Dialog ergänzen",
+  "steps": [
+   {
+    "step": {
+     "say": "Trag einen Termin ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.7,
+    "speech": "Wie soll der Termin heißen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Elternabend.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.6,
+    "speech": "An welchem Datum findet der Termin statt?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Übermorgen.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.2,
+    "speech": "Um wie viel Uhr beginnt der Termin? Du kannst auch ganztägig sagen.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Um 19 Uhr.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.0,
+    "speech": "Wann endet der Termin oder wie lange dauert er?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Zwei Stunden.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.8,
+    "speech": "Termin „Elternabend“, Montag, 28. September 2026, 19:00 bis 21:00 Uhr, Kalender „Müllabfuhr“. Soll ich den Termin eintragen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Im Kalender Familie.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.8,
+    "speech": "Termin „Elternabend“, Montag, 28. September 2026, 19:00 bis 21:00 Uhr, Kalender „Familie“. Soll ich den Termin eintragen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.1,
+    "speech": "Der Termin wurde eingetragen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Was steht übermorgen in meinem Kalender?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.4,
+    "speech": "Ich habe 1 Termin gefunden: „Elternabend“ am 28.9. um 19:00 Uhr.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "cal-manage": {
+  "id": "cal-manage",
+  "category": "Kalender",
+  "title": "Verschieben, umbenennen, freie Zeit, löschen",
+  "steps": [
+   {
+    "step": {
+     "say": "Erstelle morgen von 14 bis 15 Uhr den Termin Planung im Kalender Familie.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.1,
+    "speech": "Termin „Planung“, Sonntag, 27. September 2026, 14:00 bis 15:00 Uhr, Kalender „Familie“. Soll ich den Termin eintragen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.8,
+    "speech": "Der Termin wurde eingetragen.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Habe ich morgen zwischen 14 und 16 Uhr Zeit?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.7,
+    "speech": "Nein, in diesem Zeitraum liegt „Planung“.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Verschiebe den Termin Planung auf 16 Uhr.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.3,
+    "speech": "Soll ich den Termin „Planung“ auf 16:00 Uhr verschieben?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.7,
+    "speech": "Der Termin wurde verschoben.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Benenne den Termin Planung in Projektplanung um.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.4,
+    "speech": "Soll ich den Termin „Planung“ wirklich in „Projektplanung“ umbenennen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.7,
+    "speech": "Der Termin wurde geändert.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was steht morgen in meinem Kalender?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.6,
+    "speech": "Ich habe 1 Termin gefunden: „Projektplanung“ am 27.9. um 16:00 Uhr.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Lösche den Termin Projektplanung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.4,
+    "speech": "Soll ich den Termin „Projektplanung“ wirklich löschen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.7,
+    "speech": "Der Termin wurde gelöscht.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche Termine habe ich morgen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.5,
+    "speech": "Im abgefragten Zeitraum stehen keine Termine im Kalender.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "cal-ambiguous-calendar": {
+  "id": "cal-ambiguous-calendar",
+  "category": "Kalender",
+  "title": "Mehrere Kalender → Rückfrage",
+  "steps": [
+   {
+    "step": {
+     "say": "Trag morgen um 8 Uhr Joggen ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.9,
+    "speech": "Wann endet der Termin oder wie lange dauert er?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Eine Stunde.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.9,
+    "speech": "Ich habe mehrere passende Kalender gefunden: 1. Familie; 2. Müllabfuhr. Welchen meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "todo-multi": {
+  "id": "todo-multi",
+  "category": "Listen",
+  "title": "Mehrere Einträge, abhaken, entfernen, verschieben",
+  "steps": [
+   {
+    "step": {
+     "say": "Füge Milch, Brot, Butter und Äpfel zur Einkaufsliste hinzu.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 49.0,
+    "speech": "4 Einträge wurden zur Liste hinzugefügt: Milch, Brot, Butter, Äpfel.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Was steht auf meiner Einkaufsliste?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.1,
+    "speech": "Auf der Liste stehen: Milch, Brot, Butter, Äpfel.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Markiere Milch und Brot als erledigt.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 49.5,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Lösche alle erledigten Einträge.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.0,
+    "speech": "Ich finde keinen eindeutig änderbaren passenden Termin.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.0,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was steht auf der Einkaufsliste?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.9,
+    "speech": "Auf der Liste stehen: Milch, Brot, Butter, Äpfel.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält unerwartet 'milch'"
+    ]
+   },
+   {
+    "step": {
+     "say": "Verschiebe Butter von der Einkaufsliste auf die Arbeitsliste.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.1,
+    "speech": "1 Eintrag wurde verschoben.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was steht auf der Arbeitsliste?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.0,
+    "speech": "Auf der Liste stehen: Butter.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Entferne Äpfel von der Einkaufsliste.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.5,
+    "speech": "1 Eintrag wurde aus der Liste entfernt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was steht auf der Einkaufsliste?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.4,
+    "speech": "Auf der Liste stehen: Milch, Brot.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "todo-ambiguous": {
+  "id": "todo-ambiguous",
+  "category": "Listen",
+  "title": "Ohne Listenname bei zwei Listen",
+  "steps": [
+   {
+    "step": {
+     "say": "Setze Druckerpapier auf die Liste.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.8,
+    "speech": "Ich habe mehrere passende Listen gefunden: 1. Einkaufsliste; 2. Arbeitsliste. Welche meinst du?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Arbeitsliste.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.6,
+    "speech": "Druckerpapier wurde zur Liste hinzugefügt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was steht auf der Arbeitsliste?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.2,
+    "speech": "Auf der Liste stehen: Butter, Druckerpapier.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "timer-no-output": {
+  "id": "timer-no-output",
+  "category": "Timer",
+  "title": "Timer ohne Satellit/TTS-Ziel wird abgelehnt (dokumentiert)",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle einen Timer für 5 Minuten mit dem Namen Nudeln.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.8,
+    "speech": "Fehler beim Ausführen: Dieser Assist-Client kann keinen hörbaren Timer ausgeben. Konfiguriere in HomeIntent eine lokale TTS-Engine und mindestens einen Medienplayer.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "push-unconfigured": {
+  "id": "push-unconfigured",
+  "category": "Push",
+  "title": "Testbenachrichtigung ohne Push-Ziel → Konfigurationshinweis",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "agent_notify_targets": []
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Schick mir eine Testbenachrichtigung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 86.4,
+    "speech": "Ich habe noch kein eindeutiges Push-Ziel für dich. Bitte hinterlege dein Handy in den HomeIntent-Einstellungen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "push-two-targets": {
+  "id": "push-two-targets",
+  "category": "Push",
+  "title": "Zwei Push-Ziele, keine Zuordnung → Rückfrage statt Broadcast",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "agent_notify_targets": [
+       "notify.handy_philipp_nachricht",
+       "notify.handy_anna_nachricht"
+      ],
+      "agent_delivery_channels": [
+       "push"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Schick mir eine Testbenachrichtigung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 68.2,
+    "speech": "Ich habe mehrere Push-Ziele gefunden. Bitte ordne dein Gerät deinem HomeIntent-Benutzer zu.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "push-bound": {
+  "id": "push-bound",
+  "category": "Push",
+  "title": "Gebundener Benutzer bekommt Testnachricht",
+  "steps": [
+   {
+    "step": {
+     "service": "homeintent.bind_user_context",
+     "data": {
+      "user_id": "$admin_user_id",
+      "person_entity_id": "person.philipp",
+      "notification_targets": [
+       "notify.handy_philipp_nachricht"
+      ],
+      "preferred_notification_target": "notify.handy_philipp_nachricht",
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F36FPHTCVJWECVRFNW32CF",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Schick mir eine Testbenachrichtigung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 75.0,
+    "speech": "Die Testbenachrichtigung wurde gesendet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Testbenachrichtigung von HomeIntent.\", \"title\": \"HomeIntent\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent",
+      "message": "Testbenachrichtigung von HomeIntent.",
+      "time": "2026-09-26T14:51:35.581417+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Testbenachrichtigung von HomeIntent.\", \"title\": \"HomeIntent\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent",
+      "message": "Testbenachrichtigung von HomeIntent.",
+      "time": "2026-09-26T14:51:35.581417+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "push-delayed": {
+  "id": "push-delayed",
+  "category": "Push",
+  "title": "In 10 Sekunden Testbenachrichtigung (persistente Einmal-Automation)",
+  "steps": [
+   {
+    "step": {
+     "say": "Kannst du mir in 10 Sekunden eine Test Benachrichtigung schicken?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 285.8,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1
+    },
+    "latency_ms": 22.2,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "wait": 16
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'test' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "push-window-automation": {
+  "id": "push-window-automation",
+  "category": "Push",
+  "title": "Benachrichtige mich sobald ein Fenster geöffnet wird",
+  "steps": [
+   {
+    "step": {
+     "say": "Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 121.4,
+    "speech": "Wenn das Wohnzimmerfenster geöffnet wird, sende ich dir eine Push-Benachrichtigung an dein Gerät „Handy Philipp“: „Das Wohnzimmerfenster wurde geöffnet.“ Soll ich das so einrichten?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 48.4,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "set": "binary_sensor.wohnzimmerfenster",
+     "value": "on",
+     "settle": 3
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Das Wohnzimmerfenster wurde geöffnet.\", \"title\": \"HomeIntent\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent",
+      "message": "Das Wohnzimmerfenster wurde geöffnet.",
+      "time": "2026-09-26T14:51:59.136536+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "reminder-relative": {
+  "id": "reminder-relative",
+  "category": "Push",
+  "title": "Erinnere mich in 20 Sekunden an die Waschmaschine",
+  "steps": [
+   {
+    "step": {
+     "say": "Erinnere mich in 20 Sekunden an die Waschmaschine.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 75.9,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.6,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "wait": 26
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'waschmaschine' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "reminder-person": {
+  "id": "reminder-person",
+  "category": "Push",
+  "title": "Sag Anna morgen um 8 Uhr Bescheid (Person ohne Bindung)",
+  "steps": [
+   {
+    "step": {
+     "say": "Sag Anna morgen um 8 Uhr Bescheid, dass der Müll raus muss.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.6,
+    "speech": "Zum Zeitpunkt „morgen um 8 Uhr“ sende ich eine Push-Benachrichtigung an „Handy Anna“: „Der Müll muss raus.“ Soll ich das so einrichten?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   }
+  ],
+  "passed": true
+ },
+ "timer-full": {
+  "id": "timer-full",
+  "category": "Timer",
+  "title": "Benannte Timer mit TTS-Ausgabe",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "agent_tts_entity": "tts.sprachausgabe",
+      "agent_media_players": [
+       "media_player.kuechenradio"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Stelle einen Timer für 10 Sekunden.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.8,
+    "speech": "Wie soll der Timer heißen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Pizza.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.4,
+    "speech": "Timer „Pizza“ für 10 Sekunden gestartet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Stelle einen Nudeltimer für 5 Minuten.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.3,
+    "speech": "Timer „Nudel“ für 5 Minuten gestartet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche Timer laufen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.0,
+    "speech": "2 Timer laufen. Pizza: noch 8 Sekunden; Nudel: noch 4 Minuten und 59 Sekunden.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "wait": 12
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "media_player.kuechenradio:play_media {\"media_type\": \"music\", \"media_id\": \"media-source://tts/tts.sprachausgabe?message=Der+Timer+Pizza+ist+abgelaufen.&cache=true&tts_options=null\"}"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [
+     {
+      "entity_id": "media_player.kuechenradio",
+      "media_id": "media-source://tts/tts.sprachausgabe?message=Der+Timer+Pizza+ist+abgelaufen.&cache=true&tts_options=null",
+      "time": "2026-09-26T14:52:45.446545+00:00"
+     }
+    ],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie lange läuft der Timer Nudeln noch?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.8,
+    "speech": "Nudel: noch 4 Minuten und 46 Sekunden.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Pausiere den Timer Nudeln.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.7,
+    "speech": "Timer „Nudel“ pausiert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Setze den Nudeltimer fort.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.9,
+    "speech": "Timer „Nudel“ fortgesetzt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Verlängere den Timer Nudeln um fünf Minuten.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.4,
+    "speech": "Timer „Nudel“ um 5 Minuten verlängert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Stelle einen Timer für 3 Minuten mit dem Namen Tee.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.7,
+    "speech": "Timer „Tee“ für 3 Minuten gestartet.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Lösche den Timer.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.5,
+    "speech": "Welchen Timer meinst du: Nudel oder Tee?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Tee.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 14.4,
+    "speech": "Timer „Tee“ abgebrochen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Lösche alle Timer.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.7,
+    "speech": "Soll ich wirklich den Timer Nudel löschen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 14.9,
+    "speech": "Der Timer wurde gelöscht.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Welche Timer laufen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.3,
+    "speech": "Es läuft kein Timer.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "timer-helper": {
+  "id": "timer-helper",
+  "category": "Timer",
+  "title": "timer.*-Helfer (Waschgang)",
+  "steps": [
+   {
+    "step": {
+     "say": "Starte den Timer Waschgang.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 40.0,
+    "speech": "Ich habe Waschgang gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "timer.waschgang=idle statt active"
+    ]
+   },
+   {
+    "step": {
+     "say": "Wie lange läuft der Waschgang noch?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.2,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['stunde', 'minute']"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "auto-delayed": {
+  "id": "auto-delayed",
+  "category": "Automationen",
+  "title": "In 15 Sekunden Küchenlicht einschalten",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte in 15 Sekunden das Küchenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.2,
+    "speech": "Automation erkannt: Wenn 15 Sekunden vergangen sind, dann Küchenlicht einschalten. Diese Automation wird nach der ersten Ausführung automatisch gelöscht. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 56.9,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche einmaligen Aufträge sind noch geplant?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.0,
+    "speech": "Geplant sind: Schalte in 15 Sekunden das Küchenlicht ein – 26.09.2026 um 16:53 Uhr.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "wait": 20
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "auto-state-trigger": {
+  "id": "auto-state-trigger",
+  "category": "Automationen",
+  "title": "Wenn Küchenfenster geöffnet wird, Küchenlicht an",
+  "steps": [
+   {
+    "step": {
+     "set": "binary_sensor.kuechenfenster",
+     "value": "off",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "say": "Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.4,
+    "speech": "Automation erkannt: Wenn Fenster im Bereich Küche wird geöffnet, dann Küchenlicht einschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 48.1,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "set": "binary_sensor.kuechenfenster",
+     "value": "on",
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.kuechenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "auto-numeric": {
+  "id": "auto-numeric",
+  "category": "Automationen",
+  "title": "Temperatur unter 18 Grad → Heizung Büro 21 Grad",
+  "steps": [
+   {
+    "step": {
+     "say": "Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.9,
+    "speech": "Automation erkannt: Wenn Sensor im Bereich Kellerraum unter 12 liegt, dann Licht im Bereich Kellerraum einschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 43.3,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "set": "sensor.temperatur_keller",
+     "value": 11.2,
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.kellerlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "auto-sun": {
+  "id": "auto-sun",
+  "category": "Automationen",
+  "title": "Bei Sonnenuntergang Außenbeleuchtung ein",
+  "steps": [
+   {
+    "step": {
+     "say": "Bei Sonnenuntergang schalte die Außenbeleuchtung ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 35.9,
+    "speech": "Automation erkannt: Wenn es Sonnenuntergang ist, dann Licht im Bereich Garten einschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 48.9,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "auto-recurring": {
+  "id": "auto-recurring",
+  "category": "Automationen",
+  "title": "Jeden Werktag um 7 Uhr Küchenlicht ein",
+  "steps": [
+   {
+    "step": {
+     "say": "Jeden Werktag um 7 Uhr schalte das Küchenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.0,
+    "speech": "Automation erkannt: Wenn es 07:00 Uhr ist und Montag oder Dienstag oder Mittwoch oder Donnerstag oder Freitag ist, dann Küchenlicht einschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 40.6,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "auto-for": {
+  "id": "auto-for",
+  "category": "Automationen",
+  "title": "Fenster zehn Minuten offen → Heizung aus",
+  "steps": [
+   {
+    "step": {
+     "say": "Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 32.0,
+    "speech": "Automation erkannt: Wenn Fenster im Bereich Schlafzimmer wird geöffnet und dieser Zustand 10 Minuten bestehen bleibt, dann Heizung im Bereich Schlafzimmer ausschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 62.7,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "auto-colortemp": {
+  "id": "auto-colortemp",
+  "category": "Automationen",
+  "title": "Automation mit Farbtemperatur (kelvin-Feld)",
+  "steps": [
+   {
+    "step": {
+     "say": "Jeden Tag um 21 Uhr stelle das Bürolicht auf warmweiß.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 63.7,
+    "speech": "Ich habe Bürolicht gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 39.7,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "auto-manage": {
+  "id": "auto-manage",
+  "category": "Automationen",
+  "title": "Automationen verwalten",
+  "steps": [
+   {
+    "step": {
+     "say": "Zeige nur HomeIntent-Automationen.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 34.3,
+    "speech": "HomeIntent-Automationen: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie viele HomeIntent-Automationen sind aktiv?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.3,
+    "speech": "6 HomeIntent-Automationen sind aktiv.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche Automation steuert die Außenbeleuchtung?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 29.5,
+    "speech": "Dieses Gerät wird gesteuert durch: Bei Sonnenuntergang schalte die Außenbeleuchtung ein..",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Was passiert, wenn die Bewegung im Flur erkannt wird?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 53.8,
+    "speech": "Ich habe das genannte Gerät nicht gefunden.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['flurlicht']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Deaktiviere die Automation für Flurlicht bei Bewegung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 56.5,
+    "speech": "Automation wurde deaktiviert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Aktiviere die Automation für Flurlicht bei Bewegung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 51.0,
+    "speech": "Automation wurde aktiviert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Füge der Automation für Außenbeleuchtung die Bedingung hinzu, dass jemand zuhause ist.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 21.0,
+    "speech": "Welche Automation meinst du? Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.1,
+    "speech": "Das ist nicht eindeutig. Bitte nenne genau eine Automation oder ihre Nummer: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Dupliziere die Automation für Außenbeleuchtung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 14.7,
+    "speech": "Das ist nicht eindeutig. Bitte nenne genau eine Automation oder ihre Nummer: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 323.6,
+    "speech": "Das ist nicht eindeutig. Bitte nenne genau eine Automation oder ihre Nummer: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Lösche die Automation für Außenbeleuchtung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.7,
+    "speech": "Das ist nicht eindeutig. Bitte nenne genau eine Automation oder ihre Nummer: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['welche', 'mehrere', 'soll']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Mache die letzte HomeIntent-Automationsänderung rückgängig.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.7,
+    "speech": "Das ist nicht eindeutig. Bitte nenne genau eine Automation oder ihre Nummer: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.0,
+    "speech": "Das ist nicht eindeutig. Bitte nenne genau eine Automation oder ihre Nummer: Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird, Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein, Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein, Bei Sonnenuntergang schalte die Außenbeleuchtung ein, Jeden Werktag um 7 Uhr schalte das Küchenlicht ein, Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   }
+  ],
+  "passed": false
+ },
+ "auto-guided": {
+  "id": "auto-guided",
+  "category": "Automationen",
+  "title": "Geführter Automationsdialog",
+  "steps": [
+   {
+    "step": {
+     "say": "Erstelle eine Automation.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 23.4,
+    "speech": "Was soll die Automation auslösen? Bitte nenne einen vollständigen Auslöser.",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wenn die Haustür geöffnet wird.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.6,
+    "speech": "Soll zusätzlich eine Bedingung gelten? Bitte antworte mit Ja oder Nein.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Nein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 29.2,
+    "speech": "Was soll dann passieren?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Schalte das Flurlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.9,
+    "speech": "Soll die Automation dauerhaft, einmalig oder nur eine bestimmte Anzahl Mal gelten?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Immer.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 14.8,
+    "speech": "Automation erkannt: Wenn Tür im Bereich Flur wird geöffnet, dann Licht im Bereich Flur einschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 70.5,
+    "speech": "Automation wurde erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "set": "binary_sensor.haustuer",
+     "value": "on",
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.flurlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "mu-confirm-binding": {
+  "id": "mu-confirm-binding",
+  "category": "Sicherheit",
+  "title": "Fremder Benutzer kann offene Bestätigung nicht abschließen",
+  "steps": [
+   {
+    "step": {
+     "say": "Entriegle das Haustürschloss.",
+     "user": "admin",
+     "settle": 1.0,
+     "conv": "shared"
+    },
+    "latency_ms": 22.0,
+    "speech": "Soll ich wirklich Haustürschloss aufschließen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "anna",
+     "settle": 1.0,
+     "conv": "shared"
+    },
+    "latency_ms": 16.6,
+    "speech": "Diese Bestätigung gehört zu einem anderen Benutzer.",
+    "response_type": "error",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "mu-nonadmin-critical": {
+  "id": "mu-nonadmin-critical",
+  "category": "Sicherheit",
+  "title": "Nicht-Admin: Alarmanlage deaktivieren (kritisch)",
+  "steps": [
+   {
+    "step": {
+     "service": "alarm_control_panel.alarm_arm_away",
+     "data": {
+      "entity_id": "alarm_control_panel.alarmanlage"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3BHPSNVHHT8GVNMB387Q5",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Deaktiviere die Alarmanlage.",
+     "user": "anna",
+     "settle": 1.0
+    },
+    "latency_ms": 16.7,
+    "speech": "Diese sicherheitskritische Alarmfunktion ist nur für Administratoren erlaubt.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "anna",
+     "settle": 1.0
+    },
+    "latency_ms": 20.1,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "mu-nonadmin-automation": {
+  "id": "mu-nonadmin-automation",
+  "category": "Sicherheit",
+  "title": "Nicht-Admin-Automationen abgeschaltet",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "allow_non_admin_automations": false
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Jeden Werktag um 6 Uhr schalte das Kinderzimmerlicht ein.",
+     "user": "lena",
+     "settle": 1.0
+    },
+    "latency_ms": 27.9,
+    "speech": "Automation erkannt: Wenn es 06:00 Uhr ist und Montag oder Dienstag oder Mittwoch oder Donnerstag oder Freitag ist, dann Kinderzimmerlicht einschalten. Soll diese Automation erstellt werden?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "lena",
+     "settle": 1.0
+    },
+    "latency_ms": 20.3,
+    "speech": "Das Erstellen von Automationen ist nur für Administratoren erlaubt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "options": {
+      "allow_non_admin_automations": true
+     }
+    }
+   }
+  ],
+  "passed": true
+ },
+ "mu-readonly": {
+  "id": "mu-readonly",
+  "category": "Sicherheit",
+  "title": "Nur-Lesen-Entität",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "read_only_entities": [
+       "switch.gartenpumpe"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Schalte die Gartenpumpe ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.8,
+    "speech": "Mindestens ein Ziel ist in HomeIntent nur zum Lesen freigegeben.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ist die Gartenpumpe an?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.4,
+    "speech": "Nein, Gartenpumpe ist nicht eingeschaltet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "options": {
+      "read_only_entities": []
+     }
+    }
+   }
+  ],
+  "passed": true
+ },
+ "mu-control-users": {
+  "id": "mu-control-users",
+  "category": "Sicherheit",
+  "title": "Nur bestimmte Benutzer dürfen steuern",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "control_user_ids": [
+       "$admin_user_id",
+       "$anna_user_id"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Mach das Kinderzimmerlicht an.",
+     "user": "lena",
+     "settle": 1.0
+    },
+    "latency_ms": 17.6,
+    "speech": "Dieser Benutzer darf HomeIntent nicht zur Gerätesteuerung verwenden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ist das Kinderzimmerlicht an?",
+     "user": "lena",
+     "settle": 1.0
+    },
+    "latency_ms": 17.0,
+    "speech": "Nein, Kinderzimmerlicht ist nicht eingeschaltet.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Mach das Kinderzimmerlicht an.",
+     "user": "anna",
+     "settle": 1.0
+    },
+    "latency_ms": 31.1,
+    "speech": "Kinderzimmerlicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "light.kinderzimmerlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "options": {
+      "control_user_ids": []
+     }
+    }
+   }
+  ],
+  "passed": true
+ },
+ "mu-admin-only": {
+  "id": "mu-admin-only",
+  "category": "Sicherheit",
+  "title": "Nur-Admin-Entität",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "admin_only_entities": [
+       "lock.haustuerschloss"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Verriegle das Haustürschloss.",
+     "user": "anna",
+     "settle": 1.0
+    },
+    "latency_ms": 22.3,
+    "speech": "Mindestens ein Ziel darf nur von Administratoren gesteuert werden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "options": {
+      "admin_only_entities": []
+     }
+    }
+   }
+  ],
+  "passed": true
+ },
+ "mu-max-targets": {
+  "id": "mu-max-targets",
+  "category": "Sicherheit",
+  "title": "Max. gleichzeitige Ziele = 5",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "max_action_targets": 5
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Schalte im ganzen Haus alle Lichter ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.4,
+    "speech": "Diese Aktion betrifft mehr als die erlaubten 5 Ziele.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "options": {
+      "max_action_targets": 20
+     }
+    }
+   }
+  ],
+  "passed": true
+ },
+ "pro-garage": {
+  "id": "pro-garage",
+  "category": "Proaktiv",
+  "title": "Garage bleibt offen → Push-Vorschlag → Ja schließt",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "proactive_context_enabled": true,
+      "push_proactive_enabled": true,
+      "voice_proactive_enabled": false,
+      "proactive_entry_open_minutes": 1,
+      "quiet_hours_enabled": false,
+      "attention_budget_enabled": true,
+      "agent_enabled": true,
+      "agent_delivery_channels": [
+       "push"
+      ],
+      "agent_notify_targets": [
+       "notify.handy_philipp_nachricht",
+       "notify.handy_anna_nachricht"
+      ],
+      "proactive_appliance_entities": [
+       "sensor.leistung_waschmaschine",
+       "sensor.waschmaschine_status"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.bind_user_context",
+     "data": {
+      "user_id": "$admin_user_id",
+      "person_entity_id": "person.philipp",
+      "notification_targets": [
+       "notify.handy_philipp_nachricht"
+      ],
+      "preferred_notification_target": "notify.handy_philipp_nachricht",
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3CXBJP3W3D4AJM3AKSN8G",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.bind_user_context",
+     "data": {
+      "user_id": "$anna_user_id",
+      "person_entity_id": "person.anna",
+      "notification_targets": [
+       "notify.handy_anna_nachricht"
+      ],
+      "preferred_notification_target": "notify.handy_anna_nachricht",
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3CXBPZJ0ZTD2Q4YHMZWCR",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.set_household",
+     "data": {
+      "person_entity_ids": [
+       "person.philipp",
+       "person.anna",
+       "person.lena"
+      ],
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3CXBV2XPNSEAMDTM6E1W6",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "cover.open_cover",
+     "data": {
+      "entity_id": "cover.garagentor"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3CXBYQB4CWGY3QVQDKGPF",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "wait": 80
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "cover.garagentor:open_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'garage' (erhalten: [])"
+    ]
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 8
+    },
+    "latency_ms": 19.5,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "cover.garagentor=open statt closed"
+    ]
+   },
+   {
+    "step": {
+     "say": "Warum hast du mich wegen der Garage angesprochen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.7,
+    "speech": "Dazu habe ich in letzter Zeit keinen Hinweis gegeben.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['garage', 'offen']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Welche Hinweise gab es heute?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.1,
+    "speech": "Heute habe ich mich noch nicht proaktiv gemeldet.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['garage']"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "pro-garage-closed-meanwhile": {
+  "id": "pro-garage-closed-meanwhile",
+  "category": "Proaktiv",
+  "title": "Garage vor Antwort geschlossen → Ja ist wirkungslos",
+  "steps": [
+   {
+    "step": {
+     "service": "cover.open_cover",
+     "data": {
+      "entity_id": "cover.garagentor"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3FNDN9BE3FPEKKDW7PSEE",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "wait": 80
+    }
+   },
+   {
+    "step": {
+     "service": "cover.close_cover",
+     "data": {
+      "entity_id": "cover.garagentor"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3J3J1846RD1W8MAV8YYMD",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "wait": 8
+    }
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.0,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "pro-smoke": {
+  "id": "pro-smoke",
+  "category": "Proaktiv",
+  "title": "Rauchmelder → sofortige kritische Meldung",
+  "steps": [
+   {
+    "step": {
+     "set": "binary_sensor.rauchmelder_flur",
+     "value": "on",
+     "settle": 4
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "media_player.kuechenradio:play_media {\"media_type\": \"music\", \"media_id\": \"media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null\"}",
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!\", \"title\": \"HomeIntent: Achtung\"}",
+     "media_player.kuechenradio:play_media {\"media_type\": \"music\", \"media_id\": \"media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null\"}",
+     "notify.handy_anna_nachricht:send_message {\"message\": \"Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!\", \"title\": \"HomeIntent: Achtung\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent: Achtung",
+      "message": "Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!",
+      "time": "2026-09-26T14:58:05.388390+00:00"
+     },
+     {
+      "target": "notify.handy_anna_nachricht",
+      "title": "HomeIntent: Achtung",
+      "message": "Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!",
+      "time": "2026-09-26T14:58:05.390977+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [
+     {
+      "entity_id": "media_player.kuechenradio",
+      "media_id": "media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null",
+      "time": "2026-09-26T14:58:05.388232+00:00"
+     },
+     {
+      "entity_id": "media_player.kuechenradio",
+      "media_id": "media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null",
+      "time": "2026-09-26T14:58:05.390848+00:00"
+     }
+    ],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "pro-washer": {
+  "id": "pro-washer",
+  "category": "Proaktiv",
+  "title": "Waschmaschine fertig",
+  "steps": [
+   {
+    "step": {
+     "set": "sensor.leistung_waschmaschine",
+     "value": 1850,
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "wait": 5
+    }
+   },
+   {
+    "step": {
+     "set": "sensor.leistung_waschmaschine",
+     "value": 2,
+     "settle": 5
+    }
+   },
+   {
+    "step": {
+     "wait": 60
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'waschmaschine' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "pro-washer-status": {
+  "id": "pro-washer-status",
+  "category": "Proaktiv",
+  "title": "Waschmaschine fertig (Text-Statussensor)",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "proactive_context_enabled": true,
+      "push_proactive_enabled": true,
+      "voice_proactive_enabled": false,
+      "proactive_entry_open_minutes": 1,
+      "quiet_hours_enabled": false,
+      "attention_budget_enabled": true,
+      "agent_enabled": true,
+      "agent_delivery_channels": [
+       "push"
+      ],
+      "agent_notify_targets": [
+       "notify.handy_philipp_nachricht",
+       "notify.handy_anna_nachricht"
+      ],
+      "proactive_appliance_entities": [
+       "sensor.leistung_waschmaschine",
+       "sensor.waschmaschine_status"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "set": "sensor.waschmaschine_status",
+     "value": "running",
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "set": "sensor.waschmaschine_status",
+     "value": "finished",
+     "settle": 5
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'waschmaschine' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "pro-standing": {
+  "id": "pro-standing",
+  "category": "Proaktiv",
+  "title": "Daueranweisung: niemand zuhause → Licht aus",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "standing_permissions_enabled": true
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.set_household",
+     "data": {
+      "person_entity_ids": [
+       "person.philipp",
+       "person.anna"
+      ],
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3N3GYJPRWBTSB7GSNC44K",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Wenn niemand zuhause ist und im Wohnzimmer noch Licht an ist, darfst du es automatisch ausschalten.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.0,
+    "speech": "Vorschau: Wenn niemand zu Hause ist und im Wohnzimmer noch Licht an ist, schalte ich Stehlampe, Wohnzimmer Deckenlicht und LED-Streifen Wohnzimmer automatisch aus. Jede Ausführung prüft vorher den aktuellen Zustand und die Sicherheitsregeln. Die Erlaubnis gilt 180 Tage. Soll ich das so speichern?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.3,
+    "speech": "Gespeichert. Ich schalte das Licht nur aus, wenn zu diesem Zeitpunkt wirklich niemand zu Hause ist, und prüfe die Wirkung.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": "light.wohnzimmer_deckenlicht"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F3N5H17EZSRBER9X0Y9HGE",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "set": "device_tracker.handy_philipp",
+     "value": "not_home",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "set": "device_tracker.handy_anna",
+     "value": "not_home",
+     "settle": 10
+    }
+   },
+   {
+    "step": {
+     "wait": 330
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.wohnzimmer_deckenlicht:turn_on"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "light.wohnzimmer_deckenlicht=on statt off"
+    ]
+   },
+   {
+    "step": {
+     "say": "Was darfst du ohne Rückfrage?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 28.8,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['wohnzimmer', 'licht']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Welche Daueranweisungen gibt es?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.3,
+    "speech": "1 Daueranweisung aktiv: Licht im Bereich Wohnzimmer ausschalten, wenn niemand zu Hause ist.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "pro-standing-never-auto": {
+  "id": "pro-standing-never-auto",
+  "category": "Proaktiv",
+  "title": "Daueranweisung für Garage wird abgelehnt (NEVER_AUTO)",
+  "steps": [
+   {
+    "step": {
+     "say": "Wenn niemand zuhause ist und das Garagentor offen ist, darfst du es automatisch schließen.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.7,
+    "speech": "Tore, Garagen, Türen, Schlösser, Alarmanlagen und ähnlich kritische Geräte schalte ich nie automatisch. Ich frage dich in solchen Situationen stattdessen. Ich habe nichts gespeichert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "agent-smalltalk": {
+  "id": "agent-smalltalk",
+  "category": "Agent",
+  "title": "Uhrzeit, Datum, Fähigkeiten",
+  "steps": [
+   {
+    "step": {
+     "say": "Wie spät ist es?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 19.5,
+    "speech": "Es ist 17:05 Uhr.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welches Datum ist heute?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.1,
+    "speech": "Heute ist Samstag, der 26. September 2026.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Was kannst du?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.8,
+    "speech": "Ich kann Geräte steuern und abfragen, Automationen und Erinnerungen erstellen, Kalender, Aufgabenlisten und Timer verwalten sowie Zustände, Verlauf, Anwesenheit, Wetter und Gerätefähigkeiten erklären.",
+    "response_type": "query_answer",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "agent-memory": {
+  "id": "agent-memory",
+  "category": "Agent",
+  "title": "Präferenz merken, abfragen, vergessen",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "memory_enabled": true
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Merk dir, dass ich beim Lesen die Stehlampe auf 40 Prozent möchte.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.5,
+    "speech": "Soll ich mir diese persönliche Präferenz dauerhaft merken?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 25.2,
+    "speech": "Gespeichert. Du kannst diese Erinnerung jederzeit kontrolliert löschen.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was hast du dir über mich gemerkt?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.3,
+    "speech": "Gespeichert sind 1 preference.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['stehlampe', '40']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Vergiss meine Vorliebe für die Stehlampe.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.1,
+    "speech": "Soll ich diese Präferenz kontrolliert löschen?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.7,
+    "speech": "Die Präferenz wurde kontrolliert gelöscht.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Was hast du dir über mich gemerkt?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 22.3,
+    "speech": "Für dich sind keine dauerhaften Erinnerungen gespeichert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "agent-goal-secure": {
+  "id": "agent-goal-secure",
+  "category": "Agent",
+  "title": "Ziel: Sichere das Haus",
+  "steps": [
+   {
+    "step": {
+     "service": "lock.unlock",
+     "data": {
+      "entity_id": "lock.haustuerschloss"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F401663XN0YV5Y1KZ4EMEY",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Sichere das Haus.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.8,
+    "speech": "Planvorschau: Wohnzimmer Rollladen links closed; Wohnzimmer Rollladen rechts closed; Küchenrollladen closed; sowie 6 weitere geprüfte Schritte. 9 geprüfte Aktion(en), Gesamtrisiko high. Soll ich den gesamten Plan ausführen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 3
+    },
+    "latency_ms": 24997.6,
+    "speech": "Der Plan wurde vollständig ausgeführt und verifiziert.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "agent-goal-media": {
+  "id": "agent-goal-media",
+  "category": "Agent",
+  "title": "Ziel: Pausiere alle Medien",
+  "steps": [
+   {
+    "step": {
+     "service": "media_player.media_play",
+     "data": {
+      "entity_id": "media_player.lautsprecher_schlafzimmer"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F40XKMGKAQV4VDNW468ZPK",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Pausiere alle Medien.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 16.4,
+    "speech": "Planvorschau: Küchenradio paused; Lautsprecher Schlafzimmer paused. 2 geprüfte Aktion(en), Gesamtrisiko low. Soll ich den gesamten Plan ausführen?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 49.2,
+    "speech": "Der Plan wurde vollständig ausgeführt und verifiziert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "media_player.kuechenradio:media_pause",
+     "media_player.lautsprecher_schlafzimmer:media_pause"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "agent-routine-unknown": {
+  "id": "agent-routine-unknown",
+  "category": "Agent",
+  "title": "Unbekannte Routine → Rückfrage statt Annahme",
+  "steps": [
+   {
+    "step": {
+     "say": "Bereite den Filmabend vor.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 17.7,
+    "speech": "Was soll ich bei filmabend erledigen? Ich speichere die Routine erst nach deiner ausdrücklichen Bestätigung.",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "agent-routine-saved": {
+  "id": "agent-routine-saved",
+  "category": "Agent",
+  "title": "Gespeicherte Routine ausführen",
+  "steps": [
+   {
+    "step": {
+     "service": "homeintent.save_routine",
+     "data": {
+      "routine_id": "lesezeit",
+      "name": "Lesezeit",
+      "owner_user_id": "$admin_user_id",
+      "steps": [
+       {
+        "entity_id": "light.stehlampe",
+        "property": "brightness",
+        "value": 40,
+        "unit": "%"
+       },
+       {
+        "entity_id": "light.wohnzimmer_deckenlicht",
+        "property": "state",
+        "value": "off"
+       }
+      ],
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F410Q1XDEZ7D9ED44EM5GY",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Bereite die Lesezeit vor.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 40.2,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['stehlampe', 'plan']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.4,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.stehlampe:turn_on"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "agent-prediction": {
+  "id": "agent-prediction",
+  "category": "Agent",
+  "title": "Vorhersage ohne Modell → ehrliche Antwort",
+  "steps": [
+   {
+    "step": {
+     "say": "Wann ist das Büro warm?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 44.6,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Wie lange braucht das Wohnzimmer bis 23 Grad?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.4,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "agent-why-failed": {
+  "id": "agent-why-failed",
+  "category": "Agent",
+  "title": "Warum hat das nicht funktioniert?",
+  "steps": [
+   {
+    "step": {
+     "say": "Schalte das Bürolicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 33.4,
+    "speech": "Bürolicht eingeschaltet.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "say": "Warum hat das nicht funktioniert?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.0,
+    "speech": "Das kann ich anhand der vorhandenen Daten nicht sicher feststellen.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "reg-leading-in": {
+  "id": "reg-leading-in",
+  "category": "Regression",
+  "title": "Vorangestellte Zeit: „In 5 Minuten schalte …“",
+  "steps": [
+   {
+    "step": {
+     "say": "In 5 Minuten schalte das Küchenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 54.0,
+    "speech": "Ich habe Küchenlicht gefunden, aber die gewünschte Funktion ist für diese Geräte nicht eindeutig unterstützt.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['soll diese automation']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Nein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 27.2,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false
+   }
+  ],
+  "passed": false
+ },
+ "reg-reminder-abs": {
+  "id": "reg-reminder-abs",
+  "category": "Regression",
+  "title": "Erinnerung mit absoluter Zeit",
+  "steps": [
+   {
+    "step": {
+     "say": "Erinnere mich morgen um 18 Uhr an den Elternabend.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.1,
+    "speech": "Zum Zeitpunkt „morgen um 18 Uhr“ sende ich dir eine Erinnerung an dein Gerät „Handy Philipp“: „Erinnerung: den Elternabend.“ Soll ich das so einrichten?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Nein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.2,
+    "speech": "Abgebrochen. Die Automation wurde nicht erstellt.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   }
+  ],
+  "passed": true
+ },
+ "reg-comfort-trap": {
+  "id": "reg-comfort-trap",
+  "category": "Regression",
+  "title": "Komfort-Rückfrage lässt sich verlassen",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "memory_enabled": true
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Mach es hier gemütlicher.",
+     "user": "admin",
+     "settle": 1.0,
+     "device": "Wohnzimmer"
+    },
+    "latency_ms": 28.8,
+    "speech": "Für euch sind unterschiedliche Komfortwerte gespeichert. Welche Temperatur soll gelten, wenn ihr beide zuhause seid?",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Schalte das Küchenlicht ein.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.8,
+    "speech": "Bitte nenne einen konkreten gemeinsamen Temperaturwert in Grad.",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Aufruf fehlt: light.kuechenlicht:turn_on"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "reg-guided-nobedingung": {
+  "id": "reg-guided-nobedingung",
+  "category": "Regression",
+  "title": "Geführte Automation: „Keine Bedingung“ als Nein",
+  "steps": [
+   {
+    "step": {
+     "say": "Erstelle eine Automation.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.5,
+    "speech": "Was soll die Automation auslösen? Bitte nenne einen vollständigen Auslöser.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Wenn die Haustür geöffnet wird.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 26.7,
+    "speech": "Soll zusätzlich eine Bedingung gelten? Bitte antworte mit Ja oder Nein.",
+    "response_type": "action_done",
+    "continue_conversation": true
+   },
+   {
+    "step": {
+     "say": "Keine Bedingung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 15.5,
+    "speech": "Bitte antworte mit Ja oder Nein.",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält unerwartet 'ja oder nein'"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "reg-automation-byname": {
+  "id": "reg-automation-byname",
+  "category": "Regression",
+  "title": "Automation per Namen ohne „für“",
+  "steps": [
+   {
+    "step": {
+     "say": "Deaktiviere die Automation Flurlicht bei Bewegung.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 77.5,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['deaktiv', 'soll']"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "reg-kelvin": {
+  "id": "reg-kelvin",
+  "category": "Regression",
+  "title": "Farbtemperatur warmweiß",
+  "steps": [
+   {
+    "step": {
+     "say": "Stelle das Bürolicht auf warmweiß.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.9,
+    "speech": "Fehler beim Ausführen: not a valid option at 'kelvin'",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält unerwartet 'fehler'",
+     "Aufruf fehlt: light.buerolicht:turn_on"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "reg-notify-entity-unknown": {
+  "id": "reg-notify-entity-unknown",
+  "category": "Regression",
+  "title": "Nachricht an Notify-Entity im Zustand unknown",
+  "steps": [
+   {
+    "step": {
+     "say": "Schicke an Handy Anna die Nachricht Abendessen ist fertig.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 41.4,
+    "speech": "Handy Anna: eine Nachricht senden – Nachricht Abendessen ist fertig.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [
+     "notify.handy_anna_nachricht:send_message {\"message\": \"Abendessen ist fertig\", \"title\": null}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_anna_nachricht",
+      "title": null,
+      "message": "Abendessen ist fertig",
+      "time": "2026-09-26T15:06:25.717797+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ }
+}

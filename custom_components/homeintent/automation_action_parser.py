@@ -67,8 +67,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList, recognize
+from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList
 
+from .hassil_compat import recognize_aligned
 from .areas import AreaResolutionStatus, resolve_area_scored
 from .automation_condition_parser import AutomationConditionParser
 from .entities import EntitySnapshot
@@ -280,7 +281,7 @@ class AutomationActionParser:
     # -- leaf parsing via hassil -----------------------------------------------
 
     def _parse_leaf(self, text: str, context: ParseContext) -> ActionModel | None:
-        result = recognize(text, self._intents, slot_lists=self._slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=self._slot_lists, language="de")
         if result is None or result.intent is None:
             return None
         handler = self._dispatch.get(result.intent.name)

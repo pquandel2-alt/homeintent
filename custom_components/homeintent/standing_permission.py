@@ -191,13 +191,38 @@ class StandingPermissionStore:
         self._attempts: dict[str, list[datetime]] = {}
         self._verified: dict[str, list[datetime]] = {}
 
-    def add(self, permission: StandingPermission) -> None:
+    def add(self, permission: StandingPermission) -> StandingPermission:
+        """Store *permission*; an identical active one is renewed instead.
+
+        Confirming the same standing instruction again (same owner,
+        situation, operator, area, entities and conditions) must not create
+        a second record: ``matching()`` deliberately refuses to choose
+        between several candidates, so duplicates silently disabled
+        automatic execution (F7). Returns the stored permission.
+        """
         if not permission.confirmed:
             raise ValueError("Eine Daueranweisung muss ausdrücklich bestätigt sein")
         if permission.situation_kind not in AUTO_ELIGIBLE_KINDS:
             raise ValueError("Für diese Situation sind keine Daueranweisungen erlaubt")
         if not permission.entity_ids or any("*" in item for item in permission.entity_ids):
             raise ValueError("Daueranweisungen benötigen explizite Entitäten ohne Platzhalter")
+        existing = next(
+            (
+                item for item in self._items.values()
+                if not item.revoked and item.confirmed
+                and _same_instruction(item, permission)
+            ),
+            None,
+        )
+        if existing is not None:
+            renewed = replace(
+                existing,
+                expires_at=max(existing.expires_at, permission.expires_at),
+                description=permission.description or existing.description,
+            )
+            self._items[existing.permission_id] = renewed
+            self._items.move_to_end(existing.permission_id)
+            return renewed
         if len(self._items) >= MAX_PERMISSIONS and permission.permission_id not in self._items:
             # Drop the oldest revoked/expired first, else refuse to grow.
             victim = next((key for key, item in self._items.items() if item.revoked), None)
@@ -205,6 +230,7 @@ class StandingPermissionStore:
                 raise ValueError("Es sind bereits zu viele Daueranweisungen gespeichert")
             del self._items[victim]
         self._items[permission.permission_id] = permission
+        return permission
 
     def revoke(self, permission_id: str) -> StandingPermission | None:
         current = self._items.get(permission_id)
@@ -279,13 +305,55 @@ class StandingPermissionStore:
         permissions = document.get("permissions")
         if not isinstance(permissions, list):
             return store
+        merged_into: dict[str, str] = {}
         for item in cast(Sequence[object], permissions)[-MAX_PERMISSIONS:]:
             parsed = _permission_from(item)
-            if parsed is not None:
-                store._items[parsed.permission_id] = parsed
-        store._attempts = _stamp_map(document.get("executions"), store._items)
-        store._verified = _stamp_map(document.get("verified_executions"), store._items)
+            if parsed is None:
+                continue
+            # 7.1.2 stored every re-confirmation as a new record; merge such
+            # duplicates into the oldest one, keeping the latest expiry.
+            twin = next(
+                (
+                    kept for kept in store._items.values()
+                    if not parsed.revoked and not kept.revoked
+                    and _same_instruction(kept, parsed)
+                ),
+                None,
+            )
+            if twin is not None:
+                store._items[twin.permission_id] = replace(
+                    twin, expires_at=max(twin.expires_at, parsed.expires_at)
+                )
+                merged_into[parsed.permission_id] = twin.permission_id
+                continue
+            store._items[parsed.permission_id] = parsed
+        known: dict[str, object] = {**store._items, **{key: True for key in merged_into}}
+        store._attempts = _merge_stamps(_stamp_map(document.get("executions"), known), merged_into)
+        store._verified = _merge_stamps(
+            _stamp_map(document.get("verified_executions"), known), merged_into
+        )
         return store
+
+
+def _same_instruction(left: StandingPermission, right: StandingPermission) -> bool:
+    return (
+        left.owner_user_id == right.owner_user_id
+        and left.situation_kind is right.situation_kind
+        and left.operator is right.operator
+        and left.area_id == right.area_id
+        and frozenset(left.entity_ids) == frozenset(right.entity_ids)
+        and frozenset(left.conditions) == frozenset(right.conditions)
+    )
+
+
+def _merge_stamps(
+    stamps: dict[str, list[datetime]], merged_into: Mapping[str, str]
+) -> dict[str, list[datetime]]:
+    result: dict[str, list[datetime]] = {}
+    for key, values in stamps.items():
+        target = merged_into.get(key, key)
+        result[target] = sorted([*result.get(target, []), *values])[-_HISTORY_LIMIT:]
+    return result
 
 
 def _permission_dict(item: StandingPermission) -> dict[str, object]:

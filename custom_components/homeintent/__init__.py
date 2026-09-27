@@ -294,6 +294,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     native_timer = NativeTimerRuntime(hass, entry)
     entry.runtime_data.native_timer = native_timer
     entry.async_on_unload(native_timer.async_start())
+    await native_timer.async_load_journal()
 
     proactive_agent = ProactiveAgentRuntime(hass, entry, entry.runtime_data)
     entry.runtime_data.proactive_agent = proactive_agent
@@ -366,6 +367,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(await adapter_runtime.async_start())
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    _async_check_fixed_selection(hass, entry)
+    from homeassistant.core import callback
+    from homeassistant.helpers.start import async_at_started
+
+    # Entities are still being added while HA starts; check again once it
+    # runs so a frozen selection is reported against the complete exposure.
+    @callback
+    def _check_when_started(_hass: HomeAssistant) -> None:
+        _async_check_fixed_selection(hass, entry)
+
+    entry.async_on_unload(async_at_started(hass, _check_when_started))
     try:
         from .learning_center_ws import async_setup_learning_center
 
@@ -765,6 +777,44 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if hass.services.has_service(LEGACY_DOMAIN, service):
                 hass.services.async_remove(LEGACY_DOMAIN, service)
     return unloaded
+
+
+FIXED_SELECTION_ISSUE = "fixed_entity_selection"
+
+
+def _async_check_fixed_selection(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Report a fixed entity selection that hides Assist-exposed entities (F6).
+
+    HomeIntent 7.1.2 pre-filled the options form with the current exposure,
+    so saving any option silently froze it. That cannot be told apart from a
+    deliberate choice, so it is not rewritten; a repair issue names the
+    missing entities and how to return to the dynamic selection instead.
+    """
+    from homeassistant.helpers import issue_registry as ir
+
+    from .hass_entities import fixed_selection_missing_exposed
+
+    missing = fixed_selection_missing_exposed(hass, entry)
+    if not missing:
+        ir.async_delete_issue(hass, DOMAIN, FIXED_SELECTION_ISSUE)
+        return
+    _LOGGER.warning(
+        "HomeIntent uses a fixed entity selection; %d entities exposed to Assist "
+        "are not visible to HomeIntent (e.g. %s)", len(missing), ", ".join(missing[:5]),
+    )
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        FIXED_SELECTION_ISSUE,
+        is_fixable=False,
+        is_persistent=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=FIXED_SELECTION_ISSUE,
+        translation_placeholders={
+            "count": str(len(missing)),
+            "examples": ", ".join(missing[:5]),
+        },
+    )
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

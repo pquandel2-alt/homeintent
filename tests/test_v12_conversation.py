@@ -40,9 +40,13 @@ class FakeTimers:
         self.async_ensure_audible = AsyncMock(return_value=None)
         self.async_execute = AsyncMock(side_effect=self._execute)
         self.async_cancel_all = AsyncMock(side_effect=lambda user_input: len(self.timers))
+        self.restart_note = None
 
     async def async_list_timers(self, user_input):
         return self.timers
+
+    def consume_restart_note(self):
+        return self.restart_note
 
     async def _execute(self, request, user_input, *, target=None):
         name = target.name if target is not None else request.name
@@ -347,9 +351,23 @@ def test_standing_permission_requires_preview_and_explicit_yes(tmp_path, monkeyp
     assert permission.confirmed and not permission.revoked
     listed = h.say("Welche Daueranweisungen gibt es?")
     assert listed.response.speech.startswith("1 Daueranweisung aktiv")
+    assert listed.response.response_type == "query_answer"
     revoked = h.say("Widerrufe alle Daueranweisungen.")
     assert revoked.response.speech == "Ich habe 1 Daueranweisung widerrufen."
     assert h.world.engine.permissions.active(h.world.ports.clock) == ()
+
+
+def test_confirming_the_same_standing_permission_twice_keeps_one(tmp_path, monkeypatch):
+    """F7: a repeated confirmation renews the instruction instead of duplicating it."""
+    h = Harness(tmp_path, monkeypatch, config=ProactiveConfig(enabled=True, standing_permissions_enabled=True))
+    h.say(PERMISSION)
+    assert h.say("Ja").response.speech.startswith("Gespeichert.")
+    h.say(PERMISSION)
+    again = h.say("Ja")
+    assert again.response.speech.startswith("Diese Daueranweisung gab es schon")
+    assert len(h.world.engine.permissions.all()) == 1
+    for question in ("Was darfst du ohne Rückfrage?", "Was machst du automatisch?"):
+        assert h.say(question).response.speech.startswith("1 Daueranweisung aktiv"), question
 
 
 def test_standing_permission_no_stores_nothing(tmp_path, monkeypatch):
@@ -397,6 +415,7 @@ def test_explain_and_history_from_stored_evidence(tmp_path, monkeypatch):
     assert "eindeutig in einem Raum" in text
     history = h.say("Welche Hinweise gab es heute?")
     assert history.response.speech == "Heute habe ich mich zu 1 Situation gemeldet: Garage."
+    assert history.response.response_type == "query_answer"
     nothing = h.say("Warum hast du mich wegen der Waschmaschine angesprochen?")
     assert nothing.response.speech == "Dazu habe ich in letzter Zeit keinen Hinweis gegeben."
 

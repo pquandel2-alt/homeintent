@@ -103,17 +103,59 @@ def has_explicit_location_cue(text: str, entities: list[EntitySnapshot]) -> bool
     )
 
 
+_WHOLE_HOME_RE = re.compile(
+    r"\b(?:(?:im|in\s+dem)\s+)?(?:ganzen|gesamten)\s+(?:haus|gebäude|wohnung)\b"
+    r"|\bin\s+allen\s+(?:räumen|zimmern)\b|\büberall\b",
+    re.I,
+)
+_BARE_HOUSE_RE = re.compile(r"\b(?:im|in\s+dem)\s+haus\b", re.I)
+
+
+def whole_home_phrase(
+    text: str,
+    entities: list[EntitySnapshot],
+    world_model: WorldModel | None = None,
+) -> str | None:
+    """Return the spoken whole-home scope (``im ganzen Haus``, ``überall``).
+
+    A bare ``im Haus`` only means the whole home when no area or floor is
+    itself called ``Haus`` (F21); a real area of that name keeps its meaning.
+    """
+    match = _WHOLE_HOME_RE.search(text)
+    if match is not None:
+        return match.group(0)
+    bare = _BARE_HOUSE_RE.search(text)
+    if bare is None:
+        return None
+    names = (
+        {
+            name
+            for area in world_model.areas
+            for name in (area.name, *area.aliases)
+        }
+        | {floor.name for floor in world_model.floors}
+        if world_model is not None
+        else {
+            name
+            for entity in entities
+            for name in (entity.area_name, *entity.area_aliases, entity.floor_name)
+            if name
+        }
+    )
+    if any(normalize_for_compare(name) == "haus" for name in names):
+        return None
+    return bare.group(0)
+
+
 def resolve_semantic_location(
     text: str,
     entities: list[EntitySnapshot],
     world_model: WorldModel | None = None,
 ) -> tuple[str, str | None, str | None] | None:
     """Return ``(spoken_text, area_id, floor_id)`` for one clear location."""
-    whole_home = re.search(
-        r"\b(?:(?:im|in\s+dem)\s+)?(?:ganzen|gesamten)\s+haus\b", text, re.I
-    )
+    whole_home = whole_home_phrase(text, entities, world_model)
     if whole_home is not None:
-        return whole_home.group(0), None, None
+        return whole_home, None, None
     names = (
         {
             name

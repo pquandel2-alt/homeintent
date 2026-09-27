@@ -1,0 +1,25 @@
+- id: "1700000000001"
+  alias: Flurlicht bei Bewegung
+  description: Vom Benutzer angelegt (nicht HomeIntent)
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.bewegung_flur
+      to: "on"
+  actions:
+    - action: light.turn_on
+      target:
+        entity_id: light.flurlicht
+- id: "1700000000002"
+  alias: Rollläden abends schließen
+  description: Vom Benutzer angelegt (nicht HomeIntent)
+  triggers:
+    - trigger: sun
+      event: sunset
+      offset: "00:15:00"
+  actions:
+    - action: cover.close_cover
+      target:
+        entity_id:
+          - cover.wohnzimmer_rollladen_links
+          - cover.wohnzimmer_rollladen_rechts
+          - cover.kuechenrollladen

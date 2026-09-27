@@ -251,15 +251,16 @@ def test_stores_are_bounded(tmp_path):
         )
     assert len(proposals.all()) == MAX_PROPOSALS
     permissions = StandingPermissionStore()
+    # Distinct instructions: identical ones are renewed, not stored twice.
     for index in range(MAX_PERMISSIONS):
         permissions.add(StandingPermission(
             f"p{index}", "philipp", SituationKind.DEVICE_LEFT_ON_WHEN_LEAVING,
-            AutoOperator.LIGHT_TURN_OFF, ("light.a",), None, (), NOW, NOW + timedelta(days=1), True,
+            AutoOperator.LIGHT_TURN_OFF, (f"light.a{index}",), None, (), NOW, NOW + timedelta(days=1), True,
         ))
     try:
         permissions.add(StandingPermission(
             "overflow", "philipp", SituationKind.DEVICE_LEFT_ON_WHEN_LEAVING,
-            AutoOperator.LIGHT_TURN_OFF, ("light.a",), None, (), NOW, NOW + timedelta(days=1), True,
+            AutoOperator.LIGHT_TURN_OFF, ("light.overflow",), None, (), NOW, NOW + timedelta(days=1), True,
         ))
     except ValueError:
         pass

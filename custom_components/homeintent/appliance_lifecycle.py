@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 
-from .entities import EntitySnapshot, normalize_for_compare
+from .entities import EntitySnapshot, normalize_for_compare, spoken_state
 from .world_model import WorldModel
 
 
@@ -229,9 +229,9 @@ def match_appliance_lifecycle_query(
         suffix = " Prozent" if entity.unit == "%" else (f" {entity.unit}" if entity.unit else "")
         answer = f"{label}: {entity.state}{suffix} Fortschritt."
     elif question is ApplianceQuestion.PROGRAM:
-        answer = f"{label} verwendet das Programm {entity.state}."
+        answer = f"{label} verwendet das Programm {spoken_state(entity.state)}."
     else:
-        answer = f"{label} meldet den Status {entity.state}."
+        answer = f"{label} meldet den Status „{spoken_state(entity.state)}“."
     return ApplianceLifecycleAnswer(answer, question, evidence)
 
 

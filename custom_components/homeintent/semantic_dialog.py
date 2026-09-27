@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from .device_result import DeviceControlResult
 from .entities import EntitySnapshot, normalize_for_compare
+from .nlu.registered_operation_compiler import climate_in_named_area
 from .nlu.entity_resolution import (
     ResolutionStatus,
     ResolveStatus,
@@ -34,7 +35,12 @@ def _mentioned_entity(
     text: str, entities: list[EntitySnapshot], domains: frozenset[str]
 ) -> EntitySnapshot | None:
     result = resolve_mentioned_target(text, entities, domains)
-    return result.entity if result.status is ResolutionStatus.RESOLVED else None
+    if result.status is ResolutionStatus.RESOLVED:
+        return result.entity
+    if "climate" in domains:
+        # "die Heizung im Büro" names the only climate entity of that room.
+        return climate_in_named_area(text, entities)
+    return None
 
 def _spoken_domain(text: str) -> str | None:
     normalized = normalize_for_compare(text)

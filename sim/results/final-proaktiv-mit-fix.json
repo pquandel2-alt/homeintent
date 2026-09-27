@@ -1,0 +1,608 @@
+{
+ "pro-garage": {
+  "id": "pro-garage",
+  "category": "Proaktiv",
+  "title": "Garage bleibt offen → Push-Vorschlag → Ja schließt",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "proactive_context_enabled": true,
+      "push_proactive_enabled": true,
+      "voice_proactive_enabled": false,
+      "proactive_entry_open_minutes": 1,
+      "quiet_hours_enabled": false,
+      "attention_budget_enabled": true,
+      "agent_enabled": true,
+      "agent_delivery_channels": [
+       "push"
+      ],
+      "agent_notify_targets": [
+       "notify.handy_philipp_nachricht",
+       "notify.handy_anna_nachricht"
+      ],
+      "proactive_appliance_entities": [
+       "sensor.leistung_waschmaschine",
+       "sensor.waschmaschine_status"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.bind_user_context",
+     "data": {
+      "user_id": "$admin_user_id",
+      "person_entity_id": "person.philipp",
+      "notification_targets": [
+       "notify.handy_philipp_nachricht"
+      ],
+      "preferred_notification_target": "notify.handy_philipp_nachricht",
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F43AGB9Y2X0M425AA03TQ2",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.bind_user_context",
+     "data": {
+      "user_id": "$anna_user_id",
+      "person_entity_id": "person.anna",
+      "notification_targets": [
+       "notify.handy_anna_nachricht"
+      ],
+      "preferred_notification_target": "notify.handy_anna_nachricht",
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F43AGG76QZCDFHASJY8YHM",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.set_household",
+     "data": {
+      "person_entity_ids": [
+       "person.philipp",
+       "person.anna",
+       "person.lena"
+      ],
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F43AGMGVP4V9C7FSJHSE7P",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "cover.open_cover",
+     "data": {
+      "entity_id": "cover.garagentor"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F43AGRGS9M9P9EMPT5AN79",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "wait": 80
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "cover.garagentor:open_cover",
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Das Garagentor ist noch offen. Soll ich es schließen?\", \"title\": \"HomeIntent\"}",
+     "notify.handy_anna_nachricht:send_message {\"message\": \"Das Garagentor ist noch offen. Soll ich es schließen?\", \"title\": \"HomeIntent\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent",
+      "message": "Das Garagentor ist noch offen. Soll ich es schließen?",
+      "time": "2026-09-26T15:08:20.484111+00:00"
+     },
+     {
+      "target": "notify.handy_anna_nachricht",
+      "title": "HomeIntent",
+      "message": "Das Garagentor ist noch offen. Soll ich es schließen?",
+      "time": "2026-09-26T15:08:20.486584+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 8
+    },
+    "latency_ms": 6164.8,
+    "speech": "Erledigt. Ich habe das Garagentor geschlossen und die Wirkung geprüft.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "cover.garagentor:close_cover"
+    ],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Warum hast du mich wegen der Garage angesprochen?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.2,
+    "speech": "Ich habe dich um 17:08 Uhr per Push-Nachricht mit Antwortknöpfen auf die Situation „Garagentor“ hingewiesen. Der Zustand bestand zu dem Zeitpunkt seit 1 Minute und 20 Sekunden. Priorität: wichtig. Antwort: accepted.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Welche Hinweise gab es heute?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 14.6,
+    "speech": "Heute habe ich mich zu 2 Situationen gemeldet: Rauchmelder Flur und Garagentor.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "pro-garage-closed-meanwhile": {
+  "id": "pro-garage-closed-meanwhile",
+  "category": "Proaktiv",
+  "title": "Garage vor Antwort geschlossen → Ja ist wirkungslos",
+  "steps": [
+   {
+    "step": {
+     "service": "cover.open_cover",
+     "data": {
+      "entity_id": "cover.garagentor"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F468HVFHC226FPMGT6193X",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "wait": 80
+    }
+   },
+   {
+    "step": {
+     "service": "cover.close_cover",
+     "data": {
+      "entity_id": "cover.garagentor"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F48PPA0J3PEQVVWKWM80SC",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "wait": 8
+    }
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 46.2,
+    "speech": "Das habe ich nicht verstanden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "pro-smoke": {
+  "id": "pro-smoke",
+  "category": "Proaktiv",
+  "title": "Rauchmelder → sofortige kritische Meldung",
+  "steps": [
+   {
+    "step": {
+     "set": "binary_sensor.rauchmelder_flur",
+     "value": "on",
+     "settle": 4
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "media_player.kuechenradio:play_media {\"media_type\": \"music\", \"media_id\": \"media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null\"}",
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!\", \"title\": \"HomeIntent: Achtung\"}",
+     "media_player.kuechenradio:play_media {\"media_type\": \"music\", \"media_id\": \"media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null\"}",
+     "notify.handy_anna_nachricht:send_message {\"message\": \"Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!\", \"title\": \"HomeIntent: Achtung\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent: Achtung",
+      "message": "Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!",
+      "time": "2026-09-26T15:10:25.921760+00:00"
+     },
+     {
+      "target": "notify.handy_anna_nachricht",
+      "title": "HomeIntent: Achtung",
+      "message": "Achtung: Das Gerät „Rauchmelder Flur“ meldet Rauch!",
+      "time": "2026-09-26T15:10:25.924732+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [
+     {
+      "entity_id": "media_player.kuechenradio",
+      "media_id": "media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null",
+      "time": "2026-09-26T15:10:25.921610+00:00"
+     },
+     {
+      "entity_id": "media_player.kuechenradio",
+      "media_id": "media-source://tts/tts.sprachausgabe?message=Achtung:+Das+Ger%C3%A4t+%E2%80%9ERauchmelder+Flur%E2%80%9C+meldet+Rauch!&cache=true&tts_options=null",
+      "time": "2026-09-26T15:10:25.924513+00:00"
+     }
+    ],
+    "problems": []
+   }
+  ],
+  "passed": true
+ },
+ "pro-washer": {
+  "id": "pro-washer",
+  "category": "Proaktiv",
+  "title": "Waschmaschine fertig",
+  "steps": [
+   {
+    "step": {
+     "set": "sensor.leistung_waschmaschine",
+     "value": 1850,
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "wait": 5
+    }
+   },
+   {
+    "step": {
+     "set": "sensor.leistung_waschmaschine",
+     "value": 2,
+     "settle": 5
+    }
+   },
+   {
+    "step": {
+     "wait": 60
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'waschmaschine' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "pro-washer-status": {
+  "id": "pro-washer-status",
+  "category": "Proaktiv",
+  "title": "Waschmaschine fertig (Text-Statussensor)",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "proactive_context_enabled": true,
+      "push_proactive_enabled": true,
+      "voice_proactive_enabled": false,
+      "proactive_entry_open_minutes": 1,
+      "quiet_hours_enabled": false,
+      "attention_budget_enabled": true,
+      "agent_enabled": true,
+      "agent_delivery_channels": [
+       "push"
+      ],
+      "agent_notify_targets": [
+       "notify.handy_philipp_nachricht",
+       "notify.handy_anna_nachricht"
+      ],
+      "proactive_appliance_entities": [
+       "sensor.leistung_waschmaschine",
+       "sensor.waschmaschine_status"
+      ]
+     }
+    }
+   },
+   {
+    "step": {
+     "set": "sensor.waschmaschine_status",
+     "value": "running",
+     "settle": 2
+    }
+   },
+   {
+    "step": {
+     "set": "sensor.waschmaschine_status",
+     "value": "finished",
+     "settle": 5
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Keine Push-Nachricht mit 'waschmaschine' (erhalten: [])"
+    ]
+   }
+  ],
+  "passed": false
+ },
+ "pro-standing": {
+  "id": "pro-standing",
+  "category": "Proaktiv",
+  "title": "Daueranweisung: niemand zuhause → Licht aus",
+  "steps": [
+   {
+    "step": {
+     "options": {
+      "standing_permissions_enabled": true
+     }
+    }
+   },
+   {
+    "step": {
+     "service": "homeintent.set_household",
+     "data": {
+      "person_entity_ids": [
+       "person.philipp",
+       "person.anna"
+      ],
+      "confirmed": true
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F4BPP8ZCAQB0FY1VM58QYJ",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "say": "Wenn niemand zuhause ist und im Wohnzimmer noch Licht an ist, darfst du es automatisch ausschalten.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 20.7,
+    "speech": "Vorschau: Wenn niemand zu Hause ist und im Wohnzimmer noch Licht an ist, schalte ich Stehlampe, Wohnzimmer Deckenlicht und LED-Streifen Wohnzimmer automatisch aus. Jede Ausführung prüft vorher den aktuellen Zustand und die Sicherheitsregeln. Die Erlaubnis gilt 180 Tage. Soll ich das so speichern?",
+    "response_type": "action_done",
+    "continue_conversation": true,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   },
+   {
+    "step": {
+     "say": "Ja.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 24.6,
+    "speech": "Gespeichert. Ich schalte das Licht nur aus, wenn zu diesem Zeitpunkt wirklich niemand zu Hause ist, und prüfe die Wirkung.",
+    "response_type": "action_done",
+    "continue_conversation": false
+   },
+   {
+    "step": {
+     "service": "light.turn_on",
+     "data": {
+      "entity_id": "light.wohnzimmer_deckenlicht"
+     },
+     "response": false
+    },
+    "response": {
+     "context": {
+      "id": "01M3F4BRPNRKD651XXVVKKDER2",
+      "parent_id": null,
+      "user_id": "1a5e1b34f6ab43378113feef62c2962b"
+     }
+    }
+   },
+   {
+    "step": {
+     "set": "device_tracker.handy_philipp",
+     "value": "not_home",
+     "settle": 0.5
+    }
+   },
+   {
+    "step": {
+     "set": "device_tracker.handy_anna",
+     "value": "not_home",
+     "settle": 10
+    }
+   },
+   {
+    "step": {
+     "wait": 330
+    }
+   },
+   {
+    "step": {
+     "check": true
+    },
+    "calls": [
+     "light.wohnzimmer_deckenlicht:turn_on",
+     "notify.handy_philipp_nachricht:send_message {\"message\": \"Im Wohnzimmer ist noch Licht an, obwohl niemand zu Hause ist. Soll ich es ausschalten?\", \"title\": \"HomeIntent\"}",
+     "notify.handy_anna_nachricht:send_message {\"message\": \"Im Wohnzimmer ist noch Licht an, obwohl niemand zu Hause ist. Soll ich es ausschalten?\", \"title\": \"HomeIntent\"}"
+    ],
+    "notifications": [
+     {
+      "target": "notify.handy_philipp_nachricht",
+      "title": "HomeIntent",
+      "message": "Im Wohnzimmer ist noch Licht an, obwohl niemand zu Hause ist. Soll ich es ausschalten?",
+      "time": "2026-09-26T15:16:57.683655+00:00"
+     },
+     {
+      "target": "notify.handy_anna_nachricht",
+      "title": "HomeIntent",
+      "message": "Im Wohnzimmer ist noch Licht an, obwohl niemand zu Hause ist. Soll ich es ausschalten?",
+      "time": "2026-09-26T15:16:57.685958+00:00"
+     }
+    ],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "light.wohnzimmer_deckenlicht=on statt off"
+    ]
+   },
+   {
+    "step": {
+     "say": "Was darfst du ohne Rückfrage?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 30.1,
+    "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
+    "response_type": "error",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": [
+     "Antwort enthält keins von ['wohnzimmer', 'licht']"
+    ]
+   },
+   {
+    "step": {
+     "say": "Welche Daueranweisungen gibt es?",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.6,
+    "speech": "2 Daueranweisungen aktiv: Licht im Bereich Wohnzimmer ausschalten, wenn niemand zu Hause ist und Licht im Bereich Wohnzimmer ausschalten, wenn niemand zu Hause ist.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": false
+ },
+ "pro-standing-never-auto": {
+  "id": "pro-standing-never-auto",
+  "category": "Proaktiv",
+  "title": "Daueranweisung für Garage wird abgelehnt (NEVER_AUTO)",
+  "steps": [
+   {
+    "step": {
+     "say": "Wenn niemand zuhause ist und das Garagentor offen ist, darfst du es automatisch schließen.",
+     "user": "admin",
+     "settle": 1.0
+    },
+    "latency_ms": 18.0,
+    "speech": "Tore, Garagen, Türen, Schlösser, Alarmanlagen und ähnlich kritische Geräte schalte ich nie automatisch. Ich frage dich in solchen Situationen stattdessen. Ich habe nichts gespeichert.",
+    "response_type": "action_done",
+    "continue_conversation": false,
+    "calls": [],
+    "notifications": [],
+    "spoken": [],
+    "played_media": [],
+    "problems": []
+   }
+  ],
+  "passed": true
+ }
+}

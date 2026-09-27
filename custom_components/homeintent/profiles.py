@@ -88,6 +88,13 @@ class ProfileStore:
             self._comfort[profile.profile_id] = profile
             await asyncio.to_thread(self._write)
 
+    def routines_for(self, user_id: str) -> tuple[RoutineDefinition, ...]:
+        """Every confirmed routine the user owns (for spoken names, F14)."""
+        return tuple(
+            item for item in self._routines.values()
+            if item.confirmed and item.owner_user_id == user_id
+        )
+
     def routine(self, name_or_id: str, *, user_id: str) -> RoutineDefinition | None:
         key = name_or_id.casefold().strip()
         matches = [

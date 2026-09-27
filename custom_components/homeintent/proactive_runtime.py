@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Any, Awaitable, Callable, Mapping
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback as ha_callback
 from homeassistant.util import dt as dt_util
 
 from .agent_delivery import AgentDelivery
@@ -609,6 +609,9 @@ class ProactiveRuntime:
             _LOGGER.warning("HomeIntent V12 scheduler bound reached; dropping %s", key)
             return
 
+        # Must run in the event loop: without @callback HA dispatches a plain
+        # function to the executor, where hass.async_create_task raises.
+        @ha_callback
         def _fire(_now: Any) -> None:
             self._timers.pop(key, None)
             self._hass.async_create_task(callback(), name=f"HomeIntent V12 {key}")

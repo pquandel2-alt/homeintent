@@ -191,6 +191,23 @@ def test_never_activated_scene_or_button_can_be_triggered():
         assert result.executed is True, entity.entity_id
 
 
+def test_notify_entity_before_its_first_message_can_be_used():
+    # F8: a notify entity's state is the time of its last message and stays
+    # "unknown" until the first one - it is not an unreliable device.
+    for entity, plan in (
+        (
+            EntitySnapshot("notify.handy_anna", "Handy Anna", "notify", "unknown"),
+            ServiceCallPlan("notify", "send_message", "notify.handy_anna", {"message": "Essen"}),
+        ),
+        (
+            EntitySnapshot("script.gute_nacht", "Gute Nacht", "script", "unknown"),
+            ServiceCallPlan("script", "turn_on", "script.gute_nacht"),
+        ),
+    ):
+        hass, result = _execute(entity, plan)
+        assert result.executed is True, entity.entity_id
+
+
 def test_stateful_target_with_unknown_state_is_still_rejected():
     entity = EntitySnapshot("switch.pumpe", "Pumpe", "switch", "unknown")
     hass, result = _execute(

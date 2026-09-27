@@ -40,6 +40,22 @@ def default_exposed_entities(hass: HomeAssistant) -> list[str]:
     ]
 
 
+def fixed_selection_missing_exposed(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
+    """Assist-exposed entities that a stored fixed selection leaves out.
+
+    Empty when HomeIntent follows the dynamic Assist exposure (no stored
+    selection). A non-empty result means newly exposed entities are
+    invisible to HomeIntent until the selection is cleared or extended.
+    """
+    selected = entry.options.get(CONF_SELECTED_ENTITIES) or entry.data.get(CONF_SELECTED_ENTITIES)
+    if not selected:
+        return []
+    chosen = set(selected)
+    return sorted(
+        entity_id for entity_id in default_exposed_entities(hass) if entity_id not in chosen
+    )
+
+
 def get_selected_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     """Return the selected entity_ids from options, falling back to Assist-exposed."""
     selected = entry.options.get(CONF_SELECTED_ENTITIES)

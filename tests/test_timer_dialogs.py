@@ -44,9 +44,13 @@ class FakeTimers:
         self.async_ensure_audible = AsyncMock(return_value=None)
         self.async_execute = AsyncMock(side_effect=self._execute)
         self.async_cancel_all = AsyncMock(side_effect=lambda user_input: len(self.timers))
+        self.restart_note = None
 
     async def async_list_timers(self, user_input):
         return self.timers
+
+    def consume_restart_note(self):
+        return self.restart_note
 
     async def _execute(self, request, user_input, *, target=None):
         name = target.name if target is not None else request.name
@@ -296,3 +300,26 @@ def test_question_while_naming_is_not_taken_as_name(monkeypatch):
 
     assert result.response.speech == "Pizza: noch 10 Minuten."
     assert timer_name_reply("Wie heißt er?") is None
+
+
+def test_timer_status_after_restart_names_lost_timers(monkeypatch):
+    """F19: timers lost to a Home Assistant restart are not silently gone."""
+    agent, fake = _agent(monkeypatch)
+    fake.restart_note = (
+        "Hinweis: Durch den Neustart von Home Assistant ist der Timer „Nudeln“ "
+        "(wäre um 18:05 Uhr abgelaufen) verloren gegangen. Bitte stelle ihn bei Bedarf neu."
+    )
+    speech = _say(agent, "Welche Timer laufen?").response.speech
+    assert "Nudeln" in speech and "Neustart" in speech
+    assert "Es läuft kein Timer." in speech
+
+
+def test_restart_note_wording():
+    from datetime import datetime, timezone
+
+    from homeintent.native_timer import LostTimer, restart_note
+
+    now = datetime(2026, 9, 26, 16, 0, tzinfo=timezone.utc)
+    assert restart_note([], now) is None
+    note = restart_note([LostTimer("Nudeln", datetime(2026, 9, 26, 15, 0, tzinfo=timezone.utc))], now)
+    assert note is not None and "„Nudeln“ (ist inzwischen abgelaufen)" in note

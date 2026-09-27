@@ -6,8 +6,11 @@ import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .agent_delivery import AgentDelivery
 from .const import (
@@ -109,8 +112,44 @@ def join_timer_labels(timers: Sequence[NativeTimerInfo]) -> str:
     return ", ".join(labels[:-1]) + " oder " + labels[-1]
 
 
+_JOURNAL_KEY = "homeintent_timer_journal"
+_JOURNAL_LIMIT = 32
+
+
+@dataclass(frozen=True)
+class LostTimer:
+    """A timer that was running when Home Assistant stopped (F19)."""
+
+    label: str
+    ends_at: datetime
+
+
+def restart_note(lost: Sequence[LostTimer], now: datetime) -> str | None:
+    """Spoken hint about timers lost to a Home Assistant restart."""
+    if not lost:
+        return None
+    parts: list[str] = []
+    for timer in lost[:3]:
+        local_end = dt_util.as_local(timer.ends_at)
+        when = "ist inzwischen abgelaufen" if timer.ends_at <= now else f"wäre um {local_end:%H:%M} Uhr abgelaufen"
+        parts.append(f"„{timer.label}“ ({when})")
+    noun = "der Timer" if len(lost) == 1 else "die Timer"
+    return (
+        f"Hinweis: Durch den Neustart von Home Assistant ist {noun} "
+        f"{', '.join(parts)} verloren gegangen. Bitte stelle ihn bei Bedarf neu."
+        if len(lost) == 1 else
+        f"Hinweis: Durch den Neustart von Home Assistant sind {noun} "
+        f"{', '.join(parts)} verloren gegangen. Bitte stelle sie bei Bedarf neu."
+    )
+
+
 class NativeTimerRuntime:
-    """Use HA's TimerManager; HomeIntent never runs a parallel scheduler."""
+    """Use HA's TimerManager; HomeIntent never runs a parallel scheduler.
+
+    Assist timers live only in memory. A small journal of started timers
+    (label and end time) lets HomeIntent tell the user after a restart which
+    timers were lost instead of silently answering "Es läuft kein Timer" (F19).
+    """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self._hass = hass
@@ -118,6 +157,67 @@ class NativeTimerRuntime:
         self._fallback_device_id = f"{DOMAIN}:{entry.entry_id}"
         self._delivery = AgentDelivery(hass)
         self._unregister: Callable[[], None] | None = None
+        self._journal: list[dict[str, str]] = []
+        self._lost: list[LostTimer] = []
+        self._store: object | None = None
+
+    async def async_load_journal(self) -> None:
+        """Timers journaled before this start did not survive it."""
+        try:
+            from homeassistant.helpers.storage import Store
+
+            store: Store[dict[str, list[dict[str, str]]]] = Store(self._hass, 1, _JOURNAL_KEY)
+            self._store = store
+            raw = await store.async_load()
+        except Exception:  # noqa: BLE001 - the hint is best effort
+            _LOGGER.debug("HomeIntent timer journal unavailable", exc_info=True)
+            return
+        entries = raw.get("timers", []) if isinstance(raw, dict) else []
+        for item in entries[-_JOURNAL_LIMIT:]:
+            try:
+                ends_at = datetime.fromisoformat(str(item["ends_at"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            self._lost.append(LostTimer(str(item.get("label") or "Timer"), ends_at))
+        self._journal = []
+        await self._async_save_journal()
+
+    def consume_restart_note(self) -> str | None:
+        """The restart hint, spoken once with the next timer status answer."""
+        note = restart_note(self._lost, dt_util.utcnow())
+        self._lost = []
+        return note
+
+    async def _async_save_journal(self) -> None:
+        store = self._store
+        if store is None:
+            return
+        try:
+            await store.async_save({"timers": self._journal[-_JOURNAL_LIMIT:]})  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - never affect the timer itself
+            _LOGGER.debug("HomeIntent timer journal not saved", exc_info=True)
+
+    async def _async_journal_start(self, label: str, seconds: int) -> None:
+        ends_at = dt_util.utcnow() + timedelta(seconds=seconds)
+        self._journal.append({"label": label, "ends_at": ends_at.isoformat()})
+        await self._async_save_journal()
+
+    async def _async_journal_remove(self, label: str | None) -> None:
+        now = dt_util.utcnow()
+        kept = [
+            item for item in self._journal
+            if datetime.fromisoformat(item["ends_at"]) > now
+        ]
+        if label is None:
+            kept = []
+        else:
+            for index, item in enumerate(kept):
+                if _name_key(item["label"]) == _name_key(label):
+                    del kept[index]
+                    break
+        if kept != self._journal:
+            self._journal = kept
+            await self._async_save_journal()
 
     def async_start(self) -> Callable[[], None]:
         """Register one synthetic timer device for configured TTS fallback."""
@@ -160,6 +260,10 @@ class NativeTimerRuntime:
         self._hass.async_create_task(
             self._async_announce(message),
             name="HomeIntent timer announcement",
+        )
+        self._hass.async_create_task(
+            self._async_journal_remove(name.strip() if isinstance(name, str) and name.strip() else ""),
+            name="HomeIntent timer journal",
         )
         # V12 may observe the expiry for history only; NativeTimer remains the
         # sole announcer, so one expiry yields exactly one announcement.
@@ -314,6 +418,7 @@ class NativeTimerRuntime:
         )
         speech_slots = getattr(native_response, "speech_slots", {})
         canceled = speech_slots.get("canceled") if isinstance(speech_slots, dict) else None
+        await self._async_journal_remove(None)
         return canceled if isinstance(canceled, int) else 0
 
     @staticmethod
@@ -384,7 +489,10 @@ class NativeTimerRuntime:
         native_response = await self._async_handle(intent_type, slots, user_input, device_id)
         label = f" „{name}“" if name else ""
         if operation is TimerOperation.START:
+            await self._async_journal_start(name or f"Timer über {format_duration(seconds)}", seconds)
             return f"Timer{label} für {format_duration(seconds)} gestartet."
+        if operation in {TimerOperation.CANCEL, TimerOperation.FINISH}:
+            await self._async_journal_remove(name or (target.label if target is not None else None))
         if operation is TimerOperation.CHANGE:
             verb = "verlängert" if (request.change_seconds or 0) > 0 else "verkürzt"
             return f"Timer{label} um {format_duration(seconds)} {verb}."

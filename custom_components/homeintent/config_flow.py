@@ -105,7 +105,6 @@ from .const import (
     DOMAIN,
     SELECTABLE_DOMAINS,
 )
-from .hass_entities import default_exposed_entities
 from .customization import parse_custom_aliases
 from .house_graph import parse_relation_specs
 from .agent_config_validation import (
@@ -153,6 +152,10 @@ class HomeIntentConfigFlow(_DomainConfigFlow, domain=DOMAIN):
                 CONF_AGENT_AUTO_ENABLED: False,
                 CONF_AGENT_AUTO_ENTITY_IDS: [],
                 CONF_DOCUMENTS_ENABLED: False,
+                # F26 (7.2.1): new installations reserve automation creation
+                # for administrators (households with children's accounts).
+                # Entries created before 7.2.1 keep their stored behaviour.
+                CONF_ALLOW_NON_ADMIN_AUTOMATIONS: False,
             },
         )
 
@@ -203,9 +206,11 @@ class HomeIntentOptionsFlow(OptionsFlow):
                 )
             return self.async_create_entry(title="", data=user_input)
 
-        current = self.config_entry.options.get(CONF_SELECTED_ENTITIES)
-        if current is None:
-            current = default_exposed_entities(self.hass)
+        # Never pre-fill the current Assist exposure (F6): saving any other
+        # option would silently freeze it into a fixed list and hide every
+        # entity exposed later. Empty keeps HomeIntent dynamic; only a
+        # selection the user made explicitly is shown and kept.
+        current = self.config_entry.options.get(CONF_SELECTED_ENTITIES) or []
 
         return self.async_show_form(
             step_id="init",

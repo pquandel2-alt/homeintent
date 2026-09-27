@@ -19,6 +19,7 @@ from .const import (
 )
 from .agent_config_validation import parse_event_categories
 from .hass_entities import build_entity_snapshots
+from .entities import spoken_state
 from .agent_event import AgentMode
 from .effect_monitor import ExpectedEffect
 from .proactive_decision import ProactiveDecisionEngine
@@ -267,7 +268,7 @@ class SituationRuntime:
             return
         facts = [
             f"Erwarteter Zustand: {effect.expected_state}",
-            f"Beobachteter Zustand: {entity.state}",
+            f"Beobachteter Zustand: {spoken_state(entity.state)}",
             "Die Aktion wird nicht automatisch wiederholt.",
         ]
         summary = "Die erwartete Gerätewirkung wurde nicht beobachtet."

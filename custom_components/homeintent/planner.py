@@ -246,7 +246,7 @@ def materialize_goal(
     aggregate = max((step.risk for step in steps), default=RiskLevel.LOW)
     plan = MaterializedPlan(
         f"plan_{uuid.uuid4().hex}", goal, tuple(steps), aggregate, True,
-        f"{len(steps) - 1} geprüfte Aktion(en), Gesamtrisiko {aggregate.name.lower()}.",
+        f"{len(steps) - 1} geprüfte Aktion(en), Gesamtrisiko {_RISK_WORDS_DE[aggregate.name]}.",
         _trace(goal, snapshots, tuple(selected), tuple(skipped), limits),
     )
     validate_plan_graph(plan, limits=limits)
@@ -460,7 +460,7 @@ def materialize_target_states(
     aggregate = max((item.risk for item in steps), default=RiskLevel.LOW)
     plan = MaterializedPlan(
         f"plan_{uuid.uuid4().hex}", goal, tuple(steps), aggregate, True,
-        f"{len(steps) - 1} geprüfte Aktion(en), Gesamtrisiko {aggregate.name.lower()}.",
+        f"{len(steps) - 1} geprüfte Aktion(en), Gesamtrisiko {_RISK_WORDS_DE[aggregate.name]}.",
         _trace(goal, snapshots, tuple(selected), tuple(skipped), limits),
     )
     validate_plan_graph(plan, limits=limits)
@@ -851,6 +851,10 @@ def _empty_verification() -> dict[str, str]:
     return {}
 
 
+# Spoken German risk levels (F16): never the English enum name.
+_RISK_WORDS_DE = {"LOW": "niedrig", "MEDIUM": "mittel", "HIGH": "hoch", "CRITICAL": "kritisch"}
+
+
 __all__ = (
     "Goal", "GoalKind", "MaterializedPlan", "PlanExecutor", "PlanOperator",
     "PlanningLimits", "PlanningTrace", "PlanResult", "PlanStatus", "PlanStep",
@@ -964,3 +968,4 @@ def goal_run_from_plan_result(
         ),
         evidence=(f"plan_status={result.status.value}", *evidence),
     )
+

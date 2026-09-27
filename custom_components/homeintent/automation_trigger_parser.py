@@ -40,8 +40,9 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList, recognize
+from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList
 
+from .hassil_compat import recognize_aligned
 from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
 from .automation_target_resolver import build_device_class_target, build_named_target
 from .nlu.automation_model import (
@@ -187,7 +188,7 @@ class AutomationTriggerParser:
             "action_temporal_unit": _ACTION_TEMPORAL_UNIT_SLOT_LIST,
             "trigger_text": WildcardSlotList(name="trigger_text"),
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return self._parse_semantic_state_trigger(
                 text, context

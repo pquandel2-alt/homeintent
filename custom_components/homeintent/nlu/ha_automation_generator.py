@@ -639,7 +639,7 @@ def _generate_action_leaf(action: ActionModel, entities: list[EntitySnapshot]) -
         return {
             "action": "light.turn_on",
             "target": {"entity_id": _entity_id_field(candidates)},
-            "data": {"kelvin": action.color_temp_kelvin},
+            "data": {"color_temp_kelvin": action.color_temp_kelvin},
         }, None
     if action.type is ActionType.SET_POSITION:
         assert action.value is not None

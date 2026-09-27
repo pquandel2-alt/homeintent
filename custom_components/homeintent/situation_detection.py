@@ -12,6 +12,7 @@ value from ``UserContextStore``); the detector never derives presence itself.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Iterable, Mapping
@@ -52,6 +53,12 @@ class DetectorConfig:
     entry_open_minutes: int = 15
     appliance_entity_ids: frozenset[str] = frozenset()
     appliance_finished_ttl: timedelta = timedelta(hours=4)
+    # Power-metered appliances (F15): "running" above ``appliance_running_watts``,
+    # "finished" once the draw stays below ``appliance_idle_watts`` for
+    # ``appliance_idle_duration`` after such a run.
+    appliance_running_watts: float = 10.0
+    appliance_idle_watts: float = 5.0
+    appliance_idle_duration: timedelta = timedelta(minutes=1)
 
 
 @dataclass(frozen=True)
@@ -87,11 +94,16 @@ class SituationDetector:
 
     def __init__(self, config: DetectorConfig | None = None) -> None:
         self.config = config or DetectorConfig()
+        # Power-metered appliances seen running since their last finish.
+        self._power_running: set[str] = set()
 
     # -- early filter ---------------------------------------------------
     def is_relevant(self, entity_id: str, device_class: str | None) -> bool:
         """Cheap first gate; no snapshot scan for unrelated entities."""
         domain = entity_id.partition(".")[0]
+        if entity_id in self.config.appliance_entity_ids:
+            # Selected appliances first: also power/binary sensors (F15).
+            return True
         if domain == "cover":
             return (device_class or "") in ENTRY_COVER_CLASSES
         if domain == "binary_sensor":
@@ -123,7 +135,11 @@ class SituationDetector:
             return ()
         signals: list[DetectionSignal] = []
         device_class = (entity.device_class or "").casefold()
-        if entity.domain == "binary_sensor" and device_class in SAFETY_CLASSES:
+        if entity.entity_id in self.config.appliance_entity_ids:
+            appliance = self._appliance(entity, previous_state, state, now)
+            if appliance is not None:
+                signals.append(appliance)
+        elif entity.domain == "binary_sensor" and device_class in SAFETY_CLASSES:
             signals.append(self._safety(entity, state, now))
         elif (
             (entity.domain == "cover" and device_class in ENTRY_COVER_CLASSES)
@@ -132,10 +148,6 @@ class SituationDetector:
             entry = self._entry(entity, state, now)
             if entry is not None:
                 signals.append(entry)
-        elif entity.entity_id in self.config.appliance_entity_ids:
-            appliance = self._appliance(entity, previous_state, state, now)
-            if appliance is not None:
-                signals.append(appliance)
         if entity.domain == "person":
             signals.extend(self.detect_left_on(tuple(entities), now=now, nobody_home=nobody_home))
         elif entity.domain == "light" and entity.area_id is not None:
@@ -243,11 +255,76 @@ class SituationDetector:
             ),
         )
 
+    def _power_watts(self, entity: EntitySnapshot, raw: str | None) -> float | None:
+        try:
+            value = float(str(raw).replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+        return value * 1000 if (entity.unit or "") == "kW" else value
+
+    def _power_appliance(
+        self, entity: EntitySnapshot, previous_state: str | None, now: datetime,
+    ) -> DetectionSignal | None:
+        """Finished = below the idle threshold after a run (F15).
+
+        The signal starts at the drop; ``ProactiveEngine`` only communicates
+        it once the draw stayed low for ``appliance_idle_duration`` and
+        re-checks the live value then (``still_active``), so short program
+        pauses do not count as "finished".
+        """
+        key = f"{SituationKind.APPLIANCE_FINISHED.value}:{entity.entity_id}"
+        watts = self._power_watts(entity, entity.state)
+        if watts is None:
+            return None
+        previous = self._power_watts(entity, previous_state)
+        if watts >= self.config.appliance_running_watts:
+            self._power_running.add(entity.entity_id)
+            return DetectionSignal(
+                SituationKind.APPLIANCE_FINISHED, key, (entity.entity_id,),
+                entity.area_id, False, now,
+                (SituationEvidence("source", "power"), SituationEvidence("watts", f"{watts:g}")),
+                _appliance_name(entity),
+            )
+        was_running = entity.entity_id in self._power_running or (
+            previous is not None and previous >= self.config.appliance_running_watts
+        )
+        if watts < self.config.appliance_idle_watts and was_running:
+            self._power_running.discard(entity.entity_id)
+            return DetectionSignal(
+                SituationKind.APPLIANCE_FINISHED, key, (entity.entity_id,),
+                entity.area_id, True, now,
+                (
+                    SituationEvidence("source", "power"),
+                    SituationEvidence("watts", f"{watts:g}"),
+                    SituationEvidence("previous_watts", f"{previous:g}" if previous is not None else ""),
+                ),
+                _appliance_name(entity),
+            )
+        return None
+
     def _appliance(
         self, entity: EntitySnapshot, previous_state: str | None, state: str, now: datetime,
     ) -> DetectionSignal | None:
+        if _is_power_sensor(entity):
+            return self._power_appliance(entity, previous_state, now)
         previous = (previous_state or "").casefold()
         key = f"{SituationKind.APPLIANCE_FINISHED.value}:{entity.entity_id}"
+        if entity.domain == "binary_sensor":
+            # A running/operation binary sensor: on -> off is "finished" (F15).
+            if state == "off" and previous == "on":
+                return DetectionSignal(
+                    SituationKind.APPLIANCE_FINISHED, key, (entity.entity_id,),
+                    entity.area_id, True, now,
+                    (SituationEvidence("previous_state", previous), SituationEvidence("state", state)),
+                    _appliance_name(entity),
+                )
+            if state == "on":
+                return DetectionSignal(
+                    SituationKind.APPLIANCE_FINISHED, key, (entity.entity_id,),
+                    entity.area_id, False, now, (SituationEvidence("state", state),),
+                    _appliance_name(entity),
+                )
+            return None
         if state in _APPLIANCE_FINISHED and previous in _APPLIANCE_RUNNING:
             return DetectionSignal(
                 SituationKind.APPLIANCE_FINISHED, key, (entity.entity_id,),
@@ -299,9 +376,22 @@ class SituationDetector:
             entity = entities.get(subject_ids[0]) if subject_ids else None
             if entity is None:
                 return None
+            if _is_power_sensor(entity):
+                watts = self._power_watts(entity, entity.state)
+                if watts is None:
+                    return None
+                return watts < self.config.appliance_running_watts
+            if entity.domain == "binary_sensor":
+                return entity.state.casefold() == "off"
             return entity.state.casefold() in _APPLIANCE_FINISHED
         # Kinds driven by V10/V11 evidence stay active until explicitly resolved.
         return True
+
+
+def _is_power_sensor(entity: EntitySnapshot) -> bool:
+    return entity.domain == "sensor" and (
+        (entity.device_class or "") == "power" or (entity.unit or "") in {"W", "kW"}
+    )
 
 
 @dataclass(frozen=True)
@@ -399,8 +489,17 @@ def _started(entity: EntitySnapshot, now: datetime) -> datetime:
     return now
 
 
+_APPLIANCE_NAME_NOISE = re.compile(
+    r"\b(?:leistung|stromverbrauch|verbrauch|power|status|zustand|betrieb|laeuft|läuft|"
+    r"running|aktiv|programm|steckdose|zwischenstecker)\b",
+    re.IGNORECASE,
+)
+
+
 def _appliance_name(entity: EntitySnapshot) -> str:
-    return entity.friendly_name
+    """ "Leistung Waschmaschine" / "Waschmaschine Status" -> "Waschmaschine"."""
+    cleaned = " ".join(_APPLIANCE_NAME_NOISE.sub(" ", entity.friendly_name).split())
+    return cleaned or entity.friendly_name
 
 
 __all__ = (

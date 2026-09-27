@@ -59,3 +59,22 @@ class AutomationSummary:
     triggers: tuple[Mapping[str, Any], ...] = ()
     conditions: tuple[Mapping[str, Any], ...] = ()
     actions: tuple[Mapping[str, Any], ...] = ()
+
+
+def automations_named(
+    spoken_name: str, automations: tuple["AutomationSummary", ...]
+) -> tuple["AutomationSummary", ...]:
+    """Automations whose alias *is* the spoken name ("Flurlicht bei Bewegung").
+
+    Only an exact (normalized) alias match counts: a name that merely starts
+    with a device name must never be mistaken for that device (F9).
+    """
+    from .entities import normalize_for_compare
+
+    wanted = " ".join(normalize_for_compare(spoken_name).split())
+    if not wanted:
+        return ()
+    return tuple(
+        automation for automation in automations
+        if " ".join(normalize_for_compare(automation.alias).split()) == wanted
+    )

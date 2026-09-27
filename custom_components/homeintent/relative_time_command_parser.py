@@ -28,8 +28,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hassil import Intents, RangeSlotList, RangeType, TextSlotList, WildcardSlotList, recognize
+from hassil import Intents, RangeSlotList, RangeType, TextSlotList, WildcardSlotList
 
+from .hassil_compat import recognize_aligned
 from .automation_action_parser import AutomationActionParser, _seconds_from_amount_unit
 from .nlu.action_model import ActionGroup, ActionModel
 from .nlu.lexicon import _ACTION_TEMPORAL_UNIT_SLOT_LIST
@@ -86,7 +87,7 @@ class RelativeTimeCommandParser:
         automation-specific grammar does not cover an otherwise valid
         action phrasing (for example the semantic "halb runter" form).
         """
-        result = recognize(text, self._intents, slot_lists=self._slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=self._slot_lists, language="de")
         if result is None or result.intent is None or result.intent.name != "HassRelativeTimeCommand":
             return None
 

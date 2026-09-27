@@ -253,3 +253,100 @@ def test_movie_goal_uses_one_confirmed_preference_as_preview(monkeypatch, tmp_pa
     action = next(step.action for step in stored_plan.steps if step.action is not None)
     assert action.data == {"brightness_pct": 30}
     entity.hass.services.async_call.assert_not_awaited()
+
+
+def _reading_routine() -> RoutineDefinition:
+    return RoutineDefinition(
+        "lesezeit",
+        "Lesezeit",
+        "owner",
+        (
+            RoutineStepDefinition(
+                "light.living",
+                GoalScope(entity_ids=("light.living",)),
+                DesiredState("state", "off"),
+            ),
+        ),
+        True,
+    )
+
+
+def test_stored_routine_is_reachable_by_its_own_name(monkeypatch, tmp_path):
+    """F14: a routine saved via homeintent.save_routine is not limited to
+    the built-in names (schlafengehen/filmabend/abwesenheit)."""
+    for index, sentence in enumerate(
+        ("Bereite die Lesezeit vor.", "Starte die Routine Lesezeit.")
+    ):
+        entity = NluConversationEntity(ConfigEntry())
+        entity.hass = HomeAssistant()
+        profiles = ProfileStore(tmp_path / f"profiles-{index}.json")
+        asyncio.run(profiles.async_save_routine(_reading_routine(), confirmed=True))
+        entity._runtime_data.profiles = profiles
+        monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: LIGHTS)
+
+        result = asyncio.run(
+            entity._async_handle_message(
+                ConversationInput(
+                    text=sentence,
+                    conversation_id=f"reading-{index}",
+                    context=SimpleNamespace(user_id="owner"),
+                ),
+                None,
+            )
+        )
+
+        assert "Planvorschau" in result.response.speech, sentence
+        assert "Wohnzimmerlicht" in result.response.speech
+        entity.hass.services.async_call.assert_not_awaited()
+
+
+def test_goal_area_comes_from_the_area_registry():
+    from homeintent.goal_intent import interpret_goal
+    from homeintent.nlu.language_frontend import analyse_language
+
+    goal = interpret_goal(
+        analyse_language("Sorge dafür, dass es um 7 Uhr im Arbeitszimmer 21 Grad warm ist."),
+        area_names={"buero": "buero", "arbeitszimmer": "buero"},
+    )
+    assert goal is not None and goal.scope.area_id == "buero"
+
+
+def test_slow_plan_verification_answers_at_once_and_reports_only_failure(
+    monkeypatch, tmp_path
+):
+    """F17: a confirmed plan whose effect takes long must not block the reply."""
+    entity = NluConversationEntity(ConfigEntry())
+    entity.hass = HomeAssistant()
+    profiles = ProfileStore(tmp_path / "profiles.json")
+    asyncio.run(profiles.async_save_routine(_night_routine(), confirmed=True))
+    entity._runtime_data.profiles = profiles
+    from datetime import timedelta
+
+    entity._runtime_data.effect_monitor.timeout = timedelta(milliseconds=300)
+    monkeypatch.setattr(ha_conversation, "_PLAN_REPLY_BUDGET_SECONDS", 0.05)
+    # The lights never report "off": verification must fail in the background.
+    monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: LIGHTS)
+
+    async def scenario():
+        async def turn(text: str):
+            return await entity._async_handle_message(
+                ConversationInput(
+                    text=text, conversation_id="slow-plan",
+                    context=SimpleNamespace(user_id="owner"),
+                ),
+                None,
+            )
+
+        preview = await turn("Bereite das Haus für die Nacht vor.")
+        assert "Planvorschau" in preview.response.speech
+        answer = await turn("Ja")
+        assert "melde mich nur, falls etwas nicht klappt" in answer.response.speech
+        await asyncio.sleep(1.0)
+        calls = [
+            call for call in entity.hass.services.async_call.await_args_list
+            if call.args[:2] == ("persistent_notification", "create")
+        ]
+        assert len(calls) == 1
+        assert "nicht vollständig ausgeführt" in calls[0].args[2]["message"]
+
+    asyncio.run(scenario())

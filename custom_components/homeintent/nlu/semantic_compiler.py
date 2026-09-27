@@ -21,6 +21,7 @@ from ..entities import (
     EntityIndex,
     EntitySnapshot,
     generate_aliases,
+    is_outdoor_entity,
     normalize_for_compare,
 )
 from ..name_similarity import bounded_name_similarity
@@ -34,6 +35,7 @@ from .entity_resolution import (
     rank_semantic_targets,
     resolve_entity,
     resolve_entity_scored,
+    resolve_mentioned_target,
 )
 from .frame import (
     AreaReference,
@@ -58,6 +60,8 @@ from .query_command import (
     QueryTargetKind,
 )
 from .query_executor import QueryExecutor
+from .registered_operation_compiler import climate_in_named_area
+from .semantic_exclusion import split_exclusion as _split_exclusion
 from .semantic_lexicon import SemanticAnalysis, SemanticKind, analyse_semantics
 from .semantic_catalog import (
     DOMAIN_WORDS,
@@ -72,6 +76,7 @@ from .semantic_location import (
     has_explicit_location_cue,
     resolve_coordinated_locations,
     resolve_semantic_location,
+    whole_home_phrase,
 )
 from .semantic_state import (
     QUERYABLE_STATE_DOMAINS,
@@ -132,26 +137,6 @@ _COUNT_WORDS = {
 }
 _COUNT_RE = re.compile(r"\b(" + "|".join(_COUNT_WORDS) + r"|[2-9]|10)\b", re.I)
 _ORDERED_SUBSET_RE = re.compile(r"\b(?:erste\w*|letzte\w*)\b", re.I)
-_EXCLUSION_CUE_RE = re.compile(
-    r"\b(?:außer|ausser|mit\s+ausnahme\s+von)\b", re.I
-)
-# German separable particles can follow the exclusion: ``alle Lichter außer
-# Küchenlicht aus``.  The first alternative deliberately claims a recognised
-# command tail before the general end-of-sentence alternative can absorb it
-# into the registry name.
-_EXCLUSION_RE = re.compile(
-    r"\b(?:außer|ausser|mit\s+ausnahme\s+von)\s+(?P<targets>.+?)"
-    r"(?:\s+(?P<tail>an|ein|aus|auf|zu|hoch|runter|herunter|hinauf|hinunter|"
-    r"anmachen|ausmachen|einschalten|ausschalten|anschalten|abschalten|"
-    r"öffnen|schließen)\s*[?.!]*$|\s*[?.!]*$)",
-    re.I,
-)
-_EXCLUSION_SPLIT_RE = re.compile(r"\s*(?:,|\bund\b)\s*", re.I)
-_EXCLUSION_ARTICLE_RE = re.compile(
-    r"^(?:(?:dem|der|den|die|das|des|vom|alle[nrms]?|im|in\s+der|in\s+dem)\s+)+",
-    re.I,
-)
-
 _HALF_RE = re.compile(r"\b(?:halb|halbe(?:r|n)?|hälfte|zur\s+hälfte)\b", re.I)
 _ZERO_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:runter|herunter|zu)\b", re.I)
 _HUNDRED_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:hoch|auf)\b", re.I)
@@ -424,6 +409,11 @@ def _compile_measurement_query(
             and (area_id is None or entity.area_id == area_id)
             and (floor_id is None or entity.floor_id == floor_id)
         ]
+        if area_id is None and floor_id is None and domain == "sensor":
+            # A whole-home measurement ("im ganzen Haus") means indoors: an
+            # outdoor sensor would skew the house average (F21).
+            indoor = [entity for entity in matched if not is_outdoor_entity(entity)]
+            matched = indoor or matched
     comparator = next(iter(comparators), None)
     threshold_match = re.search(r"\b\d+(?:[,.]\d+)?\b", text)
     if comparator is not None and threshold_match is None:
@@ -691,27 +681,6 @@ def _temperature(text: str) -> float | None:
     return value if 5 <= value <= 30 else None
 
 
-def _split_exclusion(text: str) -> tuple[str, tuple[str, ...]]:
-    """Return the positive command and independently named exclusions."""
-    match = _EXCLUSION_RE.search(text)
-    if match is None:
-        return text, ()
-    raw_targets = tuple(
-        cleaned
-        for part in _EXCLUSION_SPLIT_RE.split(match.group("targets"))
-        if (cleaned := _EXCLUSION_ARTICLE_RE.sub("", part).strip(" ,.;:!?"))
-    )
-    positive = text[:match.start()].rstrip(" ,;:")
-    if tail := match.group("tail"):
-        positive = f"{positive} {tail}"
-    return positive, raw_targets
-
-
-def has_exclusion_clause(text: str) -> bool:
-    """Return whether *text* explicitly introduces one or more exceptions."""
-    return _EXCLUSION_CUE_RE.search(text) is not None
-
-
 def canonicalize_exclusion_clause(text: str) -> str:
     """Move an exclusion behind a separable particle for legacy grammars.
 
@@ -793,6 +762,21 @@ def _compile_relative_climate(
         index=world_model.entity_index if world_model is not None else None,
     )
     candidates = [entity for entity in named if entity.domain == "climate"]
+    if not candidates:
+        # "Mach die Heizung im Schlafzimmer wärmer": the climate entity of
+        # the named room, if it is the only one there (F11).
+        location = resolve_semantic_location(text, entities, world_model)
+        if location is not None:
+            candidates = list(
+                world_model.select_entities(
+                    domain="climate", area_id=location[1], floor_id=location[2]
+                )
+                if world_model is not None
+                else resolve_candidates(
+                    entities,
+                    Constraints(domain="climate", area_id=location[1], floor_id=location[2]),
+                )
+            )
     if len(candidates) != 1:
         return None
     entity = candidates[0]
@@ -936,7 +920,95 @@ def _single_named_capable_entity(
         )
         if entity.domain == domain and capability in entity.capabilities
     ]
+    if not matches:
+        # A distinctive part of the registry name ("den LED-Streifen" for
+        # "LED-Streifen Wohnzimmer"), resolved by the same canonical
+        # resolver as on/off commands - unique or nothing (F11).
+        resolution = resolve_mentioned_target(
+            text,
+            entities,
+            frozenset({domain}),
+            index=world_model.entity_index if world_model is not None else None,
+        )
+        if (
+            resolution.status is ResolutionStatus.RESOLVED
+            and resolution.entity is not None
+            and capability in resolution.entity.capabilities
+        ):
+            return resolution.entity
+        spoken = {
+            normalize_for_compare(token)
+            for token in analyse_semantics(text).unexplained_tokens
+            if normalize_for_compare(token) not in _STOP_WORDS
+        }
+        if spoken:
+            matches = [
+                entity
+                for entity in entities
+                if entity.domain == domain
+                and capability in entity.capabilities
+                and spoken <= set(_tokens(entity.friendly_name))
+            ]
     return matches[0] if len(matches) == 1 else None
+
+
+_ROOM_LIGHT_RE = re.compile(r"\b(?:das|den)\s+licht\b|^\s*licht\b", re.I)
+_WH_LIST_QUESTION_RE = re.compile(r"^\s*(?:und\s+)?welche[nmrs]?\b", re.I)
+_SETUP_WITHOUT_VALUE_RE = re.compile(
+    r"^\s*(?:bitte\s+|kannst\s+du\s+)?stell\w*\s+.+\s+ein\s*[.!?]*$", re.I
+)
+_LOCK_VERB_RE = re.compile(
+    r"^\s*(?:bitte\s+)?(?:(?P<lock>verriegl\w*|verriegel\w*|schlie(?:ß|ss)\w*\s+.+\s+ab|"
+    r"sperr\w*\s+.+\s+ab)|(?P<unlock>entriegl\w*|entriegel\w*|"
+    r"schlie(?:ß|ss)\w*\s+.+\s+auf|sperr\w*\s+.+\s+auf))\b",
+    re.I,
+)
+_LOCK_FILLER = frozenset({
+    "die", "der", "das", "den", "dem", "bitte", "mal", "ab", "auf", "jetzt", "sofort",
+})
+
+
+def _compile_lock_by_name_part(
+    text: str, entities: list[EntitySnapshot]
+) -> ParseResult | None:
+    """ "Verriegle die Haustür" -> the lock "Haustürschloss" (F11).
+
+    A lock verb only applies to locks. When the spoken name is not a lock
+    itself (the door contact "Haustür"), it is resolved among the locks by
+    the canonical resolver - unique or nothing. Unlocking stays subject to
+    the unchanged confirmation policy downstream.
+    """
+    verb = _LOCK_VERB_RE.search(text)
+    if verb is None:
+        return None
+    locks = [entity for entity in entities if entity.domain == "lock"]
+    if not locks or mentioned_entities(text, locks):
+        return None
+    words = [
+        word
+        for word in _TOKEN_RE.findall(text)
+        if normalize_for_compare(word) not in _LOCK_FILLER
+        and not re.fullmatch(
+            r"(?:verriegl|verriegel|entriegl|entriegel|schlie(?:ß|ss)|sperr)\w*", word, re.I
+        )
+    ]
+    if not words:
+        return None
+    resolution = resolve_entity_scored(" ".join(words), locks)
+    if resolution.status is not ResolutionStatus.RESOLVED or resolution.entity is None:
+        return None
+    entity = resolution.entity
+    unlock = verb.group("unlock") is not None
+    return ParseResult(
+        frame=SemanticFrame(
+            intent="HassUnlock" if unlock else "HassLock",
+            target=TargetReference(entity.friendly_name, entity.entity_id, entity.domain),
+            area=None,
+            source_text=text,
+            action=SemanticAction.UNLOCK if unlock else SemanticAction.LOCK,
+        ),
+        resolved_entities=[entity],
+    )
 
 
 def _compile_light_color(
@@ -1261,6 +1333,15 @@ class SemanticCommandCompiler:
         relative_climate = _compile_relative_climate(text, entities, world_model)
         if relative_climate is not None:
             return relative_climate
+        lock_by_part = _compile_lock_by_name_part(text, entities)
+        if lock_by_part is not None:
+            return lock_by_part
+        if _SETUP_WITHOUT_VALUE_RE.search(text) and not re.search(r"\d", text):
+            # "Stelle die Heizung im Büro ein" asks for a value ("einstellen"),
+            # it does not mean "switch on": leave it to the value dialog (F11).
+            climates = [entity for entity in entities if entity.domain == "climate"]
+            if mentioned_entities(text, climates) or climate_in_named_area(text, climates):
+                return None
         if _ORDERED_SUBSET_RE.search(text):
             return None
         positive_text, exclusion_names = _split_exclusion(text)
@@ -1285,10 +1366,24 @@ class SemanticCommandCompiler:
             value for value in analysis.values(SemanticKind.DOMAIN)
             if isinstance(value, str)
         )
+        whole_home = whole_home_phrase(positive_text, entities, world_model)
         resolution_text = re.sub(
-            r"\b(?:im|in\s+der|in\s+dem)\s+", "", positive_text, flags=re.I
+            r"\b(?:im|in\s+der|in\s+dem)\s+",
+            "",
+            positive_text.replace(whole_home, " ") if whole_home else positive_text,
+            flags=re.I,
         )
         quantity = _quantity(positive_text)
+        if quantity is None and whole_home is not None and not mentioned_entities(
+            resolution_text,
+            entities,
+            index=world_model.entity_index if world_model is not None else None,
+        ):
+            # "Mach überall das Licht aus", "im ganzen Haus das Licht" (F21):
+            # a whole-home scope is universal. The word "Haus" is scope, not
+            # part of a device name such as "Stromverbrauch Haus"; a named
+            # device still wins below, and the policy's target limit applies.
+            quantity = Quantifier("all")
         # A quantified target (``alle Lichter im Wohnzimmer``) is resolved
         # by typed domain and location. Scanning thousands of registry names
         # cannot strengthen that meaning and used to dominate the 5k gate.
@@ -1409,6 +1504,24 @@ class SemanticCommandCompiler:
         domain = next(iter(facts.domains))
         if intent == "HassSetPercentage" and domain not in {"cover", "light"}:
             return None
+
+        if (
+            quantity is None
+            and domain == "light"
+            and not explicit
+            and len(locations) == 1
+            and locations[0][1] is not None
+            and _ROOM_LIGHT_RE.search(positive_text) is not None
+            and sum(
+                1 for entity in entities
+                if entity.domain == "light" and entity.area_id == locations[0][1]
+            ) > 1
+        ):
+            # Documented rule (F20): "das Licht im <Raum>" means every light
+            # of that room, like Home Assistant's own agent; the target limit
+            # of the execution policy still applies. A named device or
+            # "die Lampe" keeps selecting (and asking about) one device.
+            quantity = Quantifier("all")
 
         if quantity is not None:
             if exclusion_names and quantity.kind in {"both", "count"}:
@@ -1784,6 +1897,25 @@ class SemanticQueryCompiler:
                 entities,
                 index=(world_model.entity_index if world_model is not None else None),
             )
+        if (
+            len(named_mentions) == 1
+            and _SINGULAR_NAMED_QUERY_RE.search(text) is not None
+            and (named_mentions[0].domain, named_mentions[0].device_class) not in targets
+            and all(
+                domain != named_mentions[0].domain for domain, _device_class in targets
+            )
+            and normalize_for_compare(named_mentions[0].friendly_name)
+            not in {
+                normalize_for_compare(name)
+                for entity in entities
+                for name in (entity.area_name or "", *entity.area_aliases)
+                if name
+            }
+        ):
+            # "Ist das Garagentor offen?" names one entity (a cover) while the
+            # class word "Garagentor" means a garage-door contact: the named
+            # entity decides the question (F12).
+            targets = [(named_mentions[0].domain, named_mentions[0].device_class)]
         if not targets:
             if named_mentions:
                 named_domains = {entity.domain for entity in named_mentions}
@@ -1800,7 +1932,9 @@ class SemanticQueryCompiler:
         exists_question = (
             "exists" in analysis.values(SemanticKind.QUERY_SCOPE)
             or _INDEFINITE_EXISTS_RE.search(text) is not None
-        )
+        ) and _WH_LIST_QUESTION_RE.search(text) is None
+        # "Welche Rollläden gibt es ...?" asks for the names, not a yes/no
+        # existence answer (F12): it is a list question.
         states = [
             span.value
             for span in analysis.matching(SemanticKind.STATE)

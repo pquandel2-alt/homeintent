@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 
 from .agent_action_policy import RESERVED_TARGET_DATA_KEYS
 from .audit_log import AuditTrail
-from .entities import ACTIVATION_TIMESTAMP_DOMAINS, EntitySnapshot
+from .entities import STATELESS_ACTION_DOMAINS, EntitySnapshot
 from .effect_monitor import EffectMonitor
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
 from .service_call import ServiceCallPlan
@@ -87,7 +87,7 @@ async def async_execute_service_plan(
 def _state_is_unreliable(entity: EntitySnapshot) -> bool:
     if entity.state == "unavailable":
         return True
-    return entity.state == "unknown" and entity.domain not in ACTIVATION_TIMESTAMP_DOMAINS
+    return entity.state == "unknown" and entity.domain not in STATELESS_ACTION_DOMAINS
 
 
 def _required_capabilities(plan: ServiceCallPlan) -> frozenset[str]:

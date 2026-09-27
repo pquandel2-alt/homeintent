@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from ..entities import format_spoken_number
+
 
 @dataclass(frozen=True)
 class AutomationOperationSpec:
@@ -61,6 +63,10 @@ REGISTERED_AUTOMATION_OPERATIONS: dict[tuple[str, str], AutomationOperationSpec]
     ("lawn_mower", "dock"): _spec("lawn_mower"),
     ("camera", "play_stream"): _spec("camera", "media_player"),
     ("notify", "send_message"): _spec("notify", "message"),
+    # Home Assistant timer helpers (``timer.*``), not HomeIntent's own timers.
+    ("timer", "start"): _spec("timer"),
+    ("timer", "pause"): _spec("timer"),
+    ("timer", "cancel"): _spec("timer"),
 }
 
 _OPERATION_LABELS_DE = {
@@ -101,6 +107,9 @@ _OPERATION_LABELS_DE = {
     ("lawn_mower", "dock"): "zur Ladestation fahren",
     ("camera", "play_stream"): "den Kamerastream anzeigen",
     ("notify", "send_message"): "eine Nachricht senden",
+    ("timer", "start"): "den Timer starten",
+    ("timer", "pause"): "den Timer pausieren",
+    ("timer", "cancel"): "den Timer abbrechen",
 }
 
 _DATA_LABELS_DE = {
@@ -127,7 +136,11 @@ def describe_registered_operation(
         elif key in {"humidity", "position", "tilt_position"}:
             spoken_value = f"{value} Prozent"
         elif key == "temperature":
-            spoken_value = f"{value} Grad"
+            spoken_value = f"{format_spoken_number(value)} Grad"
+        elif isinstance(value, float):
+            spoken_value = format_spoken_number(value)
+        elif key == "message" and isinstance(value, str):
+            spoken_value = f"„{value.strip().rstrip('.!')}“"
         elif isinstance(value, bool):
             spoken_value = "ein" if value else "aus"
         details.append(f"{_DATA_LABELS_DE.get(key, key)} {spoken_value}")

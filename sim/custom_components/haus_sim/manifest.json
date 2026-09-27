@@ -1,0 +1,13 @@
+{
+  "domain": "haus_sim",
+  "name": "Haus-Simulation (HomeIntent Testbett)",
+  "codeowners": [],
+  "dependencies": ["conversation", "homeassistant"],
+  "after_dependencies": ["person"],
+  "documentation": "https://github.com/pquandel2-alt/homeintent",
+  "config_flow": true,
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "1.0.0"
+}

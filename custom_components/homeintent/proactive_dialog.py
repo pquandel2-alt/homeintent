@@ -56,8 +56,10 @@ _HISTORY_RE = re.compile(
     r"(?:\s+heute)?\s*\??$"
 )
 _LIST_PERMISSIONS_RE = re.compile(
-    r"^welche\s+(?:automatischen\s+)?(?:erlaubnisse|daueranweisungen|dauererlaubnisse)\s+"
-    r"(?:gibt\s+es|hast\s+du|sind\s+(?:aktiv|gespeichert))\s*\??$"
+    r"^(?:welche\s+(?:automatischen\s+)?(?:erlaubnisse|daueranweisungen|dauererlaubnisse)\s+"
+    r"(?:gibt\s+es|hast\s+du|sind\s+(?:aktiv|gespeichert))"
+    r"|was\s+(?:darfst|machst|tust)\s+du\s+(?:alles\s+)?(?:ohne\s+(?:rueckfrage|nachfrage|"
+    r"(?:mich\s+)?(?:zu\s+)?fragen)|automatisch|von\s+selbst|selbststaendig))\s*\??$"
 )
 _REVOKE_ALL_RE = re.compile(
     r"^(?:widerrufe|loesche|entferne)\s+alle\s+(?:automatischen\s+)?"
@@ -73,6 +75,9 @@ _STOP_WORDS = frozenset({"der", "die", "das", "dem", "den", "des", "wegen", "zu"
 @dataclass(frozen=True)
 class DialogOutcome:
     speech: str
+    # Read-only answers (instructions, history, explanations) are questions
+    # for clients and satellites, not executed actions (F22).
+    query: bool = False
 
 
 class ProactiveDialogHandler:
@@ -116,7 +121,7 @@ class ProactiveDialogHandler:
         if looks_like_permission_request(text):
             return self._start_permission(text, conversation_id, user_id, entities, area_lookup, local_now)
         if _LIST_PERMISSIONS_RE.fullmatch(normalized):
-            return DialogOutcome(self._list_permissions(user_id, local_now))
+            return DialogOutcome(self._list_permissions(user_id, local_now), query=True)
         if _REVOKE_ALL_RE.fullmatch(normalized):
             if user_id is None:
                 return DialogOutcome("Ich kann Daueranweisungen nur einem angemeldeten Benutzer zuordnen.")
@@ -131,10 +136,12 @@ class ProactiveDialogHandler:
                 word for word in re.split(r"[^a-z0-9]+", subject)
                 if word and word not in _STOP_WORDS
             )
-            return DialogOutcome(self._engine.explain_latest(words, user_id=user_id))
+            return DialogOutcome(self._engine.explain_latest(words, user_id=user_id), query=True)
         if _HISTORY_RE.fullmatch(normalized):
             midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-            return DialogOutcome(self._engine.history_summary(since=midnight, user_id=user_id))
+            return DialogOutcome(
+                self._engine.history_summary(since=midnight, user_id=user_id), query=True
+            )
         if _MUTE_RE.fullmatch(normalized):
             return self._start_mute(conversation_id, user_id)
         return None
@@ -261,10 +268,16 @@ class ProactiveDialogHandler:
         self._dialogs.cancel(conversation_id, task.task_id)
         permission = draft.to_permission(self._engine.ports.now())
         try:
-            self._engine.permissions.add(permission)
+            stored = self._engine.permissions.add(permission)
         except ValueError as err:
             return DialogOutcome(finish_sentence(str(err)))
         await self._engine.async_persist()
+        if stored.permission_id != permission.permission_id:
+            return DialogOutcome(
+                "Diese Daueranweisung gab es schon; ich habe sie verlängert. Ich schalte das "
+                "Licht nur aus, wenn zu diesem Zeitpunkt wirklich niemand zu Hause ist, "
+                "und prüfe die Wirkung."
+            )
         return DialogOutcome(
             "Gespeichert. Ich schalte das Licht nur aus, wenn zu diesem Zeitpunkt wirklich niemand "
             "zu Hause ist, und prüfe die Wirkung."
@@ -275,7 +288,7 @@ class ProactiveDialogHandler:
             return DialogOutcome("Ich kann diese Einstellung nur einem angemeldeten Benutzer zuordnen.")
         record = next(
             (item for item in reversed(self._engine.history.records())
-             if item.recipient_user_id == user_id and item.result == "delivered"),
+             if item.addressed_to(user_id) and item.result == "delivered"),
             None,
         )
         if record is None:
@@ -318,7 +331,10 @@ class ProactiveDialogHandler:
         ]
         if not active:
             return "Es sind keine Daueranweisungen gespeichert."
-        parts = [item.description or item.situation_kind.value for item in active]
+        parts = [
+            item.description or "Licht ausschalten, wenn niemand zu Hause ist"
+            for item in active
+        ]
         noun = "Daueranweisung" if len(parts) == 1 else "Daueranweisungen"
         return finish_sentence(f"{len(parts)} {noun} aktiv: {join_german(tuple(parts))}")
 

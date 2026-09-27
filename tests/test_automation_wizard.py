@@ -119,3 +119,49 @@ def test_wizard_no_condition_path_reaches_action(monkeypatch):
     action_question = _run(agent, "nein", cid)
 
     assert action_question.response.speech == "Was soll dann passieren?"
+
+
+def test_no_condition_answers_the_condition_question(monkeypatch):
+    """F10: "Keine Bedingung" is a no, not an endless "Ja oder Nein" loop."""
+    for reply in ("Keine Bedingung.", "Ohne Bedingung", "keine"):
+        agent = _agent(monkeypatch)
+        _run(agent, "Erstelle eine neue Automation")
+        _run(agent, "Wenn das Küchenfenster geöffnet wird")
+        answer = _run(agent, reply)
+        assert "Was soll dann passieren" in answer.response.speech, reply
+
+
+def test_universal_cancel_without_open_question_is_answered(monkeypatch):
+    agent = _agent(monkeypatch)
+    answer = _run(agent, "Abbrechen.")
+    assert answer.response.speech == "Es ist gerade nichts offen, das ich abbrechen könnte."
+    agent.hass.services.async_call.assert_not_awaited()
+
+
+def test_universal_cancel_ends_the_wizard(monkeypatch):
+    agent = _agent(monkeypatch)
+    _run(agent, "Erstelle eine neue Automation")
+    _run(agent, "Wenn das Küchenfenster geöffnet wird")
+    answer = _run(agent, "Vergiss es.")
+    assert "verworfen" in answer.response.speech
+    assert agent._context_store.get("wizard") is None or (
+        agent._context_store.get("wizard").pending_automation_wizard is None
+    )
+
+
+def test_complete_command_ends_an_open_comfort_conflict_question(monkeypatch):
+    """F10: the comfort conflict question must not swallow a new command."""
+    from homeintent.dialog_manager import DialogPriority, DialogTaskKind
+
+    agent = _agent(monkeypatch)
+    manager = agent._runtime_data.dialog_manager
+    manager.create(
+        "wizard", "comfort-household-conflict", DialogTaskKind.CONFLICT_RESOLUTION,
+        DialogPriority.CONFIRMATION, slots={"area_id": "kueche", "present_user_ids": ("a", "b")},
+    )
+
+    answer = _run(agent, "Schalte das Küchenlicht ein.")
+
+    assert "Temperaturwert" not in answer.response.speech
+    agent.hass.services.async_call.assert_awaited()
+    assert manager.active("wizard") is None

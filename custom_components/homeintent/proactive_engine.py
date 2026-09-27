@@ -18,6 +18,8 @@ service sink.
 
 from __future__ import annotations
 
+import asyncio
+
 import re
 import secrets
 from dataclasses import dataclass, field, replace
@@ -41,6 +43,7 @@ from .proactive_messages import (
     full_message,
     grouped_message,
     outcome_message,
+    running_message,
     proposal_label,
     situation_message,
 )
@@ -130,6 +133,9 @@ class ProactiveConfig:
     router: RouterConfig = field(default_factory=RouterConfig)
     quiet: QuietHoursPolicy = field(default_factory=QuietHoursPolicy)
     dismiss_cooldown: timedelta = timedelta(hours=2)
+    # How long an accepting reply waits for the verified effect before it
+    # answers and keeps verifying in the background (F17).
+    reply_budget: timedelta = timedelta(seconds=2)
 
 
 @dataclass(frozen=True)
@@ -139,6 +145,25 @@ class DeliveryReceipt:
     errors: tuple[str, ...] = ()
     # Interactive push tokens actually sent, one per bound Companion device.
     push_bindings: tuple[PushActionBinding, ...] = ()
+
+
+def _delivered_channel(
+    planned: CommunicationChannel, receipt: DeliveryReceipt
+) -> CommunicationChannel:
+    """The channel the history may claim: what was actually delivered (F25).
+
+    A notify entity cannot carry reply buttons, so a planned interactive push
+    that arrived as a plain push is recorded (and explained) as a push.
+    """
+    if not receipt.delivered:
+        return CommunicationChannel.HISTORY_ONLY
+    if (
+        planned is CommunicationChannel.INTERACTIVE_PUSH
+        and CommunicationChannel.INTERACTIVE_PUSH not in receipt.delivered
+        and CommunicationChannel.PUSH in receipt.delivered
+    ):
+        return CommunicationChannel.PUSH
+    return planned
 
 
 @dataclass(frozen=True)
@@ -244,6 +269,9 @@ class ProactiveContextEngine:
         self._last_anticipation: dict[str, AnticipationResult] = {}
         # Desired-state proposals per situation key (never a service plan).
         self._goals: dict[str, ProposedGoal] = {}
+        self._background_executions: set[
+            asyncio.Future[ProactiveExecutionResult] | asyncio.Future[None]
+        ] = set()
 
     # ------------------------------------------------------------------ events
     async def async_observe_state(
@@ -356,6 +384,12 @@ class ProactiveContextEngine:
             SituationKind.ENTRY_LEFT_OPEN: timedelta(minutes=self.config.entry_open_minutes),
             SituationKind.DEVICE_LEFT_ON_WHEN_LEAVING: timedelta(minutes=self.config.left_on_minutes),
         }
+        if (
+            situation.kind is SituationKind.APPLIANCE_FINISHED
+            and situation.evidence_value("source") == "power"
+        ):
+            # A power drop only means "finished" once it lasted (F15).
+            minimum[SituationKind.APPLIANCE_FINISHED] = self.detector.config.appliance_idle_duration
         muted = bool(recipients) and all(
             self.attention_state.is_muted(item.user_id, situation.kind) for item in recipients
         )
@@ -562,7 +596,10 @@ class ProactiveContextEngine:
             if receipt.delivered:
                 delivered_any = True
                 self.counters.deliveries += 1
-                self.attention_state.record_delivery(recipient.user_id, situation.dedupe_key, now)
+                self.attention_state.record_delivery(
+                    recipient.user_id, situation.dedupe_key, now,
+                    counts_for_budget=priority < PriorityLevel.URGENT,
+                )
                 if (
                     proposal is not None and receipt.origin_device_id is not None
                     and proposal.origin_device_id is None
@@ -577,7 +614,7 @@ class ProactiveContextEngine:
                         ) or proposal
             self._record(
                 situation, outcome, recipient.user_id,
-                decision.channel if receipt.delivered else CommunicationChannel.HISTORY_ONLY,
+                _delivered_channel(decision.channel, receipt),
                 priority, privacy,
                 "delivered" if receipt.delivered else "delivery_failed",
                 (*reasons, *attention.reasons, *decision.reasons, *receipt.errors), anticipation,
@@ -643,6 +680,7 @@ class ProactiveContextEngine:
             None,
         )
         if recipient is None or not recipient.push_target_ids or recipient.push_ambiguous:
+            self._record_undelivered_group(recipient_id, items, live, "group_no_push_target")
             return
         decision = CommunicationDecision(
             CommunicationChannel.PUSH, (CommunicationChannel.PUSH,), recipient_id, None,
@@ -651,6 +689,10 @@ class ProactiveContextEngine:
         receipt = await self.ports.async_deliver(OutgoingMessage(
             decision, "HomeIntent", grouped_message(tuple(live)), PriorityLevel.INFO, None, None,
         ))
+        if not receipt.delivered:
+            self._record_undelivered_group(
+                recipient_id, items, live, "group_delivery_failed", *receipt.errors,
+            )
         if receipt.delivered:
             self.counters.deliveries += 1
             self.attention_state.record_delivery(recipient_id, f"group:{recipient_id}", now)
@@ -663,6 +705,20 @@ class ProactiveContextEngine:
                         CommunicationChannel.PUSH, situation.priority_hint,
                         situation.privacy_level, "delivered", ("grouped_digest",), None,
                     )
+
+    def _record_undelivered_group(
+        self, recipient_id: str, items: tuple[GroupedItem, ...], live: list[str],
+        *reasons: str,
+    ) -> None:
+        # A digest that cannot be sent is never dropped silently (F28).
+        for item in items:
+            situation = self.situations.by_id(item.situation_id)
+            if situation is not None and item.text in live:
+                self._record(
+                    situation, OpportunityOutcome.COMMUNICATE, recipient_id,
+                    CommunicationChannel.HISTORY_ONLY, situation.priority_hint,
+                    situation.privacy_level, "delivery_failed", reasons, None,
+                )
 
     # --------------------------------------------------------------- replies
     def classify_reply(self, text: str) -> ProposalReply | None:
@@ -810,19 +866,42 @@ class ProactiveContextEngine:
                 self.proposals.transition(proposal_id, ProposalState.FAILED, now=now, result="stale")
                 await self.async_persist()
                 return ReplyResult(True, outcome_message(proposal.proposed_goal, success=False, status="stale"))
-            result = await self.runner.async_execute(
-                proposal.proposed_goal, user_id=user_id, is_admin=is_admin,
-                person_entity_id=self.ports.person_for(user_id),
-                interactive_confirmed=True,
-                provenance=f"proposal:{proposal_id}", now=now,
+            active_situation = situation
+
+            async def _execute() -> ProactiveExecutionResult:
+                executed = await self.runner.async_execute(
+                    proposal.proposed_goal, user_id=user_id, is_admin=is_admin,
+                    person_entity_id=self.ports.person_for(user_id),
+                    interactive_confirmed=True,
+                    provenance=f"proposal:{proposal_id}", now=now,
+                )
+                self._finish_execution(
+                    proposal, active_situation, executed, now=now, by=by, user_id=user_id,
+                )
+                await self.async_persist()
+                return executed
+
+            # A garage door needs several seconds to report "closed"; the
+            # spoken "Ja" must not wait for it (F17). The effect is still
+            # verified and recorded; only a failure is reported afterwards.
+            task = asyncio.ensure_future(_execute())
+            done, _pending = await asyncio.wait(
+                {task}, timeout=self.config.reply_budget.total_seconds()
             )
-            self._finish_execution(proposal, situation, result, now=now, by=by, user_id=user_id)
-            await self.async_persist()
-            return ReplyResult(True, outcome_message(
-                proposal.proposed_goal,
-                success=result.status is ProactiveExecutionStatus.EXECUTED,
-                status=result.status.value,
-            ))
+            if task in done:
+                result = task.result()
+                return ReplyResult(True, outcome_message(
+                    proposal.proposed_goal,
+                    success=result.status is ProactiveExecutionStatus.EXECUTED,
+                    status=result.status.value,
+                ))
+            self._background_executions.add(task)
+            task.add_done_callback(
+                lambda finished: self._on_background_execution(
+                    finished, proposal, active_situation, user_id,
+                )
+            )
+            return ReplyResult(True, running_message(proposal.proposed_goal))
         if situation is not None:
             self.ports.cancel(f"check:{situation.dedupe_key}")
         if choice is ProposalChoice.LATER:
@@ -856,6 +935,32 @@ class ProactiveContextEngine:
             return ReplyResult(True, "Alles klar. Zu dieser Situation melde ich mich vorerst nicht mehr.")
         return ReplyResult(True, "In Ordnung. Ich lasse es so.")
 
+    def _on_background_execution(
+        self,
+        task: "asyncio.Future[ProactiveExecutionResult]",
+        proposal: PendingProposal,
+        situation: ProactiveSituation,
+        user_id: str | None,
+    ) -> None:
+        self._background_executions.discard(task)
+        failed = task.cancelled() or task.exception() is not None or (
+            task.result().status is not ProactiveExecutionStatus.EXECUTED
+        )
+        if not failed:
+            return
+        run = task.result().run if not task.cancelled() and task.exception() is None else None
+        run_id = run.run_id if run is not None else proposal.proposal_id
+        # Report the failure the user was promised (same path as other
+        # unattended goal failures).
+        report = self.async_report_situation(DetectionSignal(
+            SituationKind.PENDING_GOAL_REQUIRES_ATTENTION,
+            f"{SituationKind.PENDING_GOAL_REQUIRES_ATTENTION.value}:{run_id}",
+            (), situation.area_id, True, self.ports.now(),
+            (SituationEvidence("run_id", run_id),),
+            situation.subject_name or "Vorschlag", owner_user_id=user_id,
+        ))
+        self._background_executions.add(asyncio.ensure_future(report))
+
     def _finish_execution(
         self, proposal: PendingProposal, situation: ProactiveSituation,
         result: ProactiveExecutionResult, *, now: datetime, by: str, user_id: str | None,
@@ -868,8 +973,13 @@ class ProactiveContextEngine:
             now=now, by=by, run_id=run_id, result=result.status.value,
         )
         self.situations.set_state(situation.dedupe_key, SituationState.ACKNOWLEDGED, now=now)
+        channel = proposal.channel
+        if channel is CommunicationChannel.INTERACTIVE_PUSH and not proposal.push_bindings:
+            # No reply button was ever sent (notify entity): the answer came
+            # by voice or dashboard to a plain push (F25).
+            channel = CommunicationChannel.PUSH
         self._record(
-            situation, OpportunityOutcome.COMMUNICATE, user_id, proposal.channel,
+            situation, OpportunityOutcome.COMMUNICATE, user_id, channel,
             situation.priority_hint, proposal.privacy_level, f"proposal_{result.status.value}",
             (result.reason,), None, run_id=run_id, acknowledgement="accepted",
         )
@@ -925,7 +1035,7 @@ class ProactiveContextEngine:
         record = self.history.latest_for_subject(subject_words)
         if record is None or (
             record.privacy >= PrivacyLevel.PERSONAL
-            and (user_id is None or record.recipient_user_id != user_id)
+            and not record.addressed_to(user_id)
         ):
             return "Dazu habe ich in letzter Zeit keinen Hinweis gegeben."
         local = self.ports.local_now()
@@ -938,7 +1048,7 @@ class ProactiveContextEngine:
             if item.result == "delivered"
             and (
                 item.privacy < PrivacyLevel.PERSONAL
-                or (user_id is not None and item.recipient_user_id == user_id)
+                or item.addressed_to(user_id)
             )
         ]
         labels = tuple(dict.fromkeys(item.subject_label for item in records if item.subject_label))

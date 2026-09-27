@@ -19,11 +19,11 @@ from hassil import (
     RangeType,
     SlotList,
     WildcardSlotList,
-    recognize,
 )
 
+from .hassil_compat import recognize_aligned
 from .areas import AreaResolutionStatus, AreaResolveStatus, AreaSnapshot, resolve_area_name, resolve_area_scored
-from .automation_summary import AutomationSummary
+from .automation_summary import AutomationSummary, automations_named
 from .entities import (
     EntitySnapshot,
 )
@@ -179,7 +179,7 @@ class SingleTargetParser:
 
     def parse(self, text: str, context: ParseContext) -> ParseResult | ClarificationRequest | None:
         slot_lists: dict[str, SlotList] = {"name": WildcardSlotList(name="name")}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -261,7 +261,7 @@ class ContextFollowupParser:
         self._intents = intents
 
     def parse(self, text: str) -> str | None:
-        result = recognize(text, self._intents, language="de")
+        result = recognize_aligned(text, self._intents, language="de")
         if result is None or result.intent is None:
             return None
         return result.intent.name
@@ -323,7 +323,7 @@ class QuantifierParser:
             "count": _COUNT_SLOT_LIST,
             "name": WildcardSlotList(name="name"),
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return parse_flexible_group_command(
                 text, context.entities, context.world_model
@@ -428,7 +428,7 @@ class PercentageParser:
 
     def _recognize(self, text: str):
         """Recognize once with the same slots used by matching and feedback."""
-        return recognize(text, self._intents, slot_lists={
+        return recognize_aligned(text, self._intents, slot_lists={
             "name": WildcardSlotList(name="name"),
             "domain": _DOMAIN_SLOT_LIST,
             "area": WildcardSlotList(name="area"),
@@ -629,7 +629,7 @@ class FanExtendedParser:
             "name": WildcardSlotList(name="name"),
             "level": RangeSlotList(name="level", start=1, stop=10, step=1, type=RangeType.NUMBER),
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -690,7 +690,7 @@ class ClimateExtendedParser:
             "temperature": RangeSlotList(name="temperature", start=5, stop=30, step=1, type=RangeType.NUMBER),
             "comparator": _COMPARATOR_SLOT_LIST,
         }
-        result = recognize(parse_text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(parse_text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -768,7 +768,7 @@ class LightExtendedParser:
             "color": _COLOR_SLOT_LIST,
             "color_temp": _COLOR_TEMP_SLOT_LIST,
         }
-        result = recognize(parse_text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(parse_text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -931,7 +931,7 @@ class ComparisonQueryParser:
             domain, comparator, threshold, current_value, area_id, area_name, floor_id = semantic
             intent_name = "HassQueryComparison"
         else:
-            result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+            result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
             if result is None or result.intent is None:
                 return None
             spec = QUERY_INTENTS.get(result.intent.name)
@@ -1036,7 +1036,7 @@ class TemporalParser:
             "relative": _TEMPORAL_RELATIVE_SLOT_LIST,
             "hour": RangeSlotList(name="hour", start=0, stop=23, step=1, type=RangeType.NUMBER),
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -1119,7 +1119,7 @@ class AreaQueryParser:
         self, text: str, context: ParseContext
     ) -> ParseResult | ClarificationRequest | None:
         slot_lists: dict[str, SlotList] = {"area": WildcardSlotList(name="area")}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -1268,7 +1268,7 @@ class QueryFollowupParser:
         floor) - never guess. Exactly one of area_id/floor_id is set.
         """
         slot_lists = {"area": WildcardSlotList(name="area"), "level": _LEVEL_SLOT_LIST}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -1344,7 +1344,7 @@ class QueryFollowupParser:
             "device_class": _DEVICE_CLASS_SLOT_LIST,
             "state": _STATE_SLOT_LIST,
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -1560,7 +1560,7 @@ class CommandFollowupParser:
         self, text: str, entities: list[EntitySnapshot], last_command: SemanticCommand
     ) -> ParseResult | None:
         slot_lists: dict[str, SlotList] = {"area": WildcardSlotList(name="area")}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
         if result.intent.name == "HassCommandFollowupInvert":
@@ -1698,7 +1698,7 @@ class ReferenceParser:
         last_area: AreaSnapshot | None,
     ) -> ParseResult | AmbiguousReference | None:
         slot_lists: dict[str, SlotList] = {"domain": _DOMAIN_SLOT_LIST}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -1900,7 +1900,7 @@ class StateQueryParser:
             "name": WildcardSlotList(name="name"),
             "area": WildcardSlotList(name="area"),
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -2381,7 +2381,7 @@ class AutomationQueryParser:
             "state": _STATE_SLOT_LIST,
             "name": WildcardSlotList(name="name"),
         }
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
 
@@ -2461,8 +2461,24 @@ class AutomationDeleteMatch:
     ``QueryExecutor``/``ResponseGenerator`` already keep for query results.
     """
 
-    entity: EntitySnapshot
+    # None when {name} named the automation itself (its alias), not a device.
+    entity: EntitySnapshot | None
     matched: tuple[AutomationSummary, ...]
+
+
+_AUTOMATION_NAME_FRAME_RE = re.compile(
+    r"^(?:(?:für|fuer)\s+(?P<for>.+)|die\s+(?P<rel>.+?)\s+(?:schaltet|steuert))$",
+    re.IGNORECASE,
+)
+
+
+def _automation_name_slot(value: str) -> str:
+    """The bare name from "für X", "die X steuert" or "X" (grammar variants)."""
+    stripped = value.strip()
+    match = _AUTOMATION_NAME_FRAME_RE.match(stripped)
+    if match is None:
+        return stripped
+    return (match.group("for") or match.group("rel") or stripped).strip()
 
 
 class AutomationDeleteParser:
@@ -2495,7 +2511,7 @@ class AutomationDeleteParser:
         automations: tuple[AutomationSummary, ...],
     ) -> AutomationDeleteMatch | None:
         slot_lists: dict[str, SlotList] = {"name": WildcardSlotList(name="name")}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None or result.intent.name != "HassAutomationDelete":
             return None
 
@@ -2503,7 +2519,11 @@ class AutomationDeleteParser:
         if name_slot is None:
             return None  # grammar requires {name} - structurally unreachable, defense only
 
-        name = _strip_locative_prepositions(str(name_slot.value))
+        spoken = _automation_name_slot(str(name_slot.value))
+        named = automations_named(spoken, automations)
+        if named:
+            return AutomationDeleteMatch(entity=None, matched=named)
+        name = _strip_locative_prepositions(spoken)
         resolved = resolve_entity_scored(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None  # entity itself not found or ambiguous - never guess (Regel 4)
@@ -2524,7 +2544,8 @@ class AutomationToggleMatch:
     both share this one parser/match type rather than two near-identical
     copies (Regel 6)."""
 
-    entity: EntitySnapshot
+    # None when {name} named the automation itself (its alias), not a device.
+    entity: EntitySnapshot | None
     matched: tuple[AutomationSummary, ...]
     enable: bool
 
@@ -2552,7 +2573,7 @@ class AutomationToggleParser:
         automations: tuple[AutomationSummary, ...],
     ) -> AutomationToggleMatch | None:
         slot_lists: dict[str, SlotList] = {"name": WildcardSlotList(name="name")}
-        result = recognize(text, self._intents, slot_lists=slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=slot_lists, language="de")
         if result is None or result.intent is None:
             return None
         if result.intent.name == "HassAutomationDisable":
@@ -2566,7 +2587,11 @@ class AutomationToggleParser:
         if name_slot is None:
             return None  # grammar requires {name} - structurally unreachable, defense only
 
-        name = _strip_locative_prepositions(str(name_slot.value))
+        spoken = _automation_name_slot(str(name_slot.value))
+        named = automations_named(spoken, automations)
+        if named:
+            return AutomationToggleMatch(entity=None, matched=named, enable=enable)
+        name = _strip_locative_prepositions(spoken)
         resolved = resolve_entity_scored(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None  # entity itself not found or ambiguous - never guess (Regel 4)

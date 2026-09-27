@@ -9,7 +9,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
 
-from .entities import EntitySnapshot, normalize_for_compare
+from .entities import (
+    EntitySnapshot,
+    format_spoken_number,
+    is_outdoor_entity,
+    normalize_for_compare,
+    spoken_unit,
+)
 from .nlu.entity_resolution import ResolutionStatus, resolve_mentioned_target
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,9 +74,30 @@ class TransitionEvidence:
 
 
 _HISTORY_CUE_RE = re.compile(
-    r"\b(?:durchschnitt|mittelwert|minimum|niedrigst|kleinst|maximum|"
-    r"hoechst|groesst|verbraucht|verbrauch|erzeugt|produziert)\w*\b"
+    r"\b(?:durchschnitt|mittelwert|minimum|minimal|niedrigst|kleinst|maximum|"
+    r"maximal|hoechst|groesst|verbraucht|verbrauch|erzeugt|produziert|"
+    r"veraendert|veraenderung|im\s+schnitt)\w*\b"
 )
+_MEAN_RE = re.compile(r"\b(?:durchschnitt\w*|mittelwert\w*|im\s+schnitt)\b")
+_MIN_RE = re.compile(r"\b(?:minimum|minimal|niedrigst|kleinst|tiefst)\w*\b")
+_MAX_RE = re.compile(r"\b(?:maximum|maximal|hoechst|groesst)\w*\b")
+_CHANGE_RE = re.compile(
+    r"\b(?:verbraucht|verbrauch|erzeugt|produziert|veraendert|veraenderung)\w*\b"
+)
+
+# Spoken measurement cue -> HA sensor device classes. Lets "die Temperatur im
+# Wohnzimmer" or "wie kalt war es draussen" find the sensor through its area
+# and measurement even when the spoken words are not the sensor's name.
+_MEASUREMENT_CUES: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
+    # ``\w*`` before the noun also covers compounds ("Durchschnittstemperatur").
+    (re.compile(r"\b(?:\w*temperatur\w*|warm|waermst\w*|kalt|kaelt\w*|grad)\b"), frozenset({"temperature"})),
+    (re.compile(r"\b(?:\w*feuchtigkeit|feucht\w*)\b"), frozenset({"humidity"})),
+    (re.compile(r"\b(?:co2|kohlendioxid|luftqualitaet)\b"), frozenset({"carbon_dioxide"})),
+    (re.compile(r"\b(?:energie\w*|energiezaehler|kilowattstunden|kwh)\b"), frozenset({"energy"})),
+    (re.compile(r"\b(?:strom\w*|leistung\w*|watt)\b"), frozenset({"power"})),
+    (re.compile(r"\b(?:helligkeit|hell|dunkel)\b"), frozenset({"illuminance"})),
+)
+_OUTDOOR_RE = re.compile(r"\b(?:draussen|aussen|im freien|vor dem haus)\b")
 
 _STATE_HISTORY_DOMAINS = frozenset({
     "binary_sensor", "switch", "cover", "input_boolean", "light", "fan",
@@ -113,6 +140,46 @@ def _mentioned_entity(text: str, entities: list[EntitySnapshot]) -> EntitySnapsh
     return result.entity if result.status is ResolutionStatus.RESOLVED else None
 
 
+def _is_outdoor(entity: EntitySnapshot) -> bool:
+    return is_outdoor_entity(entity)
+
+
+def _mentions_area(value: str, entity: EntitySnapshot) -> bool:
+    for name in (entity.area_name, *entity.area_aliases):
+        if name and re.search(
+            rf"\b{re.escape(normalize_for_compare(name))}\b", value
+        ):
+            return True
+    return False
+
+
+def _measured_sensor(text: str, sensors: list[EntitySnapshot]) -> EntitySnapshot | None:
+    """Resolve a sensor by its name, or else by spoken area plus measurement.
+
+    Only a unique match is returned: two temperature sensors in one room stay
+    unresolved rather than being guessed.
+    """
+    named = _mentioned_entity(text, sensors)
+    if named is not None:
+        return named
+    value = normalize_for_compare(text)
+    classes: frozenset[str] | None = None
+    for pattern, device_classes in _MEASUREMENT_CUES:
+        if pattern.search(value):
+            classes = device_classes
+            break
+    if classes is None:
+        return None
+    candidates = [item for item in sensors if item.device_class in classes]
+    if _OUTDOOR_RE.search(value):
+        located = [item for item in candidates if _is_outdoor(item)]
+    else:
+        located = [item for item in candidates if _mentions_area(value, item)]
+        if not located and len(candidates) == 1:
+            located = candidates
+    return located[0] if len(located) == 1 else None
+
+
 def _time_range(value: str, now: datetime) -> tuple[datetime, datetime, str, str] | None:
     if re.search(r"\bvorgestern\b", value):
         end = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
@@ -144,14 +211,17 @@ def parse_history_query(
     value = normalize_for_compare(text)
     comparison = re.search(r"\b(?:vergleich|verglichen|hoeher|niedriger|mehr|weniger)\b", value)
     if comparison is not None:
-        entity = _mentioned_entity(text, [item for item in entities if item.domain == "sensor"])
+        entity = _measured_sensor(text, [item for item in entities if item.domain == "sensor"])
         today = _time_range("heute", now)
+        day_before = _time_range("vorgestern", now)
         yesterday = _time_range("gestern", now)
         this_week = _time_range("diese woche", now)
         last_week = _time_range("letzte woche", now)
         periods = (
-            (today, yesterday)
-            if "heute" in value and "gestern" in value
+            (yesterday, day_before)
+            if re.search(r"\bgestern\b", value) and "vorgestern" in value
+            else (today, yesterday)
+            if "heute" in value and re.search(r"\bgestern\b", value)
             else (this_week, last_week)
             if "woche" in value and re.search(r"\b(?:diese|aktuelle)\w*\b", value)
             else None
@@ -164,7 +234,7 @@ def parse_history_query(
         ):
             metric = (
                 HistoryMetric.CHANGE
-                if re.search(r"\b(?:verbraucht|verbrauch|erzeugt|produziert)\w*\b", value)
+                if _CHANGE_RE.search(value)
                 else HistoryMetric.MEAN
             )
             return ComparativeHistoryQuery(entity, metric, periods[0], periods[1])
@@ -192,16 +262,16 @@ def parse_history_query(
             )
     if _HISTORY_CUE_RE.search(value) is None:
         return None
-    entity = _mentioned_entity(text, [item for item in entities if item.domain == "sensor"])
+    entity = _measured_sensor(text, [item for item in entities if item.domain == "sensor"])
     if entity is None or time_range is None:
         return None
-    if re.search(r"\b(?:durchschnitt|mittelwert)\w*\b", value):
+    if _MEAN_RE.search(value):
         metric = HistoryMetric.MEAN
-    elif re.search(r"\b(?:minimum|niedrigst|kleinst)\w*\b", value):
+    elif _MIN_RE.search(value):
         metric = HistoryMetric.MIN
-    elif re.search(r"\b(?:maximum|hoechst|groesst)\w*\b", value):
+    elif _MAX_RE.search(value):
         metric = HistoryMetric.MAX
-    elif re.search(r"\b(?:verbraucht|verbrauch|erzeugt|produziert)\w*\b", value):
+    elif _CHANGE_RE.search(value):
         metric = HistoryMetric.CHANGE
     else:
         return None
@@ -241,11 +311,30 @@ def _aggregate_rows(metric: HistoryMetric, rows: list[dict]) -> float | None:
     )
 
 
+def statistic_rows(response: object, statistic_id: str) -> list[dict]:
+    """Rows for one statistic from ``recorder.get_statistics``.
+
+    Home Assistant answers ``{"statistics": {statistic_id: [...]}}``; the
+    flat ``{statistic_id: [...]}`` form is accepted as well.
+    """
+    mapping = response if isinstance(response, dict) else {}
+    nested = mapping.get("statistics")
+    if isinstance(nested, dict):
+        mapping = nested
+    rows = mapping.get(statistic_id, [])
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _speak_value(number: float, entity: EntitySnapshot) -> str:
+    rounded = round(number, 1) if abs(number) < 1000 else round(number)
+    unit = spoken_unit(entity.unit)
+    return f"{format_spoken_number(rounded)} {unit}" if unit else format_spoken_number(rounded)
+
+
 def render_history_result(query: HistoryQuery, response: object) -> str:
     """Render recorder.get_statistics' response without assuming every key."""
-    mapping = response if isinstance(response, dict) else {}
-    rows = mapping.get(query.entity.entity_id, [])
-    if not isinstance(rows, list) or not rows:
+    rows = statistic_rows(response, query.entity.entity_id)
+    if not rows:
         return f"Für {query.entity.friendly_name} liegen {query.period_label} keine Statistikdaten vor."
     number = _aggregate_rows(query.metric, rows)
     if number is None:
@@ -256,8 +345,10 @@ def render_history_result(query: HistoryQuery, response: object) -> str:
         HistoryMetric.MAX: "Das Maximum",
         HistoryMetric.CHANGE: "Die Veränderung",
     }[query.metric]
-    unit = f" {query.entity.unit}" if query.entity.unit else ""
-    return f"{label} von {query.entity.friendly_name} betrug {query.period_label} {number:g}{unit}."
+    return (
+        f"{label} von {query.entity.friendly_name} betrug {query.period_label} "
+        f"{_speak_value(number, query.entity)}."
+    )
 
 
 async def async_execute_history_query(
@@ -325,24 +416,41 @@ async def _async_execute_comparative_history_query(
     except Exception as err:
         _LOGGER.warning("Recorder comparison query failed: %s", err, exc_info=True)
         return "Die Home-Assistant-Verlaufsdaten sind momentan nicht verfügbar."
-    first_rows = first_response.get(query.entity.entity_id, []) if isinstance(first_response, dict) else []
-    second_rows = second_response.get(query.entity.entity_id, []) if isinstance(second_response, dict) else []
-    first_value = _aggregate_rows(query.metric, first_rows if isinstance(first_rows, list) else [])
-    second_value = _aggregate_rows(query.metric, second_rows if isinstance(second_rows, list) else [])
+    first_value = _aggregate_rows(
+        query.metric, statistic_rows(first_response, query.entity.entity_id)
+    )
+    second_value = _aggregate_rows(
+        query.metric, statistic_rows(second_response, query.entity.entity_id)
+    )
     if first_value is None or second_value is None:
         return f"Für den Vergleich von {query.entity.friendly_name} fehlen Statistikdaten."
-    difference = first_value - second_value
-    unit = f" {query.entity.unit}" if query.entity.unit else ""
+    first_value = round(first_value, 1)
+    difference = round(first_value - round(second_value, 1), 1)
     relation = "höher" if difference > 0 else "niedriger" if difference < 0 else "gleich"
     if relation == "gleich":
         return (
             f"{query.entity.friendly_name} war {query.first[3]} und "
-            f"{query.second[3]} gleich: {first_value:g}{unit}."
+            f"{query.second[3]} gleich: {_speak_value(first_value, query.entity)}."
         )
     return (
-        f"{query.entity.friendly_name} lag {query.first[3]} bei {first_value:g}{unit}; "
-        f"das sind {abs(difference):g}{unit} {relation} als {query.second[3]}."
+        f"{query.entity.friendly_name} lag {query.first[3]} bei "
+        f"{_speak_value(first_value, query.entity)}; das sind "
+        f"{_speak_value(abs(difference), query.entity)} {relation} als {query.second[3]}."
     )
+
+
+def _spoken_duration(total_seconds: float) -> str:
+    """Hours and minutes; below one minute in seconds, never "0 Minuten"."""
+    if total_seconds < 59.5:
+        seconds = round(total_seconds)
+        return f"{seconds} Sekunde" + ("" if seconds == 1 else "n")
+    minutes = round(total_seconds / 60)
+    hours, remainder = divmod(minutes, 60)
+    hour_text = f"{hours} Stunde" + ("" if hours == 1 else "n")
+    minute_text = f"{remainder} Minute" + ("" if remainder == 1 else "n")
+    if hours and remainder:
+        return f"{hour_text} und {minute_text}"
+    return hour_text if hours else minute_text
 
 
 def _state_value(item: object) -> str | None:
@@ -425,13 +533,7 @@ def render_state_history_result(
         )
         if end is not None:
             total_seconds += max(0.0, (min(end, query.end) - max(start, query.start)).total_seconds())
-    minutes = round(total_seconds / 60)
-    hours, remainder = divmod(minutes, 60)
-    duration = (
-        f"{hours} Stunden und {remainder} Minuten"
-        if hours and remainder
-        else f"{hours} Stunden" if hours else f"{remainder} Minuten"
-    )
+    duration = _spoken_duration(total_seconds)
     return (
         f"{query.entity.friendly_name} war {query.period_label} insgesamt "
         f"{duration} {query.target_label}."

@@ -403,3 +403,22 @@ def test_only_action_can_be_replaced_in_a_confirmed_dialog(monkeypatch, tmp_path
         "target": {"entity_id": "cover.buero_rollladen"},
         "data": {"position": 50},
     }]
+
+
+# --- F22: reading automations is a question, not an action ------------------
+
+
+def test_automation_reads_answer_as_query(monkeypatch, tmp_path):
+    entity = _make_entity(monkeypatch, tmp_path)
+    _run(entity, AUTOMATION_SENTENCE, conversation_id="create")
+    _run(entity, "Ja", conversation_id="create")
+
+    for text in (
+        "Welche Automationen gibt es?",
+        "Zeige nur HomeIntent-Automationen.",
+        "Wie viele HomeIntent-Automationen sind aktiv?",
+        "Welche Automation steuert das Küchenlicht?",
+        "Welche einmaligen Aufträge sind noch geplant?",
+    ):
+        result = _run(entity, text, conversation_id=text)
+        assert result.response.response_type == "query_answer", (text, result.response.speech)

@@ -19,8 +19,10 @@ intents:
     data:
       - sentences:
           - "lösche die automation für {name}"
+          - "lösche die automation {name}"
           - "lösche die automation die {name} schaltet"
           - "lösche die automation die {name} steuert"
           - "entferne die automation für {name}"
+          - "entferne die automation {name}"
           - "entferne die automation die {name} schaltet"
           - "entferne die automation die {name} steuert"

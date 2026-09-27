@@ -1,0 +1,602 @@
+"""Scenario catalogue for the live HomeIntent test bed.
+
+The expectations describe what a German household would reasonably expect,
+based on the behaviour documented in README.md. A failing expectation is a
+finding to be triaged, not automatically a HomeIntent bug.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+SCENARIOS: list[dict[str, Any]] = []
+
+
+def S(sid: str, category: str, title: str, *steps: dict[str, Any], **extra: Any) -> None:
+    SCENARIOS.append({"id": sid, "category": category, "title": title, "steps": list(steps), **extra})
+
+
+def say(text: str, user: str = "admin", device: str | None = None, settle: float = 1.0, conv: str | None = None, **expect: Any) -> dict[str, Any]:
+    step: dict[str, Any] = {"say": text, "user": user, "settle": settle}
+    if device:
+        step["device"] = device
+    if conv:
+        step["conv"] = conv
+    if expect:
+        step["expect"] = expect
+    return step
+
+
+def wait(seconds: float) -> dict[str, Any]:
+    return {"wait": seconds}
+
+
+def set_(entity_id: str, value: Any, settle: float = 0.5) -> dict[str, Any]:
+    return {"set": entity_id, "value": value, "settle": settle}
+
+
+def check(**expect: Any) -> dict[str, Any]:
+    return {"check": True, "expect": expect}
+
+
+def options(**changes: Any) -> dict[str, Any]:
+    return {"options": changes}
+
+
+def service(name: str, data: dict | None = None, response: bool = False) -> dict[str, Any]:
+    return {"service": name, "data": data or {}, "response": response}
+
+
+YES = "Ja."
+
+# ========================================================= 1. Geräte
+S("dev-light-onoff", "Geräte", "Licht ein/aus/umschalten",
+  say("Schalte das Küchenlicht ein.", type="action_done", calls=["light.kuechenlicht:turn_on"], only_calls=True, state={"light.kuechenlicht": "on"}),
+  say("Mach das Küchenlicht aus.", calls=["light.kuechenlicht:turn_off"], state={"light.kuechenlicht": "off"}),
+  say("Schalte die Stehlampe um.", calls=["light.stehlampe:turn_on"], state={"light.stehlampe": "on"}))
+S("dev-light-brightness", "Geräte", "Helligkeit absolut/relativ",
+  say("Stelle die Stehlampe auf 30 Prozent.", state={"light.stehlampe": {"state": "on", "brightness": 77}}),
+  say("Mach die Stehlampe etwas heller.", calls=["light.stehlampe:turn_on"]),
+  check(state={"light.stehlampe": {"state": "on"}}),
+  say("Dimme die Stehlampe auf zehn Prozent.", state={"light.stehlampe": {"brightness": 26}}))
+S("dev-light-color", "Geräte", "Farbe und Farbtemperatur",
+  say("Mach den LED-Streifen im Wohnzimmer blau.", calls=["light.wohnzimmer_led_streifen:turn_on"], state={"light.wohnzimmer_led_streifen": "on"}),
+  say("Stelle das Wohnzimmer Deckenlicht auf warmweiß.", calls=["light.wohnzimmer_deckenlicht:turn_on"]),
+  say("Mach die Schreibtischlampe rot.", type="error", no_calls=True))
+S("dev-switch", "Geräte", "Schalter",
+  say("Schalte die Kaffeemaschine ein.", calls=["switch.kaffeemaschine:turn_on"], state={"switch.kaffeemaschine": "on"}),
+  say("Ist die Kaffeemaschine an?", type="query_answer", any=["ja", "eingeschaltet", "an"]))
+S("dev-cover-position", "Geräte", "Rollläden öffnen/schließen/Position",
+  say("Fahre den Küchenrollladen runter.", settle=4, calls=["cover.kuechenrollladen:close_cover"], state={"cover.kuechenrollladen": "closed"}),
+  say("Fahre den Küchenrollladen auf 40 Prozent.", settle=4, state={"cover.kuechenrollladen": {"current_position": 40}}),
+  say("Fahre den Küchenrollladen komplett hoch.", settle=4, state={"cover.kuechenrollladen": {"current_position": 100}}))
+S("dev-cover-fractions", "Geräte", "Bruchteile und Zahlwörter",
+  say("Fahre den Schlafzimmer Rollladen zur Hälfte.", settle=4, state={"cover.schlafzimmer_rollladen": {"current_position": 50}}),
+  say("Fahre den Schlafzimmer Rollladen auf drei Viertel.", settle=4, state={"cover.schlafzimmer_rollladen": {"current_position": 75}}))
+S("dev-cover-tilt", "Geräte", "Lamellen Raffstore",
+  say("Stelle die Lamellen vom Büro Raffstore auf 20 Prozent.", calls=["cover.buero_raffstore:set_cover_tilt_position"], state={"cover.buero_raffstore": {"current_tilt_position": 20}}))
+S("dev-garage-confirm", "Geräte", "Garagentor nur nach Bestätigung",
+  say("Öffne das Garagentor.", no_calls=True, any=["soll", "sicher", "bestätig"], continue_=None),
+  say(YES, settle=8, calls=["cover.garagentor:open_cover"], state={"cover.garagentor": "open"}),
+  say("Schließ das Garagentor.", settle=8))
+S("dev-climate", "Geräte", "Heizung Solltemperatur/Preset/Modus",
+  say("Stelle die Heizung im Wohnzimmer auf 22 Grad.", calls=["climate.heizung_wohnzimmer:set_temperature"], state={"climate.heizung_wohnzimmer": {"temperature": 22}}),
+  say("Stelle die Heizung im Büro auf zweiundzwanzig Grad.", state={"climate.heizung_buero": {"temperature": 22}}),
+  say("Mach die Heizung im Schlafzimmer stark wärmer.", calls=["climate.heizung_schlafzimmer:set_temperature"]),
+  say("Stelle die Heizung in der Küche auf Eco.", calls=["climate.heizung_kueche:set_preset_mode"], state={"climate.heizung_kueche": {"preset_mode": "eco"}}),
+  say("Schalte die Heizung im Badezimmer aus.", state={"climate.heizung_badezimmer": "off"}))
+S("dev-climate-missing-value", "Geräte", "Fehlende Temperatur wird erfragt",
+  say("Stelle die Heizung im Büro ein.", no_calls=True, any=["welche temperatur", "auf welche"]),
+  say("Auf 21 Grad.", state={"climate.heizung_buero": {"temperature": 21}}))
+S("dev-fan", "Geräte", "Ventilator Stufe/Preset/Oszillation",
+  # fan.turn_on with percentage is Home Assistant's documented equivalent of
+  # fan.set_percentage; the observable result (60 %) is what is asserted.
+  say("Stelle den Deckenventilator auf Stufe 3.", calls=["fan.deckenventilator:turn_on"], state={"fan.deckenventilator": {"percentage": 60}}),
+  say("Stelle den Deckenventilator auf Nacht.", state={"fan.deckenventilator": {"preset_mode": "Nacht"}}),
+  say("Schalte beim Deckenventilator die Oszillation ein.", state={"fan.deckenventilator": {"oscillating": True}}),
+  say("Schalte den Badlüfter ein.", state={"fan.badluefter": "on"}))
+S("dev-media", "Geräte", "Media Player",
+  say("Pausiere das Küchenradio.", calls=["media_player.kuechenradio:media_pause"], state={"media_player.kuechenradio": "paused"}),
+  say("Bitte weiterspielen.", calls=["media_player.kuechenradio:media_play"]),
+  say("Stelle die Lautstärke vom Küchenradio auf 20 Prozent.", state={"media_player.kuechenradio": {"volume_level": 0.2}}),
+  say("Schalte den Wohnzimmer TV auf Netflix.", state={"media_player.wohnzimmer_tv": {"source": "Netflix"}}))
+S("dev-vacuum", "Geräte", "Saugroboter",
+  say("Starte den Saugroboter.", calls=["vacuum.saugroboter:start"], state={"vacuum.saugroboter": "cleaning"}),
+  say("Läuft der Saugroboter?", type="query_answer", any=["ja", "saugt", "reinig"]),
+  say("Stelle beim Saugroboter die Saugstufe auf stark.", state={"vacuum.saugroboter": {"fan_speed": "stark"}}),
+  say("Schicke den Saugroboter zur Ladestation.", calls=["vacuum.saugroboter:return_to_base"]))
+S("dev-lawnmower", "Geräte", "Mähroboter",
+  say("Starte den Mähroboter.", calls=["lawn_mower.maehroboter:start_mowing"]),
+  say("Was macht der Mähroboter?", type="query_answer", any=["mäht", "aktiv"]),
+  say("Schick den Mähroboter zurück zur Ladestation.", calls=["lawn_mower.maehroboter:dock"]))
+# Locks are HIGH risk in HomeIntent's ExecutionPolicy (risk.py): locking asks
+# once as well, unlocking is CRITICAL. The scenario keeps that boundary.
+S("dev-lock", "Sicherheit", "Schloss: verriegeln und entriegeln nur mit Bestätigung",
+  say("Entriegle das Haustürschloss.", no_calls=True, any=["soll", "sicher", "bestätig", "wirklich"]),
+  say(YES, calls=["lock.haustuerschloss:unlock"], state={"lock.haustuerschloss": "unlocked"}),
+  say("Verriegle die Haustür.", no_calls=True, any=["haustürschloss"]),
+  say(YES, calls=["lock.haustuerschloss:lock"], state={"lock.haustuerschloss": "locked"}))
+S("dev-lock-deny", "Sicherheit", "Entriegeln abgelehnt mit Nein",
+  say("Schließ das Gartentor auf.", no_calls=True),
+  say("Nein.", no_calls=True, state={"lock.gartentor_schloss": "locked"}))
+S("dev-valve", "Geräte", "Ventile nach Bestätigung",
+  say("Öffne die Bewässerung im Garten.", no_calls=True),
+  say(YES, state={"valve.bewaesserung": "open"}))
+S("dev-humidifier", "Geräte", "Luftbefeuchter",
+  say("Stelle den Luftbefeuchter auf 50 Prozent.", state={"humidifier.luftbefeuchter": {"humidity": 50}}),
+  say("Stelle den Luftbefeuchter auf den Modus Schlaf.", state={"humidifier.luftbefeuchter": {"mode": "Schlaf"}}))
+S("dev-waterheater", "Geräte", "Warmwasserspeicher",
+  say("Stelle den Warmwasserspeicher auf 55 Grad.", state={"water_heater.warmwasserspeicher": {"temperature": 55}}),
+  say("Stelle den Warmwasserspeicher auf performance.", state={"water_heater.warmwasserspeicher": {"operation_mode": "performance"}}))
+S("dev-select-number", "Geräte", "Select / Number / Input-Helfer",
+  say("Wähle beim Heizprogramm Eco.", state={"select.heizprogramm": "Eco"}),
+  say("Stelle die Poolpumpe Drehzahl auf 1800.", state={"number.poolpumpe_drehzahl": "1800.0"}),
+  say("Stelle die Poolheizung Solltemperatur auf 28 Grad.", state={"input_number.poolheizung_soll": "28.0"}),
+  say("Schalte den Gästemodus ein.", state={"input_boolean.gaestemodus": "on"}))
+S("dev-button", "Geräte", "Taste nach Bestätigung",
+  say("Drücke Kaffeemaschine entkalken.", no_calls=True),
+  say(YES, calls=["button.kaffeemaschine_entkalken:press"]))
+S("dev-scene-script", "Geräte", "Szene und Skript",
+  say("Aktiviere die Szene Filmabend.", settle=2, state={"light.wohnzimmer_led_streifen": "on", "light.stehlampe": "on"}),
+  say("Starte das Skript Kaffee kochen.", settle=2, state={"switch.kaffeemaschine": "on"}))
+S("dev-alarm", "Sicherheit", "Alarmanlage scharf schalten (kritisch)",
+  say("Schalte die Alarmanlage scharf.", no_calls=True),
+  say(YES, calls=["alarm_control_panel.alarmanlage:arm_away"]))
+S("dev-notify-entity", "Geräte", "Nachricht an benanntes Notify-Ziel",
+  say("Schicke an Handy Anna die Nachricht Abendessen ist fertig.", notify="Abendessen ist fertig"))
+
+# ================================================ 2. Natürliche Sprache
+for i, text in enumerate([
+    "Kannst du das Küchenlicht anmachen?",
+    "Wäre es möglich, das Küchenlicht einzuschalten?",
+    "Ich hätte gerne das Küchenlicht an.",
+    "Sorge bitte dafür, dass das Küchenlicht an ist.",
+    "Das Küchenlicht soll an sein.",
+    "Küchenlicht an.",
+    "Licht in der Küche an bitte.",
+    "Mach mal bitte in der Küche das Licht an.",
+]):
+    S(f"nl-paraphrase-{i}", "Sprache", f"Paraphrase: {text}", say(text, calls=["light.kuechenlicht:turn_on"], state={"light.kuechenlicht": "on"}))
+
+S("nl-word-order", "Sprache", "Freie Wortstellung",
+  say("Im Erdgeschoss bitte alle Rollläden hochfahren.", settle=4, no_calls=False),
+  say("Nach oben fahren sollen im Obergeschoss alle Rollläden.", settle=4))
+S("nl-negation", "Sprache", "Negation führt nichts aus",
+  say("Mach das Küchenlicht nicht an.", no_calls=True, state={"light.kuechenlicht": "off"}))
+S("nl-hypothetical", "Sprache", "Hypothetisch führt nichts aus",
+  say("Wenn ich wollte, könnte ich das Küchenlicht einschalten.", no_calls=True),
+  say("Ich überlege, ob ich das Wohnzimmer Deckenlicht anmache.", no_calls=True))
+S("nl-whatif", "Sprache", "Was-passiert-wenn-Frage bleibt lesend",
+  say("Was passiert, wenn die Bewegung im Flur erkannt wird?", no_calls=True))
+S("nl-typo", "Sprache", "Tipp-/ASR-Fehler",
+  say("Schalte das Küchenlihct ein.", any=["küchenlicht"]),
+  say("Schalte das Kuechenlicht ein.", calls=["light.kuechenlicht:turn_on"]))
+S("nl-alias", "Sprache", "Entity-Alias (Leselampe) und Bereichsalias (Bad, Stube)",
+  say("Mach die Leselampe an.", calls=["light.stehlampe:turn_on"]),
+  say("Mach das Licht im Bad an.", calls=["light.badezimmerlicht:turn_on", "light.spiegelschrank:turn_on"]),
+  say("Wie warm ist es in der Stube?", type="query_answer", any=["grad"]))
+S("nl-offtopic", "Sprache", "Themenfremd / Unsinn / Englisch",
+  say("Wer hat die Fußball-WM 2014 gewonnen?", no_calls=True),
+  say("Blubb flurp zack.", no_calls=True),
+  say("Turn on the kitchen light.", no_calls=False))
+S("nl-explain", "Sprache", "Was hast du verstanden?",
+  say("Schalte in Küche und Flur alle Lichter aus, außer dem Flurlicht."),
+  say("Was hast du verstanden?", no_calls=True, any=["küche", "flur"]))
+
+# ================================================ 3. Mengen, Orte, Ausschlüsse
+S("set-floor-all", "Mengen/Orte", "Alle Rollläden im Erdgeschoss auf 50 %",
+  say("Fahre alle Rollläden im Erdgeschoss auf 50 Prozent.", settle=4,
+      calls=["cover.wohnzimmer_rollladen_links:set_cover_position", "cover.wohnzimmer_rollladen_rechts:set_cover_position", "cover.kuechenrollladen:set_cover_position", "cover.esszimmer_rollladen:set_cover_position"],
+      not_calls=["cover.schlafzimmer_rollladen:set_cover_position", "cover.garagentor:open_cover"]))
+S("set-both", "Mengen/Orte", "Beide Rollläden im Wohnzimmer",
+  say("Fahre beide Rollläden im Wohnzimmer runter.", settle=4, calls=["cover.wohnzimmer_rollladen_links:close_cover", "cover.wohnzimmer_rollladen_rechts:close_cover"], only_calls=True))
+S("set-two-areas", "Mengen/Orte", "Lichter in Küche und Flur",
+  service("light.turn_on", {"entity_id": ["light.kuechenlicht", "light.kuecheninsel", "light.flurlicht", "light.buerolicht"]}),
+  say("Schalte alle Lichter in Küche und Flur aus.", calls=["light.kuechenlicht:turn_off", "light.kuecheninsel:turn_off", "light.flurlicht:turn_off"], only_calls=True, state={"light.buerolicht": "on"}))
+S("set-except", "Mengen/Orte", "Alle Lichter aus außer …",
+  service("light.turn_on", {"entity_id": ["light.stehlampe", "light.wohnzimmer_deckenlicht", "light.nachtlicht", "light.kuechenlicht"]}),
+  say("Mach alle Lichter aus außer der Stehlampe und dem Nachtlicht.", state={"light.stehlampe": "on", "light.nachtlicht": "on", "light.wohnzimmer_deckenlicht": "off", "light.kuechenlicht": "off"}, not_calls=["light.stehlampe:turn_off", "light.nachtlicht:turn_off"]))
+S("set-few", "Mengen/Orte", "„Ein paar Lichter“ wird nicht geraten",
+  say("Mach ein paar Lichter an.", no_calls=True, any=["welche"]))
+S("set-number", "Mengen/Orte", "Die drei Lampen im Schlafzimmer",
+  say("Mach die drei Lampen im Schlafzimmer an.", calls=["light.schlafzimmerlicht:turn_on", "light.nachttischlampe_links:turn_on", "light.nachttischlampe_rechts:turn_on"]))
+S("set-upstairs", "Mengen/Orte", "Etagen-Alias „oben“",
+  say("Schalte oben alle Lichter an.", calls=["light.schlafzimmerlicht:turn_on", "light.kinderzimmerlicht:turn_on", "light.badezimmerlicht:turn_on", "light.flurlicht_oben:turn_on"], not_calls=["light.kuechenlicht:turn_on"]))
+S("set-max-targets", "Sicherheit", "Ganzes Haus: Grenze gleichzeitiger Ziele",
+  say("Schalte im ganzen Haus alle Lichter ein."))
+
+# ================================================ 4. Mehrdeutigkeit / Kontext
+S("amb-nightstand", "Dialog", "Nachttischlampe links/rechts → Rückfrage → Auswahl",
+  say("Mach die Nachttischlampe an.", no_calls=True, any=["welche", "meinst du"], continue_=None),
+  say("Die linke.", calls=["light.nachttischlampe_links:turn_on"], only_calls=True))
+S("amb-ordinal", "Dialog", "Auswahl per Ordinalzahl",
+  say("Mach die Nachttischlampe an.", no_calls=True),
+  say("Die zweite.", calls=["light.nachttischlampe_rechts:turn_on"], only_calls=True))
+S("amb-invalid-choice", "Dialog", "Ungültige Auswahl verwirft Rückfrage nicht",
+  say("Mach die Nachttischlampe an.", no_calls=True),
+  say("Die fünfte.", no_calls=True),
+  say("Die rechte.", calls=["light.nachttischlampe_rechts:turn_on"]))
+S("amb-generic-light", "Dialog", "„Mach das Licht an“ ohne Raum",
+  say("Mach das Licht an.", no_calls=True))
+S("ctx-here", "Dialog", "„hier“ über Satellitenbereich (Büro)",
+  say("Schalte das Licht hier ein.", device="Büro", calls=["light.buerolicht:turn_on"], not_calls=["light.kuechenlicht:turn_on"]))
+S("ctx-roomless-cover", "Dialog", "Raumloser Rollladenbefehl im Satellitenraum",
+  say("Fahr den Rollladen auf 30 Prozent.", device="Schlafzimmer", settle=4, calls=["cover.schlafzimmer_rollladen:set_cover_position"], only_calls=True))
+S("ctx-followup-area", "Dialog", "Folgefrage „Und in der Küche?“",
+  say("Wie warm ist es im Wohnzimmer?", type="query_answer", any=["grad"]),
+  say("Und im Büro?", type="query_answer", any=["grad"]))
+S("ctx-query-then-command", "Dialog", "Temperaturfrage → Erhöhung",
+  say("Wie warm ist es im Büro?", type="query_answer"),
+  say("Kannst du die Temperatur auf 23 Grad erhöhen?", state={"climate.heizung_buero": {"temperature": 23}}))
+S("ctx-undo", "Dialog", "Rückgängig machen",
+  say("Fahre den Esszimmer Rollladen auf 40 Prozent.", settle=4),
+  say("Mach das rückgängig.", settle=4, state={"cover.esszimmer_rollladen": {"current_position": 100}}))
+S("ctx-pronoun", "Dialog", "Pronomen „es“ auf zuletzt genanntes Gerät",
+  say("Starte das Küchenradio."),
+  say("Kannst du es pausieren?", calls=["media_player.kuechenradio:media_pause"]))
+S("ctx-correction", "Dialog", "Korrektur „nein, im Esszimmer“",
+  say("Schalte das Licht im Büro an.", calls=["light.buerolicht:turn_on"]),
+  say("Nein, ich meinte im Esszimmer.", calls=["light.esszimmer_pendelleuchte:turn_on"], state={"light.esszimmer_pendelleuchte": "on"}))
+
+
+# ================================================ 5. Abfragen
+S("q-state", "Abfragen", "Zustandsfragen",
+  say("Ist das Badezimmerfenster geschlossen?", type="query_answer", any=["nein", "geöffnet", "offen"]),
+  say("Welchen Zustand hat das Badezimmerfenster?", type="query_answer", any=["geöffnet", "offen"]),
+  say("Ist irgendein Fenster offen?", type="query_answer", any=["ja"]),
+  say("Ist kein Fenster offen?", type="query_answer", any=["nein", "doch", "küchenfenster", "badezimmerfenster"]),
+  say("Wie viele Fenster sind im Erdgeschoss geöffnet?", type="query_answer", any=["1", "ein", "eins"]),
+  say("Sind im Erdgeschoss offene Fenster?", type="query_answer", any=["ja", "küchenfenster"]),
+  say("Wo sind Fenster offen?", type="query_answer", all=["küche", "bad"]),
+  say("Ist die Haustür zu?", type="query_answer", any=["ja", "geschlossen"]))
+S("q-covers", "Abfragen", "Rollladen-Abfragen",
+  say("Sind alle Rollläden hochgefahren?", type="query_answer", any=["ja", "geöffnet", "offen"]),
+  say("Welche Rollläden gibt es im Erdgeschoss?", type="query_answer", all=["küchenrollladen", "esszimmer"], none=["ja, es gibt"]),
+  say("Ist das Garagentor offen?", type="query_answer", any=["nein", "geschlossen"]))
+S("q-area-on", "Abfragen", "Was ist im Raum eingeschaltet?",
+  service("light.turn_on", {"entity_id": ["light.badezimmerlicht"]}),
+  service("switch.turn_on", {"entity_id": ["switch.heizluefter_bad"]}),
+  say("Was ist im Badezimmer eingeschaltet?", type="query_answer", all=["badezimmerlicht", "heizlüfter"]),
+  say("Ist das Radio in der Küche an?", type="query_answer", any=["ja", "spielt", "wiedergabe", "läuft"]))
+S("q-measure", "Abfragen", "Messwerte",
+  say("Wie warm ist es im Wohnzimmer?", type="query_answer", any=["grad"]),
+  say("Wie hoch ist die Luftfeuchtigkeit im Badezimmer?", type="query_answer", all=["68"]),
+  say("Wie warm ist es draußen?", type="query_answer", any=["12"]),
+  say("Wie hoch ist die Temperatur im Obergeschoss?", type="query_answer", any=["grad"]),
+  say("Wie hoch ist der CO2-Wert im Wohnzimmer?", type="query_answer", any=["812"]),
+  say("Wie viel Strom verbraucht das Haus gerade?", type="query_answer", any=["432"]))
+S("q-battery", "Abfragen", "Batterien unter Schwelle",
+  say("Welche Batterien sind unter 20 Prozent?", type="query_answer", all=["bad", "rauchmelder"], none=["küche"]),
+  say("Welche Batterien oben sind unter 20 Prozent?", type="query_answer", any=["rauchmelder", "bad"]))
+S("q-compare", "Abfragen", "Vergleiche und Superlative",
+  service("light.turn_on", {"entity_id": "light.stehlampe", "brightness_pct": 80}),
+  service("light.turn_on", {"entity_id": "light.wohnzimmer_deckenlicht", "brightness_pct": 20}),
+  say("Welche Lichter im Wohnzimmer sind heller als 50 Prozent?", type="query_answer", all=["stehlampe"], none=["deckenlicht"]),
+  say("Welches Gerät verbraucht gerade am meisten Strom?", type="query_answer", any=["waschmaschine"]),
+  say("Welcher Raum ist am wärmsten?", type="query_answer", any=["bad"]),
+  say("Wie hoch ist die durchschnittliche Temperatur im Haus?", type="query_answer", any=["grad"]))
+S("q-appliance", "Abfragen", "Fertigstellungszeit Waschmaschine",
+  say("Wann ist die Waschmaschine fertig?", type="query_answer", any=["uhr", "minuten"]))
+S("q-readiness", "Abfragen", "Bereitschaftscheck",
+  say("Ist HomeIntent bereit?", type="query_answer"))
+S("q-count-on", "Abfragen", "Wie viele Lichter sind an?",
+  service("light.turn_on", {"entity_id": ["light.kuechenlicht", "light.flurlicht", "light.buerolicht"]}),
+  say("Wie viele Lichter sind an?", type="query_answer", any=["3", "drei"]),
+  say("Welche davon sind im Erdgeschoss?", type="query_answer", all=["küchenlicht", "flurlicht", "bürolicht"]),
+  say("Schalte die aus.", calls=["light.kuechenlicht:turn_off", "light.flurlicht:turn_off", "light.buerolicht:turn_off"]))
+S("q-persons", "Abfragen", "Wer ist zu Hause?",
+  say("Wer ist zu Hause?", type="query_answer", all=["philipp", "anna"]),
+  set_("device_tracker.handy_anna", "not_home"),
+  say("Ist Anna zu Hause?", type="query_answer", any=["nein", "nicht"]))
+S("q-climate-state", "Abfragen", "Heizungsabfragen",
+  say("Auf wie viel Grad ist die Heizung im Wohnzimmer gestellt?", type="query_answer", any=["21"]),
+  say("Heizt die Heizung im Büro gerade?", type="query_answer", any=["ja", "heizt"]))
+
+# ================================================ 6. Recorder-Statistik
+S("stat-mean", "Statistik", "Recorder: Mittelwert/Min/Max/Veränderung",
+  say("Wie hoch war die durchschnittliche Temperatur im Wohnzimmer gestern?", type="query_answer", any=["grad"], none=["keine"]),
+  say("Was war gestern der höchste Wert vom Stromverbrauch Haus?", type="query_answer", any=["watt", " w"], none=["keine"]),
+  say("Wie hat sich der Energiezähler diese Woche verändert?", type="query_answer", any=["kwh", "kilowattstunden"]),
+  say("War die Temperatur im Wohnzimmer gestern niedriger als vorgestern?", type="query_answer"),
+  say("Wie kalt war es gestern draußen minimal?", type="query_answer", any=["grad"]))
+S("stat-history", "Statistik", "Recorder: Zustandsdauer/Wechsel heute",
+  set_("binary_sensor.wohnzimmerfenster", "on"), wait(2), set_("binary_sensor.wohnzimmerfenster", "off"), wait(1),
+  set_("binary_sensor.wohnzimmerfenster", "on"), wait(2), set_("binary_sensor.wohnzimmerfenster", "off"), wait(2),
+  say("Wie oft war das Wohnzimmerfenster heute offen?", type="query_answer", any=["2", "zwei", "zweimal"]),
+  say("Wie lange war das Wohnzimmerfenster heute geöffnet?", type="query_answer", any=["sekunde", "minute"]))
+
+# ================================================ 7. Kalender
+S("cal-oneshot", "Kalender", "Termin in einem Satz + Bestätigung",
+  say("Trag nächsten Dienstag um 10 Uhr für eine Stunde Zahnarzt in den Kalender Familie ein.", no_calls=True, any=["zahnarzt"]),
+  say(YES, any=["eingetragen", "erstellt", "angelegt"]),
+  say("Wann ist mein Zahnarzttermin?", any=["10:00", "10 uhr"]))
+S("cal-dialog", "Kalender", "Termin im Dialog ergänzen",
+  say("Trag einen Termin ein.", any=["wie soll", "heißen", "welche"]),
+  say("Elternabend."),
+  say("Übermorgen."),
+  say("Um 19 Uhr."),
+  say("Zwei Stunden."),
+  say("Im Kalender Familie."),
+  say(YES, any=["eingetragen", "erstellt", "angelegt"]),
+  say("Was steht übermorgen in meinem Kalender?", any=["elternabend"]))
+S("cal-manage", "Kalender", "Verschieben, umbenennen, freie Zeit, löschen",
+  say("Erstelle morgen von 14 bis 15 Uhr den Termin Planung im Kalender Familie."), say(YES),
+  say("Habe ich morgen zwischen 14 und 16 Uhr Zeit?", any=["nein", "planung", "belegt"]),
+  say("Verschiebe den Termin Planung auf 16 Uhr."), say(YES),
+  say("Benenne den Termin Planung in Projektplanung um."), say(YES),
+  say("Was steht morgen in meinem Kalender?", all=["projektplanung", "16"]),
+  say("Lösche den Termin Projektplanung."), say(YES, any=["gelöscht", "entfernt"]),
+  say("Welche Termine habe ich morgen?", none=["projektplanung"]))
+S("cal-ambiguous-calendar", "Kalender", "Mehrere Kalender → Rückfrage",
+  say("Trag morgen um 8 Uhr Joggen ein."), say("Eine Stunde.", any=["welche", "kalender", "familie", "müllabfuhr"]))
+
+# ================================================ 8. Listen
+S("todo-multi", "Listen", "Mehrere Einträge, abhaken, entfernen, verschieben",
+  say("Füge Milch, Brot, Butter und Äpfel zur Einkaufsliste hinzu.", any=["milch"]),
+  say("Was steht auf meiner Einkaufsliste?", type="query_answer", all=["milch", "brot", "butter", "äpfel"]),
+  say("Markiere Milch und Brot als erledigt."),
+  say("Lösche alle erledigten Einträge."), say(YES),
+  say("Was steht auf der Einkaufsliste?", type="query_answer", all=["butter"], none=["milch"]),
+  say("Verschiebe Butter von der Einkaufsliste auf die Arbeitsliste."),
+  say("Was steht auf der Arbeitsliste?", type="query_answer", any=["butter"]),
+  say("Entferne Äpfel von der Einkaufsliste."),
+  say("Was steht auf der Einkaufsliste?", type="query_answer", none=["äpfel"]))
+S("todo-ambiguous", "Listen", "Ohne Listenname bei zwei Listen",
+  say("Setze Druckerpapier auf die Liste.", any=["welche"]),
+  say("Arbeitsliste."),
+  say("Was steht auf der Arbeitsliste?", type="query_answer", any=["druckerpapier"]))
+
+# ================================================ 9. Timer
+S("timer-no-output", "Timer", "Timer ohne Satellit/TTS-Ziel wird abgelehnt (dokumentiert)",
+  say("Stelle einen Timer für 5 Minuten mit dem Namen Nudeln.", any=["nicht", "kein"]))
+
+# ================================================ 10. Push / Erinnerungen
+S("push-unconfigured", "Push", "Testbenachrichtigung ohne Push-Ziel → Konfigurationshinweis",
+  options(agent_notify_targets=[]),
+  say("Schick mir eine Testbenachrichtigung.", no_calls=True, notify=False, any=["konfigur", "kein", "ziel"]))
+S("push-two-targets", "Push", "Zwei Push-Ziele, keine Zuordnung → Rückfrage statt Broadcast",
+  options(agent_notify_targets=["notify.handy_philipp_nachricht", "notify.handy_anna_nachricht"], agent_delivery_channels=["push"]),
+  say("Schick mir eine Testbenachrichtigung.", notify=False, any=["zuordn", "welche", "mehrere"]))
+S("push-bound", "Push", "Gebundener Benutzer bekommt Testnachricht",
+  service("homeintent.bind_user_context", {"user_id": "$admin_user_id", "person_entity_id": "person.philipp", "notification_targets": ["notify.handy_philipp_nachricht"], "preferred_notification_target": "notify.handy_philipp_nachricht", "confirmed": True}),
+  say("Schick mir eine Testbenachrichtigung.", any=["gesendet"], notify="test"),
+  check(notify="test"))
+S("push-delayed", "Push", "In 10 Sekunden Testbenachrichtigung (persistente Einmal-Automation)",
+  say("Kannst du mir in 10 Sekunden eine Test Benachrichtigung schicken?"),
+  say(YES, settle=1),
+  wait(16),
+  check(notify="test"))
+S("push-window-automation", "Push", "Benachrichtige mich sobald ein Fenster geöffnet wird",
+  say("Benachrichtige mich sobald im Wohnzimmer ein Fenster geöffnet wird.", no_calls=True),
+  say(YES, settle=3),
+  set_("binary_sensor.wohnzimmerfenster", "on", settle=3),
+  check(notify="fenster"))
+S("reminder-relative", "Push", "Erinnere mich in 20 Sekunden an die Waschmaschine",
+  say("Erinnere mich in 20 Sekunden an die Waschmaschine."),
+  say(YES), wait(26),
+  check(notify="waschmaschine"))
+S("reminder-person", "Push", "Sag Anna morgen um 8 Uhr Bescheid (Person ohne Bindung)",
+  say("Sag Anna morgen um 8 Uhr Bescheid, dass der Müll raus muss."))
+
+# ================================================ 11. Timer mit TTS
+S("timer-full", "Timer", "Benannte Timer mit TTS-Ausgabe",
+  options(agent_tts_entity="tts.sprachausgabe", agent_media_players=["media_player.kuechenradio"]),
+  say("Stelle einen Timer für 10 Sekunden.", any=["wie soll", "heißen", "name"]),
+  say("Pizza.", any=["pizza"]),
+  say("Stelle einen Nudeltimer für 5 Minuten.", any=["nudel"]),
+  say("Welche Timer laufen?", all=["pizza", "nudel"]),
+  wait(12),
+  check(played="Timer+Pizza+ist+abgelaufen"),
+  say("Wie lange läuft der Timer Nudeln noch?", any=["minute"]),
+  say("Pausiere den Timer Nudeln.", any=["pausiert", "angehalten"]),
+  say("Setze den Nudeltimer fort.", any=["fortgesetzt", "läuft"]),
+  say("Verlängere den Timer Nudeln um fünf Minuten.", any=["verlängert", "10", "zehn"]),
+  say("Stelle einen Timer für 3 Minuten mit dem Namen Tee."),
+  say("Lösche den Timer.", any=["welchen"]),
+  say("Tee.", any=["tee"]),
+  say("Lösche alle Timer.", any=["sicher", "soll", "alle"]),
+  say(YES),
+  say("Welche Timer laufen?", any=["keine", "kein"]))
+S("timer-helper", "Timer", "timer.*-Helfer (Waschgang)",
+  say("Starte den Timer Waschgang.", any=["waschgang"]),
+  check(state={"timer.waschgang": "active"}),
+  say("Wie lange läuft der Waschgang noch?", any=["stunde", "minute"]))
+
+# ================================================ 12. Automationen
+S("auto-delayed", "Automationen", "In 15 Sekunden Küchenlicht einschalten",
+  say("Schalte in 15 Sekunden das Küchenlicht ein.", no_calls=True, any=["soll", "automation", "15"]),
+  say(YES, no_calls=True),
+  say("Welche einmaligen Aufträge sind noch geplant?", any=["küchenlicht"]),
+  wait(20),
+  check(state={"light.kuechenlicht": "on"}))
+S("auto-state-trigger", "Automationen", "Wenn Küchenfenster geöffnet wird, Küchenlicht an",
+  set_("binary_sensor.kuechenfenster", "off"),
+  say("Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein.", no_calls=True),
+  say(YES, settle=3),
+  set_("binary_sensor.kuechenfenster", "on", settle=2),
+  check(state={"light.kuechenlicht": "on"}))
+S("auto-numeric", "Automationen", "Temperatur unter 18 Grad → Heizung Büro 21 Grad",
+  say("Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein.", no_calls=True),
+  say(YES, settle=3),
+  set_("sensor.temperatur_keller", 11.2, settle=2),
+  check(state={"light.kellerlicht": "on"}))
+S("auto-sun", "Automationen", "Bei Sonnenuntergang Außenbeleuchtung ein",
+  say("Bei Sonnenuntergang schalte die Außenbeleuchtung ein.", no_calls=True),
+  say(YES, settle=3))
+S("auto-recurring", "Automationen", "Jeden Werktag um 7 Uhr Küchenlicht ein",
+  say("Jeden Werktag um 7 Uhr schalte das Küchenlicht ein.", no_calls=True),
+  say(YES, settle=3))
+S("auto-for", "Automationen", "Fenster zehn Minuten offen → Heizung aus",
+  say("Wenn das Schlafzimmerfenster zehn Minuten offen bleibt, schalte die Heizung im Schlafzimmer aus.", no_calls=True),
+  say(YES, settle=3))
+S("auto-colortemp", "Automationen", "Automation mit Farbtemperatur (kelvin-Feld)",
+  say("Jeden Tag um 21 Uhr stelle das Bürolicht auf warmweiß.", no_calls=True),
+  say(YES, settle=3, none=["fehler"]))
+S("auto-manage", "Automationen", "Automationen verwalten",
+  say("Zeige nur HomeIntent-Automationen.", any=["automation"]),
+  say("Wie viele HomeIntent-Automationen sind aktiv?", any=["aktiv"]),
+  say("Welche Automation steuert die Außenbeleuchtung?", any=["sonnenuntergang", "außenbeleuchtung"]),
+  say("Was passiert, wenn die Bewegung im Flur erkannt wird?", any=["flurlicht"]),
+  say("Deaktiviere die Automation für Flurlicht bei Bewegung.", any=["soll", "deaktiv"]),
+  check(state={"automation.flurlicht_bei_bewegung": "off"}),
+  say("Aktiviere die Automation für Flurlicht bei Bewegung.", any=["aktiviert"]),
+  check(state={"automation.flurlicht_bei_bewegung": "on"}),
+  say("Füge der Automation für Außenbeleuchtung die Bedingung hinzu, dass jemand zuhause ist."), say(YES),
+  say("Dupliziere die Automation für Außenbeleuchtung."), say(YES),
+  say("Lösche die Automation für Außenbeleuchtung.", any=["welche", "mehrere", "soll"]),
+  say("Mache die letzte HomeIntent-Automationsänderung rückgängig."), say(YES))
+S("auto-guided", "Automationen", "Geführter Automationsdialog",
+  say("Erstelle eine Automation.", any=["auslöser", "wann"]),
+  say("Wenn die Haustür geöffnet wird."),
+  say("Nein."),
+  say("Schalte das Flurlicht ein."),
+  say("Immer."),
+  say(YES, settle=3),
+  set_("binary_sensor.haustuer", "on", settle=2),
+  check(state={"light.flurlicht": "on"}))
+
+# ================================================ 13. Mehrbenutzer / Richtlinie
+S("mu-confirm-binding", "Sicherheit", "Fremder Benutzer kann offene Bestätigung nicht abschließen",
+  say("Entriegle das Haustürschloss.", no_calls=True, conv="shared"),
+  say(YES, user="anna", conv="shared", no_calls=True, state={"lock.haustuerschloss": "locked"}))
+S("mu-nonadmin-critical", "Sicherheit", "Nicht-Admin: Alarmanlage deaktivieren (kritisch)",
+  service("alarm_control_panel.alarm_arm_away", {"entity_id": "alarm_control_panel.alarmanlage"}),
+  say("Deaktiviere die Alarmanlage.", user="anna", any=["administrator"]),
+  say(YES, user="anna", no_calls=True, state={"alarm_control_panel.alarmanlage": "armed_away"}))
+S("mu-nonadmin-automation", "Sicherheit", "Nicht-Admin-Automationen abgeschaltet",
+  options(allow_non_admin_automations=False),
+  say("Jeden Werktag um 6 Uhr schalte das Kinderzimmerlicht ein.", user="lena"),
+  say(YES, user="lena", none=["wurde erstellt"]),
+  options(allow_non_admin_automations=True))
+S("mu-readonly", "Sicherheit", "Nur-Lesen-Entität",
+  options(read_only_entities=["switch.gartenpumpe"]),
+  say("Schalte die Gartenpumpe ein.", no_calls=True),
+  say("Ist die Gartenpumpe an?", type="query_answer"),
+  options(read_only_entities=[]))
+S("mu-control-users", "Sicherheit", "Nur bestimmte Benutzer dürfen steuern",
+  options(control_user_ids=["$admin_user_id", "$anna_user_id"]),
+  say("Mach das Kinderzimmerlicht an.", user="lena", no_calls=True),
+  say("Ist das Kinderzimmerlicht an?", user="lena", type="query_answer"),
+  say("Mach das Kinderzimmerlicht an.", user="anna", calls=["light.kinderzimmerlicht:turn_on"]),
+  options(control_user_ids=[]))
+S("mu-admin-only", "Sicherheit", "Nur-Admin-Entität",
+  options(admin_only_entities=["lock.haustuerschloss"]),
+  say("Verriegle das Haustürschloss.", user="anna", no_calls=True),
+  options(admin_only_entities=[]))
+S("mu-max-targets", "Sicherheit", "Max. gleichzeitige Ziele = 5",
+  options(max_action_targets=5),
+  say("Schalte im ganzen Haus alle Lichter ein.", no_calls=True, any=["zu viele", "maximal", "ziele", "höchstens"]),
+  options(max_action_targets=20))
+
+# ================================================ 14. Proaktiv (V12)
+PROACTIVE = options(
+    proactive_context_enabled=True, push_proactive_enabled=True, voice_proactive_enabled=False,
+    proactive_entry_open_minutes=1, quiet_hours_enabled=False, attention_budget_enabled=True,
+    agent_enabled=True, agent_delivery_channels=["push"],
+    agent_notify_targets=["notify.handy_philipp_nachricht", "notify.handy_anna_nachricht"],
+    proactive_appliance_entities=["sensor.leistung_waschmaschine", "sensor.waschmaschine_status"],
+)
+BIND = [
+    service("homeintent.bind_user_context", {"user_id": "$admin_user_id", "person_entity_id": "person.philipp", "notification_targets": ["notify.handy_philipp_nachricht"], "preferred_notification_target": "notify.handy_philipp_nachricht", "confirmed": True}),
+    service("homeintent.bind_user_context", {"user_id": "$anna_user_id", "person_entity_id": "person.anna", "notification_targets": ["notify.handy_anna_nachricht"], "preferred_notification_target": "notify.handy_anna_nachricht", "confirmed": True}),
+    service("homeintent.set_household", {"person_entity_ids": ["person.philipp", "person.anna", "person.lena"], "confirmed": True}),
+]
+S("pro-garage", "Proaktiv", "Garage bleibt offen → Push-Vorschlag → Ja schließt",
+  PROACTIVE, *BIND,
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}),
+  wait(80),
+  check(notify="garage"),
+  say("Ja.", settle=8),
+  check(state={"cover.garagentor": "closed"}),
+  say("Warum hast du mich wegen der Garage angesprochen?", any=["garage", "offen"]),
+  say("Welche Hinweise gab es heute?", any=["garage"]))
+S("pro-garage-closed-meanwhile", "Proaktiv", "Garage vor Antwort geschlossen → Ja ist wirkungslos",
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}),
+  wait(80),
+  service("cover.close_cover", {"entity_id": "cover.garagentor"}), wait(8),
+  say("Ja.", no_calls=True))
+S("pro-smoke", "Proaktiv", "Rauchmelder → sofortige kritische Meldung",
+  set_("binary_sensor.rauchmelder_flur", "on", settle=4),
+  check(notify="rauch"))
+S("pro-washer", "Proaktiv", "Waschmaschine fertig",
+  set_("sensor.leistung_waschmaschine", 1850, settle=2),
+  wait(5),
+  set_("sensor.leistung_waschmaschine", 2, settle=5),
+  wait(60),
+  check(notify="waschmaschine"))
+S("pro-washer-status", "Proaktiv", "Waschmaschine fertig (Text-Statussensor)",
+  PROACTIVE,
+  set_("sensor.waschmaschine_status", "running", settle=2),
+  set_("sensor.waschmaschine_status", "finished", settle=5),
+  # Runs ~10 s after pro-washer's notice: V12 groups INFO notices within the
+  # 2-minute window by design and delivers them as one digest afterwards.
+  wait(125),
+  check(notify="waschmaschine"))
+S("pro-standing", "Proaktiv", "Daueranweisung: niemand zuhause → Licht aus",
+  options(standing_permissions_enabled=True),
+  service("homeintent.set_household", {"person_entity_ids": ["person.philipp", "person.anna"], "confirmed": True}),
+  say("Wenn niemand zuhause ist und im Wohnzimmer noch Licht an ist, darfst du es automatisch ausschalten.", no_calls=True),
+  say(YES),
+  service("light.turn_on", {"entity_id": "light.wohnzimmer_deckenlicht"}),
+  set_("device_tracker.handy_philipp", "not_home"), set_("device_tracker.handy_anna", "not_home", settle=10),
+  wait(330),
+  check(state={"light.wohnzimmer_deckenlicht": "off"}),
+  say("Was darfst du ohne Rückfrage?", any=["wohnzimmer", "licht"]),
+  say("Welche Daueranweisungen gibt es?", any=["wohnzimmer", "licht"]))
+S("pro-standing-never-auto", "Proaktiv", "Daueranweisung für Garage wird abgelehnt (NEVER_AUTO)",
+  say("Wenn niemand zuhause ist und das Garagentor offen ist, darfst du es automatisch schließen.", any=["nichts gespeichert", "nie automatisch"]))
+
+# ================================================ 15. Agent: Gedächtnis, Ziele, Routinen
+S("agent-smalltalk", "Agent", "Uhrzeit, Datum, Fähigkeiten",
+  say("Wie spät ist es?", type="query_answer", any=["uhr"]),
+  say("Welches Datum ist heute?", type="query_answer", any=["2026"]),
+  say("Was kannst du?", type="query_answer", any=["geräte"]))
+S("agent-memory", "Agent", "Präferenz merken, abfragen, vergessen",
+  options(memory_enabled=True),
+  say("Merk dir, dass ich beim Lesen die Stehlampe auf 40 Prozent möchte.", no_calls=True),
+  say(YES),
+  say("Was hast du dir über mich gemerkt?", any=["stehlampe", "40"]),
+  say("Vergiss meine Vorliebe für die Stehlampe."), say(YES),
+  say("Was hast du dir über mich gemerkt?", none=["40 prozent"]))
+S("agent-goal-secure", "Agent", "Ziel: Sichere das Haus",
+  service("lock.unlock", {"entity_id": "lock.haustuerschloss"}),
+  say("Sichere das Haus.", any=["fenster", "schloss", "haustür", "soll"]),
+  say(YES, settle=3))
+S("agent-goal-media", "Agent", "Ziel: Pausiere alle Medien",
+  service("media_player.media_play", {"entity_id": "media_player.lautsprecher_schlafzimmer"}),
+  say("Pausiere alle Medien.", any=["plan"]), say(YES, calls=["media_player.kuechenradio:media_pause", "media_player.lautsprecher_schlafzimmer:media_pause"]))
+S("agent-routine-unknown", "Agent", "Unbekannte Routine → Rückfrage statt Annahme",
+  say("Bereite den Filmabend vor.", no_calls=True))
+S("agent-routine-saved", "Agent", "Gespeicherte Routine ausführen",
+  service("homeintent.save_routine", {"routine_id": "lesezeit", "name": "Lesezeit", "owner_user_id": "$admin_user_id", "steps": [{"entity_id": "light.stehlampe", "property": "brightness", "value": 40, "unit": "%"}, {"entity_id": "light.wohnzimmer_deckenlicht", "property": "state", "value": "off"}], "confirmed": True}),
+  say("Bereite die Lesezeit vor.", any=["stehlampe", "plan"]),
+  say(YES, calls=["light.stehlampe:turn_on"]))
+S("agent-prediction", "Agent", "Vorhersage ohne Modell → ehrliche Antwort",
+  say("Wann ist das Büro warm?", no_calls=True),
+  say("Wie lange braucht das Wohnzimmer bis 23 Grad?", no_calls=True))
+S("agent-why-failed", "Agent", "Warum hat das nicht funktioniert?",
+  say("Schalte das Bürolicht ein."),
+  say("Warum hat das nicht funktioniert?", no_calls=True))
+
+
+# ================================================ 16. Gezielte Regressionen (hassil 3.12 / Befunde)
+S("reg-leading-in", "Regression", "Vorangestellte Zeit: „In 5 Minuten schalte …“",
+  say("In 5 Minuten schalte das Küchenlicht ein.", any=["soll diese automation"], none=["n schalte"]),
+  say("Nein."))
+S("reg-reminder-abs", "Regression", "Erinnerung mit absoluter Zeit",
+  say("Erinnere mich morgen um 18 Uhr an den Elternabend.", any=["elternabend"]),
+  say("Nein."))
+S("reg-comfort-trap", "Regression", "Komfort-Rückfrage lässt sich verlassen",
+  options(memory_enabled=True),
+  say("Mach es hier gemütlicher.", device="Wohnzimmer"),
+  say("Schalte das Küchenlicht ein.", calls=["light.kuechenlicht:turn_on"]))
+S("reg-guided-nobedingung", "Regression", "Geführte Automation: „Keine Bedingung“ als Nein",
+  say("Erstelle eine Automation."),
+  say("Wenn die Haustür geöffnet wird."),
+  say("Keine Bedingung.", none=["ja oder nein"]))
+S("reg-automation-byname", "Regression", "Automation per Namen ohne „für“",
+  say("Deaktiviere die Automation Flurlicht bei Bewegung.", any=["deaktiv", "soll"]))
+S("reg-kelvin", "Regression", "Farbtemperatur warmweiß",
+  say("Stelle das Bürolicht auf warmweiß.", calls=["light.buerolicht:turn_on"], none=["fehler"]))
+S("reg-notify-entity-unknown", "Regression", "Nachricht an Notify-Entity im Zustand unknown",
+  say("Schicke an Handy Anna die Nachricht Abendessen ist fertig.", notify="Abendessen"))

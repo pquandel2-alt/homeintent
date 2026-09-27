@@ -147,3 +147,41 @@ def test_stale_accept_after_garage_closed_executes_nothing(tmp_path):
         assert world.sink.device_calls == []
 
     asyncio.run(scenario())
+
+
+def test_slow_garage_effect_answers_at_once_and_verifies_in_background(tmp_path):
+    """F17: "Ja" is answered immediately; the effect is still verified and
+    recorded, and the proposal only reports if it fails."""
+    from dataclasses import replace
+
+    world = _world(tmp_path)
+    world.engine.config = replace(world.engine.config, reply_budget=timedelta(0))
+    original_execute = world.engine.runner.async_execute
+
+    async def slow_execute(*args, **kwargs):
+        await asyncio.sleep(0.05)
+        return await original_execute(*args, **kwargs)
+
+    world.engine.runner.async_execute = slow_execute
+
+    async def scenario():
+        await world.change("cover.garage", "open")
+        await world.ports.advance(timedelta(minutes=15))
+        proposal_id = world.ports.delivered[0].proposal_id
+        reply = await world.engine.async_handle_reply(
+            "Ja.", user_id="philipp", device_id="dev_living", is_admin=True,
+        )
+        assert reply is not None and reply.handled
+        assert reply.speech.startswith("In Ordnung, ich schließe die Garage jetzt")
+        assert "melde mich nur, falls es nicht klappt" in reply.speech
+        await asyncio.sleep(0.2)
+        assert world.sink.device_calls == [
+            ("cover", "close_cover", {"entity_id": "cover.garage"}),
+        ]
+        assert world.engine.proposals.get(proposal_id).state is ProposalState.EXECUTED
+        runs = await world.goal_runs.async_list()
+        assert runs[-1].status is GoalRunStatus.SUCCESS
+        # Success is not announced a second time.
+        assert len(world.ports.delivered) == 1
+
+    asyncio.run(scenario())

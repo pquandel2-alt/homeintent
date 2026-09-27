@@ -1,0 +1,15 @@
+gute_nacht:
+  alias: Gute Nacht
+  sequence:
+    - action: light.turn_off
+      target:
+        area_id: [wohnzimmer, kuche, esszimmer, buro, flur]
+    - action: lock.lock
+      target:
+        entity_id: lock.haustuerschloss
+kaffee_kochen:
+  alias: Kaffee kochen
+  sequence:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.kaffeemaschine

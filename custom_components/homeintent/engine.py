@@ -43,11 +43,13 @@ from .automation_results import (
     AutomationMatchResult,
     AutomationToggleMatchResult,
 )
-from .entities import EntitySnapshot
+from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.entity_resolution import (
+    ResolutionStatus,
     ResolveStatus,
     all_mentioned_entities,
     resolve_entity,
+    resolve_mentioned_target,
 )
 from .nlu.entity_clarification import render_candidate_question
 from .nlu.composition import (
@@ -96,8 +98,11 @@ from .nlu.service_mapper import map_to_service_call
 from .nlu.semantic_compiler import (
     SemanticCommandCompiler,
     SemanticQueryCompiler,
-    has_exclusion_clause,
 )
+from .nlu.registered_operation_compiler import climate_in_named_area
+from .nlu.grounded_answer import join_german
+from .nlu.german_morphology import dative_location_phrase, sentence_initial
+from .nlu.semantic_exclusion import has_exclusion_clause, split_exclusion
 from .nlu.semantic_lexicon import SemanticKind, analyse_semantics
 from .nlu.semantic_state import SemanticState
 from .nlu.semantic_catalog import INTENT_BY_DOMAIN_ACTION
@@ -655,6 +660,31 @@ class CommandPlan:
     """
 
     commands: tuple[MatchResult, ...]
+
+
+def _no_automation_text(entity: EntitySnapshot | None) -> str:
+    if entity is None:
+        return "Ich habe keine passende Automation gefunden."
+    return f"Ich habe keine Automation gefunden, die {entity.friendly_name} steuert."
+
+
+def _several_automations_text(entity: EntitySnapshot | None) -> str:
+    if entity is None:
+        return "Es gibt mehrere Automationen mit diesem Namen."
+    return f"Es gibt mehrere Automationen, die {entity.friendly_name} steuern."
+
+
+def _unresolved_exclusion_text(names: tuple[str, ...]) -> str:
+    quoted = [f"„{name}“" for name in names]
+    if len(quoted) == 1:
+        subject = f"die Ausnahme {quoted[0]} nicht eindeutig"
+    else:
+        listed = f"{', '.join(quoted[:-1])} und {quoted[-1]}"
+        subject = f"nicht alle Ausnahmen ({listed}) eindeutig"
+    return (
+        f"Ich konnte {subject} zuordnen und habe deshalb nichts geschaltet. "
+        "Bitte nenne die Geräte genauer."
+    )
 
 
 # "Sag mir ... Bescheid" is a request, although "sag mir" also opens
@@ -1572,6 +1602,19 @@ class NluEngine:
                 ParseFailureReason.UNSUPPORTED_PROPERTY,
                 "Die Zeitangabe wurde erkannt, ist in diesem direkten Pfad aber nicht sicher ausführbar.",
             )
+        elif (
+            document.utterance.speech_act is SpeechAct.COMMAND
+            and has_exclusion_clause(document.utterance.normalized_text)
+            and split_exclusion(document.utterance.normalized_text)[1]
+        ):
+            # An exception that cannot be resolved stops the whole command
+            # with a clear reason - never a broader execution (F5).
+            feedback = UnderstandingFeedback(
+                ParseFailureReason.UNKNOWN_ENTITY,
+                _unresolved_exclusion_text(
+                    split_exclusion(document.utterance.normalized_text)[1]
+                ),
+            )
         elif unbound_semantic_query:
             feedback = UnderstandingFeedback(
                 ParseFailureReason.UNSUPPORTED_PROPERTY,
@@ -1730,6 +1773,47 @@ class NluEngine:
             re.IGNORECASE,
         ):
             mentioned = all_mentioned_entities(text, entities or [])
+            if not mentioned and entities:
+                # A distinctive part of a registry name ("den LED-Streifen")
+                # still names a found device: never claim that nothing was
+                # found (or suggest checking the exposure) in that case (F11).
+                partial = resolve_mentioned_target(
+                    text, entities, frozenset(entity.domain for entity in entities)
+                )
+                candidates: tuple[EntitySnapshot, ...] = ()
+                in_area = climate_in_named_area(text, entities)
+                if partial.status is ResolutionStatus.RESOLVED and partial.entity is not None:
+                    candidates = (partial.entity,)
+                elif in_area is not None:
+                    candidates = (in_area,)
+                else:
+                    area_words = {
+                        word
+                        for entity in entities
+                        for name in (entity.area_name or "", *entity.area_aliases)
+                        for word in normalize_for_compare(name).split()
+                    }
+                    spoken = {
+                        normalize_for_compare(token)
+                        for token in analyse_semantics(text).unexplained_tokens
+                        if len(token) >= 3
+                    } - area_words
+                    candidates = tuple(
+                        entity for entity in entities
+                        if spoken
+                        and spoken <= set(normalize_for_compare(entity.friendly_name).replace("-", " ").split())
+                    )
+                if len(candidates) == 1:
+                    mentioned = list(candidates)
+                elif 1 < len(candidates) <= 5:
+                    names = ", ".join(entity.friendly_name for entity in candidates)
+                    return UnderstandingFeedback(
+                        ParseFailureReason.AMBIGUOUS_TARGET,
+                        f"Ich habe mehrere passende Geräte gefunden ({names}), "
+                        "aber die gewünschte Funktion nicht eindeutig zuordnen können. "
+                        "Bitte nenne das Gerät genauer.",
+                        {"entity_ids": tuple(entity.entity_id for entity in candidates)},
+                    )
             if mentioned:
                 names = ", ".join(entity.friendly_name for entity in mentioned)
                 return UnderstandingFeedback(
@@ -1847,6 +1931,9 @@ class NluEngine:
             return None
 
         normalized = normalize(text).strip(" .!?\t\r\n")
+        media = self._media_followup(normalized, context)
+        if media is not None:
+            return media
         adjustment = extract_degree(normalized)
         meaning = adjustment.text.casefold().strip(" .!?")
         intent_by_meaning = {
@@ -1885,6 +1972,41 @@ class NluEngine:
         return self._build_match_result(
             ParseResult(frame=frame, resolved_entities=[entity]), list(context.last_entities), context
         )
+    def _media_followup(
+        self, normalized: str, context: ConversationContext
+    ) -> MatchResult | None:
+        """ "Bitte weiterspielen." / "Kannst du es pausieren?" for the one
+        media player of the previous turn (F13) - elliptical or with "es"."""
+        key = normalize_for_compare(normalized)
+        key = re.sub(r"^(?:bitte|kannst\s+du|koenntest\s+du|wuerdest\s+du|jetzt|und|dann)\s+", "", key)
+        key = re.sub(r"^(?:bitte|jetzt|dann)\s+", "", key)
+        key = re.sub(r"\s+(?:bitte|mal|jetzt|wieder|doch)\b", "", key).strip()
+        key = re.sub(r"^(?:es|das|ihn|sie)\s+", "", key)
+        intent = {
+            "weiterspielen": "HassMediaPlay", "weiter spielen": "HassMediaPlay",
+            "fortsetzen": "HassMediaPlay", "weiter": "HassMediaPlay",
+            "abspielen": "HassMediaPlay", "spiel weiter": "HassMediaPlay",
+            "mach weiter": "HassMediaPlay", "pausieren": "HassMediaPause",
+            "pausiere": "HassMediaPause", "pause": "HassMediaPause",
+            "anhalten": "HassMediaPause", "halt an": "HassMediaPause",
+            "stoppen": "HassMediaStop", "stopp": "HassMediaStop",
+        }.get(key)
+        if intent is None:
+            return None
+        players = [entity for entity in context.last_entities if entity.domain == "media_player"]
+        if len(players) != 1:
+            return None
+        entity = players[0]
+        frame = SemanticFrame(
+            intent=intent,
+            target=TargetReference(entity.friendly_name, entity.entity_id, entity.domain),
+            area=None,
+            source_text=normalized,
+        )
+        return self._build_match_result(
+            ParseResult(frame=frame, resolved_entities=[entity]), list(context.last_entities), context
+        )
+
     def match_contextual_property_followup(
         self,
         text: str,
@@ -1937,6 +2059,12 @@ class NluEngine:
 
         normalized = re.sub(
             r"^(?:dann|danach|also)\s+", "", normalize(text), flags=re.IGNORECASE
+        )
+        # "Schalte die aus": a bare demonstrative directly before the verb
+        # particle refers back like "sie" (F12).
+        normalized = re.sub(
+            r"^(\s*(?:bitte\s+)?\w+\s+)(?:die|diese|jene)(\s+(?:auch\s+)?(?:aus|an|ein|zu|auf|hoch|runter|ab)\b)",
+            r"\1sie\2", normalized, flags=re.IGNORECASE,
         )
         remembered_entities = (
             context.memory.entities if context.memory is not None else context.last_entities
@@ -2271,6 +2399,48 @@ class NluEngine:
                     resolved_entities=list(query_result.entities),
                 )
                 return self._build_match_result(parsed, entities, context)
+        if (
+            discourse_group is not None
+            and discourse_group.semantic_type == "entity"
+            and re.search(r"\b(?:davon|diese|jene)\b", normalized_reference, re.I)
+            and discourse_location is not None
+            and (discourse_location[1] is not None or discourse_location[2] is not None)
+            and world_model is not None
+        ):
+            # "Wie viele Lichter sind an?" -> "Welche davon sind im
+            # Erdgeschoss?": the previous result set, narrowed to the
+            # location and listed by name (F12).
+            members = {
+                member.removeprefix("entity:") for member in discourse_group.member_ids
+            }
+            located = [
+                entity for entity in entities
+                if entity.entity_id in members
+                and (
+                    (discourse_location[1] is not None and entity.area_id == discourse_location[1])
+                    or (discourse_location[2] is not None and entity.floor_id == discourse_location[2])
+                )
+            ]
+            if excludes_location:
+                located = [
+                    entity for entity in entities
+                    if entity.entity_id in members and entity not in located
+                ]
+            names = [entity.friendly_name for entity in located]
+            where = sentence_initial(
+                dative_location_phrase(discourse_location[0].strip())
+                if not re.match(r"(?:im|in|am|auf|beim)\b", discourse_location[0].strip(), re.I)
+                else discourse_location[0].strip()
+            )
+            speech = (
+                f"{where} ist davon keines." if not names
+                else f"{where} {'ist' if len(names) == 1 else 'sind'} davon: {join_german(tuple(names))}."
+            )
+            return MatchResult(
+                plan=None,
+                response_text=speech,
+                context_entities=tuple(located),
+            )
         if (
             discourse_group is not None
             and discourse_group.semantic_type == "area"
@@ -2656,13 +2826,13 @@ class NluEngine:
         if not match.matched:
             return AutomationDeletionMatchResult(
                 automation=None,
-                response_text=f"Ich habe keine Automation gefunden, die {match.entity.friendly_name} steuert.",
+                response_text=_no_automation_text(match.entity),
             )
         if len(match.matched) > 1:
             return AutomationDeletionMatchResult(
                 automation=None,
                 response_text=(
-                    f"Es gibt mehrere Automationen, die {match.entity.friendly_name} steuern. "
+                    f"{_several_automations_text(match.entity)} "
                     "Das kann ich nicht eindeutig löschen."
                 ),
             )
@@ -2724,14 +2894,14 @@ class NluEngine:
             return AutomationToggleMatchResult(
                 automation=None,
                 enable=match.enable,
-                response_text=f"Ich habe keine Automation gefunden, die {match.entity.friendly_name} steuert.",
+                response_text=_no_automation_text(match.entity),
             )
         if len(match.matched) > 1:
             return AutomationToggleMatchResult(
                 automation=None,
                 enable=match.enable,
                 response_text=(
-                    f"Es gibt mehrere Automationen, die {match.entity.friendly_name} steuern. "
+                    f"{_several_automations_text(match.entity)} "
                     f"Das kann ich nicht eindeutig {verb}."
                 ),
             )
@@ -3520,6 +3690,10 @@ class NluEngine:
         self._relative_time_command_parser.decompose(
             "in fünf Minuten schalte das Licht ein"
         )
+        # understanding_feedback() consults the percentage grammar for
+        # explanations during a live turn; load its YAML here, off the event
+        # loop, instead of lazily inside the turn (F18).
+        self._get_shadow_parser("percentage")
 
     def match_immediate_notification(self, text: str) -> NotificationClause | None:
         """An explicit notification to be sent *now* ("Schick mir eine

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from .entities import EntitySnapshot, normalize_for_compare
+from .entities import EntitySnapshot, format_spoken_number, normalize_for_compare
 from .productivity import parse_duration_seconds
 
 
@@ -55,8 +55,17 @@ def match_advanced_query(
     if re.search(r"\b(?:meisten|hoechsten)\b.*\b(?:strom|leistung|verbrauch)\b|"
                  r"\b(?:strom|leistung|verbrauch)\b.*\b(?:meisten|hoechsten)\b", value):
         readings: list[tuple[float, EntitySnapshot]] = []
+        device_question = re.search(r"\b(?:geraet|verbraucher)\b", value) is not None
         for entity in entities:
-            if entity.device_class not in {"power", "energy"} and entity.unit not in {"W", "kW"}:
+            # Current consumption is power (W/kW); an energy meter (kWh) is a
+            # cumulative counter and never "the highest current value" (F12).
+            if entity.device_class != "power" and entity.unit not in {"W", "kW"}:
+                continue
+            if entity.device_class == "energy" or entity.unit in {"Wh", "kWh", "MWh"}:
+                continue
+            if device_question and re.search(
+                r"\b(?:haus|gesamt\w*|netz\w*)\b", normalize_for_compare(entity.friendly_name)
+            ):
                 continue
             try:
                 number = float(entity.state.replace(",", "."))
@@ -67,7 +76,10 @@ def match_advanced_query(
         if not readings:
             return "Ich finde keinen ausgewählten Leistungssensor mit einem Zahlenwert."
         watts, entity = max(readings, key=lambda item: item[0])
-        return f"Den höchsten aktuellen Wert hat {entity.friendly_name} mit {watts:g} Watt."
+        return (
+            f"Den höchsten aktuellen Wert hat {entity.friendly_name} mit "
+            f"{format_spoken_number(round(watts, 1))} Watt."
+        )
 
     if re.search(r"\bfenster\b", value) and re.search(r"\b(?:seit|laenger als|wie lange)\b", value):
         seconds = parse_duration_seconds(text)

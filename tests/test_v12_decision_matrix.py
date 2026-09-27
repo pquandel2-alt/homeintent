@@ -93,7 +93,11 @@ def test_permission_store_rules():
         store.add(replace(PERMISSION, entity_ids=()))
     store.add(PERMISSION)
     assert store.matching(LEFT_ON, NOW) == PERMISSION
-    store.add(replace(PERMISSION, permission_id="perm2"))
+    # An identical re-confirmation renews the existing instruction (F7).
+    assert store.add(replace(PERMISSION, permission_id="perm-again")).permission_id == "perm"
+    assert store.matching(LEFT_ON, NOW) == PERMISSION
+    # Two *different* instructions for one situation: still no guessing.
+    store.add(replace(PERMISSION, permission_id="perm2", entity_ids=("light.other",)))
     assert store.matching(LEFT_ON, NOW) is None  # two candidates: no guessing
     assert store.revoke("perm2").revoked
     assert store.revoke("perm2") is None
@@ -310,3 +314,22 @@ def test_model_sourced_situations_expire_and_cancel_their_proposals(tmp_path):
         assert world.engine.situations.active() == ()
 
     asyncio.run(scenario())
+
+
+def test_duplicate_standing_permissions_are_merged_on_load():
+    """F7: stores written by 7.1.2 contain one record per re-confirmation."""
+    store = StandingPermissionStore()
+    store.add(PERMISSION)
+    document = store.to_dict()
+    duplicate = dict(document["permissions"][0])
+    duplicate["permission_id"] = "perm-dup"
+    duplicate["expires_at"] = (PERMISSION.expires_at + timedelta(days=30)).isoformat()
+    document["permissions"].append(duplicate)
+    document["executions"] = {"perm-dup": [NOW.isoformat()]}
+
+    loaded = StandingPermissionStore.from_dict(document)
+
+    assert [item.permission_id for item in loaded.all()] == ["perm"]
+    assert loaded.all()[0].expires_at == PERMISSION.expires_at + timedelta(days=30)
+    assert loaded.matching(LEFT_ON, NOW) is not None
+    assert loaded.attempts_today("perm", NOW) == 1

@@ -28,7 +28,8 @@ def test_reports_observed_appliance_status_without_action():
 
     assert answer is not None
     assert answer.question is ApplianceQuestion.STATUS
-    assert answer.text == "Waschmaschine meldet den Status running."
+    # F16: the raw HA state is spoken in German.
+    assert answer.text == "Waschmaschine meldet den Status „läuft“."
     assert answer.evidence[0].observed
 
 

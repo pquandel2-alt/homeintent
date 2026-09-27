@@ -17,7 +17,7 @@
         "title": "Configure HomeIntent",
         "description": "Configure devices, safety, and local delivery channels. HomeIntent rules remain visible in the Home Assistant automation UI. What HomeIntent has learned and may do without asking is shown and controlled in the Learning Center in the sidebar (HomeIntent, path /homeintent).",
         "data": {
-          "selected_entities": "Allowed entities",
+          "selected_entities": "Fixed entity selection (empty: everything exposed to Assist, automatically)",
           "read_only_entities": "Read-only entities",
           "admin_only_entities": "Admin-only control entities",
           "control_user_ids": "Users allowed to control devices (empty: all)",
@@ -64,7 +64,7 @@
           "standing_permissions_enabled": "V12: Allow explicitly confirmed standing permissions",
           "critical_multi_channel_enabled": "V12: Critical warnings on multiple channels",
           "proactive_entry_open_minutes": "V12: Minutes before an open garage or gate is reported",
-          "proactive_appliance_entities": "V12: Appliance program-state entities",
+          "proactive_appliance_entities": "V12: Appliances (program state, power sensor in W or running binary sensor)",
           "proactive_person_room_sensors": "V12: Person room sensors (person.x = sensor.y, one line per person)",
           "proactive_satellite_areas": "V12: Voice satellite areas (assist_satellite.x = area_id)",
           "proactive_user_quiet_hours": "V12: Per-user quiet hours (user_id = HH:MM-HH:MM)"
@@ -120,6 +120,12 @@
     "delete_monitor_goal": {
       "name": "Delete monitor goal",
       "description": "Deletes a persistent HomeIntent monitor goal by goal ID."
+    }
+  },
+  "issues": {
+    "fixed_entity_selection": {
+      "title": "HomeIntent uses a fixed entity selection",
+      "description": "The HomeIntent options store a fixed list of entities. {count} entities exposed to Assist are therefore invisible to HomeIntent (e.g. {examples}).\n\nHomeIntent 7.1.2 pre-filled this list by mistake when options were saved. If you do not want a fixed selection, open HomeIntent → Configure, clear \"Fixed entity selection\" and save: HomeIntent then follows the Assist exposure automatically again."
     }
   }
 }

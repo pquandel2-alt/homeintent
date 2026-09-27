@@ -23,7 +23,7 @@ import secrets
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from typing import Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 from homeassistant.components import conversation
 from homeassistant.components.conversation import ConversationEntityFeature
@@ -52,6 +52,7 @@ from .automation_scenarios import interpret_downstairs_shutdown
 from .automation_management import (
     AutomationManagementKind,
     AutomationManagementRequest,
+    READ_ONLY_MANAGEMENT_KINDS,
     format_scheduled_time,
     parse_automation_management,
     select_automation_management,
@@ -180,6 +181,7 @@ from .planner import (
     GoalKind,
     MaterializedPlan,
     PlanExecutor,
+    PlanResult,
     PlanStatus,
     StepKind,
     effect_satisfied,
@@ -196,6 +198,7 @@ from .thermal_deadline import (
     append_start_checkpoint,
     checkpoint_automation_config,
 )
+from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
 from .nlu.unit_reasoning import normalize_measurement
 from .monitor_goal import MonitorRecord
@@ -321,6 +324,63 @@ from .native_timer import (
 from .phonetic_correction import PhoneticSuggestion, phonetic_suggestions
 
 _LOGGER = logging.getLogger(__name__)
+
+# Universal way out of any open follow-up question (F10). Matched against
+# the normalized utterance as a whole, so "Vergiss meine Vorliebe" is not a
+# cancellation.
+_UNIVERSAL_CANCEL_RE = re.compile(
+    r"\s*(?:(?:nein\s*,?\s*)?(?:lass\s+(?:das|es|gut\s+sein)|abbrechen|abbruch|brich\s+ab|"
+    r"stopp|stop|vergiss\s+(?:es|das)|egal|schon\s+gut|nicht\s+mehr\s+noetig|"
+    r"nicht\s+mehr\s+nötig)(?:\s+bitte)?)[.!]?\s*"
+)
+_MEMORY_KIND_DE = {
+    "episode": "Ereignisse", "household_fact": "Haushaltsfakten",
+    "preference": "Vorlieben", "procedure": "Abläufe", "decision": "Entscheidungen",
+    "routine_grant": "Routinen-Freigaben",
+}
+
+
+_MEMORY_KIND_SINGULAR_DE = {
+    "episode": "Ereignis", "household_fact": "Haushaltsfakt", "preference": "Vorliebe",
+    "procedure": "Ablauf", "decision": "Entscheidung", "routine_grant": "Routinen-Freigabe",
+}
+
+
+def _describe_memory(record: Any, labels: Mapping[str, str]) -> str:
+    """One remembered record in plain German, without internal keys."""
+    content = record.content if isinstance(record.content, Mapping) else {}
+    entity_name = labels.get(str(content.get("entity_id", "")), "")
+    percent = content.get("brightness_percent")
+    activity = content.get("activity")
+    if record.kind.value == "preference":
+        situation = " beim Fernsehen" if activity == "television" else ""
+        if isinstance(percent, int) and entity_name:
+            return f"Vorliebe{situation}: {entity_name} auf {percent} Prozent"
+        if isinstance(percent, int):
+            return f"Vorliebe{situation}: Helligkeit {percent} Prozent"
+        if entity_name:
+            return f"Vorliebe{situation}: {entity_name}"
+        return "eine Vorliebe ohne Details"
+    text = content.get("text") or content.get("summary") or content.get("fact")
+    kind = _MEMORY_KIND_SINGULAR_DE.get(record.kind.value, "Eintrag")
+    return f"{kind}: {text}" if isinstance(text, str) and text else f"ein Eintrag ({kind})"
+
+
+# How long a spoken plan confirmation may wait for the plan's verified
+# result before replying and continuing in the background (F17).
+_PLAN_REPLY_BUDGET_SECONDS = 2.0
+
+# Open questions whose expected answer is itself a command (a routine being
+# defined step by step, an automation action): a command answers them.
+_COMMAND_ANSWER_TASK_KINDS = frozenset({
+    DialogTaskKind.ROUTINE_DEFINITION,
+    DialogTaskKind.AUTOMATION,
+})
+_NO_CONDITION_RE = re.compile(
+    r"(?:keine|keins|nein\s*,?\s*keine|ohne|keine\s+(?:bedingung|bedingungen)|"
+    r"ohne\s+(?:bedingung|bedingungen)|keine\s+weitere(?:n)?(?:\s+bedingung(?:en)?)?|"
+    r"nichts|brauche\s+ich\s+nicht)"
+)
 
 
 # Single source of truth for "which intents are queries" (V4.2) - read state
@@ -576,6 +636,8 @@ class NluConversationEntity(
         self._context_store = runtime.context_store
         self._audit_trail = runtime.audit_trail
         self._runtime_data = runtime
+        # Last todo list per conversation, for follow-ups without a list name.
+        self._last_todo_lists: dict[str, str] = {}
         # Rebuilt every turn in _async_handle_message() (World Model Wave,
         # 2026-08-14); None only until the first turn.
         self._world_model: WorldModel | None = None
@@ -816,10 +878,14 @@ class NluConversationEntity(
                     direct_understanding = candidate
 
         active_task = manager.active(user_input.conversation_id)
+        # A complete, directly executable new command ends any open follow-up
+        # question (alias confirmation, comfort conflict, proactive
+        # clarification ...) instead of being swallowed as its answer (F10).
+        # The superseded question is discarded, never executed.
         if (
             active_dialog is None
             and active_task is not None
-            and active_task.kind is DialogTaskKind.ALIAS_CONFIRMATION
+            and active_task.kind not in _COMMAND_ANSWER_TASK_KINDS
             and language_document.utterance.speech_act is SpeechAct.COMMAND
             and language_document.utterance.safe_to_execute_directly
             and not is_contextual_followup(user_input.text)
@@ -844,10 +910,7 @@ class NluConversationEntity(
                     r"\b(?:was\s+hast\s+du\s+verstanden|warum\s+fragst\s+du)\b",
                     normalized_meta,
                 )
-                or re.fullmatch(
-                    r"\s*(?:lass\s+das|abbrechen|abbruch|stopp|stop|vergiss\s+es)[.!]?\s*",
-                    normalized_meta,
-                )
+                or _UNIVERSAL_CANCEL_RE.fullmatch(normalized_meta)
             )
             if (
                 is_meta_turn
@@ -872,10 +935,7 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            if re.fullmatch(
-                r"\s*(?:lass\s+das|abbrechen|abbruch|stopp|stop|vergiss\s+es)[.!]?\s*",
-                normalized_meta,
-            ):
+            if _UNIVERSAL_CANCEL_RE.fullmatch(normalized_meta):
                 self._context_store.clear(user_input.conversation_id)
                 manager.cancel(user_input.conversation_id)
                 response.async_set_speech(
@@ -884,6 +944,16 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+
+        if (
+            active_dialog is None
+            and active_task is None
+            and _UNIVERSAL_CANCEL_RE.fullmatch(language_document.normalized_text.casefold())
+        ):
+            response.async_set_speech("Es ist gerade nichts offen, das ich abbrechen könnte.")
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
 
         if (
             active_dialog is None
@@ -941,6 +1011,8 @@ class NluConversationEntity(
                     area_lookup=build_area_lookup(entities),
                 )
                 if owned is not None:
+                    if owned.query:
+                        response.response_type = intent.IntentResponseType.QUERY_ANSWER
                     response.async_set_speech(owned.speech)
                     return conversation.ConversationResult(
                         response=response, conversation_id=user_input.conversation_id
@@ -974,6 +1046,21 @@ class NluConversationEntity(
             )
             if document_result is not None:
                 return document_result
+            thermal_answer = answer_thermal_question(
+                user_input.text,
+                entities,
+                self._runtime_data.predictive_house,
+                dt_util.now(),
+            )
+            if thermal_answer is not None:
+                # Heating-time questions get a model-backed estimate or the
+                # documented honest no-model answer, never a guess (F24).
+                self._context_store.clear(user_input.conversation_id)
+                response.response_type = intent.IntentResponseType.QUERY_ANSWER
+                response.async_set_speech(thermal_answer)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
             learning_result = await self._async_handle_learning_turn(
                 user_input, response, language_document
             )
@@ -1153,13 +1240,19 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationStructureEdit)
         ):
-            return await async_handle_automation_structure_edit_turn(
+            structure_turn = await async_handle_automation_structure_edit_turn(
                 self,
                 user_input,
                 response,
                 active_task.payload,
                 entities,
             )
+            if structure_turn is not None:
+                return structure_turn
+            # The reply was a new request, not a choice: continue without
+            # the discarded selection question (F9).
+            pending = None
+            active_dialog = None
 
         if (
             active_dialog is not None
@@ -1371,7 +1464,7 @@ class NluConversationEntity(
 
         if is_action_edit_request(user_input.text):
             return await self._async_handle_action_edit_request(
-                user_input, response
+                user_input, response, entities
             )
 
         management_request = parse_automation_management(user_input.text)
@@ -1380,12 +1473,35 @@ class NluConversationEntity(
                 user_input, response, management_request, entities
             )
 
+        # "Deaktiviere/Aktiviere/Lösche die Automation <Name>" names an
+        # automation, not the device its name starts with (F9): resolve the
+        # explicit automation noun before the direct device command can
+        # read "Aktiviere ... Flurlicht" as "turn on the Flurlicht".
+        early_automation_result: (
+            AutomationDeletionMatchResult | AutomationToggleMatchResult | None
+        ) = None
+        if re.search(r"\bautomation\b", user_input.text, re.IGNORECASE) and (
+            _AUTOMATION_DELETE_RE.search(user_input.text)
+            or _AUTOMATION_DISABLE_RE.search(user_input.text)
+            or _AUTOMATION_ENABLE_RE.search(user_input.text)
+        ):
+            if self._automation_executor is None:
+                self._automation_executor = AutomationExecutor(self.hass)
+            automations = await self._automation_executor.async_list_automations()
+            early_automation_result = (
+                self._engine.match_automation_delete(user_input.text, entities, automations)
+                or self._engine.match_automation_disable(user_input.text, entities, automations)
+                or self._engine.match_automation_enable(user_input.text, entities, automations)
+            )
+        if early_automation_result is not None:
+            direct_understanding = None
+
         # Analyse command-shaped turns before the historical device matcher
         # group. Only explicitly migrated capabilities may consume this
         # early result. Automation turns stay lazy so they do not pay both
         # the direct and automation interpreters; non-command fallbacks are
         # computed below only if the established routers did not match.
-        direct_understanding = direct_understanding or (
+        direct_understanding = None if early_automation_result is not None else direct_understanding or (
             self._engine.understand(
                 user_input.text,
                 entities,
@@ -1402,7 +1518,7 @@ class NluConversationEntity(
             )
             else None
         )
-        result = (
+        result = early_automation_result or (
             direct_understanding.payload
             if direct_understanding is not None
             and direct_understanding.authority
@@ -2856,34 +2972,76 @@ class NluConversationEntity(
                         return conversation.ConversationResult(
                             response=response, conversation_id=conversation_id
                         )
-                    try:
-                        result = await PlanExecutor(
-                            refresh, execute, verify, schedule
-                        ).execute(
-                            stored_plan, confirmed=True
-                        )
-                    finally:
-                        await self._runtime_data.execution_coordinator.async_release(
-                            execution_run_id
-                        )
-                    if self._runtime_data.goal_runs is not None:
-                        current_entities = {
-                            item.entity_id: item
-                            for item in build_entity_snapshots(self.hass, self.entry)
-                        }
-                        run = goal_run_from_plan_result(
-                            stored_plan, result, current_entities,
-                            run_id=execution_run_id,
-                            user_id=actor_id,
-                            person_entity_id=(
-                                self._runtime_data.user_contexts.resolve_current_person(actor_id).person_entity_id
-                                if self._runtime_data.user_contexts is not None
-                                else None
-                            ),
-                            updated_at=dt_util.utcnow().isoformat(),
-                        )
-                        await self._runtime_data.goal_runs.async_append(run)
+                    goal_runs = self._runtime_data.goal_runs
+                    user_contexts = self._runtime_data.user_contexts
+
+                    async def run_plan() -> PlanResult:
+                        try:
+                            plan_result = await PlanExecutor(
+                                refresh, execute, verify, schedule
+                            ).execute(
+                                stored_plan, confirmed=True
+                            )
+                        finally:
+                            await self._runtime_data.execution_coordinator.async_release(
+                                execution_run_id
+                            )
+                        if goal_runs is not None:
+                            current_entities = {
+                                item.entity_id: item
+                                for item in build_entity_snapshots(self.hass, self.entry)
+                            }
+                            run = goal_run_from_plan_result(
+                                stored_plan, plan_result, current_entities,
+                                run_id=execution_run_id,
+                                user_id=actor_id,
+                                person_entity_id=(
+                                    user_contexts.resolve_current_person(actor_id).person_entity_id
+                                    if user_contexts is not None
+                                    else None
+                                ),
+                                updated_at=dt_util.utcnow().isoformat(),
+                            )
+                            await goal_runs.async_append(run)
+                        return plan_result
+
+                    # Service calls are accepted within milliseconds, but
+                    # verifying slow effects (a garage door, several locks)
+                    # can take much longer than a voice satellite waits (F17).
+                    # Answer with the final result when it is quick; otherwise
+                    # confirm immediately, keep verifying in the background and
+                    # report only a failure. The GoalRun keeps every piece of
+                    # evidence for "Warum?".
+                    plan_task = self.hass.async_create_task(
+                        run_plan(), name=f"HomeIntent plan {execution_run_id}"
+                    )
+                    done, _pending = await asyncio.wait(
+                        {plan_task}, timeout=_PLAN_REPLY_BUDGET_SECONDS
+                    )
                     manager.cancel(conversation_id)
+                    if plan_task not in done:
+                        label = (stored_plan.goal.provenance.source_utterance if stored_plan.goal.provenance else "") or "Der bestätigte Plan"
+                        plan_task.add_done_callback(
+                            lambda task: self.hass.async_create_task(
+                                self._async_report_background_plan(
+                                    task, execution_run_id, label[:80], actor_id
+                                ),
+                                name=f"HomeIntent plan report {execution_run_id}",
+                            )
+                        )
+                        steps = sum(
+                            1 for step in stored_plan.steps
+                            if step.kind in {StepKind.ACTION, StepKind.NOTIFY}
+                        )
+                        response.async_set_speech(
+                            f"In Ordnung, ich führe den Plan jetzt aus ({steps} "
+                            f"{'Schritt' if steps == 1 else 'Schritte'}) und prüfe die Wirkung. "
+                            "Ich melde mich nur, falls etwas nicht klappt."
+                        )
+                        return conversation.ConversationResult(
+                            response=response, conversation_id=conversation_id
+                        )
+                    result = plan_task.result()
                     if result.status is PlanStatus.COMPLETED:
                         response.async_set_speech("Der Plan wurde vollständig ausgeführt und verifiziert.")
                     elif result.status is PlanStatus.SCHEDULED:
@@ -2920,6 +3078,20 @@ class NluConversationEntity(
             for alias in aliases:
                 if alias:
                     person_names.setdefault(alias, []).append(entity.entity_id)
+        profiles = self._runtime_data.profiles
+        routine_names: dict[str, str] = {}
+        if profiles is not None and actor_id is not None:
+            for routine in profiles.routines_for(actor_id):
+                for spoken in (routine.name, routine.routine_id.replace("_", " ")):
+                    if key := normalize_for_compare(spoken).strip():
+                        routine_names[key] = routine.routine_id
+        area_names = {
+            key: entity.area_id
+            for entity in entities
+            if entity.area_id is not None
+            for name in (entity.area_name or "", *entity.area_aliases)
+            if (key := normalize_for_compare(name).strip())
+        }
         goal = interpret_goal(
             language_document,
             current_user_id=actor_id,
@@ -2931,6 +3103,8 @@ class NluConversationEntity(
                 name: tuple(dict.fromkeys(entity_ids))
                 for name, entity_ids in person_names.items()
             },
+            routine_names=routine_names,
+            area_names=area_names,
         )
         if goal is None:
             return None
@@ -3242,6 +3416,50 @@ class NluConversationEntity(
             f"Planvorschau: {details}. {plan.summary} Soll ich den gesamten Plan ausführen?"
         )
         return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+
+    async def _async_report_background_plan(
+        self,
+        task: "asyncio.Task[PlanResult]",
+        run_id: str,
+        label: str,
+        actor_id: str | None,
+    ) -> None:
+        """Report a plan that finished after the spoken reply - only if it failed."""
+        try:
+            result = task.result()
+        except asyncio.CancelledError:
+            failed = True
+        except Exception:  # noqa: BLE001 - reported below, never swallowed silently
+            _LOGGER.exception("HomeIntent background plan %s failed", run_id)
+            failed = True
+        else:
+            failed = result.status not in {PlanStatus.COMPLETED, PlanStatus.SCHEDULED}
+        if not failed:
+            return
+        proactive = self._runtime_data.proactive_context
+        if proactive is not None and proactive.enabled and actor_id is not None:
+            await proactive.async_report_goal_failure(
+                run_id=run_id, goal_label=label, owner_user_id=actor_id,
+            )
+            return
+        # Without the proactive layer the failure still has to reach the
+        # user: a Home Assistant notification names what did not work.
+        try:
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "HomeIntent",
+                    "message": (
+                        f"„{label}“ wurde nicht vollständig ausgeführt. "
+                        "Frag „Warum hat das nicht funktioniert?“ für die Details."
+                    ),
+                    "notification_id": f"homeintent_plan_{run_id}",
+                },
+                blocking=False,
+            )
+        except Exception:  # noqa: BLE001 - reporting must never raise
+            _LOGGER.warning("HomeIntent could not report a failed plan", exc_info=True)
 
     def _stage_goal_plan(
         self,
@@ -3782,18 +4000,20 @@ class NluConversationEntity(
             response.async_set_speech("Das lokale dauerhafte Gedächtnis ist deaktiviert.")
         elif request.operation is MemoryOperation.LIST:
             records = await store.async_list(person_id=conversation_user_id(user_input))
-            counts: dict[str, int] = {}
-            for record in records:
-                counts[record.kind.value] = counts.get(record.kind.value, 0) + 1
-            summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
+            # Say what is remembered, in German - not internal kind names
+            # ("1 preference") (F16/F23).
+            labels = {entity.entity_id: entity.friendly_name for entity in entities}
+            described = [_describe_memory(record, labels) for record in records[:8]]
+            more = f" und {len(records) - 8} weitere Einträge" if len(records) > 8 else ""
             response.async_set_speech(
-                f"Gespeichert sind {summary}." if summary else "Für dich sind keine dauerhaften Erinnerungen gespeichert."
+                f"Ich habe mir gemerkt: {'; '.join(described)}{more}."
+                if described else "Für dich sind keine dauerhaften Erinnerungen gespeichert."
             )
         elif request.operation is MemoryOperation.EXPORT_REDACTED:
             exported = await store.async_redacted_export()
             exported_counts = exported.get("record_counts", {})
             summary = ", ".join(
-                f"{count} {kind}"
+                f"{count} {_MEMORY_KIND_DE.get(str(kind), str(kind))}"
                 for kind, count in sorted(exported_counts.items())
             ) if isinstance(exported_counts, dict) else ""
             response.async_set_speech(
@@ -4137,7 +4357,7 @@ class NluConversationEntity(
         automations = await self._automation_executor.async_list_automations()
         candidates = tuple(
             item
-            for item in homeintent_candidates(automations, user_input.text)
+            for item in homeintent_candidates(automations, user_input.text, entities)
             if not item.once
         )
         if not candidates:
@@ -4191,12 +4411,13 @@ class NluConversationEntity(
         self,
         user_input: conversation.ConversationInput,
         response: intent.IntentResponse,
+        entities: list[EntitySnapshot] | None = None,
     ) -> conversation.ConversationResult:
         """Resolve an automation and begin its action-only edit dialog."""
         if self._automation_executor is None:
             self._automation_executor = AutomationExecutor(self.hass)
         automations = await self._automation_executor.async_list_automations()
-        candidates = homeintent_candidates(automations, user_input.text)
+        candidates = homeintent_candidates(automations, user_input.text, entities)
         operation = action_edit_operation(user_input.text)
         if not candidates:
             response.async_set_speech("Ich finde keine änderbare HomeIntent-Automation.")
@@ -5181,6 +5402,12 @@ class NluConversationEntity(
 
         if state.stage is AutomationWizardStage.CONDITION_DECISION:
             reply = classify_confirmation_reply(text)
+            if reply is ConfirmationReply.UNCLEAR and _NO_CONDITION_RE.fullmatch(
+                normalize_for_compare(text).strip(" .!")
+            ):
+                # "Keine Bedingung" / "ohne Bedingung" / "keine" answer the
+                # yes/no question with no (F10).
+                reply = ConfirmationReply.NO
             if reply is ConfirmationReply.UNCLEAR:
                 response.async_set_speech("Bitte antworte mit Ja oder Nein.")
             else:
@@ -5366,10 +5593,14 @@ class NluConversationEntity(
                 response=response, conversation_id=conversation_id
             )
 
+        note = native_timer.consume_restart_note() if request.operation in {
+            TimerOperation.LIST, TimerOperation.STATUS,
+        } else None
+        prefix = f"{note} " if note else ""
         if not timers:
-            return done("Es läuft kein Timer.", query=True)
+            return done(f"{prefix}Es läuft kein Timer.", query=True)
         if request.operation is TimerOperation.LIST:
-            return done(describe_timers(timers), query=True)
+            return done(prefix + describe_timers(timers), query=True)
         if request.operation is TimerOperation.CANCEL_ALL:
             self._store_productivity(conversation_id, request, awaiting_confirmation=True)
             if len(timers) == 1:
@@ -5551,6 +5782,20 @@ class NluConversationEntity(
         request: ProductivityRequest,
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
+        last_list = self._last_todo_lists.get(user_input.conversation_id)
+        if (
+            isinstance(request, TodoRequest)
+            and request.entity_id is None
+            and last_list is not None
+            and any(item.entity_id == last_list for item in request.candidates)
+        ):
+            # "Markiere Milch und Brot als erledigt" right after using the
+            # Einkaufsliste continues on that list (F27).
+            request = replace(request, entity_id=last_list, candidates=())
+        if isinstance(request, TodoRequest) and request.entity_id is not None:
+            self._last_todo_lists[user_input.conversation_id] = request.entity_id
+            while len(self._last_todo_lists) > 64:
+                self._last_todo_lists.pop(next(iter(self._last_todo_lists)))
         if request.entity_id is None:
             if request.candidates:
                 self._store_productivity(user_input.conversation_id, request)
@@ -6334,6 +6579,8 @@ class NluConversationEntity(
 
         automations = await self._automation_executor.async_list_automations()
         selection = select_automation_management(request, entities, automations, now)
+        if request.kind in READ_ONLY_MANAGEMENT_KINDS:
+            response.response_type = intent.IntentResponseType.QUERY_ANSWER
         if selection.error_text is not None:
             response.async_set_speech(selection.error_text)
         elif request.kind is AutomationManagementKind.LIST_HOMEINTENT:
@@ -6363,10 +6610,18 @@ class NluConversationEntity(
             AutomationManagementKind.SIMULATE,
         }:
             if not selection.automations:
-                response.async_set_speech("Ich finde keine passende HomeIntent-Automation.")
+                response.async_set_speech(
+                    "Ich finde keine passende Automation."
+                    if request.kind in {
+                        AutomationManagementKind.EXPLAIN_TRIGGER,
+                        AutomationManagementKind.CONTROLS_ENTITY,
+                    }
+                    else "Ich finde keine passende HomeIntent-Automation."
+                )
             else:
                 details = [
-                    item.source_text or item.alias for item in selection.automations
+                    (item.source_text or item.alias).rstrip(" .")
+                    for item in selection.automations
                 ]
                 prefix = (
                     "Auf diesen Auslöser reagieren: "

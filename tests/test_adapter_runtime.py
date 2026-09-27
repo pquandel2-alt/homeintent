@@ -37,6 +37,8 @@ def test_opt_in_ha_sources_store_bounded_structured_state_only():
 
     async def scenario():
         stop = await runtime.async_start()
+        # F2: HA runs listeners without the @callback marker in the executor.
+        assert getattr(handlers["state_changed"], "_hass_callback", False) is True
         handlers["state_changed"](
             SimpleNamespace(
                 data={

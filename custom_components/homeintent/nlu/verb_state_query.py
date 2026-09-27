@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..entities import EntitySnapshot, normalize_for_compare
+from ..entities import EntitySnapshot, normalize_for_compare, spoken_state
 from ..floors import FloorResolveStatus, resolve_floor_by_level_keyword
 from ..query_target import resolve_query_targets
 from .semantic_state import QUERYABLE_STATE_DOMAINS
@@ -108,11 +108,19 @@ def _current_description(entity: EntitySnapshot) -> str:
     rendered = by_domain.get(entity.domain, {}).get(raw)
     if rendered is not None:
         return rendered
+    if entity.domain == "climate":
+        action = normalize_for_compare(str(entity.attributes.get("hvac_action", "")))
+        described = {
+            "heating": "heizt gerade", "cooling": "kühlt gerade",
+            "idle": "ist im Leerlauf", "off": "ist ausgeschaltet",
+        }.get(action)
+        if described is not None:
+            return described
     if raw == "on":
         return "ist eingeschaltet"
     if raw == "off":
         return "ist ausgeschaltet"
-    return f"meldet den Zustand „{entity.state}“"
+    return f"ist {spoken_state(entity.state)}"
 
 
 def _evaluate(entity: EntitySnapshot, predicate: str) -> bool | None:
@@ -172,7 +180,7 @@ def _candidate_question(targets: tuple[EntitySnapshot, ...]) -> str:
 
 def _explanation(targets: tuple[EntitySnapshot, ...], predicate: str) -> str:
     states = ", ".join(
-        f"{entity.friendly_name}: {entity.state}" for entity in targets
+        f"{entity.friendly_name}: {spoken_state(entity.state)}" for entity in targets
     )
     label = _PREDICATE_LABELS.get(predicate, predicate)
     return (

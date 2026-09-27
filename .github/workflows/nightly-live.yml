@@ -1,0 +1,56 @@
+name: Nightly Live-Testbett
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-testbed-full:
+    # Alle Szenarien inklusive der Proaktiv-Ketten mit langen Wartezeiten
+    # (Garage 1 min, Daueranweisung 5 min, Waschmaschine).
+    name: Live-Testbett vollständig (inkl. Proaktiv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Python einrichten
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-ha-test.txt
+      - name: Echtes Home Assistant in einer venv installieren
+        # Wie lokal (sim/README.md): in einer venv installiert Home Assistant
+        # die Laufzeitpakete seiner Integrationen (tts, ffmpeg, ...) beim
+        # ersten Start selbst nach; mit dem System-Python fehlen sie.
+        run: |
+          python -m venv "${RUNNER_TEMP}/havenv"
+          "${RUNNER_TEMP}/havenv/bin/python" -m pip install --requirement requirements-ha-test.txt
+      - name: Frisches Testbett starten und einrichten
+        run: >-
+          HASS="${RUNNER_TEMP}/havenv/bin/hass"
+          PYTHON="${RUNNER_TEMP}/havenv/bin/python"
+          sim/fresh_ha.sh
+      - name: Alle Szenarien ausführen
+        working-directory: sim
+        run: ${RUNNER_TEMP}/havenv/bin/python runner.py --strict --out results/nightly.json
+      - name: Home-Assistant-Log prüfen
+        if: always()
+        run: python sim/check_log.py
+      - name: Home-Assistant-Fehler anzeigen
+        if: failure()
+        run: grep -E "ERROR|haus_sim|homeintent|Traceback|Error" -A3 sim/config/home-assistant.run.log | tail -n 200 || true
+      - name: Ergebnisse speichern
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-testbed-nightly
+          path: |
+            sim/results/nightly.json
+            sim/config/home-assistant.run.log
+          if-no-files-found: warn

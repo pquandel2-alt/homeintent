@@ -170,7 +170,8 @@ def test_history_result_is_aggregated_defensively():
     text = render_history_result(query, {
         SENSOR.entity_id: [{"mean": 20.0}, {"mean": 22.0}],
     })
-    assert "21 °C" in text
+    # Spoken German unit (voice output), not the raw HA symbol.
+    assert "21 Grad" in text
 
 
 def test_recorder_unavailable_degrades_cleanly(caplog):
@@ -218,3 +219,97 @@ def test_state_history_failure_is_logged(caplog):
 
     assert "nicht verfügbar" in asyncio.run(async_execute_history_query(Hass(), query))
     assert "Recorder state-history query failed" in caplog.text
+
+
+# --- F3: real Home Assistant response format and sensor resolution ---------
+
+HOUSE_SENSORS = [
+    EntitySnapshot(
+        "sensor.temperatur_wohnzimmer", "Temperatur Wohnzimmer", "sensor", "20.4",
+        area_id="wohnzimmer", area_name="Wohnzimmer", unit="°C", device_class="temperature",
+    ),
+    EntitySnapshot(
+        "sensor.temperatur_kueche", "Temperatur Küche", "sensor", "20.9",
+        area_id="kueche", area_name="Küche", unit="°C", device_class="temperature",
+    ),
+    EntitySnapshot(
+        "sensor.aussentemperatur", "Außentemperatur", "sensor", "12.3",
+        area_id="garten", area_name="Garten", floor_name="Außenbereich",
+        unit="°C", device_class="temperature",
+    ),
+    EntitySnapshot(
+        "sensor.energiezaehler", "Energiezähler", "sensor", "18234.7",
+        area_id="hwr", area_name="Hauswirtschaftsraum", unit="kWh",
+        device_class="energy", state_class="total_increasing",
+    ),
+]
+
+
+def test_render_accepts_real_recorder_response_format():
+    query = parse_history_query(
+        "Wie hoch war die durchschnittliche Temperatur im Wohnzimmer gestern?",
+        HOUSE_SENSORS, NOW,
+    )
+    assert query is not None
+    text = render_history_result(query, {
+        "statistics": {"sensor.temperatur_wohnzimmer": [{"mean": 20.44}, {"mean": 21.0}]},
+    })
+    assert text == "Der Durchschnitt von Temperatur Wohnzimmer betrug gestern 20,7 Grad."
+
+
+@pytest.mark.parametrize(
+    ("text", "entity_id", "metric"),
+    (
+        ("Wie hoch war die durchschnittliche Temperatur im Wohnzimmer gestern?",
+         "sensor.temperatur_wohnzimmer", HistoryMetric.MEAN),
+        ("Wie hat sich der Energiezähler diese Woche verändert?",
+         "sensor.energiezaehler", HistoryMetric.CHANGE),
+        ("Wie kalt war es gestern draußen minimal?",
+         "sensor.aussentemperatur", HistoryMetric.MIN),
+        ("Wie warm war es gestern in der Küche maximal?",
+         "sensor.temperatur_kueche", HistoryMetric.MAX),
+        # Compound noun and "im Schnitt" (found in the 7.2.1 live re-test).
+        ("Wie war die Durchschnittstemperatur gestern im Wohnzimmer?",
+         "sensor.temperatur_wohnzimmer", HistoryMetric.MEAN),
+        ("Wie warm war es gestern im Schnitt draußen?",
+         "sensor.aussentemperatur", HistoryMetric.MEAN),
+    ),
+)
+def test_sensor_is_resolved_by_area_and_measurement(text, entity_id, metric):
+    query = parse_history_query(text, HOUSE_SENSORS, NOW)
+    assert query is not None
+    assert query.entity.entity_id == entity_id
+    assert query.metric is metric
+
+
+def test_area_measurement_without_unique_sensor_is_not_guessed():
+    # Two temperature sensors, no area named: never pick one.
+    assert parse_history_query(
+        "Wie hoch war die durchschnittliche Temperatur gestern?", HOUSE_SENSORS, NOW
+    ) is None
+
+
+def test_yesterday_versus_day_before_comparison_reads_nested_format():
+    query = parse_history_query(
+        "War die Temperatur im Wohnzimmer gestern niedriger als vorgestern?",
+        HOUSE_SENSORS, NOW,
+    )
+    assert isinstance(query, ComparativeHistoryQuery)
+    assert query.first[3] == "gestern" and query.second[3] == "vorgestern"
+    responses = iter((
+        {"statistics": {"sensor.temperatur_wohnzimmer": [{"mean": 20.0}]}},
+        {"statistics": {"sensor.temperatur_wohnzimmer": [{"mean": 21.5}]}},
+    ))
+
+    class Services:
+        async def async_call(self, *args, **kwargs):
+            return next(responses)
+
+    class Hass:
+        services = Services()
+
+    text = asyncio.run(async_execute_history_query(Hass(), query))
+    assert text == (
+        "Temperatur Wohnzimmer lag gestern bei 20 Grad; "
+        "das sind 1,5 Grad niedriger als vorgestern."
+    )

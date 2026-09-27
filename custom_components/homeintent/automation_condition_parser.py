@@ -52,8 +52,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList, recognize
+from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList
 
+from .hassil_compat import recognize_aligned
 from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
 from .automation_target_resolver import build_device_class_target, build_named_target
 from .nlu.automation_model import NumericComparator, SunEvent, TriggerTarget
@@ -317,7 +318,7 @@ class AutomationConditionParser:
 
     def _parse_leaf(self, text: str, context: ParseContext) -> ConditionNode | None:
         text = _unmask_time_window_and(text)
-        result = recognize(text, self._intents, slot_lists=self._slot_lists, language="de")
+        result = recognize_aligned(text, self._intents, slot_lists=self._slot_lists, language="de")
         if result is None or result.intent is None:
             return self._parse_semantic_state_condition(text, context)
         handler = self._dispatch.get(result.intent.name)

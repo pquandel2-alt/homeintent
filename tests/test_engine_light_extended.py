@@ -76,13 +76,13 @@ def test_set_color_verb_after_form(engine):
 
 def test_set_color_temp_warm(engine):
     result = engine.match("mach die Vollfarblampe warmweiß", ENTITIES)
-    assert result.plan.data == {"kelvin": 2700}
+    assert result.plan.data == {"color_temp_kelvin": 2700}
     assert "warmweiß" in result.response_text
 
 
 def test_set_color_temp_cold(engine):
     result = engine.match("stelle die Vollfarblampe auf kaltweiß", ENTITIES)
-    assert result.plan.data == {"kelvin": 6500}
+    assert result.plan.data == {"color_temp_kelvin": 6500}
     assert "kaltweiß" in result.response_text
 
 

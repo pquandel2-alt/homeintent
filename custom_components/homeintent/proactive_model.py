@@ -418,6 +418,17 @@ class HistoryRecord:
     related_run_id: str | None = None
     evidence: tuple[SituationEvidence, ...] = ()
     model_ref: str | None = None
+    # Further recipients of the identical decision (F25): one notice to a
+    # household is one history entry, not one copy per person.
+    other_recipient_user_ids: tuple[str, ...] = ()
+
+    @property
+    def recipient_user_ids(self) -> tuple[str, ...]:
+        first = (self.recipient_user_id,) if self.recipient_user_id is not None else ()
+        return (*first, *self.other_recipient_user_ids)
+
+    def addressed_to(self, user_id: str | None) -> bool:
+        return user_id is not None and user_id in self.recipient_user_ids
 
 
 @dataclass(frozen=True)

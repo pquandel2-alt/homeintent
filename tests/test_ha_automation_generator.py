@@ -447,7 +447,7 @@ def test_set_color_temperature():
     model = _model(_trigger(), actions=(ActionModel(type=ActionType.SET_COLOR_TEMPERATURE, target=TriggerTarget(entity_id="light.kueche_licht"), color_temp_kelvin=2700),))
     result = generate_ha_automation_config(model, ALL_ENTITIES)
     assert result.error is None
-    assert result.config["actions"][0]["data"] == {"kelvin": 2700}
+    assert result.config["actions"][0]["data"] == {"color_temp_kelvin": 2700}
 
 
 def test_set_position():

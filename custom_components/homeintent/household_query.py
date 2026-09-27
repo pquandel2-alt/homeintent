@@ -11,9 +11,13 @@ from .entities import (
     ACTIVATION_TIMESTAMP_DOMAINS,
     EntitySnapshot,
     format_spoken_number,
+    is_outdoor_entity,
     normalize_for_compare,
 )
 from .nlu.domain_operations import DOMAIN_WORDS
+from .nlu.german_morphology import dative_location_phrase, sentence_initial
+from .nlu.grounded_answer import join_german
+from .nlu.registered_operation_compiler import climate_in_named_area
 from .nlu.language_frontend import LanguageDocument
 from .nlu.normalize import normalize
 from .nlu.semantic_utterance import SpeechAct
@@ -164,6 +168,83 @@ def _completion_time_query(
     )
 
 
+_ACTIVE_STATES: Mapping[str, frozenset[str]] = {
+    "light": frozenset({"on"}), "switch": frozenset({"on"}), "fan": frozenset({"on"}),
+    "input_boolean": frozenset({"on"}), "humidifier": frozenset({"on"}),
+    "media_player": frozenset({"on", "playing", "paused", "buffering"}),
+    "vacuum": frozenset({"cleaning", "returning"}), "lawn_mower": frozenset({"mowing"}),
+}
+_AREA_ON_RE = re.compile(
+    r"^(?:und\s+)?was\s+(?:ist|laeuft|sind)\s+(?:gerade\s+|noch\s+|alles\s+|jetzt\s+)*"
+    r"(?:im|in\s+der|in\s+dem|am|auf\s+dem|auf\s+der)\s+(?P<area>.+?)"
+    r"(?:\s+(?:gerade|noch|alles|jetzt))*(?:\s+(?:eingeschaltet|an|aktiv|in\s+betrieb|ein))?$"
+)
+
+
+def _area_on_query(key: str, entities: list[EntitySnapshot]) -> DeviceControlResult | None:
+    """ "Was ist im Badezimmer eingeschaltet?" - every active device there (F12)."""
+    match = _AREA_ON_RE.search(key.strip(" ?.!"))
+    if match is None:
+        return None
+    spoken = match.group("area").strip()
+    area_names = {
+        normalize_for_compare(name): (entity.area_id, entity.area_name or name)
+        for entity in entities if entity.area_id is not None
+        for name in (entity.area_name or "", *entity.area_aliases) if name
+    }
+    area = area_names.get(spoken)
+    if area is None:
+        return None
+    area_id, area_name = area
+    active = [
+        entity.friendly_name for entity in entities
+        if entity.area_id == area_id
+        and entity.state in _ACTIVE_STATES.get(entity.domain, frozenset())
+    ]
+    location = dative_location_phrase(area_name)
+    if not active:
+        return _read_only(f"{sentence_initial(location)} ist gerade nichts eingeschaltet.")
+    verb = "ist" if len(active) == 1 else "sind"
+    return _read_only(f"{sentence_initial(location)} {verb} eingeschaltet: {join_german(tuple(active))}.")
+
+
+def _is_outdoor(entity: EntitySnapshot) -> bool:
+    return is_outdoor_entity(entity)
+
+
+def _outdoor_temperature(entities: list[EntitySnapshot]) -> EntitySnapshot | None:
+    sensors = [
+        entity for entity in entities
+        if entity.domain == "sensor" and entity.device_class == "temperature"
+        and _is_outdoor(entity) and _numeric_state(entity) is not None
+    ]
+    return sensors[0] if len(sensors) == 1 else None
+
+
+def _house_power(entities: list[EntitySnapshot]) -> EntitySnapshot | None:
+    """The whole-house power sensor: named "Haus"/"Gesamt"/"Netz", else unassigned."""
+    power = [
+        entity for entity in entities
+        if entity.domain == "sensor" and entity.device_class == "power"
+        and _numeric_state(entity) is not None
+    ]
+    named = [
+        entity for entity in power
+        if re.search(r"\b(?:haus|gesamt\w*|netz\w*|hausverbrauch)\b", normalize_for_compare(entity.friendly_name))
+    ]
+    if len(named) == 1:
+        return named[0]
+    unassigned = [entity for entity in power if entity.area_id is None]
+    return unassigned[0] if len(unassigned) == 1 else None
+
+
+def _power_text(entity: EntitySnapshot) -> str:
+    value = _numeric_state(entity)
+    unit = entity.unit or "W"
+    spoken_unit = {"W": "Watt", "kW": "Kilowatt"}.get(unit, unit)
+    return f"{format_spoken_number(value)} {spoken_unit}"
+
+
 def match_household_query(
     text: str,
     entities: list[EntitySnapshot],
@@ -200,10 +281,14 @@ def match_household_query(
         )
 
     if re.search(r"\bwer\s+ist\s+(?:zu\s*hause|daheim|anwesend)\b", key):
-        people = [
-            entity.friendly_name for entity in entities
-            if entity.domain == "person" and entity.state == "home"
-        ]
+        persons = [entity for entity in entities if entity.domain == "person"]
+        if not persons:
+            # Without exposed persons "nobody is home" would be a guess (F12).
+            return _read_only(
+                "Mir sind keine Personen freigegeben, deshalb kann ich nicht sagen, "
+                "wer zuhause ist. Gib die Personen in Home Assistant für Assist frei."
+            )
+        people = [entity.friendly_name for entity in persons if entity.state == "home"]
         if not people:
             return _read_only("Laut Home Assistant ist derzeit niemand zuhause.")
         return _read_only("Zuhause: " + ", ".join(people) + ".")
@@ -219,6 +304,88 @@ def match_household_query(
             )
         if len(people) > 1:
             return _read_only("Welche Person meinst du?")
+
+    if (area_on := _area_on_query(key, entities)) is not None:
+        return area_on
+
+    if re.search(r"\b(?:co2|kohlendioxid)\b", key) and re.search(r"\b(?:wie\s+(?:hoch|viel)|wert|gehalt|stand)\b", key):
+        sensors = [
+            entity for entity in entities
+            if entity.domain == "sensor" and entity.device_class == "carbon_dioxide"
+        ]
+        located = [
+            entity for entity in sensors
+            if any(
+                name and re.search(rf"\b{re.escape(normalize_for_compare(name))}\b", key)
+                for name in (entity.area_name, *entity.area_aliases)
+            )
+        ] or (sensors if len(sensors) == 1 else [])
+        if len(located) == 1:
+            sensor = located[0]
+            reading = _numeric_state(sensor)
+            if reading is None:
+                return _read_only(f"{sensor.friendly_name} meldet gerade keinen gültigen Wert.")
+            return _read_only(
+                f"{sensor.friendly_name}: {format_spoken_number(reading)} {sensor.unit or 'ppm'}."
+            )
+
+    if re.search(
+        r"\bwie\s+viel\s+(?:strom|leistung|energie)\s+(?:verbraucht|braucht|zieht)\s+"
+        r"(?:das\s+haus|der\s+haushalt|das\s+ganze\s+haus|alles)\b|"
+        r"\b(?:aktuelle[rn]?\s+)?(?:haus|gesamt)(?:strom)?verbrauch\b",
+        key,
+    ):
+        house = _house_power(entities)
+        if house is not None:
+            return _read_only(f"Das Haus verbraucht gerade {_power_text(house)} ({house.friendly_name}).")
+        return _read_only("Ich finde keinen eindeutigen Leistungssensor für das ganze Haus.")
+
+    if re.search(r"\b(?:durchschnittliche|mittlere)\s+temperatur\s+(?:im|in\s+dem)\s+(?:ganzen\s+|gesamten\s+)?haus\b", key):
+        indoor = [
+            value for entity in entities
+            if entity.domain == "sensor" and entity.device_class == "temperature"
+            and not _is_outdoor(entity) and (value := _numeric_state(entity)) is not None
+        ]
+        if not indoor:
+            return _read_only("Ich finde keine Innentemperatursensoren.")
+        mean = round(sum(indoor) / len(indoor), 1)
+        return _read_only(
+            f"Die durchschnittliche Temperatur im Haus liegt bei {format_spoken_number(mean)} Grad "
+            f"(aus {len(indoor)} Sensoren)."
+        )
+
+    setpoint = re.search(
+        r"\b(?:auf\s+(?:wie\s+viel|welche)\s+(?:grad|temperatur)|welche\s+(?:soll|ziel)temperatur|"
+        r"wie\s+hoch\s+ist\s+die\s+(?:soll|ziel)temperatur)\b", key,
+    )
+    if setpoint is not None:
+        climates = [entity for entity in entities if entity.domain == "climate"]
+        target = climate_in_named_area(value, climates) or (
+            named[0] if len(named := mentioned_entities(value, climates)) == 1 else None
+        )
+        if target is not None:
+            temperature = target.attributes.get("temperature")
+            if isinstance(temperature, (int, float)):
+                return _read_only(
+                    f"{target.friendly_name} ist auf {format_spoken_number(temperature)} Grad eingestellt."
+                )
+            return _read_only(f"{target.friendly_name} meldet keine Solltemperatur.")
+
+    if re.search(r"^(?:heizt|kuehlt)\b", key):
+        climates = [entity for entity in entities if entity.domain == "climate"]
+        target = climate_in_named_area(value, climates) or (
+            named[0] if len(named := mentioned_entities(value, climates)) == 1 else None
+        )
+        if target is not None:
+            action = target.attributes.get("hvac_action")
+            cooling = key.startswith("kuehlt")
+            if isinstance(action, str):
+                active = action == ("cooling" if cooling else "heating")
+                verb = "kühlt" if cooling else "heizt"
+                return _read_only(
+                    f"Ja, {target.friendly_name} {verb} gerade." if active
+                    else f"Nein, {target.friendly_name} {verb} gerade nicht."
+                )
 
     if re.search(r"\b(?:gibt\s+es\s+)?(?:probleme|stoerungen|fehler)\s+(?:im|zu\s+hause|daheim)\b", key):
         unavailable = [
@@ -298,6 +465,14 @@ def match_household_query(
         if len(choices) > 1:
             return _read_only("Welche Wetter-Entität meinst du?")
         if not choices:
+            # No weather entity: an outdoor temperature sensor answers "Wie
+            # warm ist es draußen?" just as well (F12).
+            outdoor = _outdoor_temperature(entities)
+            if outdoor is not None and re.search(r"\b(?:warm|kalt|temperatur|grad)\b", key):
+                return _read_only(
+                    f"Draußen sind es {format_spoken_number(round(_numeric_state(outdoor) or 0.0, 1))} Grad "
+                    f"({outdoor.friendly_name})."
+                )
             return _read_only("Ich finde in Home Assistant keine Wetter-Entität.")
         weather = choices[0]
         condition = _WEATHER_DE.get(weather.state, weather.state)

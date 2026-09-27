@@ -10,7 +10,7 @@ from datetime import datetime, time, timedelta, timezone
 from enum import StrEnum
 from typing import Iterable, Mapping
 
-from .entities import EntitySnapshot
+from .entities import EntitySnapshot, spoken_state
 
 
 class EventType(StrEnum):
@@ -163,7 +163,7 @@ class SituationEvaluator:
                     "safety_alarm",
                     SituationSeverity.CRITICAL,
                     "Sicherheitsalarm erkannt.",
-                    (f"Sensorqualität: {event.quality.value}", f"Zustand: {event.state}"),
+                    (f"Sensorqualität: {event.quality.value}", f"Zustand: {spoken_state(event.state)}"),
                 )
             )
             return tuple(situations)

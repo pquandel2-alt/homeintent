@@ -17,7 +17,7 @@
         "title": "HomeIntent konfigurieren",
         "description": "Lege Geräte, Sicherheit und die lokalen Ausgabekanäle des proaktiven Agenten fest. Von HomeIntent erzeugte Regeln bleiben in der Home-Assistant-Automationsoberfläche sichtbar. Was HomeIntent gelernt hat und ohne Rückfrage tun darf, zeigt und steuert das Learning Center in der Seitenleiste (HomeIntent, Pfad /homeintent).",
         "data": {
-          "selected_entities": "Freigegebene Entitäten",
+          "selected_entities": "Feste Auswahl freigegebener Entitäten (leer: automatisch alle für Assist freigegebenen)",
           "read_only_entities": "Nur lesbare Entitäten",
           "admin_only_entities": "Nur von Administratoren steuerbare Entitäten",
           "control_user_ids": "Zur Steuerung berechtigte Benutzer (leer: alle)",
@@ -67,7 +67,7 @@
           "standing_permissions_enabled": "V12: Ausdrücklich bestätigte Daueranweisungen erlauben",
           "critical_multi_channel_enabled": "V12: Kritische Warnungen über mehrere Kanäle",
           "proactive_entry_open_minutes": "V12: Minuten, bis ein offenes Tor oder eine offene Garage gemeldet wird",
-          "proactive_appliance_entities": "V12: Programmstatus-Entitäten von Haushaltsgeräten",
+          "proactive_appliance_entities": "V12: Haushaltsgeräte (Programmstatus, Leistungssensor in W oder Betriebs-Binärsensor)",
           "proactive_person_room_sensors": "V12: Personen-Raumsensoren (person.x = sensor.y, eine Zeile pro Person)",
           "proactive_satellite_areas": "V12: Sprachsatellit-Bereiche (assist_satellite.x = bereich_id)",
           "proactive_user_quiet_hours": "V12: Ruhezeiten je Benutzer (user_id = HH:MM-HH:MM)"
@@ -133,6 +133,12 @@
     "delete_monitor_goal": {
       "name": "Monitor-Ziel löschen",
       "description": "Löscht ein persistentes HomeIntent-Monitor-Ziel anhand seiner Goal-ID."
+    }
+  },
+  "issues": {
+    "fixed_entity_selection": {
+      "title": "HomeIntent nutzt eine feste Entitätsauswahl",
+      "description": "In den HomeIntent-Optionen ist eine feste Liste freigegebener Entitäten gespeichert. {count} für Assist freigegebene Entitäten sind deshalb für HomeIntent unsichtbar (z. B. {examples}).\n\nHomeIntent 7.1.2 hat diese Liste beim Speichern der Optionen versehentlich vorbelegt. Wenn du keine feste Auswahl möchtest, öffne HomeIntent → Konfigurieren, leere das Feld „Feste Auswahl freigegebener Entitäten“ und speichere: HomeIntent folgt dann wieder automatisch der Assist-Freigabe."
     }
   }
 }

@@ -1,31 +1,20 @@
-"""The engine is built and warmed up off Home Assistant's event loop."""
+"""F18: grammar files are loaded at setup (executor), never inside a turn."""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components"))
-sys.path.insert(0, str(Path(__file__).parent))
+def test_warm_up_preloads_every_grammar_a_live_turn_can_touch(monkeypatch):
+    """F18: no YAML file is opened lazily inside a conversation turn."""
+    from homeintent.engine import NluEngine
+    from homeintent.entities import EntitySnapshot
 
-import _ha_stub  # noqa: E402
-
-_ha_stub.install()
-
-import homeintent as homeintent_init  # noqa: E402
-from homeintent.engine import NluEngine  # noqa: E402
-
-
-def test_build_engine_returns_a_warmed_up_engine():
-    engine = homeintent_init._build_engine()
-
-    assert isinstance(engine, NluEngine)
-    # Warming up must not leave any parse state behind.
-    assert engine.match_relative_time_automation is not None
-
-
-def test_warm_up_is_repeatable_and_side_effect_free():
     engine = NluEngine()
+    engine.warm_up()
 
-    engine.warm_up()
-    engine.warm_up()
+    def _fail(*_args, **_kwargs):
+        raise AssertionError("grammar loaded during a live turn")
+
+    monkeypatch.setattr("homeintent.engine.Intents.from_files", _fail)
+    light = EntitySnapshot("light.x", "Leselampe", "light", "on", capabilities=frozenset({"TURN_ON"}))
+    # A percentage command the engine cannot execute reaches the feedback path.
+    engine.understand("Stelle die Gartenlaterne auf 30 Prozent", [light])

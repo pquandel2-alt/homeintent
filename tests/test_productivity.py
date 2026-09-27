@@ -424,3 +424,50 @@ def test_running_helper_timer_remaining_time_comes_from_finishes_at(monkeypatch)
     speech = result.response.speech or ""
     assert "Verbleibende Zeit: 3 Minuten und" in speech
     assert "10 Minuten" not in speech
+
+
+# --- F27: list operations without the word "Liste" ------------------------------
+
+@pytest.mark.parametrize(
+    ("text", "operation", "items"),
+    [
+        ("Markiere Milch und Brot als erledigt.", TodoOperation.COMPLETE, ("Milch", "Brot")),
+        ("Hake Milch ab.", TodoOperation.COMPLETE, ("Milch",)),
+        ("Lösche alle erledigten Einträge.", TodoOperation.CLEAR_COMPLETED, ()),
+        ("Entferne die erledigten Punkte.", TodoOperation.CLEAR_COMPLETED, ()),
+    ],
+)
+def test_list_operation_without_list_noun(text, operation, items):
+    request = parse_productivity_request(text, [SHOPPING, WORK])
+    assert isinstance(request, TodoRequest)
+    assert request.operation is operation
+    assert request.items == items
+    assert request.entity_id is None
+    assert {item.entity_id for item in request.candidates} == {"todo.einkauf", "todo.arbeit"}
+
+
+def test_list_follow_up_continues_on_the_last_used_list(monkeypatch):
+    entity = NluConversationEntity(ConfigEntry())
+    entity.hass = HomeAssistant()
+    monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: [SHOPPING, WORK])
+    entity.hass.services.async_call = AsyncMock(return_value={
+        "todo.einkauf": {"items": [
+            {"summary": "Milch", "uid": "1", "status": "needs_action"},
+            {"summary": "Brot", "uid": "2", "status": "needs_action"},
+        ]},
+    })
+
+    def say(text):
+        return asyncio.run(entity._async_handle_message(
+            ConversationInput(text=text, conversation_id="lists"), chat_log=None
+        )).response.speech
+
+    say("Was steht auf der Einkaufsliste?")
+    say("Markiere Milch und Brot als erledigt.")
+    updates = [
+        call for call in entity.hass.services.async_call.await_args_list
+        if call.args[:2] == ("todo", "update_item")
+    ]
+    assert len(updates) == 2
+    assert all("todo.einkauf" in repr(call) and "todo.arbeit" not in repr(call) for call in updates)
+    assert "erledigten Einträge" in say("Lösche alle erledigten Einträge.")

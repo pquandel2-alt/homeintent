@@ -98,7 +98,7 @@
       "service": "turn_on",
       "entity_id": "light.wohnzimmer",
       "data": {
-        "kelvin": 2700
+        "color_temp_kelvin": 2700
       }
     },
     "response_text": "Wohnzimmerlicht auf warmweiß gestellt."
@@ -111,7 +111,7 @@
       "service": "turn_on",
       "entity_id": "light.wohnzimmer",
       "data": {
-        "kelvin": 6500
+        "color_temp_kelvin": 6500
       }
     },
     "response_text": "Wohnzimmerlicht auf kaltweiß gestellt."
@@ -293,7 +293,7 @@
       "service": "turn_on",
       "entity_id": "light.wohnzimmer",
       "data": {
-        "kelvin": 2700
+        "color_temp_kelvin": 2700
       }
     },
     "response_text": "Wohnzimmerlicht auf warmweiß gestellt."

@@ -1,0 +1,58 @@
+# HomeIntent live test bed: realistic single-family house (see ../README.md)
+homeassistant:
+  name: Testhaus Familie Quandel
+  latitude: 48.1374
+  longitude: 11.5755
+  elevation: 520
+  unit_system: metric
+  time_zone: Europe/Berlin
+  country: DE
+  language: de
+  currency: EUR
+
+frontend:
+http:
+api:
+config:
+onboarding:
+websocket_api:
+conversation:
+assist_pipeline:
+intent:
+sun:
+person:
+history:
+logbook:
+recorder:
+  commit_interval: 1
+  purge_keep_days: 30
+
+logger:
+  default: warning
+  logs:
+    custom_components.homeintent: info
+    custom_components.haus_sim: info
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+timer:
+  waschgang:
+    name: Waschgang
+    duration: "01:30:00"
+
+input_boolean:
+  gaestemodus:
+    name: Gästemodus
+  urlaubsmodus:
+    name: Urlaubsmodus
+
+input_number:
+  poolheizung_soll:
+    name: Poolheizung Solltemperatur
+    min: 18
+    max: 32
+    step: 0.5
+    unit_of_measurement: "°C"
+    initial: 26

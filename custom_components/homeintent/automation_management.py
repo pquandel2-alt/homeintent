@@ -31,6 +31,22 @@ class AutomationManagementKind(Enum):
     SIMULATE = auto()
 
 
+
+# Management requests that only read automations: answered as a question
+# (QUERY_ANSWER) for clients and satellites, never as an action (F22).
+READ_ONLY_MANAGEMENT_KINDS = frozenset({
+    AutomationManagementKind.LIST_HOMEINTENT,
+    AutomationManagementKind.LIST_SCHEDULED,
+    AutomationManagementKind.WHEN,
+    AutomationManagementKind.COUNT_ACTIVE,
+    AutomationManagementKind.COUNT_DISABLED,
+    AutomationManagementKind.EXPLAIN_TRIGGER,
+    AutomationManagementKind.CONTROLS_ENTITY,
+    AutomationManagementKind.DETAIL,
+    AutomationManagementKind.DIAGNOSE,
+    AutomationManagementKind.SIMULATE,
+})
+
 @dataclass(frozen=True)
 class AutomationManagementRequest:
     kind: AutomationManagementKind
@@ -63,9 +79,50 @@ _WHEN_RE = re.compile(
 )
 _EXPLAIN_RE = re.compile(
     r"\b(?:was\s+passiert|welche\s+automationen?\s+(?:reagier\w*|start\w*))\s*,?\s*"
-    r"(?:wenn\s+)?(?P<name>.+?)(?:\s+(?:geöffnet|geschlossen|an|aus)\s+wird)?$",
+    r"(?:wenn\s+|sobald\s+)?(?P<name>.+?)(?:\s+(?:geöffnet|geoeffnet|geschlossen|an|aus|"
+    r"erkannt|ausgelöst|ausgeloest|gemeldet|eingeschaltet|ausgeschaltet|aktiv)\s+wird)?$",
     re.IGNORECASE,
 )
+# Spoken trigger subject -> binary sensor device classes, for "wenn die
+# Bewegung im Flur erkannt wird" where no entity is named (F9).
+_SUBJECT_CLASSES: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
+    (re.compile(r"\b(?:bewegung|bewegungsmelder)\b"), frozenset({"motion", "occupancy", "presence"})),
+    (re.compile(r"\b(?:praesenz|anwesenheit)\b"), frozenset({"occupancy", "presence", "motion"})),
+    (re.compile(r"\bfenster\b"), frozenset({"window"})),
+    (re.compile(r"\b(?:tuer|haustuer)\b"), frozenset({"door"})),
+    (re.compile(r"\brauch\w*\b"), frozenset({"smoke"})),
+    (re.compile(r"\b(?:wasser|leck)\w*\b"), frozenset({"moisture"})),
+)
+
+
+def _subject_by_class_and_area(
+    spoken_name: str, entities: list[EntitySnapshot]
+) -> EntitySnapshot | None:
+    """Resolve "die Bewegung im Flur" to the unique motion sensor there."""
+    value = normalize_for_compare(spoken_name)
+    classes = next(
+        (device_classes for pattern, device_classes in _SUBJECT_CLASSES if pattern.search(value)),
+        None,
+    )
+    if classes is None:
+        return None
+    candidates = [
+        entity for entity in entities
+        if entity.domain == "binary_sensor" and entity.device_class in classes
+    ]
+    located = [
+        entity for entity in candidates
+        if any(
+            name and re.search(rf"\b{re.escape(normalize_for_compare(name))}\b", value)
+            for name in (entity.area_name, *entity.area_aliases)
+        )
+    ]
+    pool = located or (candidates if len(candidates) == 1 else [])
+    # Prefer the most specific area name ("Flur Obergeschoss" over "Flur").
+    if len(pool) > 1:
+        longest = max(len(entity.area_name or "") for entity in pool)
+        pool = [entity for entity in pool if len(entity.area_name or "") == longest]
+    return pool[0] if len(pool) == 1 else None
 _CONTROLS_RE = re.compile(
     r"\b(?:welche\s+automation\s+(?:steuert|schaltet)|was\s+steuert)\s+(?P<name>.+)$",
     re.IGNORECASE,
@@ -300,9 +357,26 @@ def select_automation_management(
         if request.kind is AutomationManagementKind.SET_MAX_RUNS
         else scheduled
     )
+    if request.kind in {
+        AutomationManagementKind.EXPLAIN_TRIGGER,
+        AutomationManagementKind.CONTROLS_ENTITY,
+    }:
+        # Explaining is read-only: user-made automations count too (F9).
+        homeintent = automations
     if request.entity_name:
         spoken_name = request.entity_name.strip()
         resolved = resolve_entity(spoken_name, entities)
+        if (
+            (resolved.status is not ResolveStatus.OK or resolved.entity is None)
+            and request.kind is AutomationManagementKind.EXPLAIN_TRIGGER
+        ):
+            subject = _subject_by_class_and_area(spoken_name, entities)
+            if subject is not None:
+                return AutomationManagementSelection(
+                    request,
+                    tuple(item for item in automations if subject.entity_id in item.trigger_entity_ids),
+                    entity=subject,
+                )
         if resolved.status is not ResolveStatus.OK or resolved.entity is None:
             wanted = normalize_for_compare(spoken_name)
             by_identity = tuple(

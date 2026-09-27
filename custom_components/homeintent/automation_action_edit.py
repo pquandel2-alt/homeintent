@@ -6,7 +6,8 @@ import re
 from typing import Any, Mapping
 
 from .automation_summary import AutomationSummary, CREATED_BY_HOMEINTENT
-from .entities import normalize_for_compare
+from .entities import EntitySnapshot, normalize_for_compare
+from .nlu.entity_resolution import ResolveStatus, resolve_entity
 
 
 _EDIT_RE = re.compile(
@@ -72,9 +73,15 @@ def reordered_actions(
 
 
 def homeintent_candidates(
-    automations: tuple[AutomationSummary, ...], text: str
+    automations: tuple[AutomationSummary, ...],
+    text: str,
+    entities: list[EntitySnapshot] | None = None,
 ) -> tuple[AutomationSummary, ...]:
-    """Resolve a named alias/source when present, otherwise keep all choices."""
+    """Resolve a named alias/source or a named device, else keep all choices.
+
+    "der Automation für Außenbeleuchtung" narrows the choice to automations
+    that reference the named device instead of listing every one (F9).
+    """
     candidates = tuple(
         item for item in automations if item.created_by == CREATED_BY_HOMEINTENT
     )
@@ -88,7 +95,23 @@ def homeintent_candidates(
             and normalize_for_compare(item.source_text) in spoken
         )
     )
-    return named or candidates
+    if named:
+        return named
+    device = re.search(
+        r"\bautomation\s+(?:für|fuer|von|zu|mit)\s+(?:der|die|das|dem|den\s+)?(?P<name>.+?)"
+        r"(?=\s+(?:die|den|eine?n?|einen|als)\s|[,.!?]|$)",
+        text, re.IGNORECASE,
+    )
+    if device is not None and entities:
+        resolved = resolve_entity(device.group("name"), entities)
+        if resolved.status is ResolveStatus.OK and resolved.entity is not None:
+            referencing = tuple(
+                item for item in candidates
+                if resolved.entity.entity_id in item.referenced_entity_ids
+            )
+            if referencing:
+                return referencing
+    return candidates
 
 
 def select_candidate_reply(

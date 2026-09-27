@@ -20,6 +20,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.homeintent.const import (
+    CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
     CONF_ADMIN_ONLY_ENTITIES,
     CONF_AGENT_AUTO_ENTITY_IDS,
     CONF_AGENT_MEDIA_PLAYERS,
@@ -91,6 +92,7 @@ SETUP_OPTIONS: dict[str, Any] = {
     "agent_auto_enabled": False,
     CONF_AGENT_AUTO_ENTITY_IDS: [],
     "documents_enabled": False,
+    CONF_ALLOW_NON_ADMIN_AUTOMATIONS: False,
 }
 
 
@@ -264,3 +266,62 @@ async def test_options_flow_can_save_proactive_enabled(hass: HomeAssistant, hass
     assert entry.options[CONF_PROACTIVE_CONTEXT_ENABLED] is True
     # Unrelated learning switches stay at their saved (off) values.
     assert entry.options[CONF_EXPERIENCE_LEARNING_ENABLED] is False
+
+
+async def test_saving_options_keeps_the_entity_selection_dynamic(
+    hass: HomeAssistant, hass_client
+) -> None:
+    """F6: saving any other option must not freeze today's Assist exposure."""
+    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+
+    assert await async_setup_component(hass, "homeassistant", {})
+    hass.states.async_set("light.kueche", "on")
+    async_expose_entity(hass, "conversation", "light.kueche", True)
+    entry = await _entry(hass)
+    client = await hass_client()
+    data = await _open_configure(hass, client, entry)
+    assert _default(_fields(data)[CONF_SELECTED_ENTITIES]) in (None, [])
+
+    result = await _submit(client, data, {CONF_PROACTIVE_CONTEXT_ENABLED: True})
+
+    assert result["type"] == "create_entry", result
+    assert not entry.options.get(CONF_SELECTED_ENTITIES)
+    # A later exposure is visible without touching the options again.
+    from custom_components.homeintent.hass_entities import get_selected_entity_ids
+
+    hass.states.async_set("person.anna", "home")
+    async_expose_entity(hass, "conversation", "person.anna", True)
+    assert "person.anna" in get_selected_entity_ids(hass, entry)
+
+
+async def test_fixed_selection_hiding_exposed_entities_raises_a_repair_issue(
+    hass: HomeAssistant,
+) -> None:
+    """F6: installations frozen by 7.1.2 are told how to become dynamic again."""
+    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+    from homeassistant.helpers import issue_registry as ir
+
+    assert await async_setup_component(hass, "homeassistant", {})
+    for entity_id in ("light.kueche", "person.anna"):
+        hass.states.async_set(entity_id, "on")
+        async_expose_entity(hass, "conversation", entity_id, True)
+    entry = await _entry(hass, {**SETUP_OPTIONS, CONF_SELECTED_ENTITIES: ["light.kueche"]})
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, "fixed_entity_selection")
+    assert issue is not None
+    assert issue.translation_placeholders == {"count": "1", "examples": "person.anna"}
+    # The deliberate selection itself is never rewritten.
+    assert entry.options[CONF_SELECTED_ENTITIES] == ["light.kueche"]
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_new_entry_reserves_automation_creation_for_admins(hass: HomeAssistant) -> None:
+    """F26: a fresh installation stores the safer default explicitly."""
+    assert await async_setup_component(hass, "homeassistant", {})
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    assert result["type"] == "create_entry"
+    assert result["options"][CONF_ALLOW_NON_ADMIN_AUTOMATIONS] is False
+    assert result["options"] == SETUP_OPTIONS
+    await hass.async_block_till_done()

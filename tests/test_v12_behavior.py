@@ -559,6 +559,84 @@ def test_low_priority_burst_is_grouped_and_smoke_bypasses(tmp_path):
     asyncio.run(scenario())
 
 
+def test_notice_right_after_a_critical_alarm_is_delivered_not_grouped(tmp_path):
+    """F28: a critical alarm must not use up the ordinary attention budget."""
+    states = garage_states() + [entity("sensor.washer", "Waschmaschine", "running", area="bath")]
+    world = build_world(
+        tmp_path, states, recipients={"philipp": philipp()},
+        household={"person.philipp": "not_home", "person.anna": "not_home"},
+    )
+    world.engine.detector = SituationDetector(DetectorConfig(
+        appliance_entity_ids=frozenset({"sensor.washer"}),
+    ))
+
+    async def scenario():
+        await world.change("binary_sensor.smoke_hall", "on")
+        assert world.ports.delivered[-1].priority is PriorityLevel.CRITICAL
+        await world.ports.advance(timedelta(seconds=20))
+        await world.change("sensor.washer", "finished")
+        assert len(world.ports.delivered) == 2
+        assert "Waschmaschine" in world.ports.delivered[-1].text
+        assert world.engine.history.records()[-1].result == "delivered"
+
+    asyncio.run(scenario())
+
+
+def test_grouped_notice_is_summarized_and_delivered(tmp_path):
+    """F28: grouping summarizes; it never silently drops a notice."""
+    states = garage_states() + [
+        entity(f"sensor.appliance_{index}", name, "running", area="bath")
+        for index, name in enumerate(("Waschmaschine", "Trockner"))
+    ]
+    world = build_world(
+        tmp_path, states, recipients={"philipp": philipp()},
+        household={"person.philipp": "not_home", "person.anna": "not_home"},
+    )
+    world.engine.detector = SituationDetector(DetectorConfig(
+        appliance_entity_ids=frozenset({"sensor.appliance_0", "sensor.appliance_1"}),
+    ))
+
+    async def scenario():
+        await world.change("sensor.appliance_0", "finished")
+        await world.ports.advance(timedelta(seconds=10))
+        await world.change("sensor.appliance_1", "finished")
+        assert len(world.ports.delivered) == 1
+        assert world.engine.history.records()[-1].result == "grouped"
+        await world.ports.advance(timedelta(minutes=3))
+        assert len(world.ports.delivered) == 2
+        assert "Trockner" in world.ports.delivered[-1].text
+        assert world.engine.history.records()[-1].result == "delivered"
+
+    asyncio.run(scenario())
+
+
+def test_undeliverable_digest_is_recorded_not_dropped(tmp_path):
+    states = garage_states() + [
+        entity(f"sensor.appliance_{index}", name, "running", area="bath")
+        for index, name in enumerate(("Waschmaschine", "Trockner"))
+    ]
+    world = build_world(
+        tmp_path, states, recipients={"philipp": philipp()},
+        household={"person.philipp": "not_home", "person.anna": "not_home"},
+    )
+    world.engine.detector = SituationDetector(DetectorConfig(
+        appliance_entity_ids=frozenset({"sensor.appliance_0", "sensor.appliance_1"}),
+    ))
+
+    async def scenario():
+        await world.change("sensor.appliance_0", "finished")
+        await world.ports.advance(timedelta(seconds=10))
+        await world.change("sensor.appliance_1", "finished")
+        world.ports.delivery_fails = True
+        await world.ports.advance(timedelta(minutes=3))
+        record = world.engine.history.records()[-1]
+        assert record.subject_label and "Trockner" in record.subject_label
+        assert record.result == "delivery_failed"
+        assert "group_delivery_failed" in record.reasons
+
+    asyncio.run(scenario())
+
+
 # --- 59 quiet hours -------------------------------------------------------------
 
 def test_quiet_hours_matrix_end_to_end(tmp_path):
@@ -694,3 +772,71 @@ def test_polite_command_is_not_a_standing_permission():
     assert not looks_like_permission_request("Darfst du das Licht ausschalten?")
     assert looks_like_permission_request("Du darfst künftig das Licht ausschalten.")
     assert looks_like_permission_request("Wenn ich gehe, darfst du das Licht ausschalten.")
+
+
+# --- F15: power-metered and binary-sensor appliances ---------------------------
+
+def _power_washer(watts: str):
+    from dataclasses import replace as _replace
+
+    return _replace(
+        entity("sensor.washer_power", "Leistung Waschmaschine", watts, area="bath",
+               device_class="power"),
+        unit="W",
+    )
+
+
+def test_power_metered_washer_finishes_after_a_sustained_low_draw(tmp_path):
+    states = garage_states() + [_power_washer("0")]
+    world = _home_world(tmp_path, states=states)
+    world.engine.detector = SituationDetector(
+        DetectorConfig(appliance_entity_ids=frozenset({"sensor.washer_power"}))
+    )
+
+    async def scenario():
+        await world.change("sensor.washer_power", "1850")
+        await world.ports.advance(timedelta(minutes=30))
+        await world.change("sensor.washer_power", "2")
+        # A drop alone is not "finished" yet: nothing before the idle time.
+        await world.ports.advance(timedelta(seconds=20))
+        assert not any("Waschmaschine" in item.text for item in world.ports.delivered)
+        await world.ports.advance(timedelta(minutes=1))
+        assert any(item.text == "Die Waschmaschine ist fertig." for item in world.ports.delivered)
+        assert world.sink.device_calls == []
+
+    asyncio.run(scenario())
+
+
+def test_power_pause_shorter_than_idle_time_is_not_finished(tmp_path):
+    states = garage_states() + [_power_washer("0")]
+    world = _home_world(tmp_path, states=states)
+    world.engine.detector = SituationDetector(
+        DetectorConfig(appliance_entity_ids=frozenset({"sensor.washer_power"}))
+    )
+
+    async def scenario():
+        await world.change("sensor.washer_power", "1850")
+        await world.change("sensor.washer_power", "2")
+        await world.ports.advance(timedelta(seconds=30))
+        await world.change("sensor.washer_power", "1700")  # program continues
+        await world.ports.advance(timedelta(minutes=5))
+        assert not any("Waschmaschine" in item.text for item in world.ports.delivered)
+
+    asyncio.run(scenario())
+
+
+def test_binary_running_sensor_on_to_off_is_finished(tmp_path):
+    states = garage_states() + [
+        entity("binary_sensor.dishwasher_running", "Geschirrspüler", "on", area="kitchen",
+               device_class="running"),
+    ]
+    world = _home_world(tmp_path, states=states)
+    world.engine.detector = SituationDetector(
+        DetectorConfig(appliance_entity_ids=frozenset({"binary_sensor.dishwasher_running"}))
+    )
+
+    async def scenario():
+        await world.change("binary_sensor.dishwasher_running", "off")
+        assert any("Geschirrspüler" in item.text for item in world.ports.delivered)
+
+    asyncio.run(scenario())

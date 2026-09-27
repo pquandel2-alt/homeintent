@@ -27,11 +27,16 @@ _NUMBER = re.compile(r"\bauf\s+(-?\d+(?:[,.]\d+)?)\b", re.I)
 _REGISTERED_CUE = re.compile(
     r"\b(?:heizbetrieb|kühlbetrieb|kuehlbetrieb|automatik|entfeuchten|"
     r"lüften|lueften|preset|modus|betrieb|lautstärke|lautstaerke|quelle|"
-    r"ladestation|piep\w*|suchsignal|saugstärke|saugstaerke|"
-    r"luftfeuchtigkeit|feuchtigkeit|warmwasser|\w*heizung|\w*profil|programm|lamellen|"
+    r"ladestation|piep\w*|suchsignal|saugstärke|saugstaerke|saugstufe|saugleistung|"
+    r"luftfeuchtigkeit|feuchtigkeit|\w*befeuchter|\w*warmwasser\w*|\w*heizung|\w*profil|"
+    r"\w*programm|lamellen|drehzahl|"
     r"neigung|kippposition|\w*ventil|mähroboter|maehroboter|kamera|"
-    r"nachricht|meldung|oszillier\w*|schwenk\w*|richtung|unmute|"
-    r"stummschaltung|stumm|ton|laut)\b",
+    r"nachricht|meldung|oszillier\w*|oszillation|schwenk\w*|richtung|unmute|"
+    r"stummschaltung|stumm|ton|laut|(?:aus)?wähl\w*|(?:aus)?waehl\w*|timer|bescheid)\b"
+    # "Stelle/Schalte X auf <Option|Zahl>": the option vocabulary lives in the
+    # entity attributes (source_list, options, preset_modes ...), so the
+    # generic "auf <Wert>" shape must reach the per-domain handlers (F11).
+    r"|\bauf\s+\S+",
     re.I,
 )
 
@@ -55,6 +60,24 @@ def _entity(
         if resolution.status is ResolutionStatus.RESOLVED
         else None
     )
+
+
+def climate_in_named_area(text: str, entities: list[EntitySnapshot]) -> EntitySnapshot | None:
+    """ "die Heizung in der Küche" -> the only climate entity of that room."""
+    key = normalize_for_compare(text)
+    if not re.search(r"\b(?:\w*heizung|thermostat|klima\w*|heizkoerper)\b", key):
+        return None
+    candidates = [
+        entity for entity in entities
+        if entity.domain == "climate"
+        and any(
+            name and re.search(
+                rf"\b(?:im|in\s+der|in\s+dem|am|beim)\s+{re.escape(normalize_for_compare(name))}\b", key
+            )
+            for name in (entity.area_name, *entity.area_aliases)
+        )
+    ]
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _option(text: str, values: object) -> str | None:
@@ -161,7 +184,7 @@ def compile_registered_operation(
                     text, scope.entities, "humidifier", "set_humidity", {"humidity": value}
                 )
 
-    climate = _entity(text, entities, {"climate"}, index)
+    climate = _entity(text, entities, {"climate"}, index) or climate_in_named_area(text, entities)
     if climate is not None:
         mode_words = {
             "heizbetrieb": "heat", "kühlbetrieb": "cool", "kuehlbetrieb": "cool",
@@ -210,6 +233,14 @@ def compile_registered_operation(
         if re.search(r"\bquelle\b", text, re.I) and _SET_CUE.search(text):
             if (source := _option(text, player.attributes.get("source_list"))) is not None:
                 return _result(text, player, "media_player", "select_source", {"source": source})
+        # "Schalte den Wohnzimmer TV auf Netflix": an offered source named
+        # after "auf" selects it (F11).
+        if re.search(r"\b(?:schalt\w*|stell\w*|wechsl\w*|wechsel\w*|umschalt\w*)\b", text, re.I):
+            target = re.search(r"\bauf\s+(?P<value>.+?)\s*(?:um)?\s*[.!?]*$", text, re.I)
+            if target is not None and (
+                source := _option(target.group("value"), player.attributes.get("source_list"))
+            ) is not None:
+                return _result(text, player, "media_player", "select_source", {"source": source})
 
     vacuum = _entity(text, entities, {"vacuum"}, index)
     if vacuum is not None:
@@ -234,10 +265,12 @@ def compile_registered_operation(
             r"\b(?:preset|modus|stell\w*|wähl\w*|waehl\w*)\b", text, re.I
         ):
             return _result(text, fan, "fan", "set_preset_mode", {"preset_mode": preset})
-        oscillating = re.search(r"\b(?:oszillier\w*|schwenk\w*)\b", text, re.I)
+        oscillating = re.search(r"\b(?:oszillier\w*|oszillation|schwenk\w*)\b", text, re.I)
         if oscillating is not None:
-            on = re.search(r"\b(?:an|ein|aktivier\w*|einschalt\w*)\b", text, re.I)
-            off = re.search(r"\b(?:aus|deaktivier\w*|ausschalt\w*)\b", text, re.I)
+            on = re.search(
+                r"\b(?:an|ein|aktivier\w*|einschalt\w*)\b|^\s*lass\b(?!.*\bnicht\b)", text, re.I
+            )
+            off = re.search(r"\b(?:aus|deaktivier\w*|ausschalt\w*|stopp\w*|nicht\s+mehr)\b", text, re.I)
             if bool(on) != bool(off):
                 return _result(text, fan, "fan", "oscillate", {"oscillating": bool(on)})
         direction = re.search(r"\b(?:vorwärts|vorwaerts|rückwärts|rueckwaerts|forward|reverse)\b", text, re.I)
@@ -248,7 +281,10 @@ def compile_registered_operation(
     humidifier = _entity(text, entities, {"humidifier"}, index)
     if humidifier is not None:
         percent = _PERCENT.search(text)
-        if percent is not None and re.search(r"\b(?:luftfeuchtigkeit|feuchtigkeit)\b", text, re.I):
+        # For a humidifier "auf 50 Prozent" can only mean its target humidity.
+        if percent is not None and (
+            re.search(r"\b(?:luftfeuchtigkeit|feuchtigkeit)\b", text, re.I) or _SET_CUE.search(text)
+        ):
             value = int(percent.group(1))
             if not _bounded(humidifier, value, "min_humidity", "max_humidity", (0, 100)):
                 return None
@@ -328,12 +364,48 @@ def compile_registered_operation(
             if supported & feature:
                 return _result(text, mower, "lawn_mower", service, action=action)
 
+    helper_timer = _entity(text, entities, {"timer"}, index)
+    if helper_timer is not None:
+        operations = [
+            (service, action)
+            for pattern, service, action in (
+                (r"\b(?:start\w*|beginn\w*)\b", "start", SemanticAction.START),
+                (r"\b(?:pausier\w*|anhalt\w*|halt\w*\s+an)\b", "pause", SemanticAction.PAUSE),
+                (r"\b(?:abbrech\w*|brich\w*|stopp\w*|beend\w*)\b", "cancel", SemanticAction.STOP),
+            )
+            if re.search(pattern, text, re.I)
+        ]
+        if len(operations) == 1:
+            service, action = operations[0]
+            return _result(text, helper_timer, "timer", service, action=action)
+
     camera = _entity(text, entities, {"camera"}, index)
     if camera is not None and player is not None and re.search(r"\b(?:zeig\w*|stream\w*|übertrag\w*|uebertrag\w*)\b", text, re.I):
         return _result(text, camera, "camera", "play_stream", {"media_player": player.entity_id}, action=SemanticAction.START)
 
     notify = _entity(text, entities, {"notify"}, index)
-    if notify is not None and re.search(r"\b(?:send\w*|schick\w*)\b", text, re.I):
+    clause = None
+    if re.search(r"\b(?:send\w*|schick\w*|sag\w*|gib)\b", text, re.I):
+        # "Schick Anna eine Nachricht, dass das Essen fertig ist" (F13): the
+        # shared notification grammar extracts recipient and message; a
+        # named recipient must match exactly one notify entity.
+        from ..automation_notification import resolve_notify_target
+        from ..notification_language import NotificationRecipientKind, parse_notification_clause
+
+        clause = parse_notification_clause(text)
+        if (
+            notify is None
+            and clause is not None
+            and clause.recipient_kind is NotificationRecipientKind.EXPLICIT_TARGET
+            and (target := resolve_notify_target(clause.recipient_name or "", entities)) is not None
+        ):
+            notify = next((item for item in entities if item.entity_id == target.entity_id), None)
+    if notify is not None and re.search(r"\b(?:send\w*|schick\w*|sag\w*|gib)\b", text, re.I):
+        if clause is not None and clause.message:
+            return _result(
+                text, notify, "notify", "send_message", {"message": clause.message},
+                action=SemanticAction.START,
+            )
         message = re.search(r"\b(?:nachricht|meldung)\s+(.+)$", text, re.I)
         if message is not None and (body := message.group(1).strip(" .!?")):
             return _result(text, notify, "notify", "send_message", {"message": body}, action=SemanticAction.START)

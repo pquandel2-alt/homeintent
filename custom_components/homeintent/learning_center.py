@@ -806,6 +806,14 @@ class LearningCenterService:
             return None
         return self.labels.user_name(user_id) or None
 
+    def _recipient_label(self, record: HistoryRecord, viewer: Viewer) -> str | None:
+        # A household entry names every recipient; a personal one only ever
+        # names the viewer themself.
+        if record.privacy >= PrivacyLevel.PERSONAL:
+            return self._user(viewer.user_id) if record.addressed_to(viewer.user_id) else None
+        names = [name for user_id in record.recipient_user_ids if (name := self._user(user_id))]
+        return ", ".join(names) or None
+
     def _area(self, area_id: object) -> str | None:
         if not isinstance(area_id, str) or not area_id:
             return None
@@ -1173,7 +1181,7 @@ class LearningCenterService:
         # PERSONAL (and stricter) history belongs to its recipient only; an
         # administrator gets no exception.
         if record.privacy >= PrivacyLevel.PERSONAL:
-            return record.recipient_user_id == viewer.user_id
+            return record.addressed_to(viewer.user_id)
         return True
 
     def history(
@@ -1194,10 +1202,8 @@ class LearningCenterService:
                 item.record_id, item.timestamp.isoformat(), item.situation_kind.value,
                 item.subject_label, item.decision.value, item.channel.value,
                 item.result, item.reasons[:6],
-                item.recipient_user_id is not None and item.recipient_user_id == viewer.user_id,
-                self._user(item.recipient_user_id)
-                if item.privacy < PrivacyLevel.PERSONAL
-                or item.recipient_user_id == viewer.user_id else None,
+                item.addressed_to(viewer.user_id),
+                self._recipient_label(item, viewer),
                 item.acknowledgement,
                 Visibility.PERSONAL if item.privacy >= PrivacyLevel.PERSONAL else Visibility.HOUSEHOLD,
             )
