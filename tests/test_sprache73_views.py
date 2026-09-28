@@ -193,3 +193,14 @@ def test_threshold_query_without_match_answers_none(monkeypatch, question):
 def test_singular_kind_with_several_members_asks_by_name(monkeypatch, sentence):
     turn = HouseConversation(monkeypatch).say(sentence)
     assert turn.calls == [] and "?" in turn.speech
+
+
+def test_outdoor_temperature_prefers_the_measured_sensor(monkeypatch):
+    from custom_components.homeintent.entities import EntitySnapshot
+
+    weather = EntitySnapshot(
+        "weather.forecast_home", "Forecast Home", "weather", "sunny",
+        attributes={"temperature": 30.0, "humidity": 40},
+    )
+    turn = HouseConversation(monkeypatch, [*house_entities(), weather]).say("Wie warm ist es draußen?")
+    assert "12,3" in turn.speech and "30" not in turn.speech
