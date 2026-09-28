@@ -450,8 +450,25 @@ def resolve_entity_scored(
     flagged here rather than silently accepted.
     """
     spoken = (name or "").strip()
+    ranked = rank_name_candidates(
+        spoken, entities, area_id=area_id, domain=domain,
+        device_class=device_class, index=index,
+    )
+    return assemble_name_resolution(spoken, ranked)
+
+
+def rank_name_candidates(
+    spoken: str,
+    entities: list[EntitySnapshot],
+    *,
+    area_id: str | None = None,
+    domain: str | None = None,
+    device_class: str | None = None,
+    index: EntityIndex | None = None,
+) -> list[EntityCandidate]:
+    """Name tier of the one target resolution: scored candidates only."""
     if not spoken:
-        return ResolutionResult(status=ResolutionStatus.NOT_FOUND)
+        return []
     spoken_norm = normalize_for_compare(spoken)
 
     candidates: list[EntitySnapshot] = entities
@@ -510,6 +527,13 @@ def resolve_entity_scored(
         if ranked:
             break
 
+    return ranked
+
+
+def assemble_name_resolution(
+    spoken: str, ranked: list[EntityCandidate]
+) -> ResolutionResult:
+    """Status from a ranking: resolved, ambiguous or confirmation needed."""
     if not ranked:
         return ResolutionResult(status=ResolutionStatus.NOT_FOUND)
 

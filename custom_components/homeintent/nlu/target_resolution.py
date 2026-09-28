@@ -30,13 +30,14 @@ from enum import Enum, auto
 from typing import Iterable, Mapping, Sequence
 
 from .capabilities import describe_abilities
-from ..entities import EntitySnapshot, normalize_for_compare
+from ..entities import EntitySnapshot, ResolutionResult, normalize_for_compare
 from ..name_similarity import edit_distance
 from .device_ontology import (
     GENERA,
     analyse_word,
     entity_genera,
     genus,
+    lookup_genus_word,
     negative_phrase,
 )
 from .normalize import german_number
@@ -760,3 +761,118 @@ class DescribedTarget:
 
     resolutions: tuple[TargetResolution, ...]
     lexicon: PlaceLexicon = field(repr=False, default=None)  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# The one target resolution for name phrases (7.4.0).
+#
+# Every "which device is meant by this phrase" question goes through
+# ``resolve_phrase``: the scored name tier (exact names/aliases, contains,
+# bounded fuzzy correction - moved here from the historic resolver) plus the
+# rules of this module:
+#   * only the entities passed in (the exposed ones) are candidates;
+#   * a correction never crosses class boundaries: when the phrase names a
+#     device kind ("die Leuchte im Bad"), contains/fuzzy candidates of other
+#     domains are dropped; exact registry names always stay authoritative;
+#   * ambiguity stays ambiguity (``AMBIGUOUS``) - a spoken place narrows it,
+#     nothing else does; the caller asks a numbered question
+#     (``numbered_question``);
+#   * learned bindings (aliases, default choices) are applied here and only
+#     here (``BINDING_HOOKS``, filled from 7.4.1 on).
+
+
+def _phrase_domains(words: Sequence[str]) -> frozenset[str] | None:
+    keys = {key for word in words for key in lookup_genus_word(word)}
+    if not keys:
+        return None
+    domains: set[str] = set()
+    for key in keys:
+        domains |= set(genus(key).domains)
+    return frozenset(domains)
+
+
+def resolve_phrase(
+    name: str,
+    entities: Sequence[EntitySnapshot],
+    *,
+    area_id: str | None = None,
+    domain: str | None = None,
+    device_class: str | None = None,
+    index: object | None = None,
+) -> ResolutionResult:
+    """Resolve a spoken name phrase to exposed entities (single entry point)."""
+    from ..entities import (
+        EntityMatchSource,
+        ResolutionStatus,
+        assemble_name_resolution,
+        rank_name_candidates,
+    )
+
+    spoken = (name or "").strip()
+    entity_list = list(entities)
+    ranked = rank_name_candidates(
+        spoken, entity_list, area_id=area_id, domain=domain,
+        device_class=device_class, index=index,  # type: ignore[arg-type]
+    )
+    words = normalize_for_compare(spoken).replace("-", " ").split()
+    kinds = _phrase_domains(words)
+    if kinds is not None and ranked:
+        loose = {EntityMatchSource.CONTAINS, EntityMatchSource.FUZZY}
+        kept = [
+            item for item in ranked
+            if item.source not in loose or item.entity.domain in kinds
+        ]
+        ranked = kept
+    result = assemble_name_resolution(spoken, ranked)
+    if result.status is ResolutionStatus.AMBIGUOUS and len(words) > 1:
+        mentions = build_place_lexicon(entity_list).scan(words)
+        places = [mention.place for mention in mentions if mention.place.kind is not PlaceKind.HERE]
+        if places:
+            narrowed = [item for item in ranked if places[0].contains(item.entity)]
+            if narrowed and len(narrowed) < len(ranked):
+                result = assemble_name_resolution(spoken, narrowed)
+    return result
+
+
+def numbered_question(candidates: Sequence[EntitySnapshot], *, noun: str = "Gerät") -> str:
+    """"Welches Gerät meinst du: 1. …, 2. … oder 3. …?"."""
+    items = [f"{index}. {entity.friendly_name}" for index, entity in enumerate(candidates, 1)]
+    listed = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " oder " + items[-1]
+    article = "Welche" if noun in {"Routine", "Automation", "Szene"} else "Welches"
+    return f"{article} {noun} meinst du: {listed}?"
+
+
+# ---------------------------------------------------------------------------
+# Shadow comparison of the historic resolver and ``resolve_phrase`` (7.4.0).
+
+RESOLUTION_DRIFTS = ("EQUIVALENT", "REFINEMENT", "OLD_BETTER", "SAFETY_DRIFT")
+
+
+def _resolution_ids(result: ResolutionResult) -> frozenset[str]:
+    ids = {entity.entity_id for entity in result.candidates}
+    if result.entity is not None:
+        ids.add(result.entity.entity_id)
+    return frozenset(ids)
+
+
+def compare_resolutions(old: ResolutionResult, new: ResolutionResult) -> tuple[str, str]:
+    """Drift class and reason between the historic and the new resolution.
+
+    * new ids outside the old ids, or a dropped confirmation for a fuzzy
+      correction: ``SAFETY_DRIFT``;
+    * the old one resolved, the new one does not: ``OLD_BETTER``;
+    * the new one names a subset (fewer candidates, place narrowing,
+      class boundary): ``REFINEMENT``.
+    """
+    from ..entities import ResolutionStatus
+
+    old_ids, new_ids = _resolution_ids(old), _resolution_ids(new)
+    if old.status is new.status and old_ids == new_ids:
+        return "EQUIVALENT", ""
+    if not new_ids <= old_ids:
+        return "SAFETY_DRIFT", "new_targets"
+    if old.status is ResolutionStatus.CONFIRMATION_REQUIRED and new.status is ResolutionStatus.RESOLVED:
+        return "SAFETY_DRIFT", "confirmation_dropped"
+    if old.status is ResolutionStatus.RESOLVED:
+        return "OLD_BETTER", f"resolved_to_{new.status.name.lower()}"
+    return "REFINEMENT", f"{old.status.name.lower()}_to_{new.status.name.lower()}"
