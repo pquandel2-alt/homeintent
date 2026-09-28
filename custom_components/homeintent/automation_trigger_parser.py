@@ -43,7 +43,7 @@ from pathlib import Path
 from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList
 
 from .hassil_compat import recognize_aligned
-from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
+from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 from .automation_target_resolver import build_device_class_target, build_named_target
 from .nlu.automation_model import (
     NumericComparator,
@@ -314,7 +314,7 @@ class AutomationTriggerParser:
             return None  # no entity->device mapping available - never guess a device_id
 
         name = _strip_locative_prepositions(str(name_slot.value))
-        resolved = resolve_entity_scored(name, context.entities, index=context.index)
+        resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None
         device = context.world_model.device_for_entity(resolved.entity.entity_id)
@@ -330,7 +330,7 @@ class AutomationTriggerParser:
             return None
 
         name = _strip_locative_prepositions(str(name_slot.value))
-        resolved = resolve_entity_scored(name, context.entities, domain="person", index=context.index)
+        resolved = resolve_phrase(name, context.entities, domain="person", index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None
         if resolved.entity.domain != "person":

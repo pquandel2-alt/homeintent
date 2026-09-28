@@ -33,7 +33,7 @@ from .nlu.entity_resolution import (
     ResolutionStatus,
     ResolveStatus,
     resolve_entity,
-    resolve_entity_scored,
+    resolve_phrase,
 )
 from .nlu.degree_semantics import extract_degree
 from .nlu.frame import AreaReference, Comparison, Quantifier, SemanticFrame, TargetReference, TemporalExpression
@@ -2174,7 +2174,7 @@ class StateQueryParser:
         if name_slot is None:
             return None
         name = _strip_locative_prepositions(str(name_slot.value))
-        resolved = resolve_entity_scored(
+        resolved = resolve_phrase(
             name, context.entities, area_id=area_id, index=context.index
         )
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
@@ -2423,7 +2423,7 @@ class AutomationQueryParser:
             return ParseResult(frame=frame, resolved_entities=[])
 
         name = _strip_locative_prepositions(str(name_slot.value))
-        resolved = resolve_entity_scored(name, context.entities, index=context.index)
+        resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None  # not found or ambiguous - never guess, no clarification round-trip
 
@@ -2525,7 +2525,7 @@ class AutomationDeleteParser:
         if named:
             return AutomationDeleteMatch(entity=None, matched=named)
         name = _strip_locative_prepositions(spoken)
-        resolved = resolve_entity_scored(name, context.entities, index=context.index)
+        resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None  # entity itself not found or ambiguous - never guess (Regel 4)
 
@@ -2593,7 +2593,7 @@ class AutomationToggleParser:
         if named:
             return AutomationToggleMatch(entity=None, matched=named, enable=enable)
         name = _strip_locative_prepositions(spoken)
-        resolved = resolve_entity_scored(name, context.entities, index=context.index)
+        resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None  # entity itself not found or ambiguous - never guess (Regel 4)
 

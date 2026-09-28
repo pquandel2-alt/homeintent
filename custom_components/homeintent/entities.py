@@ -590,7 +590,9 @@ def resolve_entity(
     contains-tier competitor always exceeds the ambiguity margin), duplicate
     names/aliases surface as AMBIGUOUS rather than "first one wins".
     """
-    result = resolve_entity_scored(name, entities, index=index)
+    from .nlu.target_resolution import resolve_phrase  # the one target resolution
+
+    result = resolve_phrase(name, entities, index=index)
     if result.status is ResolutionStatus.RESOLVED:
         return ResolveResult(
             status=ResolveStatus.OK,

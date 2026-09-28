@@ -8,7 +8,7 @@ from .areas import AreaResolveStatus, resolve_area_name
 from .entities import EntitySnapshot
 from .floors import FloorResolveStatus, resolve_floor_name
 from .nlu.context import ConversationContext
-from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
+from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 from .nlu.frame import AreaReference, SemanticFrame, TargetReference
 from .nlu.normalize import normalize
 from .nlu.parse_outcome import ParseFailureReason, UnderstandingFeedback
@@ -99,7 +99,7 @@ class ConversationCorrectionResolver:
             flags=re.IGNORECASE,
         )
         domain = previous.entities[0].domain
-        named = resolve_entity_scored(
+        named = resolve_phrase(
             location, [entity for entity in entities if entity.domain == domain]
         )
         if named.status is ResolutionStatus.RESOLVED and named.entity is not None:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .customization import parse_custom_aliases
 from .entities import EntitySnapshot, normalize_for_compare
-from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
+from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 
 
 @dataclass(frozen=True)
@@ -44,12 +44,12 @@ def parse_alias_learning(
         [item for item in entities if item.area_id == area_id]
         if area_id is not None else entities
     )
-    resolved = resolve_entity_scored(target, candidates)
+    resolved = resolve_phrase(target, candidates)
     if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
         return None
     # Never shadow another selected entity's canonical name or alias.
     if area_id is None:
-        collision = resolve_entity_scored(alias, entities)
+        collision = resolve_phrase(alias, entities)
         if (
             collision.status is ResolutionStatus.RESOLVED
             and collision.entity is not None

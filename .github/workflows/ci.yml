@@ -37,11 +37,14 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/v7_shadow_report.py
-          --check docs/perf/v7-shadow-baseline-7.3.4.json
+          --check docs/perf/v7-shadow-baseline-7.4.0.json
           --quiet
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
+      - name: Zielauflösung gegen historischen Resolver (SAFETY_DRIFT blockiert)
+        if: matrix.python-version == '3.12'
+        run: python scripts/resolver_shadow.py --check
       - name: V9-Latenzbudget bei großer Registry prüfen
         if: matrix.python-version == '3.12'
         run: >-

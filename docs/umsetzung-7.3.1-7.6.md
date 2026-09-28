@@ -475,3 +475,128 @@ Frisches Testhaus, eigenes Prüfskript: **8/8**. Funktionsszenarien
   Live-Shadow-Modus wird der Kandidat aufgerufen, schreibt aber nachweislich
   nichts (nur das Küchenlicht wird geschaltet); das Protokoll enthält keinen
   Satztext; im Modus `off` werden Kandidaten nicht aufgerufen.
+
+---
+
+## Phase 5 – Eine Zielauflösung (7.4.0)
+
+### Umgesetzt
+
+- **`entities.resolve_entity_scored`** in zwei Teile geteilt, das Verhalten
+  bleibt unverändert: `rank_name_candidates` (Namensstufe mit Punkten) und
+  `assemble_name_resolution` (Status aus der Rangfolge). Beide Teile nutzt
+  jetzt auch die neue Auflösung.
+- **`nlu/target_resolution.resolve_phrase`** ist der einzige Einstieg für
+  „welches Gerät meint dieser Name?“:
+  - Namensstufe (exakt, Alias, Teilname, begrenzte Tippfehler-Korrektur).
+  - Kandidaten sind nur die übergebenen, also freigegebenen Entitäten.
+  - **Klassengrenze**: Nennt die Phrase eine Gerätegattung, fallen Teilnamen-
+    und Tippfehler-Kandidaten fremder Gattung weg. Maßgeblich ist die Domäne
+    oder die Gattung aus Name und Geräteklasse der Entität, so bleibt „Licht
+    Sportraum“ als Schalter ein Licht. Exakte Registry-Namen bleiben
+    maßgeblich. Befehlswörter (`automation`, `script`, `scene`) sind keine
+    Gerätegattung.
+  - **Mehrdeutigkeit bleibt Mehrdeutigkeit.** Ein gesprochener Ort engt ein,
+    sonst nichts.
+  - `numbered_question` liefert die nummerierte Rückfrage.
+  - Die Stelle, an der ab 7.4.1 gelernte Bindungen angewandt werden, ist im
+    Modulkommentar festgelegt.
+- **Shadow alt gegen neu** (`scripts/resolver_shadow.py`, Hook in
+  `tests/conftest.py` über `HOMEINTENT_RESOLVER_SHADOW`):
+  - Bei jedem Aufruf liefen beide Resolver. Die Abweichungen wurden je
+    Aufrufer klassifiziert (`compare_resolutions`):
+    - neue Ziele → SAFETY_DRIFT
+    - weggefallene Bestätigung → SAFETY_DRIFT
+    - alt gelöst, neu nicht → „alt besser“, außer der alte Resolver hat die
+      genannte Gattung überschritten → REFINEMENT/`class_boundary`
+    - Teilmenge → REFINEMENT
+  - **Umschalten je Aufrufer:** Alle 19 Aufrufstellen in 10 Modulen rufen
+    jetzt `resolve_phrase` auf, darunter
+    - `parsers`
+    - `semantic_compiler`, `semantic_projection`
+    - `entity_resolution.rank_semantic_targets`/`resolve_named_target`
+    - Automations-Auslöser, -Bedingungen und -Ziele
+    - `conversation_correction`, `alias_learning`
+    - `entities.resolve_entity`
+  - `resolve_entity_scored` bleibt als historische Namensstufe für den
+    Vergleich.
+  - Ein Architekturtest verbietet neue direkte Aufrufe.
+  - Das Skript hüllt jetzt `resolve_phrase` ein und läuft als CI-Schritt
+    „Zielauflösung gegen historischen Resolver (SAFETY_DRIFT blockiert)“.
+- **Eigene Suchen, die bleiben** (dokumentiert, nicht umgestellt):
+  - `entity_scope.resolve_entity_scope` (registrierte Operationen, Timer,
+    erweiterte Abfragen) ist eine Bereichssuche nach „ein Gerät / eine
+    homogene Raum-, Etagen- oder Alles-Gruppe“. Sie arbeitet über
+    Teilnamen im Satz und lehnt mehrere Namenstreffer und gemischte
+    Domänen ab. Sie rät also nie, und ihre Aufgabe (Gruppen) ist eine andere
+    als die Namensauflösung.
+  - `target_resolution.resolve_description` (Gattung + Ort + Merkmal) ist die
+    Beschreibungsauflösung desselben Moduls und nutzt dieselben Regeln.
+
+### Shadow-Ergebnis vor dem Umschalten
+
+| Lauf | Aufrufe | EQUIVALENT | REFINEMENT | alt besser | SAFETY_DRIFT |
+|---|---|---|---|---|---|
+| Korpus (2022 Sätze) | 438 | 436 | 2 | 0 | 0 |
+| Testsuite, erster Stand | 1743 | 1729 | 9 | 5 | 0 |
+| Testsuite nach Nachbesserung | 1743 | 1730 | 13 | 0 | 0 |
+
+**Die fünf Fälle „alt besser“:**
+- Drei waren Fehlgriffe des alten Resolvers über die Gattungsgrenze
+  („Rolllade Büro“, „Rollladen Büro“ → `light.buero`; „Rollladen Küche“ →
+  `light.kueche`). Der neue lehnt sie ab; sie zählen jetzt als
+  REFINEMENT/`class_boundary`.
+- Einer kam aus demselben Grund aus einer Paraphrase („der Rollladen im Büro
+  50 Prozent erreicht“ → `light.buero`).
+- Einer war ein echter Rückschritt: „…eine Automation für die Haustür…“.
+  Dort wurde „Automation“ als Gattung gelesen. Behoben, Befehlswörter sind
+  keine Gerätegattung.
+
+**Weitere Nachbesserung:** Bei „Licht“ fielen zunächst Schalter weg, die
+„Licht“ im Namen tragen. Das ist behoben, sie bleiben Kandidaten.
+
+**Verbleibende REFINEMENTs:**
+- „Heizung Wohnzimmer“ wird statt mehrdeutig über Klima, Licht und Medien
+  jetzt aufgelöst.
+- „Schlafzimmer Fenster“ wird zum Fensterkontakt statt mehrdeutig mit dem
+  Ventilator.
+- „Tür“ nennt nur noch Türkontakte statt zusätzlich Schloss und Klingeltaste.
+- „Rolllade Wohnzimmer“ ohne Rollladen im Haus: nicht gefunden statt
+  mehrdeutig über fremde Geräte.
+
+### Ergebnisse nach dem Umschalten
+
+- Ende-zu-Ende über den Shadow-Korpus: Signaturen vor dem Umschalten (Commit
+  658bba2) gegen danach, **2022/2022 EQUIVALENT**, 0 SAFETY_DRIFT.
+- V8-Shadow-Baseline unverändert (`docs/perf/v7-shadow-baseline-7.4.0.json`,
+  bis auf die Versionsnummer identisch mit 7.3.4).
+- Neue Tests `tests/test_one_target_resolution.py` (14):
+  - Architekturregel
+  - Klassengrenze, auch Ende-zu-Ende: „Fahre den Rollladen Büro hoch“
+    schaltet kein Licht
+  - Gattung im eigenen Namen, Befehlswörter
+  - exakte Namen
+  - Ortseinengung
+  - Bestätigung bei einzelner Tippfehler-Korrektur
+  - nur freigegebene Kandidaten
+  - nummerierte Rückfrage
+  - Drift-Klassen
+
+### Live-Prüfung (Testbett, frisch aufgesetzt)
+
+- `sim/runner.py`: **158/162**. Die vier Abweichungen sind die gewollten aus
+  Phase 3: Bedürfnisse im Standard `propose` (s73-s6-too-bright,
+  s73-2-freezing, s73-2-stale-air) und die Sonnenuntergangs-Rückfrage in
+  auto-manage. Keine neue Abweichung durch die Zielauflösung.
+- Schlafen-Regressionen und Phase-3-Prüfungen: **15/15**.
+- Zielauflösung live: **8/8**.
+  - „Fahre den Rollladen Büro hoch“ fährt den Raffstore und kein Licht.
+  - Mehrdeutig („Wohnzimmer Rollladen“, „Nachttischlampe“) gibt eine
+    nummerierte Rückfrage; Antwort per Seite oder Nummer.
+  - Ein exakter Name wird ausgeführt.
+  - Ein Tippfehler führt zur Bestätigung statt zur Ausführung.
+  - In einer Automation wird „Rollladen im Büro“ zum Rollladen-Auslöser und
+    nie zum Bürolicht.
+- Hinweis zum Ablauf: Ein erster Runner-Lauf wurde durch ein Zeitlimit
+  abgebrochen und hinterließ geänderte Optionen. Das Testbett wurde neu
+  aufgesetzt; gezählt wird nur der saubere Lauf.

@@ -781,14 +781,41 @@ class DescribedTarget:
 #     here (``BINDING_HOOKS``, filled from 7.4.1 on).
 
 
+# Words that name what the *command* creates or runs ("eine Automation für
+# die Haustür"), not the kind of device meant - never a class boundary.
+_META_DOMAINS = frozenset({"automation", "script", "scene"})
+
+
+def _phrase_genera(words: Sequence[str]) -> frozenset[str]:
+    """Device genus keys the phrase names (meta words excluded)."""
+    keys: set[str] = set()
+    for word in words:
+        for key in lookup_genus_word(word):
+            kinds = set(genus(key).domains)
+            if kinds and not kinds <= _META_DOMAINS:
+                keys.add(key)
+    return frozenset(keys)
+
+
 def _phrase_domains(words: Sequence[str]) -> frozenset[str] | None:
-    keys = {key for word in words for key in lookup_genus_word(word)}
-    if not keys:
-        return None
+    """Device domains the phrase's genus words allow (``None``: no genus)."""
     domains: set[str] = set()
-    for key in keys:
+    for key in _phrase_genera(words):
         domains |= set(genus(key).domains)
-    return frozenset(domains)
+    return frozenset(domains) if domains else None
+
+
+def _within_kind(entity: EntitySnapshot, kinds: frozenset[str], keys: frozenset[str]) -> bool:
+    """The entity is of the named kind by domain or by its own name/class
+    (a switch named "Licht Sportraum" is a light)."""
+    if entity.domain in kinds or keys & entity_genera(entity):
+        return True
+    for name in (entity.friendly_name, *entity.aliases):
+        for word in normalize_for_compare(name).replace("-", " ").split():
+            analysis = analyse_word(word)
+            if analysis is not None and keys & set(analysis.genera):
+                return True
+    return False
 
 
 def resolve_phrase(
@@ -815,14 +842,14 @@ def resolve_phrase(
         device_class=device_class, index=index,  # type: ignore[arg-type]
     )
     words = normalize_for_compare(spoken).replace("-", " ").split()
+    keys = _phrase_genera(words)
     kinds = _phrase_domains(words)
     if kinds is not None and ranked:
         loose = {EntityMatchSource.CONTAINS, EntityMatchSource.FUZZY}
-        kept = [
+        ranked = [
             item for item in ranked
-            if item.source not in loose or item.entity.domain in kinds
+            if item.source not in loose or _within_kind(item.entity, kinds, keys)
         ]
-        ranked = kept
     result = assemble_name_resolution(spoken, ranked)
     if result.status is ResolutionStatus.AMBIGUOUS and len(words) > 1:
         mentions = build_place_lexicon(entity_list).scan(words)
@@ -855,12 +882,16 @@ def _resolution_ids(result: ResolutionResult) -> frozenset[str]:
     return frozenset(ids)
 
 
-def compare_resolutions(old: ResolutionResult, new: ResolutionResult) -> tuple[str, str]:
+def compare_resolutions(
+    old: ResolutionResult, new: ResolutionResult, name: str = ""
+) -> tuple[str, str]:
     """Drift class and reason between the historic and the new resolution.
 
     * new ids outside the old ids, or a dropped confirmation for a fuzzy
       correction: ``SAFETY_DRIFT``;
-    * the old one resolved, the new one does not: ``OLD_BETTER``;
+    * the old one resolved, the new one does not: ``OLD_BETTER`` - unless the
+      old entity lies outside the device kind the phrase names (the old
+      resolver crossed a class boundary: ``REFINEMENT``/``class_boundary``);
     * the new one names a subset (fewer candidates, place narrowing,
       class boundary): ``REFINEMENT``.
     """
@@ -874,5 +905,13 @@ def compare_resolutions(old: ResolutionResult, new: ResolutionResult) -> tuple[s
     if old.status is ResolutionStatus.CONFIRMATION_REQUIRED and new.status is ResolutionStatus.RESOLVED:
         return "SAFETY_DRIFT", "confirmation_dropped"
     if old.status is ResolutionStatus.RESOLVED:
+        words = normalize_for_compare(name).replace("-", " ").split()
+        kinds = _phrase_domains(words)
+        if (
+            kinds is not None and old.entity is not None
+            and not _within_kind(old.entity, kinds, _phrase_genera(words))
+        ):
+            return "REFINEMENT", "class_boundary"
         return "OLD_BETTER", f"resolved_to_{new.status.name.lower()}"
     return "REFINEMENT", f"{old.status.name.lower()}_to_{new.status.name.lower()}"
+

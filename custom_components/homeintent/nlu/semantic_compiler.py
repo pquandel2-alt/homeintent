@@ -34,7 +34,7 @@ from .entity_resolution import (
     mentioned_entities,
     rank_semantic_targets,
     resolve_entity,
-    resolve_entity_scored,
+    resolve_phrase,
     resolve_mentioned_target,
 )
 from .frame import (
@@ -1040,7 +1040,7 @@ def _compile_lock_by_name_part(
     ]
     if not words:
         return None
-    resolution = resolve_entity_scored(" ".join(words), locks)
+    resolution = resolve_phrase(" ".join(words), locks)
     if resolution.status is not ResolutionStatus.RESOLVED or resolution.entity is None:
         return None
     entity = resolution.entity
@@ -1710,7 +1710,7 @@ class SemanticCommandCompiler:
             # dynamic vocabulary and therefore stay part of the check.
             registry_texts.extend(exclusion_names)
         if _has_unexplained_meaning(analysis, registry_texts):
-            fuzzy = resolve_entity_scored(
+            fuzzy = resolve_phrase(
                 " ".join(analysis.unexplained_tokens),
                 [entity for entity in entities if entity.domain == domain],
                 area_id=facts.area_id,

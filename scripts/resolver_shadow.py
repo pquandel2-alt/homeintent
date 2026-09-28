@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Shadow run of the one target resolution (7.4.0).
 
-Wraps the historic ``resolve_entity_scored`` in every HomeIntent module: each
-call still returns the historic result, and ``resolve_phrase`` runs next to it
-on the same arguments. Differences are classified per caller
+Wraps ``resolve_phrase`` - the one target resolution every caller uses since
+7.4.0 - in every HomeIntent module: each call returns its own result, and the
+historic name resolver (``resolve_entity_scored``) runs next to it on the same
+arguments. Differences are classified per caller
 (EQUIVALENT / REFINEMENT / OLD_BETTER / SAFETY_DRIFT). Nothing is executed.
 
     python scripts/resolver_shadow.py --check          # whole shadow corpus
@@ -37,13 +38,14 @@ def _ids(result) -> list[str]:
 
 
 def install() -> int:
-    """Wrap every imported ``resolve_entity_scored``; returns the count."""
+    """Wrap every imported ``resolve_phrase``; returns the count."""
     import importlib
     import pkgutil
 
     import homeintent
     from homeintent import entities as entities_module
-    from homeintent.nlu.target_resolution import compare_resolutions, resolve_phrase
+    from homeintent.nlu import target_resolution
+    from homeintent.nlu.target_resolution import compare_resolutions
 
     for info in pkgutil.walk_packages(homeintent.__path__, "homeintent."):
         try:
@@ -51,17 +53,18 @@ def install() -> int:
         except Exception:  # noqa: BLE001 - optional HA-only modules
             continue
     historic = entities_module.resolve_entity_scored
-    if getattr(historic, "_shadowed", False):
+    active = target_resolution.resolve_phrase
+    if getattr(active, "_shadowed", False):
         return 0
 
     def shadowed(name, entities, **kwargs):
-        old = historic(name, entities, **kwargs)
+        new = active(name, entities, **kwargs)
         try:
-            new = resolve_phrase(name, list(entities), **kwargs)
+            old = historic(name, list(entities), **kwargs)
         except Exception as err:  # noqa: BLE001
             RECORDS[(_caller(), "SAFETY_DRIFT", f"error:{type(err).__name__}")] += 1
-            return old
-        drift, reason = compare_resolutions(old, new)
+            return new
+        drift, reason = compare_resolutions(old, new, name)
         key = (_caller(), drift, reason)
         RECORDS[key] += 1
         if drift != "EQUIVALENT" and len(EXAMPLES[key]) < 8:
@@ -69,15 +72,15 @@ def install() -> int:
                 f"{name!r} kw={sorted(k for k, v in kwargs.items() if v is not None)} "
                 f"alt={old.status.name}:{_ids(old)} neu={new.status.name}:{_ids(new)}"
             )
-        return old
+        return new
 
     shadowed._shadowed = True  # type: ignore[attr-defined]
     count = 0
     for module in list(sys.modules.values()):
         if getattr(module, "__name__", "").startswith("homeintent") and getattr(
-            module, "resolve_entity_scored", None
-        ) is historic:
-            module.resolve_entity_scored = shadowed  # type: ignore[attr-defined]
+            module, "resolve_phrase", None
+        ) is active:
+            module.resolve_phrase = shadowed  # type: ignore[attr-defined]
             count += 1
     return count
 

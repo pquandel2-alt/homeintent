@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.3.4** (Sicherheitsinvarianten und Shadow-Vergleich)
+- Aktuelle Version: **7.4.0** (eine Zielauflösung)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,33 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.4.0 neu?
+
+**Eine Zielauflösung für alle Namen.**
+
+- Jede Frage „welches Gerät ist mit diesem Namen gemeint?“ läuft jetzt durch
+  genau eine Funktion, `resolve_phrase` in `nlu/target_resolution.py`. Das
+  betrifft Befehle, Abfragen, Automationen (Auslöser, Bedingungen, Ziele),
+  Korrekturen, Alias-Lernen, Ausnahmen und Schlösser. Die Namensstufe (exakte
+  Namen und Aliasse, Teilnamen, begrenzte Tippfehler-Korrektur) ist aus dem
+  historischen Resolver übernommen. Dazu kommen die Regeln dieses Moduls:
+  - Kandidaten sind nur die freigegebenen Geräte.
+  - Eine Korrektur überschreitet nie die genannte Gerätegattung. Aus
+    „Rollladen Büro“ wird nie mehr das Bürolicht. Ein Gerät, das die Gattung
+    selbst im Namen trägt („Licht Sportraum“ als Schalter), bleibt Kandidat.
+  - Exakte Registry-Namen bleiben maßgeblich.
+  - Mehrdeutigkeit bleibt Mehrdeutigkeit. Nur ein gesprochener Ort engt ein.
+    Für die Rückfrage gibt es eine nummerierte Form („Welches Gerät meinst du:
+    1. …, 2. … oder 3. …?“).
+  - Befehlswörter wie „Automation“, „Skript“ und „Szene“ gelten nicht als
+    Gerätegattung.
+- Umgestellt wurde erst nach einem Shadow-Lauf alt gegen neu bei jedem Aufruf:
+  438 Aufrufe im Korpus, 1743 in der Testsuite, 0 SAFETY_DRIFT, 0 Fälle „alt
+  besser“. Ende-zu-Ende blieben alle 2022 Korpussätze gleichwertig.
+  `scripts/resolver_shadow.py --check` bleibt als CI-Schritt: Der neue
+  Resolver darf nie neue Ziele liefern oder eine Rückfrage weglassen, die der
+  historische gestellt hätte.
 
 ## Was ist in Version 7.3.4 neu?
 
@@ -1767,12 +1794,13 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.3.4:
+Geprüfter Release-Stand von Version 7.4.0:
 
 ```text
-6189 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6203 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
+Shadow-Vergleich 2022 Sätze EQUIVALENT; Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“
 tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
 scheitert lokal wie schon auf 7.3.0 an der Fixture der HA-Testumgebung
 ```
@@ -1815,7 +1843,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.3.4.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.4.0.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

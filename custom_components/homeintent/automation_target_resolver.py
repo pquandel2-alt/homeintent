@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .areas import AreaResolutionStatus, resolve_area_scored
-from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
+from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 from .nlu.automation_model import TriggerTarget
 from .nlu.constraint_resolver import Constraints, resolve_candidates
 from .nlu.parser import ParseContext
@@ -85,7 +85,7 @@ def build_named_target(name_slot, context: ParseContext) -> TriggerTarget | None
     name = _strip_locative_prepositions(str(name_slot.value))
     if name.strip().casefold() in _PRONOUN_WORDS:
         return build_pronoun_target(context)
-    resolved = resolve_entity_scored(name, context.entities, index=context.index)
+    resolved = resolve_phrase(name, context.entities, index=context.index)
     if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
         return None
     entity = resolved.entity
