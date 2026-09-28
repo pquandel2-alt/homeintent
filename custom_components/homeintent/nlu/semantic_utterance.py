@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Mapping
 
-from .normalize import normalize
+from .normalize import is_polite_request, normalize
 from .semantic_catalog import (
     ACTION_EXPRESSIONS,
     COMMAND_MARKER_EXPRESSIONS,
@@ -449,7 +449,7 @@ def analyse_utterance(text: str) -> SemanticUtterance:
         # Natural-shell normalization intentionally removes constructions
         # such as "ich hätte gerne".  Modality is discourse information, so
         # classify it from both original and normalized text.
-        modality=_modality(f"{text} {normalized}"),
+        modality=Modality.POLITE if is_polite_request(text) else _modality(f"{text} {normalized}"),
         polarity=(Polarity.NEGATIVE if _NEGATION_RE.search(normalized) else Polarity.POSITIVE),
         clauses=_clauses(normalized, speech_act),
     )

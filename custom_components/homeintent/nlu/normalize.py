@@ -65,7 +65,7 @@ _TRAILING_DISCOURSE_FILLER_RE = re.compile(
 )
 _NON_DEGREE_FILLER_RE = re.compile(
     r"\b(?:ein\s+bisschen|etwas)\b"
-    r"(?!\s+(?:heller|dunkler|wärmer|kälter|lauter|leiser|schneller|langsamer)\b)",
+    r"(?!\s+(?:heller|dunkler|wärmer|kälter|lauter|leiser|schneller|langsamer|höher|hoeher|niedriger|tiefer)\b)",
     re.IGNORECASE,
 )
 
@@ -280,7 +280,95 @@ def _unembed_question(text: str) -> str:
     return text
 
 
+_OPEN_STATE_WORDS = frozenset({"offen", "auf", "geöffnet", "geoeffnet", "zu", "geschlossen"})
+
+
+def _standing_state(text: str) -> str:
+    """"Steht noch ein Fenster offen?" -> "Ist noch ein Fenster offen?" (7.6.0).
+
+    "stehen" + an open/closed state within the next six words is the copula
+    of that state; anything else ("Die Heizung steht auf 22 Grad") stays.
+    """
+    parts = re.split(r"(\s+)", text)
+    words = [part for part in parts if part and not part.isspace()]
+    keys = [word.strip("?.!,").casefold() for word in words]
+    for index, key in enumerate(keys):
+        if key in {"steht", "stehen"} and _OPEN_STATE_WORDS & set(keys[index + 1:index + 7]):
+            later = keys[index + 1:index + 7]
+            if any(word.isdigit() for word in later):
+                return text
+            replacement = "ist" if key == "steht" else "sind"
+            if words[index][:1].isupper():
+                replacement = replacement.capitalize()
+            count = 0
+            for position, part in enumerate(parts):
+                if part and not part.isspace():
+                    if count == index:
+                        parts[position] = replacement + part[len(words[index].rstrip("?.!,")):]
+                        return "".join(parts)
+                    count += 1
+    return text
+
+
+_KIND_WORDS = frozenset({"lieb", "nett", "gut", "freundlich", "so", "toll", "super", "schoen", "schön", "klasse"})
+_PARTICLES = ("aus", "an", "ein", "auf", "zu", "hoch", "runter", "herunter")
+_SEPARABLE_STEMS = ("mach", "schalt", "dreh", "fahr", "knips", "lass")
+
+
+def _imperative(verb: str) -> tuple[str, str] | None:
+    """"ausmachst" -> ("mach", "aus"), "anschaltest" -> ("schalte", "an")."""
+    low = verb.casefold()
+    for particle in _PARTICLES:
+        if not low.startswith(particle):
+            continue
+        rest = low[len(particle):]
+        for stem in _SEPARABLE_STEMS:
+            if rest in {stem + "st", stem + "est"}:
+                return ("schalte" if stem == "schalt" else stem), particle
+    return None
+
+
+def _polite_requests(text: str) -> str:
+    """Politeness shells that are requests (7.6.0).
+
+    "Wärst du so lieb und machst X an" / "Es wäre nett, wenn du X ausmachst"
+    / "Kannst du X an?" are commands, not state questions.
+    """
+    stripped = text.strip()
+    words = stripped.rstrip("?.!").split()
+    keys = [word.strip(",").casefold() for word in words]
+    # "Wärst/Wärest du so lieb und machst …"
+    if len(keys) > 4 and keys[0] in {"wärst", "waerst", "wärest", "wärt", "bist"} and keys[1] == "du":
+        if "und" in keys[2:6] and set(keys[2:keys.index("und", 2)]) <= _KIND_WORDS:
+            rest = words[keys.index("und", 2) + 1:]
+            if rest and rest[0].casefold().endswith("st"):
+                rest = [rest[0][:-2] if not rest[0].casefold().endswith("est") else rest[0][:-3], *rest[1:]]
+            return "bitte " + " ".join(rest) + "."
+    # "Es wäre nett, wenn du X ausmachst"
+    if len(keys) > 5 and keys[:2] == ["es", "wäre"] and keys[2] in _KIND_WORDS and "wenn" in keys[3:5]:
+        start = keys.index("wenn", 3)
+        if start + 2 < len(keys) and keys[start + 1] == "du":
+            verb = _imperative(keys[-1])
+            if verb is not None:
+                middle = words[start + 2:-1]
+                return f"bitte {verb[0]} {' '.join(middle)} {verb[1]}."
+    # "Kannst du X an?" without a verb
+    if (
+        stripped.endswith("?") and len(keys) >= 4 and keys[0] in {"kannst", "könntest", "koenntest"}
+        and keys[1] == "du" and keys[-1] in _PARTICLES
+        and not any(key.endswith(("en", "st")) and key not in {"den", "einen", "meinen", "deinen"} for key in keys[2:-1])
+    ):
+        return "bitte " + " ".join(words[2:]) + "."
+    return text
+
+
+def is_polite_request(text: str) -> bool:
+    """Whether ``text`` is one of the politeness shells above."""
+    return _polite_requests(text) != text
+
+
 def normalize(text: str) -> str:
+    text = _polite_requests(text)
     text = _unembed_question(text)
     text = _CLITIC_RE.sub(_expand_clitic, text)
     text = _LEADING_DISCOURSE_FILLER_RE.sub("", text)
@@ -303,8 +391,12 @@ def normalize(text: str) -> str:
     text = re.sub(r"\bregl(?:e|en|st|t)?\b", "stelle", text, flags=re.I)
     for pattern, replacement in _STT_REWRITES:
         text = pattern.sub(replacement, text)
+    text = re.sub(r"\bmal\s+eben\b", " ", text, flags=re.IGNORECASE)
     text = _FILLER_RE.sub(" ", text)
     text = _NOW_FILLER_RE.sub(" ", text)
+    # "irgendwo" asks without a place restriction (7.6.0).
+    text = re.sub(r"\birgendwo\b", " ", text, flags=re.IGNORECASE)
+    text = _standing_state(text)
     text = _NON_DEGREE_FILLER_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text)
     return text.strip()

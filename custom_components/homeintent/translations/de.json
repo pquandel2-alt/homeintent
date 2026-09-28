@@ -139,6 +139,11 @@
     "delete_monitor_goal": {
       "name": "Monitor-Ziel löschen",
       "description": "Löscht ein persistentes HomeIntent-Monitor-Ziel anhand seiner Goal-ID."
+    },
+    "reset_test_state": {
+      "name": "Testzustand zurücksetzen",
+      "description": "Nur für Administratoren: vergisst Gesprächskontext, offene Rückfragen und den Ausführungs-Trace; gelernte Bindungen nur auf Wunsch.",
+      "fields": {"include_bindings": {"name": "Gelernte Bindungen löschen", "description": "Löscht auch bestätigte Routinen, Aliasse und Standardauswahlen."}}
     }
   },
   "issues": {

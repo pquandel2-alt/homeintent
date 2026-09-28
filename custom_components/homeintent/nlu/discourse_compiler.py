@@ -140,6 +140,34 @@ def _others(
     return siblings
 
 
+_SIDE_FORMS = frozenset({
+    "linke", "linken", "linker", "linkes", "rechte", "rechten", "rechter", "rechtes",
+    "obere", "oberen", "oberer", "oberes", "untere", "unteren", "unterer", "unteres",
+    "vordere", "vorderen", "vorderer", "vorderes", "hintere", "hinteren", "hinterer", "hinteres",
+})
+_SIDE_FILLERS = frozenset({"und", "den", "die", "das", "der", "dem", "auch", "ebenfalls", "bitte", "noch", "jetzt", "genauso"})
+
+
+def _side_sibling(
+    words: Sequence[str], entities: Sequence[EntitySnapshot], context: ConversationContext
+) -> EntitySnapshot | None:
+    """The partner named only by its side ("den rechten") of the one
+    previous device whose name carries a side."""
+    from ..conversation_correction import sibling_name
+    from .target_resolution import resolve_phrase
+
+    sides = [word for word in words if word in _SIDE_FORMS]
+    if len(sides) != 1 or len(context.last_entities) != 1:
+        return None
+    if any(word not in _SIDE_FORMS and word not in _SIDE_FILLERS for word in words):
+        return None
+    name = sibling_name(sides[0], context.last_entities[0])
+    if name is None:
+        return None
+    resolved = resolve_phrase(name, list(entities))
+    return resolved.entity
+
+
 def compile_discourse(
     document: object,
     entities: Sequence[EntitySnapshot],
@@ -164,6 +192,18 @@ def compile_discourse(
     previous_actions, previous_degree = _previous_operation(context)
     if not actions and degree is None and word_set & _REPEAT and previous_degree is not None:
         degree = previous_degree
+    sibling = _side_sibling(words, entities, context)
+    if sibling is not None and not actions and degree is None:
+        # "… und den rechten auch" after "den linken Rollladen": the named
+        # partner of the previous device, same operation (7.6.0).
+        actions, degree = previous_actions, previous_degree
+        if not actions and degree is None:
+            return None
+        clause = ClauseMeaning(
+            text=text, actions=frozenset(actions), degree=degree, percent=None, temperature=None,
+            descriptions=(TargetDescription(explicit=(sibling,), quantity=Quantity.ALL),),
+        )
+        return _compile_clauses((clause,), document, entities, source_area)
     ignore = frozenset(
         operation_words | _FILLER_WORDS | frozenset(DEGREE_WORDS) | _REFERENTIAL | _OTHER
         | _DEICTIC_PLACE | _ALSO | _REPEAT | _GLUE

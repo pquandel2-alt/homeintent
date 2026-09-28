@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from ..areas import AreaResolutionStatus, resolve_area_scored
 from ..entities import EntitySnapshot, generate_aliases, normalize_for_compare
+from .place_model import level_is_position
 from ..floors import (
     FloorResolutionStatus,
     FloorResolveStatus,
@@ -191,7 +192,8 @@ def resolve_semantic_location(
     level = next(
         (
             match for match in _LEVEL_CUE_RE.finditer(text)
-            if not _inside_entity_name(
+            if not level_is_position(text, match.start(), match.end())
+            and not _inside_entity_name(
                 text,
                 match.start(),
                 match.end(),

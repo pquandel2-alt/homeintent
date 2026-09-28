@@ -135,7 +135,7 @@
     "text": "gibt es offene Fenster",
     "expect_match": true,
     "plan": null,
-    "response_text": "Ja, es gibt 2 Fenster."
+    "response_text": "Ja, Fenster Schlafzimmer und Fenster Wohnzimmer sind geöffnet."
   },
   {
     "text": "gibt es offene Fenster im Eingang",

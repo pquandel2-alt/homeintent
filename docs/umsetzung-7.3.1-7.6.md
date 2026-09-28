@@ -909,3 +909,196 @@ Einzelheiten zu den Läufen:
   0 Fehler, strikte Prüfungen 0); alle Insel-Shadows danach erneut mit 0
   Abweichungen.
 - Tests: 6304 grün; Ruff-Baseline 57; V8-Baseline unverändert.
+
+---
+
+## Phase 9 – Generalisierung: Bedeutung statt Sätze (7.6.0)
+
+Vorgehen: Zu jeder der sechs Bedeutungsklassen aus dem Auftrag wurde ein
+eigener Probekorpus mit Paraphrasen geschrieben (81 Fälle, jetzt
+`tests/eval/generalisierung_76.json`). Die geheimen Testsätze sind nicht
+bekannt. Jede Lücke wurde an der Stelle behoben, an der die Bedeutung
+entsteht: Lexikon, Normalisierung, Sprechakt, Ortsmodell oder Antwortplanung.
+Satzmuster wurden nicht hinzugefügt.
+
+### Umgesetzt
+
+1. **Verbklassen** (`nlu/domain_operations.py`, `nlu/semantic_catalog.py`):
+   - Befehlsmarker wirf/werf/knips/schmeiß; Einschalten um anwerfen,
+     anknipsen, anschmeißen erweitert.
+   - Öffnen um rauf/herauf/„nach oben“/raufmachen/rauffahren erweitert;
+     Schließen um runterlassen/herunterlassen.
+   - „starten“ an Schaltern, Ventilatoren, Luftbefeuchtern und
+     `input_boolean` ist Einschalten („Starte die Kaffeemaschine“).
+   - höher/niedriger/tiefer sind Stufenwörter für Licht, Heizung, Medien und
+     Ventilator; „ein bisschen höher“ wird als Menge erkannt.
+   - Verblose Kurzbefehle mit Einheit („Heizung Wohnzimmer auf 22 Grad“,
+     „Rollladen Wohnzimmer auf 50 Prozent“) sind Befehle
+     (`language_frontend.unit_value`). Ziel, Wert und Einheit sind genannt,
+     die einzige Lesart ist „setzen auf“. Bewusste Änderung: der alte Test
+     „fehlendes Verb – nicht raten“ für den Prozentfall wurde in einen
+     Positivtest umgewandelt.
+2. **Bedürfnisse** (`nlu/need_semantics.py`): „nervt/stört“ → leiser
+   (Vorschlag); Wahrnehmung mit „kaum“ („kann kaum lesen“) → Licht. Die
+   Wirkung hängt weiter von `implicit_action_level` ab.
+3. **Situationsfragen:**
+   - `normalize.py`: „irgendwo“ wird entfernt; „steht/stehen … offen“ wird
+     zu „ist/sind … offen“ (nicht bei Zahlen: „steht auf 20“).
+   - `place_model.level_is_position`: oben/unten am Satzende nach einer
+     Beschattungsgattung ist eine Position und keine Etage („Sind alle
+     Rollläden unten?“). `semantic_location` nutzt dieselbe Funktion.
+   - Antworten (`response_generator`, `response_planner`):
+     - Existenz nennt die Geräte mit Zustand („Ja, Fenster Keller ist
+       geöffnet.“).
+     - Allaussage nennt die Ausnahmen, bis sechs Namen.
+     - Bewusste Änderung: 8 Tests und ein Golden-Fall erwarteten die alte
+       Zählantwort „Ja, es gibt 1 Fenster.“ und wurden angepasst.
+   - `household_query`: schwache Batterien ohne Zahl (Schwelle 20 %).
+   - `appliance_lifecycle`: „fertig“, „um“, „Ende“ als Eigenschaftswörter
+     („Läuft die Waschmaschine noch?“).
+4. **Diskurs:**
+   - `discourse_compiler._side_sibling`: „Und den rechten auch.“ wiederholt
+     die letzte Operation am Gegenstück des zuletzt geschalteten Geräts
+     (links/rechts, oben/unten, vorne/hinten). Voraussetzung: genau ein
+     vorheriges Gerät und genau ein Gegenstück.
+   - „Vergiss es“/„Lieber nicht“ direkt nach einer Ausführung: Die Antwort
+     sagt, dass schon ausgeführt wurde und nicht mehr abgebrochen werden
+     kann. Sie bietet „Mach das rückgängig“ an; zurückgenommen wird nur auf
+     ausdrücklichen Wunsch. Nach einer Frage bleibt es bei „nichts offen“.
+   - `undo.py`: „Rückgängig.“ allein genügt. „Zurück.“ allein zählt bewusst
+     nicht, es bedeutet bei Medien „vorheriger Titel“.
+5. **Höflichkeit** (`normalize._polite_requests`, `is_polite_request`):
+   - „Wärst du so lieb/nett und machst …“, „Es wäre nett/super, wenn du …
+     ausmachst“ und „Kannst du X an?“ (ohne Verb) werden zur Bitte.
+   - Der Sprechakt bekommt die Modalität POLITE statt HYPOTHETICAL.
+   - „mal eben“ ist Füllwort.
+   - Echte Bedingungen („Es wäre schlimm, wenn …“), eingebettete Fragen und
+     Verneinungen bleiben unverändert (Tests).
+6. **Mehrfachbefehle** (`language_frontend.bind_coordinated_deixis`):
+   - „dort“ nach einem „und“ wird durch die gesprochene Ortsangabe des
+     vorigen Teils ersetzt.
+   - Das geschieht nur, wenn dort genau ein Ort mit Präposition genannt
+     ist. Bei keinem oder mehreren Orten bleibt der Satz unverändert.
+   - Die Bindung sitzt im gemeinsamen Sprach-Frontend. Es gibt keine zweite
+     Ortsauflösung: Aufgelöst wird weiter nur über `resolve_phrase`.
+   - „… und den Lüfter dort auch“ verhält sich genau wie „… und den Lüfter
+     im Bad auch“ (Test). Beide fragen bei drei Geräten nach; das ist die
+     bestehende Richtlinie.
+7. **Test-Reset** (Querschnitt): Der Admin-Dienst
+   `homeintent.reset_test_state` vergisst Gesprächskontext, offene
+   Dialogaufgaben und den Ausführungs-Trace. Gelernte Bindungen löscht er
+   nur mit `include_bindings`. Timer und Listen sind HA-Entitäten und
+   werden dort zurückgesetzt.
+
+### Messung
+
+| Satz | 7.5.2 | 7.6.0 |
+|---|---|---|
+| Entwicklungskorpus (81, daran entwickelt) | 57 / 81 | 81 / 81 |
+| davon Verben / Bedürfnisse / Situation / Diskurs / Höflichkeit / Mehrfach | 17/24, 12/14, 12/19, 7/9, 4/9, 5/6 | alle |
+| Zurückgehaltene Paraphrasen (32, danach geschrieben, nicht nachgebessert) | 14 / 32 | **30 / 32** |
+
+Zu den Zahlen:
+- Die 57 in der Spalte 7.5.2 gelten für die korrigierten Erwartungen.
+- Drei Erwartungen des Probekorpus waren falsch und wurden korrigiert:
+  - „Die Stehlampe brauche ich nicht mehr“ schaltet aus (Release, seit
+    7.3.x).
+  - „stickig“ schlägt den Deckenventilator bzw. das Fenster vor.
+  - Bei Dunkelheit im Automatikmodus wird das Ziel geprüft, nicht der Dienst.
+- Fehlschläge im zurückgehaltenen Satz:
+  - „Wo ist es am kühlsten?“: echte Lücke, Synonym fehlt.
+  - „Ist die Spülmaschine schon fertig?“: Das Testhaus hat keine
+    Spülmaschine. Die Antwort ist richtig, die Erwartung war falsch.
+
+### Nachweise
+
+- Engine-Korpus gegen 7.5.2 (Git-Worktree `b942bba`): **2022/2022
+  gleichwertig**. Die Änderungen betreffen nur Sätze, die vorher nicht oder
+  anders verstanden wurden.
+- Shadow-Vergleich 2022 EQUIVALENT; Resolver-Shadow 438 Aufrufe, 0
+  SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gleich, 7 nicht
+  messbar.
+- Regex-Inventar 7.6.0: SEMANTIC_SENTENCE_PATTERN **212** (unverändert,
+  keine neuen Satzmuster).
+- `tests/test_generalisierung_76.py`: 100 Fälle. Darin der ganze Probekorpus
+  und die Regeln mit ihren Sicherheitsgrenzen: verneinte Höflichkeit führt
+  nie aus, eingebettete Zustandsfragen führen nicht aus, „dort“ wird nie
+  geraten, „Vergiss es“ nimmt nichts zurück, „Zurück.“ ist kein Undo. Dazu
+  3 Tests für den Reset-Dienst.
+- Property-Suite im Nightly-Profil (300 Beispiele je Invariante): 19/19
+  grün, 0 verletzte Invarianten.
+- Testsuite 6407 grün (hassil 3.11 und 3.12), Sprach-Gate 465, Pyright 0
+  (voll und alle Strict-Profile), Ruff-Baseline 57, Latenz-Benchmarks
+  innerhalb der Budgets (5000 Entitäten, p95 deutlich unter 100 ms).
+
+### Live-Prüfung (Testbett, frisch aufgesetzt)
+
+- `runner.py`: **158/162**. Die vier Abweichungen sind dieselben wie seit
+  Phase 3: Bedürfnisse werden im Standard `propose` vorgeschlagen, und in
+  `auto-manage` fragt die Sonnenuntergangs-Automation nach. Neue
+  Abweichungen gibt es nicht.
+- Schlafen-Regressionen: **15/15**. Zielauflösung: **8/8**.
+- Danach `sim/config` zurückgesetzt; in `sim/` ist nichts eingecheckt.
+
+### Bewusst offen
+
+- „am kühlsten“ als Synonym für „am kältesten“ fehlt. Die Lücke wurde im
+  zurückgehaltenen Satz gefunden und dort absichtlich nicht nachgebessert,
+  damit der Messwert ehrlich bleibt.
+- Mehrfachbefehle mit „dort“ und drei oder mehr Geräten fragen einmal
+  nach. Das ist die bestehende Richtlinie für Pläne mit mehreren Zielen,
+  kein Sprachfehler.
+
+---
+
+## Abschluss 7.3.1 – 7.6.0
+
+### Umgesetzte Phasen
+
+| Phase | Version | Stand |
+|---|---|---|
+| 1 EffectGraph, transitive Sicherheit | 7.3.1 | vollständig |
+| 2 ExecutionContext und Trace | 7.3.2 | vollständig |
+| 3 Bindings, Implicit Action Policy, nie raten | 7.3.3 | vollständig |
+| 4 Property-Suite und Shadow-Infrastruktur | 7.3.4 | vollständig |
+| 5 Eine Zielauflösung | 7.4.0 | vollständig, umgeschaltet ohne SAFETY_DRIFT |
+| 6 Selbstlernen aus dem Dialog | 7.4.1 | vollständig |
+| 7 Gemeinsame Bedeutungsebene, Arbitration | 7.5.0 | umgeschaltet für Bedürfnis ↔ Frage; Rest im Shadow (s. u.) |
+| 8 Sprachinseln, Regex-Klassifikation | 7.5.1/7.5.2 | alle sieben Inseln umgestellt, je 0 Abweichungen |
+| 9 Generalisierung | 7.6.0 | vollständig |
+
+### Bewusst im Shadow-Modus oder so belassen
+
+- **Arbiter:** Die Paare Automation ↔ zeitversetzter Befehl und Routine ↔
+  Szenenname entscheidet der Arbiter im Shadow gleich wie die Kaskade
+  (2045/2045). Umgeschaltet ist noch nicht, weil diese Zweige an
+  Dialogzustand hängen (Rückfragen zur Wiederholung, Routinenbindung), den
+  der Arbiter nicht als Kandidat kennt. Die Sprachinseln der Phase 8 haben
+  das nicht geändert. Es gilt die first-match-Kaskade.
+- **Eigene Nebensuchen** wie `entity_scope` und `mentioned_entities` bleiben
+  als Vorfilter erhalten. Aufgelöst wird ausschließlich über
+  `resolve_phrase`; ein Architekturtest verhindert neue direkte Aufrufe.
+- **`alias_learning`** behält seine drei Lehr-Satzrahmen, denn sie erkennen
+  die Sprechhandlung „Lehren“.
+- **Satzmuster außerhalb der Inseln** werden weiter pro Release gezählt:
+  212; der Ratchet-Test verhindert einen Anstieg.
+
+### Messwerte vorher/nachher
+
+| Kennzahl | 7.3.0 | 7.6.0 |
+|---|---|---|
+| Nicht freigegebene Geräte über Skript/Szene/Gruppe schaltbar | ja | nein |
+| Dienstaufrufe mit HA-Kontext | 0 / 45 | 45 / 45 |
+| Routinewahl über Namensähnlichkeit ohne Bestätigung | ja | nie |
+| Verletzte Sicherheitsinvarianten | – | 0 von 19 |
+| SAFETY_DRIFT bei einem Umschalten | – | 0 |
+| Zielauflösungen | 2 + private | 1 |
+| SEMANTIC_SENTENCE_PATTERN | nicht gezählt | 272 → 258 → 212 |
+| Gelerntes Wort in Satzformen | 3 von 4 | 10 Befehlsformen + Frage, Zeitauftrag, Verneinung |
+| Eigene ungesehene Paraphrasen (Phase 9, zurückgehalten) | 44 % (7.5.2) | 94 % |
+| Unit-Tests | 6035 | 6407 |
+| Funktionsszenarien live | 155/155 (ohne Proaktiv) | 158/162 (mit Proaktiv; 4 gewollte `propose`-Abweichungen) |
+| Latenz p95 (5000 Entitäten) | < 100 ms | < 100 ms |
+
+Den unveröffentlichten Korpus (7.3.0: 38 %) kann dieses Repository nicht
+messen. Er liegt bei der Test-Session.

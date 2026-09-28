@@ -10,8 +10,9 @@ from .service_call import ServiceCallPlan
 
 
 _UNDO_RE = re.compile(
-    r"^\s*(?:mach|mache|setz|setze|nimm)\s+(?:das|es|den\s+befehl)\s+"
-    r"(?:rückgängig|rueckgaengig|zurück|zurueck)\s*[.!?]*\s*$",
+    r"^\s*(?:(?:mach|mache|setz|setze|nimm)\s+(?:das|es|den\s+befehl)\s+"
+    r"(?:rückgängig|rueckgaengig|zurück|zurueck)"
+    r"|(?:rückgängig|rueckgaengig)(?:\s+bitte)?)\s*[.!?]*\s*$",
     re.I,
 )
 

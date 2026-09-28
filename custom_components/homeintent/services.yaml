@@ -336,3 +336,16 @@ delete_monitor_goal:
       name: Goal-ID
       required: true
       selector: {text: {}}
+reset_test_state:
+  name: Testzustand zurücksetzen
+  description: >-
+    Nur für Administratoren. Vergisst Gesprächskontext, offene Rückfragen und
+    den Ausführungs-Trace von HomeIntent, damit Messreihen unabhängig sind.
+    Gelernte Bindungen nur mit include_bindings. Timer und Listen sind
+    Home-Assistant-Entitäten und werden dort zurückgesetzt.
+  fields:
+    include_bindings:
+      name: Gelernte Bindungen löschen
+      required: false
+      default: false
+      selector: {boolean: {}}

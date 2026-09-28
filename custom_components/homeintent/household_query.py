@@ -126,6 +126,9 @@ def _completion_target(key: str) -> str | None:
     return None
 
 
+WEAK_BATTERY_PERCENT = 20
+
+
 def _battery_limit(tokens: list[Word]) -> int | None:
     """"welche/zeige/gibt es … batterie(n) … unter|kleiner als|weniger als N prozent"."""
     cue = find(tokens, ("welche|zeige", "gibt es"))
@@ -478,7 +481,7 @@ def match_household_query(
             f"{entity.friendly_name} ({value:g} Prozent)"
             for entity in entities
             if entity.domain == "sensor" and entity.device_class == "battery"
-            and (value := _numeric_state(entity)) is not None and value < 20
+            and (value := _numeric_state(entity)) is not None and value < WEAK_BATTERY_PERCENT
         ]
         if not unavailable and not weak_batteries:
             return _read_only("Ich sehe derzeit keine nicht verfügbaren Geräte oder schwachen Batterien.")
@@ -490,6 +493,12 @@ def match_household_query(
         return _read_only(". ".join(parts) + ".")
 
     battery_limit = _battery_limit(tokens)
+    if battery_limit is None and any(token.key in {"batterie", "batterien", "akku", "akkus"} for token in tokens) and has(
+        tokens, "schwach|schwache|schwachen|leer|leere|leeren|niedrig|niedrige|niedrigen|knapp",
+    ):
+        # "Welche Batterien sind fast leer?", "Gibt es schwache Batterien?":
+        # the documented weak-battery threshold of the problem overview (7.6.0).
+        battery_limit = WEAK_BATTERY_PERCENT
     if battery_limit is not None:
         limit = min(100, battery_limit)
         matches = [

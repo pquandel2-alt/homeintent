@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.5.2** (alle Sprachinseln auf Bedeutungsbausteine umgestellt)
+- Aktuelle Version: **7.6.0** (Generalisierung: Bedeutungsklassen statt einzelner Sätze)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,71 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.6.0 neu?
+
+**Generalisierung: Bedeutungsklassen statt einzelner Sätze.** Abschluss des
+Umbaus 7.3.1 – 7.6.0 (Bericht: `docs/umsetzung-7.3.1-7.6.md`).
+
+- **Verbklassen:** anwerfen, anknipsen, anschmeißen, starten („Starte die
+  Kaffeemaschine“), rauf/herauf/„nach oben“, höher/niedriger als Stufe bei
+  Licht, Heizung, Medien und Ventilator; verblose Kurzbefehle mit Wert
+  („Heizung Wohnzimmer auf 22 Grad“, „Rollladen Wohnzimmer auf 50 Prozent“).
+- **Bedürfnisse:** „Ich kann kaum lesen“ (Licht), „Das Radio nervt“
+  (leiser/aus als Vorschlag). Die Wirkung hängt wie bisher von
+  `implicit_action_level` ab.
+- **Situationsfragen:** „irgendwo“, „Steht noch ein Fenster offen?“,
+  „Sind alle Rollläden unten?“ (unten/oben nach einer Beschattung ist eine
+  Position, keine Etage), schwache Batterien ohne Zahl, „Läuft die
+  Waschmaschine noch?“. Existenzantworten nennen die Geräte („Ja,
+  Badezimmerfenster und Küchenfenster sind geöffnet.“), Allantworten die
+  Ausnahmen („Nein, nicht alle … Nicht geöffnet: Rollladen Küche.“).
+- **Diskurs:** „Und den rechten auch.“ wiederholt die letzte Aktion am
+  Gegenstück (links/rechts, oben/unten, vorne/hinten). „Vergiss es“ oder
+  „Lieber nicht“ direkt nach einer Ausführung sagt ehrlich, dass schon
+  ausgeführt wurde, und bietet „Mach das rückgängig“ an („Rückgängig.“
+  genügt); es wird nichts ungefragt zurückgenommen.
+- **Höflichkeit:** „Wärst du so lieb und machst …“, „Es wäre nett, wenn du …
+  ausmachst“, „Kannst du mal eben …“, „Kannst du das Küchenlicht an?“ sind
+  Bitten. Verneinungen und echte Bedingungen bleiben es nicht.
+- **Mehrfachbefehle:** „dort“ im zweiten Teil bindet an den einzigen Ort des
+  vorigen Teils und verhält sich genau wie die ausdrückliche Ortsangabe;
+  bei keinem oder mehreren Orten wird nichts eingesetzt.
+- **Test-Reset:** Der Admin-Dienst `homeintent.reset_test_state` vergisst
+  Gesprächskontext, offene Rückfragen und den Ausführungs-Trace (gelernte
+  Bindungen nur mit `include_bindings`), damit Messreihen unabhängig sind.
+
+**Wert auf ungesehenen Sätzen.** Den unveröffentlichten Korpus kennt dieses
+Repository bewusst nicht. Gemessen wurde mit eigenen Paraphrasen:
+
+| Satz | 7.5.2 | 7.6.0 |
+|---|---|---|
+| Entwicklungskorpus Phase 9 (81 Fälle, `tests/eval/generalisierung_76.json`; an ihm wurde entwickelt) | 57 / 81 (70 %) | 81 / 81 |
+| Zurückgehaltene Paraphrasen (32 Fälle, erst nach den Änderungen geschrieben, nicht nachgebessert) | 14 / 32 (44 %) | **30 / 32 (94 %)** |
+
+Die zwei Fehlschläge im zurückgehaltenen Satz: „Wo ist es am kühlsten?“
+(Synonym zu „am kältesten“ fehlt) und „Ist die Spülmaschine schon fertig?“
+(das Testhaus hat keine Spülmaschine; die Antwort „Ziel nicht gefunden“ ist
+richtig, die Erwartung war falsch).
+
+**Zielwerte des Umbaus 7.3.1 – 7.6.0:**
+
+| Kennzahl | 7.3.0 | Ziel | 7.6.0 |
+| --- | --- | --- | --- |
+| Nicht freigegebene Geräte über Skript/Szene/Gruppe schaltbar | ja | nein | **nein** (Unit + live) |
+| Skript/Szene mit unvollständigem EffectGraph als LOW | ja | nie | **nie** |
+| Dienstaufrufe mit HA-Kontext | 0 / 45 | alle | **45 / 45** (AST-Test) |
+| „Warum ist X angegangen?“ mit belegter Kette | nein | ja | **ja** (VERIFIED/POSSIBLE/UNKNOWN) |
+| Routinewahl über Namensähnlichkeit ohne Bestätigung | ja (Szenen) | nie | **nie** |
+| Geraten statt gefragt (Ort, Einmaligkeit) | vorhanden | 0 | **0** bekannte Fälle |
+| Verletzte Sicherheitsinvarianten (Property-Suite) | – | 0 | **0** (19 Invarianten, Nightly 300 Beispiele) |
+| SAFETY_DRIFT bei jedem Umschalten | – | 0 | **0** |
+| Zielauflösungen im Code | 2 + private | 1 | **1** (`resolve_phrase`, Architekturtest) |
+| `SEMANTIC_SENTENCE_PATTERN`-Regex | nicht gezählt | sinkend | 272 → 258 → **212** (7.6.0: keine neuen) |
+| Gelerntes Wort wirkt in verschiedenen Satzformen | 3 von 4 | ≥ 10 | **10** Befehlsformen + Frage, Zeitauftrag, Verneinung |
+| Unveröffentlichter Korpus | 38 % | ≥ 65 % | hier nicht messbar; eigene ungesehene Paraphrasen 44 % → **94 %** |
+| Funktionsszenarien live | 162/162 | nicht schlechter | 158/162; die 4 Abweichungen sind die gewollten `propose`-Vorschläge aus 7.3.3 |
+| Latenz p95 | < 100 ms | < 100 ms | **< 100 ms** (Benchmarks mit 5000 Entitäten) |
 
 ## Was ist in Version 7.5.2 neu?
 
@@ -1944,22 +2009,23 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.5.2:
+Geprüfter Release-Stand von Version 7.6.0:
 
 ```text
-6304 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6407 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
-V8-Shadow-Report unverändert gegenüber 7.3.0
-Shadow-Vergleich 2022 Sätze EQUIVALENT; Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gleichwertig
-tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
-scheitert lokal wie schon auf 7.3.0 an der Fixture der HA-Testumgebung
+Property-Suite: 19 Sicherheitsinvarianten, Nightly-Profil grün
+Shadow-Vergleich 2022 Sätze EQUIVALENT; Engine-Korpus gegen 7.5.2 2022/2022 gleichwertig
+Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gleichwertig
+Pyright 0 Fehler (voll und alle Strict-Profile); Ruff-Baseline 57 (unverändert seit 7.3.0)
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 155 / 155
-Szenarien ohne die nächtlichen Proaktiv-Szenarien, dazu 14 / 14
-Live-Prüfungen der transitiven Sicherheit (Skript „Nachtruhe“ mit nicht
-freigegebenem Saugroboter, `button.press` auf eine Etage, abgeleitete
-Schlafroutinen). Details: `docs/umsetzung-7.3.1-7.6.md`.
+Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 158 / 162
+Funktionsszenarien. Die vier Abweichungen sind seit 7.3.3 gewollt:
+Bedürfnisse werden im Standard `propose` vorgeschlagen statt ausgeführt,
+und die Sonnenuntergangs-Automation fragt nach. Dazu 15 / 15
+Schlafen-Regressionen und 8 / 8 Live-Prüfungen der Zielauflösung.
+Details: `docs/umsetzung-7.3.1-7.6.md`.
 
 Zusätzlich wurden ausgeführt:
 
@@ -1993,7 +2059,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.5.2.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.6.0.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

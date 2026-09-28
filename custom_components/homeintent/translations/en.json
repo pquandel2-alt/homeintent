@@ -126,6 +126,11 @@
     "delete_monitor_goal": {
       "name": "Delete monitor goal",
       "description": "Deletes a persistent HomeIntent monitor goal by goal ID."
+    },
+    "reset_test_state": {
+      "name": "Reset test state",
+      "description": "Administrators only: forgets conversation context, open questions and the execution trace; learned bindings only on request.",
+      "fields": {"include_bindings": {"name": "Clear learned bindings", "description": "Also deletes confirmed routines, aliases and default choices."}}
     }
   },
   "issues": {

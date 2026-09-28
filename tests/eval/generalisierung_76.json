@@ -1,0 +1,999 @@
+[
+ {
+  "class": "verb",
+  "turns": [
+   "Wirf das Küchenlicht an."
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Knips die Stehlampe an."
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Mach mal das Küchenlicht los."
+  ],
+  "expect": {
+   "no_write": true
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Starte die Kaffeemaschine."
+  ],
+  "expect": {
+   "targets": [
+    "switch.kaffeemaschine"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Kaffeemaschine an."
+  ],
+  "expect": {
+   "targets": [
+    "switch.kaffeemaschine"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Stehlampe aus."
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Licht im Büro an."
+  ],
+  "expect": {
+   "targets": [
+    "light.buerolicht",
+    "light.deckenfluter_buero",
+    "light.schreibtischlampe"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Heizung Büro wärmer."
+  ],
+  "expect": {
+   "targets": [
+    "climate.heizung_buero"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Heizung im Büro zwei Grad wärmer."
+  ],
+  "expect": {
+   "targets": [
+    "climate.heizung_buero"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Dreh die Heizung im Büro ein bisschen höher."
+  ],
+  "expect": {
+   "targets": [
+    "climate.heizung_buero"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Mach die Heizung im Büro um zwei Grad wärmer."
+  ],
+  "expect": {
+   "targets": [
+    "climate.heizung_buero"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Rollläden im Wohnzimmer runter."
+  ],
+  "expect": {
+   "targets": [
+    "cover.wohnzimmer_rollladen_links",
+    "cover.wohnzimmer_rollladen_rechts"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Rollladen Küche rauf."
+  ],
+  "expect": {
+   "targets": [
+    "cover.kuechenrollladen"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Fahr den Küchenrollladen halb runter."
+  ],
+  "expect": {
+   "targets": [
+    "cover.kuechenrollladen"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Küchenradio lauter."
+  ],
+  "expect": {
+   "targets": [
+    "media_player.kuechenradio"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Mach das Küchenradio ein bisschen leiser."
+  ],
+  "expect": {
+   "targets": [
+    "media_player.kuechenradio"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Stehlampe heller."
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Stehlampe im Wohnzimmer etwas dunkler."
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Schmeiß die Kaffeemaschine an."
+  ],
+  "expect": {
+   "targets": [
+    "switch.kaffeemaschine"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Deckenventilator an."
+  ],
+  "expect": {
+   "targets": [
+    "fan.deckenventilator"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Ventilator im Schlafzimmer schneller."
+  ],
+  "expect": {
+   "targets": [
+    "fan.deckenventilator"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Lüfter im Bad an."
+  ],
+  "expect": {
+   "targets": [
+    "fan.badluefter"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Dreh das Licht in der Küche auf."
+  ],
+  "expect": {
+   "targets": [
+    "light.kuecheninsel",
+    "light.kuechenlicht"
+   ]
+  }
+ },
+ {
+  "class": "verb",
+  "turns": [
+   "Heizung Wohnzimmer auf 22 Grad."
+  ],
+  "expect": {
+   "targets": [
+    "climate.heizung_wohnzimmer"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Im Büro ist es zu dunkel."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Büro"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Im Büro kann ich kaum lesen."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Licht",
+    "licht",
+    "Büro"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Die Sonne blendet im Büro."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Raffstore",
+    "beschatt",
+    "Büro"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Im Bad ist alles beschlagen."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badlüfter",
+    "lüft",
+    "Lüft"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Im Bad ist es total feucht."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badlüfter",
+    "lüft",
+    "Lüft"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Im Schlafzimmer ist es stickig."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Deckenventilator",
+    "Fenster"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Das Küchenradio nervt."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Küchenradio"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Das Küchenradio ist zu laut."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Küchenradio"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Die Stehlampe brauche ich nicht mehr."
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Im Kinderzimmer ist es zu kalt."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Kinderzimmer"
+   ]
+  }
+ },
+ {
+  "class": "need",
+  "turns": [
+   "Mir ist im Büro zu warm."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Büro"
+   ]
+  }
+ },
+ {
+  "class": "need_auto",
+  "turns": [
+   "Im Büro ist es zu dunkel."
+  ],
+  "expect": {
+   "any_target": "light."
+  },
+  "options": {
+   "implicit_action_level": "low_risk_auto"
+  }
+ },
+ {
+  "class": "need_auto",
+  "turns": [
+   "Im Bad ist alles beschlagen."
+  ],
+  "expect": {
+   "targets": [
+    "fan.badluefter"
+   ]
+  },
+  "options": {
+   "implicit_action_level": "low_risk_auto"
+  }
+ },
+ {
+  "class": "need_auto",
+  "turns": [
+   "Die Stehlampe brauche ich nicht mehr."
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  },
+  "options": {
+   "implicit_action_level": "low_risk_auto"
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Ist im Wohnzimmer noch ein Licht an?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Nein",
+    "kein",
+    "Ja",
+    "an"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Brennt im Wohnzimmer noch Licht?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Nein",
+    "kein",
+    "Ja",
+    "an"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Sind alle Fenster zu?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badezimmerfenster",
+    "Küchenfenster"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Ist irgendwo ein Fenster offen?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badezimmerfenster",
+    "Küchenfenster"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Steht noch ein Fenster offen?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badezimmerfenster",
+    "Küchenfenster"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Welche Fenster sind offen?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badezimmerfenster",
+    "Küchenfenster"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Sind alle Rollläden unten?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Nein",
+    "offen",
+    "oben",
+    "nicht"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Wo ist es am wärmsten?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badezimmer"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Welcher Raum ist am kältesten?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Keller",
+    "Schlafzimmer"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Wo ist es am kältesten, draußen mitgezählt?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Außen",
+    "Garten",
+    "draußen",
+    "12"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Ist jemand im Wohnzimmer?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Ja",
+    "Wohnzimmer"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Ist oben jemand?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Nein",
+    "nicht",
+    "niemand",
+    "kein",
+    "Ja"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Wer ist zu Hause?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Anna",
+    "Philipp"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Muss ich im Bad lüften?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "68",
+    "Luftfeuchtigkeit",
+    "feucht"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Welche Batterien sind fast leer?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Rauchmelder",
+    "Fenstersensor Bad"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Gibt es schwache Batterien?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Rauchmelder",
+    "Fenstersensor Bad"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Ist irgendein Gerät nicht erreichbar?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "nicht verfügbar",
+    "keine",
+    "Nicht verfügbar",
+    "Lena"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Warum ist es im Schlafzimmer so kalt?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Schlafzimmer",
+    "18",
+    "Heizung",
+    "Fenster"
+   ]
+  }
+ },
+ {
+  "class": "situation",
+  "turns": [
+   "Läuft die Waschmaschine noch?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Waschmaschine"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Mach den linken Wohnzimmer Rollladen runter.",
+   "Und den rechten auch."
+  ],
+  "expect": {
+   "targets": [
+    "cover.wohnzimmer_rollladen_rechts"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Mach die Nachttischlampe links an.",
+   "Und die rechte auch."
+  ],
+  "expect": {
+   "targets": [
+    "light.nachttischlampe_rechts"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Wie warm ist es im Büro?",
+   "Und im Bad?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "21",
+    "Bad"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Ist im Büro das Fenster offen?",
+   "Und in der Küche?"
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Küche"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Mach das Küchenlicht an.",
+   "Vergiss es."
+  ],
+  "expect": {
+   "speech": [
+    "rückgängig",
+    "zurück",
+    "verworfen",
+    "nichts",
+    "aus"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Mach die Kaffeemaschine an.",
+   "Lieber nicht."
+  ],
+  "expect": {
+   "speech": [
+    "rückgängig",
+    "zurück",
+    "verworfen",
+    "nichts",
+    "aus"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Wie warm ist es im Kinderzimmer?",
+   "Mach da die Heizung wärmer."
+  ],
+  "expect": {
+   "targets": [
+    "climate.heizung_kinderzimmer"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Ist im Büro jemand?",
+   "Dann mach da das Licht aus."
+  ],
+  "expect": {
+   "targets": [
+    "light.buerolicht",
+    "light.deckenfluter_buero",
+    "light.schreibtischlampe"
+   ]
+  }
+ },
+ {
+  "class": "discourse",
+  "turns": [
+   "Mach das Küchenlicht an.",
+   "Und im Flur auch."
+  ],
+  "expect": {
+   "targets": [
+    "light.flurlicht"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Könntest du vielleicht irgendwann mal das Küchenlicht anmachen?"
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Wärst du so lieb und machst die Stehlampe an?"
+  ],
+  "expect": {
+   "targets": [
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Würdest du bitte die Rollläden im Wohnzimmer runterlassen?"
+  ],
+  "expect": {
+   "targets": [
+    "cover.wohnzimmer_rollladen_links",
+    "cover.wohnzimmer_rollladen_rechts"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Kannst du mal eben die Kaffeemaschine starten?"
+  ],
+  "expect": {
+   "targets": [
+    "switch.kaffeemaschine"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Es wäre nett, wenn du das Küchenlicht ausmachst."
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Ich hätte gern das Küchenlicht an."
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Kannst du das Küchenlicht an?"
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht"
+   ]
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Ist das Küchenlicht an?"
+  ],
+  "expect": {
+   "no_write": true
+  }
+ },
+ {
+  "class": "polite",
+  "turns": [
+   "Kann man das Küchenlicht dimmen?"
+  ],
+  "expect": {
+   "no_write": true
+  }
+ },
+ {
+  "class": "multi",
+  "turns": [
+   "Mach im Büro das Licht an und fahr dort den Raffstore runter."
+  ],
+  "expect": {
+   "targets": [
+    "cover.buero_raffstore",
+    "light.buerolicht",
+    "light.deckenfluter_buero",
+    "light.schreibtischlampe"
+   ]
+  }
+ },
+ {
+  "class": "multi",
+  "turns": [
+   "Schalte das Küchenlicht aus und die Stehlampe an."
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht",
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "multi",
+  "turns": [
+   "Mach das Küchenlicht an, die Kaffeemaschine an und das Radio aus."
+  ],
+  "expect": {
+   "targets": [
+    "light.kuechenlicht",
+    "media_player.kuechenradio",
+    "switch.kaffeemaschine"
+   ]
+  }
+ },
+ {
+  "class": "multi",
+  "turns": [
+   "Mach das Küchenlicht an und flausche den Teppich."
+  ],
+  "expect": {
+   "no_write": true
+  }
+ },
+ {
+  "class": "multi",
+  "turns": [
+   "Mach im Wohnzimmer die Rollläden runter und dort die Stehlampe an."
+  ],
+  "expect": {
+   "targets": [
+    "cover.wohnzimmer_rollladen_links",
+    "cover.wohnzimmer_rollladen_rechts",
+    "light.stehlampe"
+   ]
+  }
+ },
+ {
+  "class": "multi",
+  "turns": [
+   "Mach das Licht im Bad an und dann den Lüfter dort auch."
+  ],
+  "expect": {
+   "no_write": true,
+   "speech": [
+    "Badezimmerlicht, Spiegelschrank und Badlüfter"
+   ]
+  }
+ }
+]

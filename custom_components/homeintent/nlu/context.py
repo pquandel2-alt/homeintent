@@ -491,3 +491,10 @@ class ConversationContextStore:
         self._entries.pop(conversation_id, None)
         if self._dialog_listener is not None:
             self._dialog_listener(conversation_id, None)
+
+    def clear_all(self) -> int:
+        """Forget every conversation (test reset, 7.6.0)."""
+        conversation_ids = tuple(self._entries)
+        for conversation_id in conversation_ids:
+            self.clear(conversation_id)
+        return len(conversation_ids)

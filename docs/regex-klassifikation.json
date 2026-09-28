@@ -4,7 +4,8 @@
  "verlauf": {
   "7.5.0": 272,
   "7.5.1": 258,
-  "7.5.2": 212
+  "7.5.2": 212,
+  "7.6.0": 212
  },
  "eintraege": [
   {
@@ -3214,7 +3215,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/normalize.py::_NON_DEGREE_FILLER_RE::bfe1346731",
+   "id": "custom_components/homeintent/nlu/normalize.py::_NON_DEGREE_FILLER_RE::baa456caaa",
    "datei": "custom_components/homeintent/nlu/normalize.py",
    "bereich": "_NON_DEGREE_FILLER_RE",
    "klasse": "LEXICAL",
@@ -3445,10 +3446,31 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/normalize.py::_standing_state::8760c9dac3",
+   "datei": "custom_components/homeintent/nlu/normalize.py",
+   "bereich": "_standing_state",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/normalize.py::normalize::a7352ae785",
    "datei": "custom_components/homeintent/nlu/normalize.py",
    "bereich": "normalize",
    "klasse": "MORPHOLOGICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/normalize.py::normalize::bdac78e8d7",
+   "datei": "custom_components/homeintent/nlu/normalize.py",
+   "bereich": "normalize",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/normalize.py::normalize::2fa974e2bb",
+   "datei": "custom_components/homeintent/nlu/normalize.py",
+   "bereich": "normalize",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -5132,7 +5154,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/undo.py::_UNDO_RE::812c917f91",
+   "id": "custom_components/homeintent/undo.py::_UNDO_RE::17b59423c4",
    "datei": "custom_components/homeintent/undo.py",
    "bereich": "_UNDO_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -5140,9 +5162,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 365,
+  "LEXICAL": 367,
   "MORPHOLOGICAL": 39,
-  "STRUCTURAL": 117,
+  "STRUCTURAL": 118,
   "SEMANTIC_SENTENCE_PATTERN": 212
  }
 }

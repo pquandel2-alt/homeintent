@@ -53,6 +53,7 @@ from .semantic_state import (
     SemanticState,
     derive_semantic_state,
     evaluate_semantic_state,
+    matches_semantic_state,
 )
 
 if TYPE_CHECKING:
@@ -508,12 +509,14 @@ class ResponseGenerator:
         )
 
     def _respond_exists(self, result: QueryResult) -> ResponsePlan:
+        state = result.command.filter.state if result.command is not None else None
         return self._wrap(
             QueryResponsePlan(
                 QueryAnswerKind.EXISTS,
                 noun_plural=self._noun(result),
                 noun_singular=self._noun_singular(result),
                 names=tuple(entity.friendly_name for entity in result.entities),
+                state=_SEMANTIC_STATE_SPOKEN_DE.get(state) if state is not None else None,
             )
         )
 
@@ -523,6 +526,11 @@ class ResponseGenerator:
         state = result.command.filter.state
         assert state is not None
         state_word = _SEMANTIC_STATE_SPOKEN_DE[state]
+        # "Nein, nicht alle …": name the counterexamples (7.6.0).
+        exceptions = tuple(
+            entity.friendly_name for entity in result.entities
+            if not matches_semantic_state(entity, state)
+        )
         return self._wrap(
             QueryResponsePlan(
                 QueryAnswerKind.ALL,
@@ -530,6 +538,7 @@ class ResponseGenerator:
                 names=tuple(entity.friendly_name for entity in result.entities),
                 state=state_word,
                 matched=result.status is QueryResultStatus.MATCHED,
+                exception_names=exceptions,
             )
         )
 

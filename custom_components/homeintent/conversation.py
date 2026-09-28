@@ -388,6 +388,18 @@ _LOGGER = logging.getLogger(__name__)
 # Universal way out of any open follow-up question (F10). Matched against
 # the normalized utterance as a whole, so "Vergiss meine Vorliebe" is not a
 # cancellation.
+def _already_done_text(pending: ConversationContext | None) -> str | None:
+    """Honest answer to a withdrawal right after a reversible action ran."""
+    if pending is None or pending.pending_undo is None or not pending.last_entities:
+        return None
+    names = [entity.friendly_name for entity in pending.last_entities[:4]]
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
+    return (
+        f"Das habe ich schon ausgeführt ({listed}); abbrechen geht nicht mehr. "
+        "Sag „Mach das rückgängig“, dann nehme ich es zurück."
+    )
+
+
 _UNIVERSAL_CANCEL_RE = re.compile(
     r"\s*(?:(?:nein\s*,?\s*)?(?:lass\s+(?:das|es|gut\s+sein)|abbrechen|abbruch|brich\s+ab|"
     r"stopp|stop|vergiss\s+(?:es|das)|egal|schon\s+gut|nicht\s+mehr\s+noetig|"
@@ -1585,6 +1597,20 @@ class NluConversationEntity(
                     user_input, response, released, entities
                 )
 
+        withdrawal = active_dialog is None and active_task is None and (
+            _UNIVERSAL_CANCEL_RE.fullmatch(language_document.normalized_text.casefold()) is not None
+            or (
+                len(user_input.text.split()) <= 3
+                and classify_confirmation_reply(user_input.text) is ConfirmationReply.NO
+            )
+        )
+        if withdrawal and (done := _already_done_text(pending)) is not None:
+            # "Vergiss es" right after an action: nothing is open to cancel,
+            # so say that it already ran and how to take it back (7.6.0).
+            response.async_set_speech(done)
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         if (
             active_dialog is None
             and active_task is None

@@ -285,6 +285,46 @@ def _has_near_negation(
     return False
 
 
+def bind_coordinated_deixis(text: str, entities: Iterable[EntitySnapshot]) -> str:
+    """"Licht im Bad an und den Lüfter dort auch": "dort" is the earlier place (7.6.0).
+
+    Pure wording: only when the part before "und" names exactly one place
+    with a preposition, its spoken phrase replaces the deictic word in a
+    later conjunct. Nothing is resolved or guessed here.
+    """
+    lowered = text.casefold()
+    if "dort" not in lowered or " und " not in lowered:
+        return text
+    from .place_model import PlaceKind, build_place_lexicon
+
+    tokens = [token for token in tokenize_language(text) if token.is_word]
+    keys = [token.canonical for token in tokens]
+    if "und" not in keys:
+        return text
+    deictic = next(
+        (index for index in range(keys.index("und") + 1, len(keys)) if keys[index] == "dort"),
+        None,
+    )
+    if deictic is None:
+        return text
+    conjunction = max(index for index in range(deictic) if keys[index] == "und")
+    mentions = [
+        mention
+        for mention in build_place_lexicon(tuple(entities)).scan(keys[:conjunction])
+        if mention.explicit_preposition and mention.place.kind in {PlaceKind.AREA, PlaceKind.FLOOR}
+    ]
+    if len(mentions) != 1:
+        return text
+    mention = mentions[0]
+    first = mention.token_start
+    while first > 0 and keys[first - 1] in {"der", "dem", "den", "die", "das"}:
+        first -= 1
+    first -= 1  # the preposition itself
+    phrase = text[tokens[first].start:tokens[mention.token_end - 1].end]
+    target = tokens[deictic]
+    return text[:target.start] + phrase + text[target.end:]
+
+
 def analyse_language(
     text: str,
     entities: Iterable[EntitySnapshot] = (),
@@ -293,6 +333,8 @@ def analyse_language(
     include_registry_compounds: bool = True,
 ) -> LanguageDocument:
     """Build one immutable language document without discarding input."""
+    entity_tuple = tuple(entities)
+    text = bind_coordinated_deixis(text, entity_tuple)
     normalized = normalize(text)
     variants: list[TextVariant] = [TextVariant(text, "original")]
     if normalized != text:
@@ -300,7 +342,6 @@ def analyse_language(
     canonical = _orthographic_variant(text)
     if canonical not in {variant.text for variant in variants}:
         variants.append(TextVariant(canonical, "orthographic", 0.2))
-    entity_tuple = tuple(entities)
     if include_registry_compounds and _LOCATION_CUE_RE.search(text):
         for candidate in _registry_compound_variants(text, entity_tuple):
             if candidate not in {variant.text for variant in variants}:
@@ -432,9 +473,15 @@ def analyse_language(
             for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
         ]
         after_auf = words[words.index("auf") + 1:] if "auf" in words else []
+        # "Heizung Wohnzimmer auf 22 Grad": a number with its unit closing
+        # the sentence is the value of a verbless setting (7.6.0).
+        unit_value = (
+            len(after_auf) == 2 and after_auf[0].isdigit() and after_auf[1] in {"grad", "prozent"}
+        )
         if "auf" in words and after_auf and (
             _ELLIPTICAL_DIRECTIVE_RE.search(utterance.normalized_text)
             or not any(word.isdigit() for word in after_auf)
+            or unit_value
         ) and (
             _has_registry_mention(" ".join(words[:words.index("auf")]), entity_tuple)
             or any(analyse_word(word) is not None for word in words[:words.index("auf")])

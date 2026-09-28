@@ -206,6 +206,7 @@ def test_async_unload_entry_removes_the_service(tmp_path):
     assert hass.services.has_service(DOMAIN, "save_routine") is False
     assert hass.services.has_service(DOMAIN, "save_comfort_profile") is False
     assert hass.services.has_service(DOMAIN, "delete_monitor_goal") is False
+    assert hass.services.has_service(DOMAIN, "reset_test_state") is False
 
 
 def test_learning_tasks_are_cleaned_up_on_unload(tmp_path):
@@ -356,3 +357,52 @@ def test_delayed_self_delete_retries_transient_failures(monkeypatch):
 
     assert delete.await_count == 3
     assert [call.args[0] for call in sleep.await_args_list] == [0.1, 1.0, 5.0]
+
+
+def _reset_setup(tmp_path, *, admin: bool):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    hass.config_entries.async_entries = lambda domain: [entry] if domain == DOMAIN else []
+    hass.auth = SimpleNamespace(
+        async_get_user=AsyncMock(return_value=SimpleNamespace(is_admin=admin))
+    )
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    from homeintent.nlu.context import ConversationContext
+
+    runtime = entry.runtime_data
+    runtime.context_store.set(
+        "c1", ConversationContext(last_command=None, last_entities=(), last_area=None, pending_clarification=None)
+    )
+    call = ServiceCall({})
+    call.context = SimpleNamespace(user_id="admin" if admin else "anna")
+    return hass, runtime, hass.services._handlers[(DOMAIN, "reset_test_state")], call
+
+
+def test_reset_test_state_forgets_discourse_but_keeps_bindings(tmp_path):
+    """7.6.0: measurement series start from the same HomeIntent state."""
+    hass, runtime, handler, call = _reset_setup(tmp_path, admin=True)
+    runtime.bindings.async_clear = AsyncMock()
+
+    asyncio.run(handler(call))
+
+    assert runtime.context_store.get("c1") is None
+    runtime.bindings.async_clear.assert_not_awaited()
+
+
+def test_reset_test_state_clears_bindings_only_on_request(tmp_path):
+    hass, runtime, handler, call = _reset_setup(tmp_path, admin=True)
+    runtime.bindings.async_clear = AsyncMock()
+    call = ServiceCall({"include_bindings": True})
+    call.context = SimpleNamespace(user_id="admin")
+
+    asyncio.run(handler(call))
+
+    runtime.bindings.async_clear.assert_awaited_once()
+
+
+def test_reset_test_state_is_admin_only(tmp_path):
+    hass, runtime, handler, call = _reset_setup(tmp_path, admin=False)
+
+    with pytest.raises(PermissionError):
+        asyncio.run(handler(call))
+    assert runtime.context_store.get("c1") is not None

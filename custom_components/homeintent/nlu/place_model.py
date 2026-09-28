@@ -131,6 +131,31 @@ _LOCATIVE = frozenset({"im", "in", "am", "an", "beim", "bei", "auf", "vom", "von
 _ARTICLES = frozenset({"der", "dem", "den", "die", "das"})
 # "unten"/"oben" directly after these words is a direction, not a floor.
 _DIRECTION_VERBS = frozenset({"nach", "fahr", "fahre", "fahren", "runter", "hoch"})
+# "Sind alle Rollläden unten?": closing the sentence without a preposition,
+# after a shading kind, "oben"/"unten" is its position, not a floor (7.6.0).
+_POSITIONED_GENERA = frozenset({"shutter", "raffstore", "awning", "curtain", "garage_door"})
+
+
+def level_is_position(text: str, start: int, end: int) -> bool:
+    """The same rule on raw text: is the level word at ``start:end`` the
+    position of a named shading device ("Sind alle Rollläden unten?")?"""
+    if text[end:].strip(" ?.!"):
+        return False
+    import re as _re
+
+    words = [normalize_for_compare(word) for word in _re.findall(r"[\wäöüß]+", text[:start])]
+    return _is_position([*words, normalize_for_compare(text[start:end])], len(words))
+
+
+def _is_position(words: Sequence[str], start: int) -> bool:
+    from .device_ontology import analyse_word
+
+    if start != len(words) - 1 or (start > 0 and words[start - 1] in _LOCATIVE):
+        return False
+    return any(
+        (analysis := analyse_word(word)) is not None and set(analysis.genera) & _POSITIONED_GENERA
+        for word in words[:start]
+    )
 
 
 @dataclass(frozen=True)
@@ -159,7 +184,9 @@ class PlaceLexicon:
                 if place is None:
                     continue
                 previous = words[start - 1] if start > 0 else ""
-                if phrase in {"oben", "unten"} and previous in _DIRECTION_VERBS:
+                if phrase in {"oben", "unten"} and (
+                    previous in _DIRECTION_VERBS or _is_position(words, start)
+                ):
                     continue
                 before = start - 1
                 while before >= 0 and words[before] in _ARTICLES:

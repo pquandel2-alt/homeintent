@@ -73,6 +73,8 @@ NEED_WORDS: Mapping[str, NeedKind] = {
     "dunstig": NeedKind.VENTILATE, "beschlagen": NeedKind.VENTILATE,
     # sound
     "laut": NeedKind.QUIETER, "droehnt": NeedKind.QUIETER,
+    # A device that disturbs (7.6.0): "Das Radio nervt" -> quieter or off, asked.
+    "nervt": NeedKind.QUIETER, "stoert": NeedKind.QUIETER, "nerven": NeedKind.QUIETER,
     "leise": NeedKind.LOUDER,
 }
 # "Ich sehe/höre nichts": perception verb + negative object -> need.
@@ -80,7 +82,12 @@ _PERCEPTION_NEEDS: Mapping[str, NeedKind] = {
     "sehe": NeedKind.BRIGHTER, "seh": NeedKind.BRIGHTER, "sieht": NeedKind.BRIGHTER,
     "hoere": NeedKind.LOUDER, "hoer": NeedKind.LOUDER, "versteh": NeedKind.LOUDER,
     "verstehe": NeedKind.LOUDER,
+    # "Ich kann kaum lesen / nichts erkennen" (7.6.0).
+    "lesen": NeedKind.BRIGHTER, "erkennen": NeedKind.BRIGHTER, "sehen": NeedKind.BRIGHTER,
+    "hoeren": NeedKind.LOUDER, "verstehen": NeedKind.LOUDER,
 }
+# Adverbs that make a following perception verb a need ("kaum lesen").
+_HARDLY = frozenset({"kaum", "nichts", "nix", "schlecht", "schwer"})
 _NOTHING = frozenset({"nichts", "nix", "kaum", "wenig"})
 # A wish for more of a sensation: "etwas mehr Wärme", "mehr Licht".
 _MORE_WORDS = frozenset({"mehr"})
@@ -232,6 +239,8 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
     for index, word in enumerate(normalized):
         if word in _PERCEPTION_NEEDS and any(item in _NOTHING for item in normalized[index + 1:index + 4]):
             return NeedMeaning(_PERCEPTION_NEEDS[word], word)
+        if word in _PERCEPTION_NEEDS and any(item in _HARDLY for item in normalized[max(0, index - 2):index]):
+            return NeedMeaning(_PERCEPTION_NEEDS[word], word)
     # Wish for more: "ich hätte gern etwas mehr Wärme im Bad".
     for index, word in enumerate(normalized):
         if word in _MORE_WORDS:
@@ -246,7 +255,7 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
             continue
         if kind in {NeedKind.GLARE} or word.endswith(("e", "t", "en")) and word in {
             "friere", "frieren", "friert", "froestelt", "froestele", "bibbere", "zittere",
-            "schwitze", "schwitzen", "schwitzt", "droehnt",
+            "schwitze", "schwitzen", "schwitzt", "droehnt", "nervt", "stoert", "nerven",
         }:
             return NeedMeaning(kind, word)
         if not has_frame:

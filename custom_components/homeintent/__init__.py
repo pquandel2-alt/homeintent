@@ -81,6 +81,7 @@ SERVICE_SET_HOUSEHOLD = "set_household"
 SERVICE_SAVE_ROUTINE = "save_routine"
 SERVICE_SAVE_COMFORT_PROFILE = "save_comfort_profile"
 SERVICE_DELETE_MONITOR_GOAL = "delete_monitor_goal"
+SERVICE_RESET_TEST_STATE = "reset_test_state"
 SERVICE_THERMAL_DEADLINE_CHECKPOINT = "thermal_deadline_checkpoint"
 LEGACY_DOMAIN = "ha_nlu"
 
@@ -720,6 +721,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, SERVICE_DELETE_MONITOR_GOAL, _handle_delete_monitor_goal
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_TEST_STATE):
+
+        async def _handle_reset_test_state(call: ServiceCall) -> None:
+            """Make measurement series independent (7.6.0, admin only).
+
+            Forgets discourse, open dialogs and the execution trace; learned
+            bindings only when ``include_bindings`` is set. Timers and lists
+            are Home Assistant entities and are reset there.
+            """
+            await _require_admin_service_call(hass, call)
+            include_bindings = bool(call.data.get("include_bindings", False))
+            summary = {"conversations": 0, "trace_records": 0, "bindings_cleared": 0}
+            for config_entry in hass.config_entries.async_entries(DOMAIN):
+                runtime = getattr(config_entry, "runtime_data", None)
+                if not isinstance(runtime, HomeIntentRuntimeData):
+                    continue
+                summary["conversations"] += runtime.context_store.clear_all()
+                runtime.dialog_manager.clear_all()
+                if runtime.trace is not None:
+                    summary["trace_records"] += len(runtime.trace.store.recent())
+                    runtime.trace.store.clear()
+                    runtime.trace.index.clear()
+                if include_bindings:
+                    await runtime.bindings.async_clear()
+                    summary["bindings_cleared"] += 1
+            _LOGGER.info("HomeIntent test state reset: %s", summary)
+
+        hass.services.async_register(
+            DOMAIN, SERVICE_RESET_TEST_STATE, _handle_reset_test_state
+        )
+
     # Reconcile persistence before expiring missed one-shots. This recovers
     # a crash-interrupted transaction, removes orphan sidecar metadata and
     # repairs category assignments for every known HomeIntent automation.
@@ -782,6 +814,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_SAVE_ROUTINE,
             SERVICE_SAVE_COMFORT_PROFILE,
             SERVICE_DELETE_MONITOR_GOAL,
+            SERVICE_RESET_TEST_STATE,
         ):
             if hass.services.has_service(DOMAIN, service):
                 hass.services.async_remove(DOMAIN, service)

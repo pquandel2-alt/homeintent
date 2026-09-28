@@ -84,6 +84,10 @@ class DialogManager:
         self.ttl = timedelta(seconds=max(10, ttl_seconds))
         self._tasks: dict[str, dict[str, DialogTask]] = {}
 
+    def clear_all(self) -> None:
+        """Drop every open dialog task (test reset, 7.6.0)."""
+        self._tasks.clear()
+
     def add(self, conversation_id: str, task: DialogTask) -> None:
         self._tasks.setdefault(conversation_id, {})[task.task_id] = task
 

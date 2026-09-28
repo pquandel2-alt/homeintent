@@ -301,11 +301,20 @@ class GermanResponseRealizer:
             if not names:
                 return f"Nein, es gibt keine {noun}."
             count_noun = query.noun_singular if len(names) == 1 else noun
+            if state is not None and len(names) <= 6:
+                # "Ist ein Fenster offen?" -> which ones (7.6.0).
+                verb = "ist" if len(names) == 1 else "sind"
+                return f"Ja, {_join_names(names)} {verb} {state}."
             return f"Ja, es gibt {len(names)} {count_noun}."
         if kind is QueryAnswerKind.ALL:
             if not names:
                 return f"Ich habe keine {noun} gefunden."
             prefix = "Ja, alle" if query.matched else "Nein, nicht alle"
+            if not query.matched and query.exception_names and len(query.exception_names) <= 6:
+                return (
+                    f"{prefix} {noun} sind {state}. Nicht {state}: "
+                    f"{_join_names(query.exception_names)}."
+                )
             return f"{prefix} {noun} sind {state}."
         if kind is QueryAnswerKind.NONE:
             if not names:
