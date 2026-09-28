@@ -209,10 +209,73 @@ _STT_REWRITES = (
     (re.compile(r"\b(hoch|runter|herunter)\s+fahren\b", re.IGNORECASE), r"\1fahren"),
 )
 
+# Spoken clitics: the pronoun is fused onto the verb ("kannste", "mach's").
+# One table, expanded word by word before any meaning is read.
+_CLITICS = {
+    "kannste": "kannst du", "kannstes": "kannst du es", "haste": "hast du",
+    "willste": "willst du", "machste": "machst du", "biste": "bist du",
+    "mach's": "mach das", "machs": "mach das", "mach’s": "mach das",
+    "dreh's": "dreh das", "drehs": "dreh das", "schalt's": "schalt das",
+    "stell's": "stell das", "gibt's": "gibt es", "gibts": "gibt es",
+}
+_CLITIC_RE = re.compile(
+    r"(?<![\wäöüß'’])(" + "|".join(re.escape(key) for key in sorted(_CLITICS, key=len, reverse=True)) + r")(?![\wäöüß'’])",
+    re.IGNORECASE,
+)
+
+
+def _expand_clitic(match: re.Match[str]) -> str:
+    return _CLITICS[match.group(1).casefold()]
+
+
+def expand_clitics(text: str) -> str:
+    """"Kannste die Rollos …" -> "kannst du die Rollos …"."""
+    return _CLITIC_RE.sub(_expand_clitic, text)
+
+
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
+_EMBEDDING_SHELLS = (
+    ("ich", "frage", "mich"), ("ich", "frag", "mich"), ("ich", "wüsste", "gern"),
+    ("ich", "wüsste", "gerne"), ("ich", "wuesste", "gern"), ("ich", "möchte", "wissen"),
+    ("ich", "moechte", "wissen"), ("ich", "will", "wissen"), ("weißt", "du"),
+    ("weisst", "du"), ("kannst", "du", "mir", "sagen"), ("sag", "mir", "mal"),
+    ("mich", "würde", "interessieren"), ("mich", "interessiert"),
+)
+_EMBEDDED_WH = frozenset({"wie", "wo", "was", "wann", "warum", "wieso", "welche", "welcher", "welches", "wieviel", "wer"})
+_WH_PHRASE_WORDS = frozenset({"warm", "kalt", "hell", "viel", "viele", "lange", "spät", "spaet", "hoch", "feucht", "laut"})
+
+
+def _unembed_question(text: str) -> str:
+    """"Ich frage mich, ob das Fenster offen ist" -> "ist das Fenster offen?".
+
+    An embedded question keeps its verb last; the question it embeds has the
+    finite verb first (yes/no) or after the wh-phrase.  Pure word order, no
+    meaning is added or removed.
+    """
+    words = text.strip().rstrip(".!?").replace(",", " ").split()
+    lowered = [word.casefold() for word in words]
+    for shell in _EMBEDDING_SHELLS:
+        if tuple(lowered[:len(shell)]) != shell:
+            continue
+        rest, keys = words[len(shell):], lowered[len(shell):]
+        if len(rest) < 3:
+            return text
+        finite = rest[-1]
+        if keys[0] == "ob":
+            body = rest[1:-1]
+            return f"{finite} {' '.join(body)}?"
+        if keys[0] in _EMBEDDED_WH:
+            head = 2 if len(keys) > 3 and keys[1] in _WH_PHRASE_WORDS else 1
+            return f"{' '.join(rest[:head])} {finite} {' '.join(rest[head:-1])}?".replace("  ", " ")
+        return text
+    return text
+
+
 def normalize(text: str) -> str:
+    text = _unembed_question(text)
+    text = _CLITIC_RE.sub(_expand_clitic, text)
     text = _LEADING_DISCOURSE_FILLER_RE.sub("", text)
     text = _TRAILING_DISCOURSE_FILLER_RE.sub("", text)
     text = _HESITATION_RE.sub(" ", text)

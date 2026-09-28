@@ -19,15 +19,19 @@ from ..phonetic_correction import phonetic_suggestions
 from .german_structure import ClauseKind, GermanStructuralAnalysis, analyse_german_structure
 from .normalize import normalize
 from .semantic_lexicon import SemanticAnalysis, SemanticKind, analyse_semantics
-from .semantic_catalog import CANONICAL_SPELLING_FORMS
+from .semantic_catalog import CANONICAL_SPELLING_FORMS, DEGREE_WORDS
+from .device_ontology import analyse_word
 from .semantic_utterance import (
     Polarity,
     PragmaticDisposition,
     SemanticUtterance,
+    Modality,
     SpeechAct,
     analyse_utterance,
 )
 from .temporal_semantics import TemporalExpression, analyse_temporal_semantics
+from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
+from .word_cues import has_word
 
 
 _TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
@@ -86,10 +90,37 @@ class LanguageDocument:
     semantics: SemanticAnalysis
     structure: GermanStructuralAnalysis
     temporal: tuple[TemporalExpression, ...]
+    # One optional maintenance frame per coordinated clause ("lass X an").
+    maintain: tuple[MaintainFrame | None, ...] = ()
+    # "X muss nicht an sein" / "X kann aus": the state is no longer needed.
+    release: ReleaseFrame | None = None
+
+    @property
+    def maintained(self) -> tuple[MaintainFrame, ...]:
+        return tuple(frame for frame in self.maintain if frame is not None)
 
     @property
     def normalized_text(self) -> str:
         return self.variants[1].text if len(self.variants) > 1 else self.source_text
+
+
+def _has_place_mention(text: str, entities: tuple[EntitySnapshot, ...]) -> bool:
+    """"Im Schlafzimmer bitte etwas kühler": a place carries the target."""
+    from .place_model import PlaceKind, build_place_lexicon
+
+    words = [normalize_for_compare(word) for word in re.findall(r"[\wäöüß]+", text)]
+    return any(
+        mention.place.kind is PlaceKind.AREA or mention.place.kind is PlaceKind.FLOOR
+        for mention in build_place_lexicon(entities).scan(words)
+    )
+
+
+_SEPARABLE_PARTICLES = frozenset({"an", "aus", "auf", "zu", "ein", "hoch", "runter"})
+_SUBJECT_PRONOUNS = frozenset({"ich", "du", "wir", "ihr", "er", "man"})
+_INTERROGATIVES = frozenset({
+    "wer", "was", "wie", "wo", "wann", "warum", "wieso", "weshalb", "welche", "welcher",
+    "welches", "welchen", "ob", "ist", "sind", "hat", "haben",
+})
 
 
 def tokenize_language(text: str) -> tuple[LanguageToken, ...]:
@@ -306,6 +337,10 @@ def analyse_language(
         is not PragmaticDisposition.ASK_BEFORE_ACTION
         and semantics.values(SemanticKind.PROPERTY)
         and not semantics.values(SemanticKind.COMMAND_MARKER)
+        and not any(
+            normalize_for_compare(word) in DEGREE_WORDS
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        )
     ):
         # Compact dashboard/voice noun phrases such as ``Temperatur Küche``
         # are read requests. The query compiler still requires one typed
@@ -350,7 +385,7 @@ def analyse_language(
     if (
         utterance.speech_act is SpeechAct.STATEMENT
         and not utterance.normalized_text.rstrip().endswith("?")
-        and re.search(r"\b(?:nein|sondern|stattdessen|äh|aeh)\b", text, re.I)
+        and has_word(text, "nein", "sondern", "stattdessen", "aeh")
         and re.search(r"\d+(?:[,.]\d+)?", text)
         and semantics.values(SemanticKind.DOMAIN)
         and _has_registry_mention(utterance.normalized_text, entity_tuple)
@@ -360,6 +395,77 @@ def analyse_language(
         # The repair projector still checks slot/unit compatibility and the
         # normal validator/capability/policy pipeline remains authoritative.
         utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act is SpeechAct.STATEMENT
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+        and any(
+            normalize_for_compare(word) in DEGREE_WORDS
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        )
+        and (
+            _has_registry_mention(utterance.normalized_text, entity_tuple)
+            or any(
+                analyse_word(word) is not None
+                for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+            )
+            or _has_place_mention(utterance.normalized_text, entity_tuple)
+        )
+    ):
+        # Verbless comparative requests ("Das Radio bitte etwas lauter",
+        # "Die Stehlampe heller") are directives: a degree word plus a
+        # target without a copula.  "Hier ist es zu hell" keeps its copula
+        # and stays a statement.
+        utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+        and not re.match(
+            r"\s*(?:wer|was|wie|wo|wann|warum|wieso|welch\w*|ob)\b",
+            utterance.normalized_text,
+            re.I,
+        )
+    ):
+        words = [
+            normalize_for_compare(word)
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        ]
+        after_auf = words[words.index("auf") + 1:] if "auf" in words else []
+        if "auf" in words and after_auf and (
+            _ELLIPTICAL_DIRECTIVE_RE.search(utterance.normalized_text)
+            or not any(word.isdigit() for word in after_auf)
+        ) and (
+            _has_registry_mention(" ".join(words[:words.index("auf")]), entity_tuple)
+            or any(analyse_word(word) is not None for word in words[:words.index("auf")])
+        ):
+            # Verbless settings ("Saugroboter bitte auf leise", "Rollladen
+            # auf 40"): a target followed by "auf <value>" is a directive.
+            utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+    ):
+        words = [
+            normalize_for_compare(word)
+            for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
+        ]
+        if (
+            len(words) > 1
+            and words[0] not in _INTERROGATIVES
+            and words[-1] in _SEPARABLE_PARTICLES
+            and ("bitte" in words or len(words) <= 4)
+            and not set(words) & _SUBJECT_PRONOUNS
+            and (
+                _has_registry_mention(" ".join(words[:-1]), entity_tuple)
+                or any(analyse_word(word) is not None for word in words[:-1])
+            )
+        ):
+            # Verbless particle requests ("Bitte das Radio in der Küche
+            # an", "Den Rollladen auf"): a target plus a final separable
+            # particle is a directive; a copula ("ist an") is a statement.
+            utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
     explicit_unmute = re.search(r"\bnicht\s+mehr\s+stumm\b", text, re.I) is not None
     if explicit_unmute:
         utterance = replace(utterance, polarity=Polarity.POSITIVE)
@@ -367,6 +473,11 @@ def analyse_language(
         utterance = replace(utterance, polarity=Polarity.NEGATIVE)
     tokens = tokenize_language(text)
     structure = analyse_german_structure(tokens)
+    maintain, _clause_ranges = maintain_frames(text, tokens)
+    if maintain and all(frame is not None for frame in maintain):
+        # Keeping a state is never an operation, whatever particle
+        # ("an", "zu", "auf") the clause ends with.
+        utterance = replace(utterance, modality=Modality.MAINTAIN)
     if (
         utterance.polarity is Polarity.NEGATIVE
         and structure.negations
@@ -390,4 +501,11 @@ def analyse_language(
         semantics=semantics,
         structure=structure,
         temporal=analyse_temporal_semantics(tokens),
+        maintain=maintain,
+        release=(
+            release_frame(text, tokens)
+            if utterance.speech_act is not SpeechAct.AUTOMATION
+            and not text.rstrip().endswith("?")
+            else None
+        ),
     )

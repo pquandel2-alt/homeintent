@@ -20,6 +20,7 @@ from .semantic_utterance import (
     SpeechAct,
     analyse_utterance,
 )
+from .word_cues import has_word
 
 
 class TemporalPerspective(Enum):
@@ -100,9 +101,9 @@ def _coordination(text: str) -> CoordinationKind:
         r"\b(?:aber|jedoch|außer|ausser|mit\s+ausnahme\s+von)\b", text, re.I
     ):
         return CoordinationKind.CONTRASTIVE
-    if re.search(r"\b(?:oder|entweder)\b", text, re.I):
+    if has_word(text, "oder", "entweder"):
         return CoordinationKind.ALTERNATIVE
-    if re.search(r"\b(?:und|sowie|außerdem)\b", text, re.I):
+    if has_word(text, "und", "sowie", "ausserdem"):
         return CoordinationKind.ADDITIVE
     return CoordinationKind.NONE
 

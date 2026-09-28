@@ -165,6 +165,9 @@ class PendingServiceConfirmation:
     success_text: str
     requested_by_user_id: str | None = None
     undo: "UndoPlan | None" = None
+    # A previewed group operation ("Soll ich A, B und C ausschalten?") runs
+    # these plans after ``plan`` once the user confirms.
+    additional_plans: tuple[ServiceCallPlan, ...] = ()
 
 
 @dataclass(frozen=True)

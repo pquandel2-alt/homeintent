@@ -14,6 +14,8 @@ from .goal_model import (
 from .nlu.german_structure import ClauseKind
 from .nlu.language_frontend import LanguageDocument
 from .nlu.temporal_semantics import TemporalKind
+from .nlu.semantic_catalog import DEGREE_WORDS
+from .nlu.semantic_lexicon import SemanticKind
 from .nlu.semantic_utterance import SpeechAct
 
 
@@ -23,6 +25,7 @@ _LEAVE = frozenset({"gehe", "weg", "verlasse", "verlaesst", "verlassen", "raus"}
 _ARRIVE = frozenset({"kommt", "komme", "ankommt", "ankomme", "heimkommt", "zurueckkehrt"})
 _OPEN = frozenset({"offen", "offene", "offener", "offenes", "offenen", "auf", "aufsteht"})
 _WINDOW = frozenset({"fenster", "fenstern", "fensterkontakt", "fensterkontakte"})
+_COMPARATIVE_WORDS = frozenset(DEGREE_WORDS)
 _LIGHT = frozenset({"licht", "lichter", "lampe", "lampen", "leuchte", "leuchten"})
 
 
@@ -179,7 +182,16 @@ def interpret_goal(
 
     if words & {"sichere", "verschliesse"} and words & {"haus", "wohnung", "tueren", "fenster"}:
         return GoalModel(GoalKind.SECURE_HOME, goal_id=goal_id, provenance=provenance)
-    if words & {"pausiere", "stoppe", "mach"} and words & {"medien", "wiedergaben", "musik"}:
+    if (
+        words & {"medien", "wiedergaben", "musik"}
+        and (
+            words & {"pausiere", "stoppe"}
+            or document.semantics.values(SemanticKind.ACTION) & {"pause", "stop", "turn_off"}
+        )
+        and not words & _COMPARATIVE_WORDS
+    ):
+        # Only a stop/pause/off operation silences media.  "Mach die Musik
+        # leiser/lauter/an" is a volume or power change, never a pause (S4).
         return GoalModel(GoalKind.QUIET_MEDIA, goal_id=goal_id, provenance=provenance)
     if "unbesetzte" in words and words & {"bereiche", "raeume"} and "energiesparend" in words:
         return GoalModel(GoalKind.SAVE_UNOCCUPIED, goal_id=goal_id, provenance=provenance)

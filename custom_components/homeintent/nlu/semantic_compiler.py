@@ -64,6 +64,7 @@ from .registered_operation_compiler import climate_in_named_area
 from .semantic_exclusion import split_exclusion as _split_exclusion
 from .semantic_lexicon import SemanticAnalysis, SemanticKind, analyse_semantics
 from .semantic_catalog import (
+    COLOR_TEMPERATURE_WORDS,
     DOMAIN_WORDS,
     INTENT_BY_DOMAIN_ACTION,
     MEASUREMENT_PROPERTY_SPECS,
@@ -84,6 +85,7 @@ from .semantic_state import (
     supports_state_predicate,
 )
 from .semantic_utterance import SpeechAct, analyse_utterance
+from .word_cues import has_word
 
 
 def _device_class_targets(
@@ -167,7 +169,7 @@ _STOP_WORDS = {
     "im", "in", "am", "auf", "aus", "an", "zu", "und", "sind", "ist",
     "alle", "sämtliche", "sämtlichen", "jede", "jeden", "jedes", "beide",
     "zeigt", "zeigen", "welche", "welcher", "welches",
-    "ganz", "um", "außer", "ausser", "mit", "ausnahme", "bei",
+    "ganz", "um", "außer", "ausser", "mit", "ausnahme", "ausgenommen", "bei",
     "hoch", "noch", "vorhanden", "vorhandene", "vorhandenes", "stehen",
     "steht", "sag", "sage", "ob", "zustand", "status", "sensor", "gerät", "geräte",
     "verbraucht", "verbrauchen", "anzeigt", "also", "außerdem", "ausserdem", "okay", "ok", "gut", "nun", "na",
@@ -493,6 +495,8 @@ def _compile_comparison_query(
     entities: list[EntitySnapshot],
     analysis: SemanticAnalysis,
     world_model: WorldModel | None = None,
+    *,
+    empty_answer: bool = False,
 ) -> ParseResult | None:
     """Compile a typed current-value comparison without a grammar parser."""
     comparators = analysis.values(SemanticKind.COMPARATOR)
@@ -566,7 +570,34 @@ def _compile_comparison_query(
         if (value := current_value(entity)) is not None and predicate(value)
     ]
     if not matches:
-        return None
+        if not candidates or not empty_answer:
+            return None
+        # A grounded empty answer: the kind exists here, none passes.
+        noun = {"light": "Lichter", "cover": "Rollläden", "climate": "Räume", "sensor": "Batterien"}[domain]
+        relation = {
+            "lt": "unter", "gt": "über", "lte": "höchstens", "gte": "mindestens",
+        }[comparator]
+        unit = "Grad" if has_temperature else "Prozent"
+        spoken = f"{threshold:g}".replace(".", ",")
+        if location is not None:
+            from .german_morphology import dative_location_phrase
+
+            place = dative_location_phrase(location[0])
+            answer = f"{place[:1].upper()}{place[1:]} liegen gerade keine {noun} {relation} {spoken} {unit}."
+        else:
+            answer = f"Gerade liegen keine {noun} {relation} {spoken} {unit}."
+        return ParseResult(
+            frame=SemanticFrame(
+                intent="HassQueryComparison",
+                target=TargetReference(text=domain, domain=domain),
+                area=None,
+                parameters={"comparison": Comparison(operator=comparator, value=threshold)},
+                source_text=text,
+                action=SemanticAction.QUERY,
+            ),
+            resolved_entities=[],
+            response_text=answer,
+        )
     return ParseResult(
         frame=SemanticFrame(
             intent="HassGetState" if domain == "sensor" else "HassQueryComparison",
@@ -586,6 +617,21 @@ def _compile_comparison_query(
         ),
         resolved_entities=matches,
     )
+
+
+def empty_comparison_answer(text: str, entities: list[EntitySnapshot]) -> str | None:
+    """"Keine Lichter über 90 Prozent": the grounded answer when nothing passes.
+
+    Only for the failure explanation after every compiler returned nothing;
+    the compiler itself keeps "no match -> no result".
+    """
+    from .normalize import normalize
+
+    normalized = normalize(text)
+    result = _compile_comparison_query(
+        normalized, entities, analyse_semantics(normalized), empty_answer=True
+    )
+    return result.response_text if result is not None and not result.resolved_entities else None
 
 
 def _tokens(text: str) -> set[str]:
@@ -752,8 +798,8 @@ def _compile_relative_climate(
     entities: list[EntitySnapshot],
     world_model: WorldModel | None,
 ) -> ParseResult | None:
-    increase = re.search(r"\b(?:wärmer|waermer|erhöh\w*)\b", text, re.I)
-    decrease = re.search(r"\b(?:kälter|kaelter|senk\w*|reduzier\w*)\b", text, re.I)
+    increase = has_word(text, "waermer", "erhoeh*")
+    decrease = has_word(text, "kaelter", "senk*", "reduzier*")
     if bool(increase) == bool(decrease):
         return None
     named = mentioned_entities(
@@ -812,8 +858,8 @@ def _compile_relative_light(
     world_model: WorldModel | None,
 ) -> ParseResult | None:
     """Compile a bounded relative brightness command for exactly one light."""
-    increase = re.search(r"\bheller\b", text, re.I)
-    decrease = re.search(r"\bdunkler\b", text, re.I)
+    increase = has_word(text, "heller")
+    decrease = has_word(text, "dunkler")
     if bool(increase) == bool(decrease):
         return None
     location = resolve_semantic_location(text, entities, world_model)
@@ -1016,7 +1062,13 @@ def _compile_light_color(
     entities: list[EntitySnapshot],
     world_model: WorldModel | None,
 ) -> ParseResult | None:
-    temperature = re.search(r"\b(warmweiß|kaltweiß)\b", text, re.I)
+    temperature = next(
+        (
+            word for word in COLOR_TEMPERATURE_WORDS
+            if word in text.casefold().replace("weiss", "weiß")
+        ),
+        None,
+    )
     color_matches = [
         (word, value)
         for word, value in _LIGHT_COLORS.items()
@@ -1038,7 +1090,7 @@ def _compile_light_color(
     ):
         return None
     if temperature is not None:
-        kelvin = 2700 if temperature.group(1).casefold().startswith("warm") else 6500
+        kelvin = COLOR_TEMPERATURE_WORDS[temperature]
         intent = "HassLightSetColorTemp"
         parameters: dict[str, object] = {"color_temp_kelvin": kelvin}
         property_ = SemanticProperty.COLOR_TEMPERATURE
@@ -1069,9 +1121,9 @@ def _compile_fan_speed(
     world_model: WorldModel | None,
 ) -> ParseResult | None:
     level = re.search(r"\b(?:stufe|stufen)\s+(10|[1-9])\b", text, re.I)
-    faster = re.search(r"\bschneller\b", text, re.I)
-    slower = re.search(r"\blangsamer\b", text, re.I)
-    if sum((level is not None, faster is not None, slower is not None)) != 1:
+    faster = has_word(text, "schneller")
+    slower = has_word(text, "langsamer")
+    if sum((level is not None, faster, slower)) != 1:
         return None
     entity = _single_named_capable_entity(
         text, entities, "fan", "FAN_SPEED", world_model
@@ -1082,7 +1134,7 @@ def _compile_fan_speed(
         intent = "HassFanSetSpeed"
         parameters: dict[str, object] = {"level": int(level.group(1))}
         direction = None
-    elif faster is not None:
+    elif faster:
         intent = "HassFanIncreaseSpeed"
         parameters = {}
         direction = SemanticDirection.INCREASE

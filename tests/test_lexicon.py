@@ -51,7 +51,10 @@ def test_color_slot_list_values_pinned():
 
 
 def test_color_temp_slot_list_values_pinned():
-    assert _values(lexicon._COLOR_TEMP_SLOT_LIST) == [("warmweiß", "2700"), ("kaltweiß", "6500")]
+    assert _values(lexicon._COLOR_TEMP_SLOT_LIST) == [
+        ("warmweiß", "2700"), ("neutralweiß", "4000"),
+        ("tageslichtweiß", "5500"), ("kaltweiß", "6500"),
+    ]
 
 
 def test_comparator_slot_list_values_pinned():

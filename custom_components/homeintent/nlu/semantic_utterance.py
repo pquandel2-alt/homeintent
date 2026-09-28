@@ -22,6 +22,7 @@ from .semantic_catalog import (
     PROPERTY_ENTRIES,
     regex_union,
 )
+from .word_cues import has_word
 
 
 class SpeechAct(Enum):
@@ -39,6 +40,8 @@ class Modality(Enum):
     WISH = auto()
     HYPOTHETICAL = auto()
     UNCERTAIN = auto()
+    # "Lass das Licht an": keep the current state; never an operation.
+    MAINTAIN = auto()
 
 
 class Polarity(Enum):
@@ -80,7 +83,11 @@ class SemanticUtterance:
     def safe_to_execute_directly(self) -> bool:
         return (
             self.speech_act is SpeechAct.COMMAND
-            and self.modality not in {Modality.HYPOTHETICAL, Modality.UNCERTAIN}
+            and self.modality not in {
+                Modality.HYPOTHETICAL,
+                Modality.UNCERTAIN,
+                Modality.MAINTAIN,
+            }
             and self.polarity is Polarity.POSITIVE
         )
 
@@ -143,6 +150,10 @@ _UNCERTAIN_RE = re.compile(
 _WISH_RE = re.compile(
     r"\b(?:ich\s+(?:hätte|haette|möchte|moechte|will)\s+(?:gern|gerne)?|"
     r"ich\s+wünsche\s+mir)\b",
+    re.I,
+)
+_POLITE_REQUEST_SHELL_RE = re.compile(
+    r"^\s*(?:bitte\s+)?(?:kannst|könntest|koenntest|würdest|wuerdest|magst)\s+du\b",
     re.I,
 )
 _POLITE_RE = re.compile(
@@ -236,6 +247,10 @@ _VERB_FIRST_MODAL_RE = re.compile(
     r"^(?:kannst|koenntest|könntest|wuerdest|würdest|moechtest|möchtest|sollst)$",
     re.I,
 )
+_NON_VERB_FIRST_WORDS = frozenset({
+    "oben", "unten", "draußen", "draussen", "drinnen", "hinten", "jetzt", "morgen",
+    "licht", "gleich", "sofort", "nachtlicht",
+})
 _SUBJECT_START_RE = re.compile(
     r"^\s*(?:der|die|das|ein|eine|mein\w*|dein\w*|unser\w*|dies\w*|alle)\b",
     re.I,
@@ -260,6 +275,10 @@ def _modality(text: str) -> Modality:
     if _HYPOTHETICAL_RE.search(text):
         return Modality.HYPOTHETICAL
     if _UNCERTAIN_RE.search(text):
+        # Inside a polite request shell ("Könntest du vielleicht mal ...")
+        # the hedge is politeness, not uncertainty about the wish.
+        if _POLITE_REQUEST_SHELL_RE.match(text):
+            return Modality.POLITE
         return Modality.UNCERTAIN
     if _WISH_RE.search(text):
         return Modality.WISH
@@ -280,6 +299,10 @@ def _is_verb_first_device_question(text: str) -> bool:
     """
     match = _VERB_FIRST_DEVICE_RE.match(text)
     if match is None or _VERB_FIRST_MODAL_RE.fullmatch(match.group("verb")):
+        return False
+    if match.group("verb").casefold() in _NON_VERB_FIRST_WORDS:
+        # Place/time adverbs and the mass noun "Licht" merely look like
+        # finite verbs ("Oben alle Lichter aus", "Jetzt das Licht an").
         return False
     return text.rstrip().endswith("?") or _SUBJECT_START_RE.match(match.group("body")) is not None
 
@@ -362,7 +385,13 @@ def analyse_utterance(text: str) -> SemanticUtterance:
     # command branch above still wins whenever an executable operation is
     # present.
     elif _PROPERTY_CUE_RE.search(normalized) and (
-        normalized.rstrip().endswith("?") or _COMPARATOR_CUE_RE.search(normalized)
+        normalized.rstrip().endswith("?")
+        or (
+            _COMPARATOR_CUE_RE.search(normalized)
+            # "Im Büro etwas wärmer bitte": a comparative with a request
+            # marker and without "als" asks for a change, not a comparison.
+            and not (has_word(normalized, "bitte") and not has_word(normalized, "als"))
+        )
     ):
         speech_act = SpeechAct.QUERY
     elif _PROPERTY_NOUN_QUERY_RE.search(normalized):

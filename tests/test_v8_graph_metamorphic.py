@@ -98,7 +98,14 @@ def test_missing_location_is_not_a_meaning_preserving_mutation():
     )
     assert unlocated.kind in {UnderstandingKind.AMBIGUOUS, UnderstandingKind.UNSUPPORTED}
     assert not unlocated.actionable
-    assert unlocated.payload is None
+    # 7.3.0: a singular target without a place is a numbered clarification
+    # over exactly the matching devices, never an execution (Abschnitt 1).
+    assert unlocated.payload is None or (
+        unlocated.payload.plan is None
+        and unlocated.payload.clarification is not None
+        and {entity.entity_id for entity in unlocated.payload.clarification.candidates}
+        == {"light.living", "light.kitchen"}
+    )
     assert located.payload.frame is not None
     assert located.payload.frame.target is not None
     assert located.payload.frame.target.entity_id == "light.living"

@@ -64,7 +64,14 @@ TURN_ON_PHRASES = [
     "Kannst du {name} anmachen?",
     "Bitte {name} an",
     "Dreh {name} an",
+]
+# "Lass {name} an" keeps the current state (7.3.0, finding S1) and is
+# therefore no longer a turn-on phrase; see MAINTAIN_PHRASES.
+MAINTAIN_PHRASES = [
     "Lass {name} an",
+    "Lass {name} bitte an",
+    "Lasst {name} an",
+    "Kannst du {name} anlassen?",
 ]
 TURN_OFF_PHRASES = [
     "Mach {name} aus",

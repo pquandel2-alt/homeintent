@@ -165,7 +165,7 @@ def test_climate_temperature_out_of_bounds_is_invalid_parameter():
 
 def test_color_temperature_kelvin_outside_the_closed_vocabulary_is_invalid_parameter():
     bad_action = ActionModel(
-        type=ActionType.SET_COLOR_TEMPERATURE, target=WOHNZIMMER_LICHT_TARGET, color_temp_kelvin=4000
+        type=ActionType.SET_COLOR_TEMPERATURE, target=WOHNZIMMER_LICHT_TARGET, color_temp_kelvin=3000
     )
     model = AutomationModel(triggers=(VALID_TRIGGER,), actions=(bad_action,))
     assert validate_automation(model) is AutomationValidationError.INVALID_PARAMETER

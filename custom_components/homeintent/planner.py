@@ -231,7 +231,7 @@ def materialize_goal(
         operator = _operator_id(action.domain, action.service)
         steps.append(
             PlanStep(
-                step_id, StepKind.ACTION, f"{entity.friendly_name} {expected}",
+                step_id, StepKind.ACTION, f"{entity.friendly_name} {_expected_de(expected)}",
                 preconditions=("entity_available", (capability or "domain_service_available").casefold()),
                 effects=(f"state={expected}",),
                 invariants=("same_stable_entity_id", "policy_allow_or_confirmed"),
@@ -692,6 +692,23 @@ def validate_plan_graph(plan: MaterializedPlan, *, limits: PlanningLimits = Plan
 
     for step_id in by_id:
         visit(step_id, 1)
+
+
+_EXPECTED_STATE_DE = {
+    "on": "einschalten",
+    "off": "ausschalten",
+    "open": "öffnen",
+    "closed": "schließen",
+    "locked": "abschließen",
+    "unlocked": "aufschließen",
+    "paused": "pausieren",
+    "playing": "abspielen",
+}
+
+
+def _expected_de(expected: str) -> str:
+    """German preview verb for an expected state (never raw English)."""
+    return _EXPECTED_STATE_DE.get(expected, expected)
 
 
 def _legacy_action(goal: GoalModel, entity: EntitySnapshot) -> tuple[ServiceCallPlan, str, str | None]:

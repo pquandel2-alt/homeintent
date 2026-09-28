@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.2.1** (Natural Language Automations + Live-Test-Fix)
+- Aktuelle Version: **7.3.0** (Sprachverständnis ohne Sprachmodell)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,59 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.3.0 neu?
+
+**HomeIntent 7.3.0 — Sprachverständnis ohne Sprachmodell.** HomeIntent
+versteht Alltagsdeutsch jenseits exakter Gerätenamen und fester Satzformen –
+weiterhin ohne LLM, ohne ML-Modell und ohne externe Dienste. Wissen liegt als
+Daten vor (Geräte-Ontologie, Orte, Bedürfnis- und Sichtentabellen), Regeln
+arbeiten über Bedeutungsbausteine statt über Satzschablonen. Parser führen
+weiterhin nichts aus; Validator, ExecutionPolicy, Bestätigungen und
+`NEVER_AUTO` sind unverändert. Details: [`docs/architecture-v13.md`](docs/architecture-v13.md)
+und der Abschnitt [„Wie HomeIntent Sprache versteht“](#wie-homeintent-sprache-versteht).
+
+- **Ziele als Gattung × Ort × Menge:** „die Leuchte im Kinderzimmer“, „alle
+  Jalousien im Obergeschoss“, „die Glotze“, „Kinderzimmerjalousie“; Einzahl
+  bei mehreren Geräten fragt nach, fehlende Gattung wird ehrlich benannt.
+- **Sicherheitsbefunde S1–S7 behoben:** „Lass … an“ tut nichts, „alles“ im
+  Raum mit Vorschau ohne Heizung/Schlösser, keine verschluckten Teilsätze,
+  „leiser“ pausiert nicht, Superlative nur über Innenräume, „zu hell“ wirkt,
+  Melder bleiben in ihrer Gattung. Zusätzlich: „die Rollläden“ in
+  verzögerten und geplanten Aufträgen erreicht nie Garagentor oder Markise,
+  „um 18:30 …“ läuft nie sofort, und „in Küche und Flur“ verliert keinen Ort.
+- **Bedürfnisse, Situationssichten, Diskurs, Modalität und Zeitsprache**
+  („Ich friere“, „Ist alles abgeschlossen?“, „Die andere bitte auch“, „Die
+  Kaffeemaschine kann jetzt aus“, „um viertel vor neun“, „Weck mich um
+  sieben mit Licht“).
+- **Benachrichtigungen** mit einer gemeinsamen Bedeutung für Sofort-,
+  Verzögert-, Termin- und Ereignis-Push; diktierter Text wird vor der
+  Zielauflösung abgetrennt.
+- **Testhaus erweitert** (Einfahrtkamera, dritte Bürolampe) und neue
+  Szenario-Kategorie „Sprache 7.3“ (36 Szenarien mit eigenen Sätzen).
+- Regex-Verwendungen im Code: 854 → 793; Automationssprache p95 bei 5000
+  Entitäten auf der Messmaschine 83 ms → 20 ms.
+
+Messwerte gegen ein frisches, echtes Home Assistant 2026.9.2 mit dem
+simulierten Einfamilienhaus (`sim/`):
+
+| Messung | 7.2.1 | 7.3.0 |
+| --- | --- | --- |
+| Funktionsszenarien (`sim/runner.py`) | 126 / 126 | 162 / 162 |
+| README-Beispiele (`sim/readme_check.py`) | 101 ok, 17 Rückfragen, 25 fehlgeschlagen von 143 | 131 ok, 32 Rückfragen, 6 fehlgeschlagen von 169 |
+| Push-Matrix mit echter Auslösung (`sim/push_check.py`) | 23 / 35 | 34 / 35 |
+| Alltagssprache-Korpus (`sim/nlu_probe.py`) | 11 / 66 (17 %) | 55 / 66 (83 %) |
+| HomeIntent-Befunde im HA-Log (`sim/check_log.py`) | 0 | 0 |
+
+Offen und ehrlich: Die verbliebenen README-Fehlschläge sind zwei
+Konfigurationszeilen (`Leselampe = light.…`, keine Sätze), drei
+Automationsbefehle, die bei mehreren passenden Automationen bewusst
+ablehnen statt zu raten, und ein Listeneintrag, den der vorige Schritt schon
+verschoben hatte. Der eine Push-Befund ist die unabhängige kritische
+Wassermelder-Warnung, die zusätzlich an alle Haushaltshandys geht. Im
+Alltagssprache-Korpus löste „Ich will einen Film schauen.“ die richtige
+Szene Filmabend aus; das Testbett protokolliert Szenen nur über ihre
+Lichtaufrufe.
 
 ## Was ist in Version 7.2.1 neu?
 
@@ -720,6 +773,98 @@ Mach die drei Lampen im Büro an.
 „Ein paar“ oder „einige“ führt nie zu einer zufälligen Auswahl. HomeIntent
 fragt nach den konkreten Gerätenamen.
 
+### Gattungen, Bedürfnisse, Sichten und Diskurs (seit 7.3)
+
+Ein Ziel ist eine Kombination aus **Gattung × Ort × Merkmal × Menge**, nicht
+nur ein Name. Eine Geräte-Ontologie (Daten, keine Satzschablonen) kennt
+deutsche Gattungswörter mit Plural, Umgangssprache und Komposita
+(„Lampe“, „Leuchte“, „Rollo“, „Jalousie“, „Glotze“, „Wohnzimmer|licht“,
+„Kinderzimmer|jalousie“, „Rauch|melder“). Orte sind Bereiche, Bereichs- und
+Etagenaliase („oben“, „unten“, „im Keller“, „draußen“) – in Befehlen,
+Abfragen, Automationen und Benachrichtigungen gleich.
+
+```text
+Mach die Leuchte im Kinderzimmer an.
+Fahre alle Jalousien im Obergeschoss hoch.
+Mach im Büro den Ventilator an.
+Schalte im Wohnzimmer alle Lampen aus, bis auf die Stehlampe.
+Mach das Licht im Wohnzimmer neutral weiß.
+```
+
+Im Testhaus fragt der erste Satz nach (im Kinderzimmer gibt es zwei
+Lichter), der zweite fährt nur die Rollläden oben (nie das Garagentor), der
+dritte antwortet „Im Büro gibt es keinen Ventilator.“ und der letzte stellt
+nur Lichter mit Farbtemperatur um.
+
+**Bedürfnisse** werden als gewünschte Wirkung verstanden; der Ort kommt aus
+dem Satz, vom Satelliten oder aus dem Kontext:
+
+```text
+Ich friere.
+Im Schlafzimmer bitte etwas kühler.
+Hier ist es muffig.
+Es ist zu laut.
+Ich gehe schlafen.
+```
+
+Am Satelliten im Kinderzimmer erhöht „Ich friere.“ die Heizung dort um ein
+Grad; „Hier ist es muffig.“ im Bad schaltet den Badlüfter ein; „Es ist zu
+laut.“ in der Küche stellt das Küchenradio leiser; „Ich gehe schlafen.“
+schlägt das Skript Gute Nacht vor.
+
+Fragen, Verneinungen, Vergangenes und Hypothetisches („Gestern war mir
+kalt“, „Wäre es kalt, …“) lösen nie eine Aktion aus.
+
+**Situationssichten** beantworten Fragen über das Haus aus beobachteten
+Zuständen und führen nie etwas aus:
+
+```text
+Ist im Erdgeschoss noch etwas an?
+Ist alles abgeschlossen?
+Sollte ich lüften?
+Warum ist es im Büro so kalt?
+Ist jemand im Büro?
+Was kann ich im Wohnzimmer steuern?
+Welche Räume gibt es im Keller?
+Wie viele Fenster gibt es im Erdgeschoss?
+Was macht das Skript Kaffee kochen?
+Wofür ist das Hauptwasserventil?
+```
+
+Lüften folgt dokumentierten Schwellen (60 % Luftfeuchtigkeit, 1000 ppm
+CO2); „Warum ist es kalt“ nennt nur belegte Fakten: Ist- und Sollwert,
+Heizbetrieb, offene Fenster und die Außentemperatur.
+
+**Diskurs**: Ellipsen und Verweise binden an das letzte Ziel, die letzte
+Ergebnismenge oder den letzten Ort des Gesprächs:
+
+```text
+Du: Schalte die Nachttischlampe rechts ein.
+Assist: Nachttischlampe rechts eingeschaltet.
+Du: Die andere bitte auch.
+Assist: Nachttischlampe links eingeschaltet.
+```
+
+```text
+Du: Wie warm ist es im Kinderzimmer?
+Du: Dort bitte wärmer.
+Assist: Heizung Kinderzimmer wärmer gestellt.
+```
+
+```text
+Du: Mach es im Büro wärmer.
+Du: Und im Bad?
+Assist: Heizung Badezimmer wärmer gestellt.
+```
+
+**Modalität**: „Lass die Kücheninsel an“ tut nichts, „Die Kaffeemaschine
+kann jetzt aus“ schaltet aus, „Ich wüsste gern, ob die Haustür zu ist“ ist
+eine Frage. **Zeitsprache**: „um halb sieben“, „um viertel vor neun“, „in
+zwei Stunden und 30 Minuten“ (in jeder Wortstellung) und „Weck mich um
+sieben mit Licht“ werden zu Automationen mit Vorschau – nie zu einer
+sofortigen Aktion. Die Architektur beschreibt
+[`docs/architecture-v13.md`](docs/architecture-v13.md).
+
 ### Abstufungen und Zahlen
 
 Prozentwerte, Grad Celsius und Gerätestufen werden intern als typisierte Werte
@@ -739,10 +884,10 @@ Nach einem verstandenen Befehl oder während einer Automationsvorschau kann der
 aufgelöste Plan abgefragt werden:
 
 ```text
-Du: Schalte in Küche und Flur alle Lichter aus, außer dem Nachtlicht.
+Du: Schalte in Küche und Flur alle Lichter aus, außer der Kücheninsel.
 Du: Was hast du verstanden?
 Assist: Ich habe Folgendes verstanden: Aktion: ausschalten; Orte: Küche,
-        Flur; ausgenommen: Nachtlicht; …
+        Flur; ausgenommen: Kücheninsel; …
 ```
 
 Die Erklärung verwendet bereits aufgelöste Fakten und startet keine Aktion.
@@ -1448,22 +1593,21 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.2.1:
+Geprüfter Release-Stand von Version 7.3.0:
 
 ```text
-4588 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6034 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
-89 % Gesamt-Coverage
+90 % Gesamt-Coverage
 76 % Coverage für conversation.py
-≥ 93 % Coverage für jedes V12-Modul
-≥ 95 % Coverage für jedes Learning-Center-Modul
-Held-out-Automationskorpus (7.2.0): 95,2 % korrekt, 0 unsichere Ausführungen
+Held-out-Automationskorpus (7.2.0): 95,5 % korrekt (317/332), 0 unsichere Ausführungen
 Attribut-Automation im echten Home-Assistant-Core ausgeführt
 (scripts/validate_measurement_automation_ha.py)
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 126 / 126
-Szenarien, keine HomeIntent-Warnung im Log.
+Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 162 / 162
+Szenarien (davon 36 in der Kategorie „Sprache 7.3“), keine
+HomeIntent-Warnung im Log.
 
 Zusätzlich wurden ausgeführt:
 
@@ -1497,7 +1641,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.2.1.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.3.0.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

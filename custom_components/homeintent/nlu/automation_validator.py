@@ -38,6 +38,7 @@ semantic-model modules are.
 
 from __future__ import annotations
 
+from .semantic_catalog import COLOR_TEMPERATURE_WORDS
 from enum import Enum, auto
 
 from .action_model import ActionGroup, ActionModel, ActionType
@@ -56,7 +57,7 @@ _PERCENT_MIN = 0
 _PERCENT_MAX = 100
 # lexicon.py's _COLOR_TEMP_SLOT_LIST only ever maps "warmweiß"/"kaltweiß" to
 # these two kelvin values - no third value the grammar can ever produce.
-_COLOR_TEMP_KELVIN_VALUES = frozenset({2700, 6500})
+_COLOR_TEMP_KELVIN_VALUES = frozenset(COLOR_TEMPERATURE_WORDS.values())
 # Home Assistant's own weekday trigger/condition abbreviations
 # (automation_trigger_parser.py's/automation_condition_parser.py's weekday
 # slot lists already only ever emit these).

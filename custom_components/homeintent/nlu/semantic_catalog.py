@@ -98,6 +98,32 @@ STATE_ENTRIES = (
     ),
 )
 
+# Resultative complements that describe a state an object should *keep*
+# after a verb of letting/leaving ("lass das Licht an", "lass die Tür zu").
+# Keys are compare-normalized single words; the value is the state that is
+# preserved.  Directional particles ("runter", "herunter", "hoch") are not
+# listed: "lass die Rollläden runter" is the separable verb herunterlassen,
+# i.e. an operation, not a maintenance.
+STATE_COMPLEMENT_WORDS: dict[str, SemanticState] = {
+    "an": SemanticState.ON,
+    "eingeschaltet": SemanticState.ON,
+    "brennen": SemanticState.ON,
+    "laufen": SemanticState.ACTIVE,
+    "zu": SemanticState.CLOSED,
+    "geschlossen": SemanticState.CLOSED,
+    "unten": SemanticState.CLOSED,
+    "auf": SemanticState.OPEN,
+    "offen": SemanticState.OPEN,
+    "geoeffnet": SemanticState.OPEN,
+    "oben": SemanticState.OPEN,
+    "so": SemanticState.UNKNOWN,
+}
+
+# Imperative/hortative forms of "lassen" (to leave/keep).  "lass uns" is
+# the first-person hortative ("let us ...") and never a maintenance.
+MAINTAIN_VERB_FORMS = frozenset({"lass", "lasse", "lasst", "lassen"})
+MAINTAIN_BLOCKING_OBJECTS = frozenset({"uns", "mich"})
+
 QUANTIFIER_ENTRIES = (
     CatalogueEntry("all", (r"alle\w*", r"sämtliche\w*", r"jede\w*", r"überall", r"die\s+ganzen")),
     CatalogueEntry("both", (r"beide\w*",)),
@@ -147,7 +173,7 @@ PROPERTY_ENTRIES = (
     CatalogueEntry("speed", (r"stufe", r"geschwindigkeit", r"schneller", r"langsamer")),
     CatalogueEntry(
         "color",
-        (r"rot", r"grün", r"blau", r"gelb", r"orange", r"lila", r"violett", r"weiß", r"pink", r"rosa", r"türkis", r"cyan", r"warmweiß", r"kaltweiß"),
+        (r"rot", r"grün", r"blau", r"gelb", r"orange", r"lila", r"violett", r"weiß", r"pink", r"rosa", r"türkis", r"cyan", r"warmwei(?:ß|ss)", r"neutralwei(?:ß|ss)", r"tageslichtwei(?:ß|ss)", r"kaltwei(?:ß|ss)"),
     ),
     CatalogueEntry("position", (r"position", r"höhe", r"oeffnung", r"öffnung")),
     CatalogueEntry("volume", (r"lautstärke", r"lautstaerke", r"laut", r"leise")),
@@ -307,6 +333,9 @@ __all__ = [
     "QUERY_SCOPE_ENTRIES",
     "SEMANTIC_RESOLUTION_WORDS",
     "STATE_ENTRIES",
+    "STATE_COMPLEMENT_WORDS",
+    "MAINTAIN_VERB_FORMS",
+    "MAINTAIN_BLOCKING_OBJECTS",
     "V7_AUTHORITATIVE_DIRECT_CAPABILITIES",
     "V7_AUTHORITATIVE_COMMAND_CAPABILITIES",
     "V7_AUTHORITATIVE_QUERY_CAPABILITIES",
@@ -316,3 +345,142 @@ __all__ = [
     "catalogue_expression_groups",
     "regex_union",
 ]
+
+
+# --- 7.3.0 ontology operations -------------------------------------------
+# One spoken operation (lexical ACTION value) applied to one device domain.
+# Values are either a standard intent or a registered service operation
+# ``("svc", domain, service)``.  Missing pairs are unsupported and are never
+# guessed.  The legacy ``INTENT_BY_DOMAIN_ACTION`` table stays unchanged; this
+# table serves the genus-based compiler, which also knows that a television
+# is switched with media_player.turn_on and a vacuum "aus" means stop.
+OperationTarget = tuple[str, ...]
+ONTOLOGY_OPERATIONS: dict[tuple[str, str], OperationTarget] = {
+    **{(domain, "turn_on"): ("HassTurnOn",) for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
+    **{(domain, "turn_off"): ("HassTurnOff",) for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
+    **{(domain, "toggle"): ("HassToggle",) for domain in ("light", "switch", "fan", "humidifier", "input_boolean")},
+    ("media_player", "turn_on"): ("svc", "media_player", "turn_on"),
+    ("media_player", "turn_off"): ("svc", "media_player", "turn_off"),
+    ("media_player", "start"): ("HassMediaPlay",),
+    ("media_player", "play"): ("HassMediaPlay",),
+    ("media_player", "pause"): ("HassMediaPause",),
+    ("media_player", "stop"): ("HassMediaStop",),
+    ("media_player", "mute"): ("HassMediaMute",),
+    ("cover", "open"): ("HassOpenCover",),
+    ("cover", "close"): ("HassCloseCover",),
+    ("valve", "open"): ("HassOpenValve",),
+    ("valve", "close"): ("HassCloseValve",),
+    ("valve", "turn_on"): ("HassOpenValve",),
+    ("valve", "turn_off"): ("HassCloseValve",),
+    ("vacuum", "start"): ("HassVacuumStart",),
+    ("vacuum", "turn_on"): ("HassVacuumStart",),
+    ("vacuum", "stop"): ("HassVacuumStop",),
+    ("vacuum", "turn_off"): ("HassVacuumStop",),
+    ("vacuum", "pause"): ("svc", "vacuum", "pause"),
+    ("vacuum", "locate"): ("HassVacuumLocate",),
+    ("lawn_mower", "start"): ("svc", "lawn_mower", "start_mowing"),
+    ("lawn_mower", "turn_on"): ("svc", "lawn_mower", "start_mowing"),
+    ("lawn_mower", "stop"): ("svc", "lawn_mower", "dock"),
+    ("lawn_mower", "turn_off"): ("svc", "lawn_mower", "dock"),
+    ("lawn_mower", "pause"): ("svc", "lawn_mower", "pause"),
+    # "Schalte <Skript> ein" is not a script start (existing contract);
+    # scripts run with starten/ausführen/aktivieren.
+    ("script", "start"): ("HassRunScript",),
+    ("scene", "start"): ("HassActivateScene",),
+    ("scene", "turn_on"): ("HassActivateScene",),
+    ("button", "press"): ("HassPressButton",),
+    ("lock", "lock"): ("HassLock",),
+    ("lock", "unlock"): ("HassUnlock",),
+}
+
+# Comparative adjectives: word -> (property, direction).  "etwas kühler"
+# lowers a heating setpoint, "leiser" lowers a player's volume - never
+# pauses it.  The property also implies the genus when no device is named
+# ("Mach es im Kinderzimmer etwas kühler").
+DEGREE_WORDS: dict[str, tuple[str, int]] = {
+    "heller": ("brightness", 1),
+    "dunkler": ("brightness", -1),
+    "waermer": ("temperature", 1),
+    "kuehler": ("temperature", -1),
+    "kaelter": ("temperature", -1),
+    "lauter": ("volume", 1),
+    "leiser": ("volume", -1),
+    "schneller": ("speed", 1),
+    "langsamer": ("speed", -1),
+}
+DEGREE_OPERATIONS: dict[tuple[str, str, int], OperationTarget] = {
+    ("light", "brightness", 1): ("HassLightBrighten",),
+    ("light", "brightness", -1): ("HassLightDim",),
+    ("climate", "temperature", 1): ("HassClimateIncreaseTemperature",),
+    ("climate", "temperature", -1): ("HassClimateDecreaseTemperature",),
+    ("media_player", "volume", 1): ("svc", "media_player", "volume_up"),
+    ("media_player", "volume", -1): ("svc", "media_player", "volume_down"),
+    ("fan", "speed", 1): ("HassFanIncreaseSpeed",),
+    ("fan", "speed", -1): ("HassFanDecreaseSpeed",),
+}
+# Genus implied by a property when the sentence names only a place.
+PROPERTY_GENUS: dict[str, str] = {
+    "brightness": "light",
+    "temperature": "heating",
+    "volume": "media",
+    "speed": "fan",
+}
+# A group operation over more targets than this, or over several device
+# kinds, is previewed and needs a "Ja" before anything runs.
+GROUP_PREVIEW_THRESHOLD = 5
+
+# Words that make a command time-bound ("um 21:30 Uhr", "morgen", "abends",
+# "später").  A time-bound command is an automation or schedule and never
+# runs as an immediate service call from the genus compiler.
+TIME_BOUND_WORDS = frozenset({
+    "uhr", "morgen", "uebermorgen", "heute", "heut", "abend", "abends", "morgens",
+    "mittags", "nachmittags", "vormittags", "nachts", "spaeter", "nachher",
+    "minute", "minuten", "stunde", "stunden", "sekunde", "sekunden", "taeglich",
+    "montags", "dienstags", "mittwochs", "donnerstags", "freitags", "samstags",
+    "sonntags", "montag", "dienstag", "mittwoch", "donnerstag", "freitag",
+    "samstag", "sonntag", "wochenende", "werktags", "sonnenuntergang",
+    "sonnenaufgang", "wenn", "sobald", "falls", "bis", "solange", "waehrend",
+    "jeden", "jede", "jedes", "immer", "halb", "viertel",
+})
+
+# White tones -> colour temperature in Kelvin (lighting-industry values).
+# One table feeds the direct compiler, the Hassil slot list, automation
+# validation and every spoken preview.
+COLOR_TEMPERATURE_WORDS: dict[str, int] = {
+    "warmweiß": 2700,
+    "neutralweiß": 4000,
+    "tageslichtweiß": 5500,
+    "kaltweiß": 6500,
+}
+COLOR_TEMPERATURE_SPOKEN: dict[int, str] = {
+    kelvin: word for word, kelvin in COLOR_TEMPERATURE_WORDS.items()
+}
+
+# Device option lists (attribute reported by Home Assistant) and the one
+# registered service that selects a listed value: "Saugroboter auf leise",
+# "Ventilator auf Nacht", "Radio auf Bayern 3", "Heizprogramm auf Eco".
+OPTION_OPERATIONS: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("vacuum", "fan_speed_list"): ("vacuum", "set_fan_speed", "fan_speed"),
+    ("fan", "preset_modes"): ("fan", "set_preset_mode", "preset_mode"),
+    ("media_player", "source_list"): ("media_player", "select_source", "source"),
+    ("humidifier", "available_modes"): ("humidifier", "set_mode", "mode"),
+    ("climate", "preset_modes"): ("climate", "set_preset_mode", "preset_mode"),
+    ("select", "options"): ("select", "select_option", "option"),
+    ("water_heater", "operation_list"): ("water_heater", "set_operation_mode", "operation_mode"),
+}
+
+# Release modality: the speaker no longer needs a state.  "X muss/braucht/
+# soll nicht (mehr) an sein", "X kann/darf aus", "ich brauche X nicht mehr"
+# -> the operation that ends the state.  Keys are compare-normalized.
+RELEASE_MODALS = frozenset({"muss", "muessen", "braucht", "brauchen", "soll", "sollen"})
+PERMISSION_MODALS = frozenset({"kann", "koennen", "darf", "duerfen"})
+RELEASED_STATES: dict[str, str] = {
+    "an": "turn_off", "ein": "turn_off", "eingeschaltet": "turn_off",
+    "laufen": "turn_off", "brennen": "turn_off",
+    "offen": "close", "auf": "close", "geoeffnet": "close", "oben": "close",
+}
+PERMITTED_STATES: dict[str, str] = {
+    "aus": "turn_off", "ausgeschaltet": "turn_off", "ausgemacht": "turn_off",
+    "zu": "close", "runter": "close", "geschlossen": "close",
+}
+NEED_VERBS = frozenset({"brauche", "brauchen", "benoetige", "benoetigen"})

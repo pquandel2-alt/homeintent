@@ -268,7 +268,7 @@ def test_clear_completed_requires_confirmation_and_executes_after_yes(monkeypatc
 
     assert "wirklich" in question.response.speech
     assert unclear.response.speech == "Bitte antworte mit Ja oder Nein."
-    assert result.response.speech == "1 erledigte Einträge wurden gelöscht."
+    assert result.response.speech == "1 erledigter Eintrag wurde gelöscht."
     assert agent.hass.services.async_call.await_count == 2
 
 

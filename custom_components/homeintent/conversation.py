@@ -200,6 +200,16 @@ from .thermal_deadline import (
 )
 from .thermal_question import answer_thermal_question
 from .nlu.primitives import SemanticProperty
+from .nlu.clock_language import normalize_clock_expressions, wake_request
+from .nlu.semantic_exclusion import canonical_exception_words
+from .nlu.normalize import expand_clitics
+from .nlu.german_morphology import dative_location_phrase
+from .nlu.place_model import build_place_lexicon
+from .nlu.device_ontology import analyse_word
+from .nlu.target_resolution import genus_members
+from .nlu.situation_views import answer_situation_view
+from .nlu.utterance_meaning import render_maintain
+from .nlu.german_morphology import counted_passive
 from .nlu.unit_reasoning import normalize_measurement
 from .monitor_goal import MonitorRecord
 from .nlu.temporal_semantics import resolve_history_window, resolve_scheduled_datetime
@@ -219,6 +229,7 @@ from .nlu.action_model import (
 from .agent_delivery import AgentDelivery
 from .notification_request import NotificationRequest, async_deliver_notification_request
 from .notification_target import (
+    named_notification_targets,
     NotificationTargetResolver,
     resolution_failure_text,
 )
@@ -268,6 +279,7 @@ from .nlu.ha_automation_generator import (
 from .nlu.language_frontend import LanguageDocument, analyse_language
 from .nlu.response_generator import _automation_label
 from .nlu.semantic_utterance import (
+    Modality,
     SpeechAct,
     analyse_utterance,
     is_contextual_followup,
@@ -288,6 +300,7 @@ from .security_control import (
     user_display_name,
     user_is_admin,
 )
+from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
 from .execution_policy import (
     PolicyOutcome,
@@ -785,7 +798,8 @@ class NluConversationEntity(
         self._world_model = self._world_model.with_house_graph(self._house_graph)
         understanding_context = UnderstandingContext(source_area=conversation_area)
         localized_text = materialize_local_reference(
-            user_input.text, conversation_area
+            canonical_exception_words(normalize_clock_expressions(expand_clitics(user_input.text))),
+            conversation_area,
         )
         explicit_topic_switch = False
         if pending is not None:
@@ -799,6 +813,34 @@ class NluConversationEntity(
                 localized_text = (
                     f"{replacement.group('verb')} {replacement.group('rest')}"
                 )
+        wake = wake_request(localized_text)
+        if wake is not None:
+            # "Weck mich um sieben mit Licht": a wake request is a timed
+            # switch-on of its instrument at the speaker's place.
+            clock, instrument = wake
+            words = [
+                normalize_for_compare(part.strip(".,!?;:")) for part in instrument.split()
+            ]
+            named = any(
+                normalize_for_compare(entity.friendly_name) in normalize_for_compare(instrument)
+                for entity in entities
+            )
+            has_place = bool(build_place_lexicon(entities).scan(words))
+            kinds = [analysis for word in words if (analysis := analyse_word(word)) is not None]
+            unique = len(kinds) == 1 and len(genus_members(kinds[0].genera[0], entities)) == 1
+            if not named and not has_place and not unique:
+                if conversation_area is None:
+                    article, _, noun = instrument.partition(" ")
+                    dative = {"das": "dem", "die": "der"}.get(article.casefold(), article)
+                    response.async_set_speech(
+                        f"In welchem Raum soll ich dich mit {dative} {noun} wecken? "
+                        f"Sag zum Beispiel: Weck mich {clock} mit {dative} {noun} im Schlafzimmer."
+                    )
+                    return conversation.ConversationResult(
+                        response=response, conversation_id=user_input.conversation_id
+                    )
+                instrument = f"{instrument} {dative_location_phrase(conversation_area.name)}"
+            localized_text = f"{clock[:1].upper()}{clock[1:]} schalte {instrument} ein."
         if localized_text != user_input.text:
             user_input = replace(user_input, text=localized_text)
         language_document = analyse_language(user_input.text, entities)
@@ -817,6 +859,31 @@ class NluConversationEntity(
             )
 
         active_dialog = active_pending_dialog(pending)
+        if (
+            active_dialog is not None
+            and active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION
+            and classify_confirmation_reply(user_input.text) is ConfirmationReply.UNCLEAR
+            and sum(1 for token in language_document.tokens if token.is_word) >= 3
+            and language_document.utterance.speech_act is not SpeechAct.QUERY
+            and not any(
+                token.canonical in {"warum", "wieso", "was", "welche", "welches", "wie"}
+                for token in language_document.tokens[:2]
+            )
+        ):
+            # A full new sentence instead of "Ja"/"Nein" drops the open
+            # proposal (nothing runs) and is understood on its own.
+            self._context_store.clear(user_input.conversation_id)
+            pending = (
+                ConversationContext(
+                    last_command=None,
+                    last_entities=(),
+                    last_area=pending.last_area,
+                    pending_clarification=None,
+                )
+                if pending is not None and pending.last_area is not None
+                else None
+            )
+            active_dialog = None
         direct_understanding = None
         manager = self._runtime_data.dialog_manager
         if active_dialog is None:
@@ -943,6 +1010,99 @@ class NluConversationEntity(
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
+                )
+
+        if (
+            active_dialog is None
+            and language_document.utterance.modality is Modality.MAINTAIN
+            and language_document.maintained
+        ):
+            # "Lass das Licht an": keeping a state is never an operation,
+            # whatever router would otherwise read the particle "an".
+            response.async_set_speech(render_maintain(language_document.maintained))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
+        if active_dialog is None and (
+            language_document.utterance.speech_act is SpeechAct.QUERY
+            or user_input.text.rstrip().endswith("?")
+        ):
+            # Situation views ("Ist unten noch was an?", "Ist alles zu?")
+            # aggregate observed states; they never execute anything.
+            view = answer_situation_view(
+                user_input.text,
+                entities,
+                source_area_id=(
+                    conversation_area.area_id if conversation_area is not None else None
+                ),
+                routine_steps=self._script_steps,
+            )
+            if view is not None:
+                return await self._async_handle_match_result(
+                    user_input,
+                    response,
+                    MatchResult(
+                        plan=None, response_text=view.text, context_entities=view.entities
+                    ),
+                    entities,
+                )
+
+        if active_dialog is None:
+            # Need statements ("Mir ist kalt", "Hier ist es zu hell") are
+            # grounded before read-only routers could answer them with values.
+            need = self._engine.understand_need(
+                language_document,
+                entities,
+                source_area_id=(
+                    conversation_area.area_id if conversation_area is not None else None
+                ),
+                context_area_id=(
+                    pending.last_area.area_id
+                    if pending is not None and pending.last_area is not None
+                    else None
+                ),
+            )
+            if isinstance(need, CommandPlan):
+                return await self._async_handle_command_plan(
+                    user_input, response, need, entities
+                )
+            if need is not None and need.plan is None:
+                response.async_set_speech(need.response_text)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            if need is not None:
+                return await self._async_handle_match_result(
+                    user_input, response, need, entities
+                )
+            if pending is not None and pending.pending_clarification is None:
+                bound = self._engine.understand_discourse(
+                    language_document, entities, pending, understanding=understanding_context
+                )
+                if bound is not None:
+                    return await self._async_handle_bound_result(
+                        user_input, response, bound, entities
+                    )
+            released = self._engine.understand_release(
+                language_document, entities, context=understanding_context
+            )
+            if isinstance(released, CommandPlan):
+                return await self._async_handle_command_plan(
+                    user_input, response, released, entities
+                )
+            if released is not None and released.failure_text is not None:
+                response.async_set_error(
+                    intent.IntentResponseErrorCode.NO_VALID_TARGETS, released.failure_text
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            if released is not None and released.clarification is not None:
+                return self._handle_clarification_result(user_input, response, released)
+            if released is not None:
+                return await self._async_handle_match_result(
+                    user_input, response, released, entities
                 )
 
         if (
@@ -1480,7 +1640,7 @@ class NluConversationEntity(
         early_automation_result: (
             AutomationDeletionMatchResult | AutomationToggleMatchResult | None
         ) = None
-        if re.search(r"\bautomation\b", user_input.text, re.IGNORECASE) and (
+        if has_word(user_input.text, "automation") and (
             _AUTOMATION_DELETE_RE.search(user_input.text)
             or _AUTOMATION_DISABLE_RE.search(user_input.text)
             or _AUTOMATION_ENABLE_RE.search(user_input.text)
@@ -1929,6 +2089,18 @@ class NluConversationEntity(
         if result is None:
             return await self._async_handle_no_match(user_input, response, entities)
 
+        if isinstance(result, MatchResult) and result.failure_text is not None:
+            # Understood, but honestly not groundable ("Im Büro gibt es
+            # keinen Ventilator."): say exactly that, never execute.
+            self._context_store.clear(user_input.conversation_id)
+            response.async_set_error(
+                intent.IntentResponseErrorCode.NO_VALID_TARGETS,
+                result.failure_text,
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
         if (
             isinstance(result, MatchResult)
             and result.plan is None
@@ -1979,6 +2151,31 @@ class NluConversationEntity(
         return await self._async_handle_match_result(
             user_input, response, result, entities
         )
+
+    async def _async_handle_bound_result(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        result: MatchResult | CommandPlan,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        """Run one meaning-model result through the ordinary handlers."""
+        if user_input.text.strip().casefold().startswith("und ") and user_input.text.rstrip().endswith("?"):
+            # An elliptical "Und im Bad?" after an action repeats it; the
+            # question mark is not a request for information here.
+            user_input = replace(user_input, text=user_input.text.rstrip(" ?") + ".")
+        if isinstance(result, CommandPlan):
+            return await self._async_handle_command_plan(user_input, response, result, entities)
+        if result.failure_text is not None:
+            response.async_set_error(
+                intent.IntentResponseErrorCode.NO_VALID_TARGETS, result.failure_text
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        if result.clarification is not None:
+            return self._handle_clarification_result(user_input, response, result)
+        return await self._async_handle_match_result(user_input, response, result, entities)
 
     async def _async_handle_procedure_turn(
         self,
@@ -3912,7 +4109,12 @@ class NluConversationEntity(
                     operation = active.slots.get("operation")
                     if operation == MemoryOperation.RESET.value:
                         deleted = await store.async_reset() if store is not None else 0
-                        response.async_set_speech(f"{deleted} gespeicherte Einträge wurden kontrolliert gelöscht.")
+                        response.async_set_speech(
+                            counted_passive(
+                                deleted, "gespeicherter Eintrag", "gespeicherte Einträge",
+                                "kontrolliert gelöscht",
+                            )
+                        )
                     elif operation == MemoryOperation.FORGET_PERSON.value:
                         person_id = active.slots.get("person_id")
                         deleted = (
@@ -3921,7 +4123,10 @@ class NluConversationEntity(
                             else 0
                         )
                         response.async_set_speech(
-                            f"{deleted} dir zugeordnete Einträge wurden kontrolliert gelöscht."
+                            counted_passive(
+                                deleted, "dir zugeordneter Eintrag", "dir zugeordnete Einträge",
+                                "kontrolliert gelöscht",
+                            )
                         )
                     elif operation == MemoryOperation.FORGET_PREFERENCE.value:
                         memory_id = active.slots.get("memory_id")
@@ -4614,6 +4819,19 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
+    def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
+        """The configured action sequence of one script entity, if readable."""
+        component = self.hass.data.get("script")
+        get_entity = getattr(component, "get_entity", None)
+        if get_entity is None:
+            return None
+        script_entity = get_entity(entity_id)
+        config = getattr(script_entity, "raw_config", None)
+        sequence = config.get("sequence") if isinstance(config, dict) else None
+        if not isinstance(sequence, list):
+            return None
+        return [step for step in sequence if isinstance(step, dict)]
+
     async def _async_handle_match_result(
         self,
         user_input: conversation.ConversationInput,
@@ -4858,6 +5076,9 @@ class NluConversationEntity(
             self.entry.options,
             self._runtime_data.user_contexts,
             label_for=lambda target_id: labels.get(target_id, ""),
+            named_targets=named_notification_targets(
+                entities, self._runtime_data.user_contexts
+            ),
         )
 
     def _materialize_presence_speaker(
@@ -5268,7 +5489,12 @@ class NluConversationEntity(
                     response=response,
                     conversation_id=user_input.conversation_id,
                 )
-            if policy.outcome is PolicyOutcome.CONFIRM:
+            if (
+                policy.outcome is PolicyOutcome.CONFIRM
+                and result.confirmation_text is None
+            ):
+                # A previewed group plan is confirmed as a whole below; every
+                # other multi-command plan needs one confirmation per action.
                 self._context_store.clear(user_input.conversation_id)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
@@ -5277,6 +5503,35 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response,
                     conversation_id=user_input.conversation_id,
+                )
+        if result.confirmation_text is not None:
+            plans = [
+                sub_result.plan for sub_result in result.commands
+                if sub_result.plan is not None
+            ]
+            if plans:
+                success = " ".join(
+                    sub_result.response_text for sub_result in result.commands
+                )
+                self._context_store.set(
+                    user_input.conversation_id,
+                    ConversationContext(
+                        last_command=None,
+                        last_entities=(),
+                        last_area=None,
+                        pending_clarification=None,
+                        pending_service_confirmation=PendingServiceConfirmation(
+                            plans[0],
+                            success,
+                            actor_id,
+                            None,
+                            tuple(plans[1:]),
+                        ),
+                    ),
+                )
+                response.async_set_speech(result.confirmation_text)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
                 )
         self._context_store.clear(user_input.conversation_id)
         response_parts: list[str] = []
@@ -5369,7 +5624,7 @@ class NluConversationEntity(
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         text = user_input.text.strip()
-        if re.search(r"\b(?:abbrechen|abbruch|stopp|stop|vergiss)\b", text, re.I):
+        if has_word(text, "abbrechen", "abbruch", "stopp", "stop", "vergiss"):
             self._context_store.clear(user_input.conversation_id)
             response.async_set_speech("Abgebrochen. Der Automationsentwurf wurde verworfen.")
             return conversation.ConversationResult(
@@ -5948,7 +6203,9 @@ class NluConversationEntity(
             return (
                 "Es gab keine erledigten Einträge."
                 if not completed
-                else f"{len(completed)} erledigte Einträge wurden gelöscht."
+                else counted_passive(
+                    len(completed), "erledigter Eintrag", "erledigte Einträge", "gelöscht"
+                )
             )
 
         def matching_items(
@@ -6002,8 +6259,8 @@ class NluConversationEntity(
                 )
             count = len(selected)
             if request.operation is TodoOperation.COMPLETE:
-                return f"{count} Eintrag" + (" wurde" if count == 1 else "e wurden") + " als erledigt markiert."
-            return f"{count} Eintrag" + (" wurde" if count == 1 else "e wurden") + " aus der Liste entfernt."
+                return counted_passive(count, "Eintrag", "Einträge", "als erledigt markiert")
+            return counted_passive(count, "Eintrag", "Einträge", "aus der Liste entfernt")
 
         if request.operation is TodoOperation.MOVE:
             if request.destination_entity_id is None:
@@ -7060,18 +7317,34 @@ class NluConversationEntity(
                 entities,
                 requested_by_user_id=current_user_id,
             )
+            is_admin = await user_is_admin(self.hass, user_input)
             execution = await async_execute_service_plan(
                 self.hass,
                 confirmation.plan,
                 entities,
                 self.entry.options,
-                is_admin=await user_is_admin(self.hass, user_input),
+                is_admin=is_admin,
                 user_id=current_user_id,
                 confirmed=True,
                 audit_trail=self._audit_trail,
                 audit_actor_id=current_user_id,
                 effect_monitor=self._runtime_data.effect_monitor,
             )
+            for additional in confirmation.additional_plans:
+                if not execution.executed:
+                    break
+                execution = await async_execute_service_plan(
+                    self.hass,
+                    additional,
+                    entities,
+                    self.entry.options,
+                    is_admin=is_admin,
+                    user_id=current_user_id,
+                    confirmed=True,
+                    audit_trail=self._audit_trail,
+                    audit_actor_id=current_user_id,
+                    effect_monitor=self._runtime_data.effect_monitor,
+                )
             if not execution.executed:
                 _LOGGER.error(
                     "Confirmed service call %s.%s on %s failed: %s",

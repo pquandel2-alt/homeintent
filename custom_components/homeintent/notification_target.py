@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Callable, Iterable, Mapping, Sequence, cast
 
+from .entities import normalize_for_compare
 from .const import (
     AGENT_CHANNEL_PUSH,
     CONF_AGENT_DELIVERY_CHANNELS,
@@ -146,11 +147,14 @@ class NotificationTargetResolver:
         configured_targets: Sequence[str],
         push_enabled: bool = True,
         label_for: Callable[[str], str] | None = None,
+        named_targets: Mapping[str, tuple[NotificationTarget, ...]] | None = None,
     ) -> None:
         self._user_contexts = user_contexts
         self._configured = tuple(dict.fromkeys(configured_targets))
         self._push_enabled = push_enabled
         self._label_for = label_for
+        # Normalized person name -> that person's own bound devices.
+        self._named = dict(named_targets or {})
 
     @classmethod
     def from_options(
@@ -158,16 +162,22 @@ class NotificationTargetResolver:
         options: Mapping[str, object],
         user_contexts: UserContextStore | None,
         label_for: Callable[[str], str] | None = None,
+        named_targets: Mapping[str, tuple[NotificationTarget, ...]] | None = None,
     ) -> NotificationTargetResolver:
         return cls(
             user_contexts=user_contexts,
             configured_targets=configured_push_targets(options),
             push_enabled=push_channel_enabled(options),
             label_for=label_for,
+            named_targets=named_targets,
         )
 
     def resolve(
-        self, kind: NotificationRecipientKind, user_id: str | None
+        self,
+        kind: NotificationRecipientKind,
+        user_id: str | None,
+        *,
+        name: str | None = None,
     ) -> NotificationTargetResolution:
         if not self._push_enabled:
             return NotificationTargetResolution(
@@ -177,6 +187,17 @@ class NotificationTargetResolver:
             return self._resolve_current_user(user_id)
         if kind is NotificationRecipientKind.HOUSEHOLD:
             return self._resolve_household()
+        if kind is NotificationRecipientKind.EXPLICIT_TARGET and name:
+            targets = self._named.get(normalize_for_compare(name), ())
+            if not targets:
+                return NotificationTargetResolution(
+                    NotificationResolutionStatus.NO_TARGET, reason="named_recipient_unbound"
+                )
+            return NotificationTargetResolution(
+                NotificationResolutionStatus.RESOLVED,
+                tuple(self._labelled(target) for target in targets),
+                "named_person_binding",
+            )
         return NotificationTargetResolution(
             NotificationResolutionStatus.UNSUPPORTED, reason="explicit_target_not_semantic"
         )
@@ -263,6 +284,7 @@ class NotificationTargetResolver:
 
 
 __all__ = (
+    "named_notification_targets",
     "NotificationResolutionStatus",
     "NotificationTargetResolution",
     "NotificationTargetResolver",
@@ -270,3 +292,46 @@ __all__ = (
     "push_channel_enabled",
     "resolution_failure_text",
 )
+
+
+def named_notification_targets(
+    entities: Iterable[object],
+    user_contexts: UserContextStore | None,
+) -> dict[str, tuple[NotificationTarget, ...]]:
+    """Person name -> that person's own confirmed push devices.
+
+    A spoken name ("Schreib Anna ...") reaches exactly the devices bound to
+    the ``person`` of that name.  Without a binding, a single notify entity
+    whose name contains the person's name ("Handy Anna") is used; two such
+    entities stay unresolved instead of guessing.
+    """
+    named: dict[str, tuple[NotificationTarget, ...]] = {}
+    items = list(entities)
+    notify = [
+        item for item in items if getattr(item, "domain", None) == "notify"
+    ]
+    for item in items:
+        if getattr(item, "domain", None) != "person":
+            continue
+        name = normalize_for_compare(str(getattr(item, "friendly_name", "")))
+        if not name:
+            continue
+        targets: tuple[NotificationTarget, ...] = ()
+        if user_contexts is not None:
+            binding = user_contexts.resolve_notification_targets(str(getattr(item, "entity_id")))
+            if binding.status is BindingStatus.RESOLVED:
+                targets = tuple(binding.targets)
+        if not targets:
+            owned = [
+                entity for entity in notify
+                if name in normalize_for_compare(str(getattr(entity, "friendly_name", ""))).split()
+            ]
+            if len(owned) == 1:
+                targets = (
+                    NotificationTarget(str(getattr(owned[0], "entity_id")), NotificationTargetKind.ENTITY),
+                )
+        if targets:
+            named[name] = targets
+            first = name.split()[0]
+            named.setdefault(first, targets)
+    return named

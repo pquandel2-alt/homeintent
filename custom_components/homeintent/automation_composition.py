@@ -33,6 +33,7 @@ from .automation_grounding import (
     choose_candidate,
     ground_event,
     read_subject,
+    subject_candidates,
     restrict_to,
     target_for,
 )
@@ -418,12 +419,7 @@ def _elliptic_chunk(
     subject = read_subject(words, entities)
     if subject.noun is None or subject.unknown_location is not None:
         return None
-    candidates = [
-        entity for entity in entities
-        if entity.domain == subject.noun.domain
-        and (subject.noun.device_class is None or entity.device_class == subject.noun.device_class)
-        and (subject.area_id is None or entity.area_id == subject.area_id)
-    ]
+    candidates = subject_candidates(subject, entities)
     if subject.modifiers:
         candidates = [
             entity for entity in candidates

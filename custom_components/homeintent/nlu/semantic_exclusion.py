@@ -11,14 +11,14 @@ from __future__ import annotations
 import re
 
 _EXCLUSION_CUE_RE = re.compile(
-    r"\b(?:außer|ausser|mit\s+ausnahme\s+von)\b", re.I
+    r"\b(?:außer|ausser|mit\s+ausnahme\s+von|ausgenommen|bis\s+auf(?!\s+(?:\d|ein\w*\s+(?:viertel|drittel)|die\s+hälfte|halb)))\b", re.I
 )
 # German separable particles can follow the exclusion: ``alle Lichter außer
 # Küchenlicht aus``.  The first alternative deliberately claims a recognised
 # command tail before the general end-of-sentence alternative can absorb it
 # into the registry name.
 _EXCLUSION_RE = re.compile(
-    r"\b(?:außer|ausser|mit\s+ausnahme\s+von)\s+(?P<targets>.+?)"
+    r"\b(?:außer|ausser|mit\s+ausnahme\s+von|ausgenommen|bis\s+auf(?!\s+(?:\d|ein\w*\s+(?:viertel|drittel)|die\s+hälfte|halb)))\s+(?P<targets>.+?)"
     r"(?:\s+(?P<tail>an|ein|aus|auf|zu|hoch|runter|herunter|hinauf|hinunter|"
     r"anmachen|ausmachen|einschalten|ausschalten|anschalten|abschalten|"
     r"öffnen|schließen)\s*[?.!]*$|\s*[?.!]*$)",
@@ -50,3 +50,17 @@ def split_exclusion(text: str) -> tuple[str, tuple[str, ...]]:
 def has_exclusion_clause(text: str) -> bool:
     """Return whether *text* explicitly introduces one or more exceptions."""
     return _EXCLUSION_CUE_RE.search(text) is not None
+
+
+_EXCEPTION_SYNONYM_RE = re.compile(
+    r"\b(?:ausgenommen|bis\s+auf(?!\s+(?:\d|ein\w*\s+(?:viertel|drittel)|die\s+hälfte|halb)))\b", re.I
+)
+
+
+def canonical_exception_words(text: str) -> str:
+    """"bis auf X" / "ausgenommen X" name the same exception as "außer X".
+
+    Word-level synonym, so every compiler sees one exception connector;
+    "bis auf 50 Prozent" (a value) is left alone.
+    """
+    return _EXCEPTION_SYNONYM_RE.sub("außer", text)

@@ -194,6 +194,8 @@ _CONNECTORS = tuple(sorted((
     _Connector(("waehrend",), StructuralRelationKind.WHILE, ClauseKind.TEMPORAL),
     _Connector(("solange",), StructuralRelationKind.WHILE, ClauseKind.TEMPORAL),
     _Connector(("ausser",), StructuralRelationKind.EXCEPT, ClauseKind.EXCLUSION),
+    _Connector(("bis", "auf"), StructuralRelationKind.EXCEPT, ClauseKind.EXCLUSION),
+    _Connector(("ausgenommen",), StructuralRelationKind.EXCEPT, ClauseKind.EXCLUSION),
     _Connector(("nur",), StructuralRelationKind.EXCEPT, ClauseKind.EXCLUSION),
     _Connector(("aber",), StructuralRelationKind.AND, ClauseKind.COORDINATE),
     _Connector(("oder",), StructuralRelationKind.OR, ClauseKind.COORDINATE),
@@ -225,6 +227,25 @@ def _word_positions(tokens: Sequence[StructuralToken]) -> tuple[int, ...]:
     return tuple(index for index, token in enumerate(tokens) if token.is_word)
 
 
+_VALUE_WORDS = frozenset({"halb", "die", "ein", "einen", "eine", "null", "voll"})
+
+
+def _value_follows(tokens: Sequence[StructuralToken], index: int) -> bool:
+    following = index + 1
+    while following < len(tokens) and not (tokens[following].is_word or tokens[following].canonical[:1].isdigit()):
+        following += 1
+    if following >= len(tokens):
+        return False
+    token = tokens[following]
+    if token.canonical[:1].isdigit():
+        return True
+    if token.canonical in {"halb", "null", "voll"}:
+        return True
+    return token.canonical in _VALUE_WORDS and following + 1 < len(tokens) and tokens[following + 1].canonical in {
+        "haelfte", "viertel", "drittel", "prozent",
+    }
+
+
 def _connector_at(
     tokens: Sequence[StructuralToken], word_positions: tuple[int, ...], word_offset: int
 ) -> tuple[_Connector, tuple[int, ...]] | None:
@@ -233,12 +254,24 @@ def _connector_at(
         if len(positions) != len(connector.words):
             continue
         if tuple(tokens[index].canonical for index in positions) == connector.words:
+            if connector.words == ("bis", "auf") and _value_follows(tokens, positions[-1]):
+                continue  # "bis auf 50 Prozent" is a value, not an exception
             return connector, positions
     return None
 
 
 def _is_relative_start(tokens: Sequence[StructuralToken], token_index: int) -> bool:
     if tokens[token_index].canonical not in _RELATIVE_WORDS:
+        return False
+    following = token_index + 1
+    if (
+        tokens[token_index].canonical in {"der", "die", "das"}
+        and following < len(tokens)
+        and tokens[following].is_word
+        and tokens[following].text[:1].isupper()
+    ):
+        # ", das Küchenlicht aus": an article before a capitalized noun opens
+        # a coordinated object, not a relative clause (", die noch an sind").
         return False
     previous = token_index - 1
     while previous >= 0 and tokens[previous].is_word is False:

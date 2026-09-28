@@ -462,6 +462,19 @@ def match_household_query(
         weather_entities = [e for e in entities if e.domain == "weather"]
         mentioned = mentioned_entities(value, weather_entities)
         choices = list(mentioned) or weather_entities
+        outdoor = _outdoor_temperature(entities)
+        if (
+            not mentioned
+            and outdoor is not None
+            and _numeric_state(outdoor) is not None
+            and re.search(r"\b(?:warm|kalt|temperatur|grad)\b", key)
+        ):
+            # A measured outdoor temperature answers "Wie warm ist es
+            # draußen?" better than a weather service's model value.
+            return _read_only(
+                f"Draußen sind es {format_spoken_number(round(_numeric_state(outdoor) or 0.0, 1))} Grad "
+                f"({outdoor.friendly_name})."
+            )
         if len(choices) > 1:
             return _read_only("Welche Wetter-Entität meinst du?")
         if not choices:

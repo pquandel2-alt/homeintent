@@ -176,7 +176,9 @@ def test_trigger_with_delay_seconds_appends_wait_clause():
     assert "10 Minuten lang gewartet wird" in text
 
 
-def test_multiple_triggers_are_joined_with_und():
+def test_multiple_triggers_are_joined_with_oder():
+    # Home Assistant fires an automation on *any* of its triggers; 7.3.0
+    # speaks that as "oder" (the former "und" misdescribed the automation).
     model = AutomationModel(
         triggers=(
             TriggerModel(type=TriggerType.STATE, target=TriggerTarget(entity_id="binary_sensor.kueche_fenster"), state=SemanticState.OPEN),
@@ -185,7 +187,7 @@ def test_multiple_triggers_are_joined_with_und():
         actions=(ActionModel(type=ActionType.TURN_ON, target=TriggerTarget(entity_id="light.kueche_licht")),),
     )
     text = _preview(model)
-    assert "Küchenfenster wird geöffnet und es 08:00 Uhr ist" in text
+    assert "Küchenfenster wird geöffnet oder es 08:00 Uhr ist" in text
 
 
 # --- conditions ---------------------------------------------------------------

@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from hassil import Intents
 
@@ -44,6 +44,9 @@ from .automation_results import (
     AutomationToggleMatchResult,
 )
 from .entities import EntitySnapshot, normalize_for_compare
+from .nlu.semantic_compiler import empty_comparison_answer
+from .nlu.target_resolution import Quantity
+from .nlu.clock_language import split_relative_delay
 from .nlu.entity_resolution import (
     ResolutionStatus,
     ResolveStatus,
@@ -65,7 +68,13 @@ from .nlu.degree_semantics import extract_degree
 from .nlu.frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .nlu.primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .nlu.normalize import normalize
-from .nlu.language_frontend import LanguageDocument, analyse_language
+from .nlu.device_ontology import analyse_word
+from .nlu.ontology_compiler import compile_ontology_command, compile_release
+from .nlu.discourse_compiler import compile_discourse
+from .nlu.need_compiler import compile_need
+from .nlu.need_semantics import interpret_need
+from .nlu.place_model import PlaceKind, build_place_lexicon
+from .nlu.language_frontend import LanguageDocument, analyse_language, tokenize_language
 from .nlu.parser import (
     ClarificationRequest,
     ParseContext,
@@ -114,6 +123,7 @@ from .nlu.meaning import SemanticTurn, analyse_turn
 from .nlu.semantic_utterance import (
     ClauseRole,
     Modality,
+    Polarity,
     PragmaticDisposition,
     SpeechAct,
     analyse_utterance,
@@ -208,8 +218,9 @@ from .service_call import (
     REGISTERED_OPERATION_INTENT,
     ServiceCallPlan,
 )
-from .nlu.automation_operations import describe_registered_operation
+from .nlu.automation_operations import describe_registered_operation, describe_registered_result
 from .world_model import WorldModel
+from .nlu.word_cues import has_word
 
 _RESPONSE_GENERATOR = ResponseGenerator()
 
@@ -486,7 +497,7 @@ _GET_STATE_ZEIGT_RE = re.compile(r"\bzeigt\b", re.IGNORECASE)
 # Prozent heller" contains both "Prozent" and "heller" and must not fall
 # into PercentageParser's absolute {name}/{percent} grammar.
 _LIGHT_EXTENDED_RE = re.compile(
-    r"\b(heller|dunkler|rot|grün|blau|gelb|orange|lila|violett|weiß|pink|rosa|türkis|cyan|warmweiß|kaltweiß)\b",
+    r"\b(heller|dunkler|rot|grün|blau|gelb|orange|lila|violett|weiß|pink|rosa|türkis|cyan|(?:warm|neutral|tageslicht|kalt)wei(?:ß|ss))\b",
     re.IGNORECASE,
 )
 
@@ -633,6 +644,10 @@ class MatchResult:
     context_entities: tuple[EntitySnapshot, ...] = ()
     context_predicate: str | None = None
     explanation_text: str | None = None
+    # An understood command that cannot be grounded honestly ("Im Büro gibt
+    # es keinen Ventilator."). Never executable; spoken instead of the
+    # generic "nicht verstanden".
+    failure_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -660,6 +675,59 @@ class CommandPlan:
     """
 
     commands: tuple[MatchResult, ...]
+    # Group operations over several device kinds or many targets are
+    # previewed first; the plan runs only after an explicit "Ja".
+    confirmation_text: str | None = None
+
+
+# Sentinel: the genus model proved the legacy reading incomplete.
+_REFUSED: Any = object()
+
+_PREVIEW_VERBS = {
+    "HassTurnOn": "einschalten",
+    "HassTurnOff": "ausschalten",
+    "HassToggle": "umschalten",
+    "HassOpenCover": "öffnen",
+    "HassCloseCover": "schließen",
+    "HassOpenValve": "öffnen",
+    "HassCloseValve": "schließen",
+    "HassMediaPlay": "abspielen",
+    "HassMediaPause": "pausieren",
+    "HassMediaStop": "stoppen",
+    "HassVacuumStart": "starten",
+    "HassVacuumStop": "stoppen",
+    "HassLightBrighten": "heller stellen",
+    "HassLightDim": "dunkler stellen",
+    "HassClimateIncreaseTemperature": "wärmer stellen",
+    "HassClimateDecreaseTemperature": "kühler stellen",
+}
+
+
+def _preview_verb(item: MatchResult) -> str:
+    frame = item.frame
+    if frame is None:
+        return "schalten"
+    if frame.intent == REGISTERED_OPERATION_INTENT:
+        return describe_registered_operation(
+            frame.parameters.get("service_domain"),
+            frame.parameters.get("service_name"),
+            frame.parameters.get("service_data") or {},
+        )
+    if frame.intent == "HassSetPercentage":
+        return f"auf {frame.parameters.get('percent')} Prozent stellen"
+    if frame.intent == "HassClimateSetTemperature":
+        return f"auf {frame.parameters.get('temperature'):g} Grad stellen"
+    return _PREVIEW_VERBS.get(frame.intent, "schalten")
+
+
+def _ontology_preview_text(results: Sequence[MatchResult], targets: str) -> str:
+    """"Soll ich A, B und C ausschalten?" for a previewed group operation."""
+    verbs: list[str] = []
+    for item in results:
+        verb = _preview_verb(item)
+        if verb not in verbs:
+            verbs.append(verb)
+    return f"Soll ich {targets} {' bzw. '.join(verbs)}?"
 
 
 def _no_automation_text(entity: EntitySnapshot | None) -> str:
@@ -672,6 +740,60 @@ def _several_automations_text(entity: EntitySnapshot | None) -> str:
     if entity is None:
         return "Es gibt mehrere Automationen mit diesem Namen."
     return f"Es gibt mehrere Automationen, die {entity.friendly_name} steuern."
+
+
+def _unknown_exclusions(
+    names: tuple[str, ...], entities: list[EntitySnapshot]
+) -> tuple[str, ...]:
+    """Excluded names that match no registry name or alias at all (R7)."""
+    known = {
+        normalize_for_compare(name).removeprefix("der ").removeprefix("die ").removeprefix("das ")
+        for entity in entities
+        for name in (entity.friendly_name, *entity.aliases)
+    }
+    unknown: list[str] = []
+    for name in names:
+        words = normalize_for_compare(name).split()
+        while words and words[0] in {"der", "die", "das", "den", "dem"}:
+            words.pop(0)
+        key = " ".join(words)
+        if key and not any(key == item or key in item.split() or item in key for item in known):
+            spoken = " ".join(name.split()[len(name.split()) - len(words):])
+            unknown.append(spoken[:1].upper() + spoken[1:])
+    return tuple(unknown)
+
+
+def _exclusions_outside_places(
+    positive: str, names: tuple[str, ...], entities: list[EntitySnapshot]
+) -> str | None:
+    """"… in Küche und Flur, außer dem Nachtlicht" with the Nachtlicht elsewhere."""
+    from .nlu.place_model import build_place_lexicon
+
+    places = [
+        mention.place
+        for mention in build_place_lexicon(entities).scan(
+            [token.canonical for token in tokenize_language(positive) if token.is_word]
+        )
+    ]
+    if not places:
+        return None
+    outside: list[str] = []
+    for name in names:
+        key = normalize_for_compare(name)
+        matches = [
+            entity for entity in entities
+            if normalize_for_compare(entity.friendly_name) == key
+            or key in {normalize_for_compare(alias) for alias in entity.aliases}
+        ]
+        if len(matches) == 1 and not any(place.contains(matches[0]) for place in places):
+            where = matches[0].area_name
+            outside.append(f"„{matches[0].friendly_name}“" + (f" (im Bereich {where})" if where else ""))
+    if not outside:
+        return None
+    return (
+        f"Die Ausnahme {' und '.join(outside)} liegt nicht an den genannten Orten. "
+        "Ich habe nichts ausgeführt."
+    )
 
 
 def _unresolved_exclusion_text(names: tuple[str, ...]) -> str:
@@ -717,11 +839,50 @@ _NEGATED_NOTIFICATION_RE = re.compile(
 
 
 _NOTIFICATION_REQUEST_VERB_RE = re.compile(
-    r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|sag\w*|gib|geb\w*|meld\w*|"
+    r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|schreib\w*|sag\w*|gib|geb\w*|meld\w*|"
     r"ping\w*|mach\w*|kannst|könntest|koenntest|würdest|wuerdest|möchte|moechte|will|hätte|"
     r"haette|erinner\w*)\b",
     re.IGNORECASE,
 )
+
+
+def _ambiguous_kind_question(
+    document: LanguageDocument, entities: list[EntitySnapshot]
+) -> str | None:
+    """"Stelle den Ventilator auf Stufe 3" with two fans: ask, naming them.
+
+    Used only after every compiler failed, so it never replaces a result;
+    it turns "nicht eindeutig" into the concrete question.
+    """
+    from .nlu.target_resolution import ResolutionOutcome, describe_with_residue, resolve_description
+
+    descriptions, _residue = describe_with_residue(document.tokens, entities)
+    for description in descriptions:
+        if description.explicit or description.universal or description.quantity is not Quantity.ONE:
+            continue
+        resolution = resolve_description(description, entities)
+        if resolution.outcome is ResolutionOutcome.AMBIGUOUS and 1 < len(resolution.entities) <= 8:
+            names = [entity.friendly_name for entity in resolution.entities]
+            listed = ", ".join(names[:-1]) + " oder " + names[-1]
+            return f"Welches Gerät meinst du: {listed}? Ich habe nichts ausgeführt."
+    return None
+
+
+def _names_its_target(
+    document: LanguageDocument, entity_id: str, entities: list[EntitySnapshot]
+) -> bool:
+    """Whether the utterance names this device (name or alias), not a kind."""
+    entity = next((item for item in entities if item.entity_id == entity_id), None)
+    if entity is None:
+        return True
+    spoken = " " + " ".join(token.canonical for token in document.tokens if token.is_word) + " "
+    names = (entity.friendly_name, *entity.aliases)
+    return any(
+        f" {normalize_for_compare(name)} " in spoken
+        or normalize_for_compare(name).replace(" ", "") in spoken.replace(" ", "")
+        for name in names
+        if name
+    )
 
 
 class NluEngine:
@@ -1221,9 +1382,328 @@ class NluEngine:
             # never discard the time semantics and execute the remainder.
             result = None
             authority = UnderstandingAuthority.NONE
+        ontology_result = self._ontology_understanding(
+            document, entities, context, result
+        )
+        if ontology_result is _REFUSED:
+            result = None
+            authority = UnderstandingAuthority.NONE
+        elif ontology_result is not None:
+            result = ontology_result
+            authority = UnderstandingAuthority.V8_SEMANTIC
         return self._direct_understanding_outcome(
             text, document, interpreted, result, entities, authority
         )
+
+    def understand_need(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        *,
+        source_area_id: str | None = None,
+        context_area_id: str | None = None,
+    ) -> MatchResult | CommandPlan | None:
+        """Ground a need statement ("Mir ist kalt") in operations.
+
+        Returns ``None`` when the turn states no need.  A ``MatchResult``
+        without plan carries a spoken hint or question; a ``CommandPlan``
+        with ``confirmation_text`` is a proposal.
+        """
+        utterance = document.utterance
+        if utterance.speech_act in {
+            SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION, SpeechAct.CORRECTION,
+        } or utterance.modality is Modality.HYPOTHETICAL:
+            return None
+        actions = document.semantics.values(SemanticKind.ACTION) - {"close"}
+        if utterance.speech_act is SpeechAct.COMMAND and actions:
+            return None
+        words = [token.canonical for token in document.tokens if token.is_word]
+        meaning = interpret_need(
+            words, question=document.source_text.rstrip().endswith("?")
+        )
+        if meaning is None:
+            return None
+        lexicon = build_place_lexicon(entities)
+        mentions = lexicon.scan(words)
+        place = next(
+            (mention.place for mention in mentions if mention.place.kind is not PlaceKind.HERE),
+            None,
+        )
+        if place is None:
+            for area_id in (source_area_id, context_area_id):
+                if area_id is not None:
+                    place = lexicon.place_for_area(area_id)
+                    if place is not None:
+                        break
+        outcome = compile_need(meaning, entities, place, document.source_text)
+        if outcome.message is not None and not outcome.results:
+            return MatchResult(plan=None, response_text=outcome.message)
+        rendered: list[MatchResult] = []
+        for parsed in outcome.results:
+            item = self._build_match_result(parsed, entities)
+            if item is None or item.plan is None:
+                return None
+            rendered.append(item)
+        if not rendered:
+            return None
+        if outcome.confirm is not None:
+            return CommandPlan(tuple(rendered), confirmation_text=outcome.confirm)
+        if len(rendered) == 1:
+            return replace(rendered[0], response_text=outcome.reason or rendered[0].response_text)
+        first, *rest = rendered
+        return CommandPlan(
+            (replace(first, response_text=outcome.reason or first.response_text),
+             *(replace(item, response_text="") for item in rest))
+        )
+
+    def understand_release(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        *,
+        context: UnderstandingContext | None = None,
+    ) -> MatchResult | CommandPlan | None:
+        """"Die Stehlampe muss nicht an sein" -> switch the Stehlampe off."""
+        frame = document.release
+        if frame is None:
+            return None
+        compiled = compile_release(
+            document, frame.object_text, frame.action, entities,
+            source_area=context.source_area if context is not None else None,
+        )
+        if compiled is None:
+            return None
+        if compiled.message is not None:
+            return MatchResult(plan=None, response_text=compiled.message, failure_text=compiled.message)
+        if compiled.clarification is not None:
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        rendered = [self._build_match_result(parsed, entities) for parsed in compiled.results]
+        if not rendered or any(item is None or item.plan is None for item in rendered):
+            return None
+        items = tuple(item for item in rendered if item is not None)
+        if compiled.preview is not None:
+            return CommandPlan(items, confirmation_text=_ontology_preview_text(items, compiled.preview))
+        return items[0] if len(items) == 1 else CommandPlan(items)
+
+    def understand_discourse(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        context: ConversationContext | None,
+        *,
+        understanding: UnderstandingContext | None = None,
+    ) -> MatchResult | CommandPlan | None:
+        """Elliptical/referential command bound to the conversation context."""
+        utterance = document.utterance
+        if (
+            utterance.speech_act in {SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION}
+            or utterance.modality in {Modality.HYPOTHETICAL, Modality.UNCERTAIN, Modality.MAINTAIN}
+            or utterance.polarity is not Polarity.POSITIVE
+            or (
+                document.source_text.rstrip().endswith("?")
+                and not document.source_text.strip().casefold().startswith("und ")
+            )
+        ):
+            return None
+        compiled = compile_discourse(
+            document, entities, context,
+            source_area=understanding.source_area if understanding is not None else None,
+        )
+        if compiled is None:
+            return None
+        if compiled.message is not None:
+            return MatchResult(plan=None, response_text=compiled.message, failure_text=compiled.message)
+        if compiled.clarification is not None:
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        # "Und im Bad?" after an action repeats that action; its question
+        # mark is prosody of the ellipsis, not a request for information.
+        results = [
+            replace(parsed, frame=replace(
+                parsed.frame, source_text=parsed.frame.source_text.rstrip(" ?") + "."
+            ))
+            for parsed in compiled.results
+        ]
+        rendered = [self._build_match_result(parsed, entities) for parsed in results]
+        if not rendered or any(item is None or item.plan is None for item in rendered):
+            return None
+        items = tuple(item for item in rendered if item is not None)
+        if compiled.preview is not None:
+            return CommandPlan(items, confirmation_text=_ontology_preview_text(items, compiled.preview))
+        return items[0] if len(items) == 1 else CommandPlan(items)
+
+    def _ontology_failure(
+        self, text: str, entities: list[EntitySnapshot]
+    ) -> str | None:
+        """Honest sentence for a command the genus model cannot ground."""
+        document = analyse_language(text, entities, include_registry_compounds=False)
+        if document.utterance.speech_act is not SpeechAct.COMMAND:
+            return None
+        if not document.utterance.safe_to_execute_directly:
+            # Asking which device is meant is safe for any command shape.
+            return _ambiguous_kind_question(document, entities) if document.temporal else None
+        compiled = compile_ontology_command(document, entities)
+        if compiled is not None and compiled.message is not None:
+            return compiled.message
+        return _ambiguous_kind_question(document, entities)
+
+    def _ontology_understanding(
+        self,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        context: UnderstandingContext | None,
+        legacy: MatchResult | CommandPlan | None,
+    ) -> MatchResult | CommandPlan | None:
+        """Genus/place/quantity understanding in the shared direct path.
+
+        The established compilers keep authority for everything they
+        resolve.  The ontology compiler answers when they found nothing,
+        and takes precedence where their result is provably incomplete:
+        an unspecific "alles" (only the ontology knows which kinds belong
+        to it) and coordinated clauses of which the legacy result dropped
+        some (finding S3: never lose a clause silently).
+        """
+        utterance = document.utterance
+        if (
+            utterance.speech_act is not SpeechAct.COMMAND
+            or not utterance.safe_to_execute_directly
+            or document.temporal
+        ):
+            return None
+        universal = any(
+            (analysis := analyse_word(token.canonical)) is not None
+            and analysis.genera == ("device",)
+            and not analysis.indefinite
+            for token in document.tokens
+            if token.is_word
+        )
+        coordinated = any(
+            token.canonical in {",", "und", "sowie"} for token in document.tokens
+        )
+        if (
+            isinstance(legacy, MatchResult)
+            and legacy.plan is not None
+            and isinstance(legacy.plan.entity_id, str)
+            and not universal
+            and not coordinated
+            and _names_its_target(document, legacy.plan.entity_id, entities)
+        ):
+            # One grounded single-target command that names its device
+            # cannot be too broad and cannot have dropped a clause.
+            return None
+        compiled = compile_ontology_command(
+            document,
+            entities,
+            source_area=context.source_area if context is not None else None,
+        )
+        if compiled is None:
+            return None
+        if (
+            compiled.clarification is not None
+            and isinstance(legacy, MatchResult)
+            and legacy.plan is not None
+            and isinstance(legacy.plan.entity_id, str)
+            and not coordinated
+        ):
+            # A singular kind word ("die Lampe im Büro") with several
+            # members at the place is ambiguous; the legacy pick of one of
+            # them would be a guess.  Ask instead.
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        if legacy is not None and not universal:
+            legacy_commands = (
+                legacy.commands if isinstance(legacy, CommandPlan) else (legacy,)
+            )
+            legacy_targets = {
+                entity_id
+                for command in legacy_commands
+                if command.plan is not None
+                for entity_id in (
+                    (command.plan.entity_id,)
+                    if isinstance(command.plan.entity_id, str)
+                    else tuple(command.plan.entity_id)
+                )
+            }
+            compiled_targets = {
+                entity.entity_id
+                for parsed in compiled.results
+                for entity in parsed.resolved_entities
+            }
+            drops_clause = (
+                compiled.clauses > 1
+                and len(compiled.results) > sum(
+                    1 for command in legacy_commands if command.plan is not None
+                )
+            )
+            # A legacy domain word ("Rollos" -> every cover) may reach
+            # devices outside the spoken genus (garage door, awning).  The
+            # genus reading is then strictly narrower and wins.
+            too_broad = bool(
+                compiled_targets
+                and legacy_targets
+                and compiled_targets < legacy_targets
+            )
+            # Disjoint readings ("die Lichter unten": legacy basement, the
+            # house's own floor alias says ground floor) cannot both be
+            # right; the registry-grounded place model decides.
+            disagrees = bool(
+                compiled_targets and legacy_targets
+                and not compiled_targets & legacy_targets
+            )
+            too_broad = too_broad or disagrees
+            if (
+                compiled.message is not None
+                and compiled.clauses > 1
+                and len(legacy_commands) < compiled.clauses
+            ):
+                # The legacy reading covers fewer clauses than were spoken:
+                # refuse instead of executing a subset (finding S3).  The
+                # honest sentence is spoken via understanding_feedback().
+                return _REFUSED
+            if not (compiled.executable and (drops_clause or too_broad)):
+                return None
+        if compiled.message is not None:
+            # Honest non-results are spoken through understanding_feedback();
+            # the direct outcome itself stays "no payload".
+            return None
+        if compiled.clarification is not None:
+            return MatchResult(
+                plan=None,
+                response_text=_clarification_question(compiled.clarification),
+                clarification=compiled.clarification,
+            )
+        rendered: list[MatchResult] = []
+        for parsed in compiled.results:
+            item = self._build_match_result(parsed, entities)
+            if item is None or item.plan is None:
+                return None
+            rendered.append(item)
+        if not rendered:
+            return None
+        if compiled.preview is not None:
+            kept = (
+                " Unverändert bleiben: "
+                + join_german([entity.friendly_name for entity in compiled.kept])
+                + "."
+                if compiled.kept else ""
+            )
+            return CommandPlan(
+                tuple(rendered),
+                confirmation_text=_ontology_preview_text(rendered, compiled.preview) + kept,
+            )
+        if len(rendered) == 1:
+            return rendered[0]
+        return CommandPlan(tuple(rendered))
 
     def _semantic_multi_result(
         self,
@@ -1735,6 +2215,22 @@ class NluEngine:
         self, text: str, entities: list[EntitySnapshot] | None = None
     ) -> UnderstandingFeedback | None:
         """Return the structured counterpart of the spoken failure text."""
+        if entities is not None and has_exclusion_clause(normalize(text)):
+            positive, excluded_names = split_exclusion(normalize(text))
+            unknown = _unknown_exclusions(excluded_names, entities)
+            if unknown:
+                names = " und ".join(f"„{name}“" for name in unknown)
+                return UnderstandingFeedback(
+                    ParseFailureReason.UNKNOWN_ENTITY,
+                    f"Ich finde kein Gerät {names}. Ich habe nichts ausgeführt.",
+                )
+            elsewhere = _exclusions_outside_places(positive, excluded_names, entities)
+            if elsewhere:
+                return UnderstandingFeedback(ParseFailureReason.UNKNOWN_ENTITY, elsewhere)
+        if entities is not None:
+            honest = self._ontology_failure(text, entities)
+            if honest is not None:
+                return UnderstandingFeedback(ParseFailureReason.UNKNOWN_ENTITY, honest)
         if re.search(
             r"\b(?:heute|morgen|übermorgen|am\s+\S+)\s+"
             r"(?:gegen|irgendwann)\s+(?:früh|morgens|abends?|nachts)\b",
@@ -1828,6 +2324,8 @@ class NluEngine:
                 "für HomeIntent freigegebenes Gerät gefunden.",
             )
         if analyse_utterance(text).speech_act is SpeechAct.QUERY:
+            if entities is not None and (empty := empty_comparison_answer(text, entities)) is not None:
+                return UnderstandingFeedback(ParseFailureReason.UNSUPPORTED_PROPERTY, empty)
             return UnderstandingFeedback(
                 ParseFailureReason.UNSUPPORTED_PROPERTY,
                 "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden.",
@@ -2402,7 +2900,7 @@ class NluEngine:
         if (
             discourse_group is not None
             and discourse_group.semantic_type == "entity"
-            and re.search(r"\b(?:davon|diese|jene)\b", normalized_reference, re.I)
+            and has_word(normalized_reference, "davon", "diese", "jene")
             and discourse_location is not None
             and (discourse_location[1] is not None or discourse_location[2] is not None)
             and world_model is not None
@@ -2446,7 +2944,7 @@ class NluEngine:
             and discourse_group.semantic_type == "area"
             and (
                 excludes_location
-                or re.search(r"\b(?:davon|diese|jene|welche)\b", normalized_reference, re.I)
+                or has_word(normalized_reference, "davon", "diese", "jene", "welche")
             )
             and discourse_location is not None
             and world_model is not None
@@ -2492,7 +2990,7 @@ class NluEngine:
         if (
             discourse_group is not None
             and discourse_group.semantic_type == "area"
-            and re.search(r"\b(?:davon|diese|jene|welche)\b", normalized_reference, re.I)
+            and has_word(normalized_reference, "davon", "diese", "jene", "welche")
             and world_model is not None
         ):
             analysis = analyse_semantics(normalized_reference)
@@ -2674,7 +3172,7 @@ class NluEngine:
         if len(domains) != 1:
             return None
 
-        if re.search(r"\bauch\b", normalized, re.I):
+        if has_word(normalized, "auch"):
             location = resolve_semantic_location(normalized, entities)
             if location is None:
                 return None
@@ -3046,6 +3544,19 @@ class NluEngine:
             resolve_registry=False,
         )
         direct = self._interpreted_match_result(interpreted, context.entities)
+        # The genus reading applies to delayed and scheduled actions exactly
+        # as to immediate ones: "die Rollläden" never reaches the garage door.
+        narrowed = self._ontology_understanding(document, context.entities, None, direct)
+        if narrowed is _REFUSED:
+            return None
+        if narrowed is not None:
+            commands = narrowed.commands if isinstance(narrowed, CommandPlan) else (narrowed,)
+            lifted = tuple(
+                self._action_from_direct_match(command, context.entities) for command in commands
+            )
+            if lifted and all(item is not None for item in lifted):
+                return tuple(item for item in lifted if item is not None)
+            return None
         action = self._action_from_direct_match(direct, context.entities)
         if action is not None:
             return (action,)
@@ -3102,7 +3613,7 @@ class NluEngine:
         normalized = normalize(text)
         normalized = re.sub(r"^nur\s+", "", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"^dass\s+", "wenn ", normalized, flags=re.IGNORECASE)
-        if not re.search(r"\b(?:wenn|falls|sofern)\b", normalized, re.IGNORECASE):
+        if not has_word(normalized, "wenn", "falls", "sofern"):
             normalized = "wenn " + normalized
         return self._automation_condition_parser.parse(
             normalized, create_parse_context(entities, world_model=world_model)
@@ -3710,12 +4221,19 @@ class NluEngine:
             or _CALENDAR_TIME_RE.search(text)
         ):
             return None
-        if not _NOTIFICATION_REQUEST_VERB_RE.search(text):
-            # "Bescheid." / "Nachricht an mich." alone are fragments, not a
-            # request to send something now.
-            return None
         clause = parse_notification_clause(text)
-        if clause is None or clause.recipient_kind is NotificationRecipientKind.EXPLICIT_TARGET:
+        if clause is None:
+            return None
+        if clause.message is None and not _NOTIFICATION_REQUEST_VERB_RE.search(text):
+            # "Bescheid." / "Nachricht an mich." alone are fragments, not a
+            # request to send something now; with dictated content ("Nachricht
+            # an Anna: Bin gleich da.") the request is complete.
+            return None
+        if (
+            clause.recipient_kind is NotificationRecipientKind.EXPLICIT_TARGET
+            and clause.message is None
+        ):
+            # A message to another person needs its content.
             return None
         return clause
 
@@ -3761,7 +4279,7 @@ class NluEngine:
                 projected,
                 model=replace(projected.model, source_text=text),
             )
-        if not _RELATIVE_TIME_RE.search(text):
+        if not _RELATIVE_TIME_RE.search(text) and split_relative_delay(text) is None:
             return None
 
         normalized = normalize(text)
@@ -3777,6 +4295,9 @@ class NluEngine:
 
         parsed = None
         decomposed = self._relative_time_command_parser.decompose(normalized)
+        if decomposed is None:
+            # Any word order: "Schließe in 150 Minuten die Rollläden".
+            decomposed = split_relative_delay(normalized)
         if decomposed is not None:
             command_text, offset_seconds = decomposed
             actions = self._parse_action_semantically(command_text, parse_context)
@@ -3988,7 +4509,14 @@ class NluEngine:
                 )
             else:
                 target = TriggerTarget(domain=domain, entity_id=entity.entity_id)
-        elif result.command.area is not None and frame.quantifier is not None:
+        elif (
+            result.command.area is not None and frame.quantifier is not None
+            and {entity.entity_id for entity in entities} == {
+                candidate.entity_id for candidate in available_entities
+                if candidate.domain == domain
+                and candidate.area_id == result.command.area.area_id
+            }
+        ):
             target = TriggerTarget(
                 domain=domain,
                 area_id=result.command.area.area_id,
@@ -3997,20 +4525,34 @@ class NluEngine:
             )
         elif frame.quantifier is not None:
             floor_ids = {entity.floor_id for entity in entities}
-            if len(floor_ids) != 1 or None in floor_ids:
+            if len(floor_ids) != 1 or None in floor_ids or {
+                entity.entity_id for entity in entities
+            } != {
+                candidate.entity_id for candidate in available_entities
+                if candidate.domain == domain and candidate.floor_id in floor_ids
+            }:
                 # TriggerTarget must retain a real scope; never turn an
                 # arbitrary concrete list into an all-house automation.
-                return None
+                # The exact, validated list keeps it ("die Rollläden" ->
+                # the eight shutters, not garage door and awning).
+                target = TriggerTarget(
+                    domain=domain,
+                    entity_ids=tuple(entity.entity_id for entity in entities),
+                )
+            else:
+                target = TriggerTarget(
+                    domain=domain,
+                    floor_id=next(iter(floor_ids)),
+                    quantifier=frame.quantifier.kind,
+                    quantifier_count=frame.quantifier.value,
+                )
+        else:
+            # An exact concrete list stays exact; it is never broadened to
+            # every entity of the domain.
             target = TriggerTarget(
                 domain=domain,
-                floor_id=next(iter(floor_ids)),
-                quantifier=frame.quantifier.kind,
-                quantifier_count=frame.quantifier.value,
+                entity_ids=tuple(entity.entity_id for entity in entities),
             )
-        else:
-            # TriggerTarget cannot represent an arbitrary concrete list.
-            # Refuse instead of broadening it to every entity in the house.
-            return None
 
         plan = result.plan
         if plan.domain == "cover" and plan.service == "open_cover":
@@ -4105,13 +4647,16 @@ class NluEngine:
             else ()
         )
         model = AutomationModel(
-            triggers=(
+            triggers=tuple(
                 TriggerModel(
                     type=TriggerType.CALENDAR,
-                    calendar_entity_id=draft.calendar_entity_id,
+                    calendar_entity_id=calendar_entity_id,
                     calendar_event=draft.event,
                     offset_minutes=draft.offset_minutes,
-                ),
+                )
+                for calendar_entity_id in (
+                    draft.calendar_entity_ids or (draft.calendar_entity_id,)
+                )
             ),
             conditions=conditions,
             actions=actions,
@@ -4621,11 +5166,16 @@ class NluEngine:
             registered_plan = map_to_service_call(command)
             if registered_plan is None:
                 return None
+            done_text = describe_registered_result(
+                join_german([entity.friendly_name for entity in matched]),
+                registered_plan.domain,
+                registered_plan.service,
+            )
             return MatchResult(
                 plan=registered_plan,
-                response_text=(
+                response_text=done_text or (
                     f"{matched[0].friendly_name}: "
-                    f"{describe_registered_operation(registered_plan.domain, registered_plan.service, registered_plan.data)}."
+                    f"{describe_registered_operation(registered_plan.domain, registered_plan.service, registered_plan.data, {entity.entity_id: entity.friendly_name for entity in entities})}."
                 ),
                 frame=frame,
                 command=command,

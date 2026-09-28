@@ -18,6 +18,7 @@ hassil's matching/recognition machinery into the parser-agnostic layers.
 
 from __future__ import annotations
 
+from .semantic_catalog import COLOR_TEMPERATURE_WORDS
 from hassil import TextChunk, TextSlotList
 
 from .primitives import SemanticProperty, SemanticQuantity
@@ -104,7 +105,7 @@ _COLOR_SLOT_LIST = TextSlotList.from_tuples(
 # domain/quantifier slot lists above - standard lighting-industry Kelvin
 # reference values, not a UX decision requiring user input.
 _COLOR_TEMP_SLOT_LIST = TextSlotList.from_tuples(
-    [("warmweiß", "2700"), ("kaltweiß", "6500")],
+    [(word, str(kelvin)) for word, kelvin in COLOR_TEMPERATURE_WORDS.items()],
     name="color_temp",
 )
 

@@ -26,6 +26,14 @@ _AREA_GENDERS: dict[str, GrammaticalGender] = {
     "flur": GrammaticalGender.MASCULINE,
     "garage": GrammaticalGender.FEMININE,
     "garten": GrammaticalGender.MASCULINE,
+    "hauswirtschaftsraum": GrammaticalGender.MASCULINE,
+    "kellerraum": GrammaticalGender.MASCULINE,
+    "gäste-wc": GrammaticalGender.NEUTER,
+    "obergeschoss": GrammaticalGender.NEUTER,
+    "erdgeschoss": GrammaticalGender.NEUTER,
+    "dachgeschoss": GrammaticalGender.NEUTER,
+    "untergeschoss": GrammaticalGender.NEUTER,
+    "außenbereich": GrammaticalGender.MASCULINE,
     "keller": GrammaticalGender.MASCULINE,
     "kinderzimmer": GrammaticalGender.NEUTER,
     "küche": GrammaticalGender.FEMININE,
@@ -54,6 +62,12 @@ _COMPOUND_HEADS: tuple[tuple[str, GrammaticalGender], ...] = (
     ("küche", GrammaticalGender.FEMININE),
     ("diele", GrammaticalGender.FEMININE),
     ("zimmer", GrammaticalGender.NEUTER),
+    ("bereich", GrammaticalGender.MASCULINE),
+    ("wc", GrammaticalGender.NEUTER),
+    ("klo", GrammaticalGender.NEUTER),
+    ("stock", GrammaticalGender.MASCULINE),
+    ("etage", GrammaticalGender.FEMININE),
+    ("haus", GrammaticalGender.NEUTER),
     ("geschoss", GrammaticalGender.NEUTER),
     ("keller", GrammaticalGender.MASCULINE),
     ("boden", GrammaticalGender.MASCULINE),
@@ -186,3 +200,16 @@ def definite_entity_phrase(name: str) -> tuple[str, str, str] | None:
     nominative, accusative, pronoun = _DEFINITE_ARTICLES[gender]
     stripped = name.strip()
     return f"{nominative} {stripped}", f"{accusative} {stripped}", pronoun
+
+
+def counted(count: int, singular: str, plural: str) -> str:
+    """"1 Eintrag", "2 Einträge", "kein Eintrag" - number agreement in one place."""
+    if count == 0:
+        return f"keine {plural}"
+    return f"{count} {singular if count == 1 else plural}"
+
+
+def counted_passive(count: int, singular: str, plural: str, participle: str) -> str:
+    """"1 Eintrag wurde gelöscht." / "2 Einträge wurden gelöscht."."""
+    verb = "wurde" if count == 1 else "wurden"
+    return f"{counted(count, singular, plural)} {verb} {participle}."

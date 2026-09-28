@@ -5,6 +5,10 @@ Services:
 - ``haus_sim.get_log``: returns received device calls, notifications, TTS
   output and played media (response only)
 - ``haus_sim.clear_log``: reset those logs
+- ``haus_sim.reset``: restore every device; with ``full: true`` also empty
+  the to-do lists, cancel running Assist and helper timers and remove every
+  automation that is not part of the versioned ``automations.yaml``, so
+  measurement series in one Home Assistant stay independent (R11)
 """
 
 from __future__ import annotations
@@ -82,9 +86,61 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ent.tick()
         for key in LOG_KEYS:
             data[key].clear()
+        if call.data.get("full"):
+            await _reset_household_state(hass)
 
-    hass.services.async_register(DOMAIN, "reset", _reset)
+    hass.services.async_register(
+        DOMAIN, "reset", _reset, schema=vol.Schema({vol.Optional("full", default=False): bool})
+    )
     return True
+
+
+VERSIONED_AUTOMATION_IDS = frozenset({"1700000000001", "1700000000002"})
+
+
+async def _reset_household_state(hass: HomeAssistant) -> None:
+    """Lists, timers and test automations back to the bootstrap state."""
+    try:
+        from homeassistant.components.intent.timers import TIMER_DATA
+
+        manager = hass.data.get(TIMER_DATA)
+        if manager is not None:
+            for timer_id in list(getattr(manager, "timers", {})):
+                manager.cancel_timer(timer_id)
+    except Exception:  # noqa: BLE001 - best effort for the test bed
+        _LOGGER.warning("Could not cancel Assist timers", exc_info=True)
+    helper_timers = [
+        state.entity_id for state in hass.states.async_all("timer") if state.state != "idle"
+    ]
+    if helper_timers:
+        await hass.services.async_call("timer", "cancel", {"entity_id": helper_timers}, blocking=True)
+    for state in hass.states.async_all("todo"):
+        response = await hass.services.async_call(
+            "todo", "get_items", {"entity_id": state.entity_id},
+            blocking=True, return_response=True,
+        )
+        items = (response or {}).get(state.entity_id, {}).get("items", [])
+        uids = [item.get("uid") or item.get("summary") for item in items]
+        if uids:
+            await hass.services.async_call(
+                "todo", "remove_item", {"entity_id": state.entity_id, "item": uids}, blocking=True
+            )
+    path = hass.config.path("automations.yaml")
+
+    def _prune() -> bool:
+        import yaml
+
+        with open(path, encoding="utf-8") as handle:
+            content = yaml.safe_load(handle) or []
+        kept = [item for item in content if str(item.get("id")) in VERSIONED_AUTOMATION_IDS]
+        if len(kept) == len(content):
+            return False
+        with open(path, "w", encoding="utf-8") as handle:
+            yaml.safe_dump(kept, handle, allow_unicode=True, sort_keys=False)
+        return True
+
+    if await hass.async_add_executor_job(_prune):
+        await hass.services.async_call("automation", "reload", {}, blocking=True)
 
 
 def _wire_registries(hass: HomeAssistant) -> None:

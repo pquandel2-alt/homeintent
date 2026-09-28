@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import FANS, LIGHTS, SWITCHES, TURN_OFF_PHRASES, TURN_ON_PHRASES
+from conftest import (
+    FANS,
+    LIGHTS,
+    MAINTAIN_PHRASES,
+    SWITCHES,
+    TURN_OFF_PHRASES,
+    TURN_ON_PHRASES,
+)
 
 
 def _cases(phrases: list[str], names: dict[str, str], service: str):
@@ -57,3 +64,17 @@ def test_domain_guard_cover_intent_rejects_light(engine, entities):
 
 def test_unknown_entity_no_match(engine, entities):
     assert engine.match("Mach das Kellerlicht an", entities) is None
+
+
+MAINTAIN_CASES = [
+    phrase.format(name=name)
+    for phrase in MAINTAIN_PHRASES
+    for name in (*LIGHTS, *SWITCHES, *FANS)
+]
+
+
+@pytest.mark.parametrize("text", MAINTAIN_CASES)
+def test_maintain_phrase_never_plans_a_service_call(engine, entities, text):
+    """S1: "lass X an" keeps a state and must never switch anything."""
+    result = engine.match(text, entities)
+    assert result is None or getattr(result, "plan", None) is None

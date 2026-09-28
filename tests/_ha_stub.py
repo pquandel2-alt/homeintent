@@ -440,6 +440,7 @@ def install() -> None:
     class IntentResponseErrorCode(Enum):
         NO_INTENT_MATCH = "no_intent_match"
         FAILED_TO_HANDLE = "failed_to_handle"
+        NO_VALID_TARGETS = "no_valid_targets"
 
     class IntentResponse:
         def __init__(self, language: str) -> None:

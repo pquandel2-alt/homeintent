@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 from .entities import EntitySnapshot, normalize_for_compare
+from .nlu.device_ontology import analyse_word, entity_genera
 from .name_similarity import bounded_name_similarity
 
 
@@ -28,8 +29,14 @@ def phonetic_suggestions(
             candidate_words.update(
                 word for word in normalize_for_compare(name).split() if len(word) >= 4
             )
+        genera = entity_genera(entity)
         for match in words:
             spoken = normalize_for_compare(match.group())
+            spoken_kind = analyse_word(spoken)
+            if spoken_kind is not None and not set(spoken_kind.genera) & genera:
+                # A correction never crosses kinds of devices: a spoken
+                # "Wassermelder" is not a misheard "Bewegungsmelder" (S7).
+                continue
             for candidate in candidate_words:
                 if spoken == candidate:
                     continue

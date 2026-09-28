@@ -14,6 +14,7 @@ from homeassistant.components.alarm_control_panel import (
 )
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.button import ButtonEntity
+from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -756,6 +757,41 @@ class SimButton(SimEntity, ButtonEntity):
         self._log("press")
 
 
+class _SimStream:
+    """Stands in for a stream worker: the simulated camera has a fixed URL."""
+
+    def __init__(self, key: str) -> None:
+        self._key = key
+
+    def add_provider(self, fmt: str) -> None:
+        return None
+
+    async def start(self) -> None:
+        return None
+
+    def endpoint_url(self, fmt: str) -> str:
+        return f"/api/hls/haus_sim_{self._key}/master_playlist.m3u8"
+
+
+class SimCamera(SimEntity, Camera):
+    _attr_supported_features = CameraEntityFeature.STREAM
+
+    def __init__(self, hass, key, name, opts):
+        Camera.__init__(self)
+        self._sim_init(hass, "camera", key, name, opts)
+        self._key = key
+
+    async def async_camera_image(self, width=None, height=None):
+        return None  # no snapshot source in the simulation
+
+    async def stream_source(self):
+        return f"rtsp://haus-sim.local/{self._key}"
+
+    async def async_create_stream(self):
+        self._log("stream")
+        return _SimStream(self._key)
+
+
 class SimTracker(SimEntity, ScannerEntity):
     _attr_source_type = SourceType.ROUTER
 
@@ -819,6 +855,7 @@ CLASSES = {
     "select": SimSelect,
     "number": SimNumber,
     "button": SimButton,
+    "camera": SimCamera,
     "device_tracker": SimTracker,
     "notify": SimNotify,
     "tts": SimTTS,
