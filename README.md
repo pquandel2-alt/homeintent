@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.5.0** (gemeinsame Bedeutungsebene und Arbitration)
+- Aktuelle Version: **7.5.1** (Sprachinseln Verlauf und Automationsverwaltung)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,32 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.5.1 neu?
+
+**Bedeutung statt Satzmuster: die ersten zwei Sprachinseln.**
+
+- **Regex-Klassifikation:** Alle 773 Regex-Stellen der Integration sind
+  einmal klassifiziert (`docs/regex-klassifikation.json`, erzeugt von
+  `scripts/regex_inventory.py`). Die Klassen sind LEXICAL, MORPHOLOGICAL,
+  STRUCTURAL und SEMANTIC_SENTENCE_PATTERN. Nur die letzte wird abgebaut und
+  pro Release gezählt: 272 in 7.5.0, **258** in 7.5.1. Ein Test hält die Datei
+  aktuell und verhindert, dass die Zahl steigt.
+- **Verlauf** (`nlu/history_frame.py`): Statistik, Zustandsfragen („wie
+  oft“, „wie lange“, „wann zuletzt“) und Zeiträume werden aus Wörtern und
+  kleinen Lexikontabellen abgeleitet. Die kanonischen Frames
+  (`HistoryQuery`, `StateHistoryQuery`, `ComparativeHistoryQuery`) sind
+  unverändert. Der alte Parser samt Satzmustern ist gelöscht.
+- **Automationsverwaltung** (`nlu/management_frame.py`): Die 16 Arten
+  (anzeigen, erklären, simulieren, duplizieren, pausieren, verschieben …)
+  sind Zeilen einer Frame-Tabelle mit Stichwörtern, Objekt,
+  Namensgrenzen und Parametern. Der alte Parser samt Satzmustern ist
+  gelöscht.
+- **Shadow je Insel** (`scripts/island_shadow.py`): Der alte Code-Stand (Git)
+  und der neue werden auf allen Korpussätzen, allen Satzliteralen der
+  Testsuite und einem erzeugten Inselkorpus verglichen. Ergebnis: Verlauf
+  6069 Sätze (721 mit Frame), Automationsverwaltung 5360 Sätze (209 mit
+  Frame), jeweils 0 Abweichungen.
 
 ## Was ist in Version 7.5.0 neu?
 
@@ -1886,10 +1912,10 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.5.0:
+Geprüfter Release-Stand von Version 7.5.1:
 
 ```text
-6300 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6304 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
 Shadow-Vergleich 2022 Sätze EQUIVALENT; Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gleichwertig
@@ -1935,7 +1961,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.5.0.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.5.1.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

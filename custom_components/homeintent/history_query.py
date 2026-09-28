@@ -6,7 +6,7 @@ import logging
 import re
 from functools import partial
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum, auto
 
 from .entities import (
@@ -73,18 +73,6 @@ class TransitionEvidence:
     occurred: bool | None
     observed_states: tuple[str, ...] = ()
 
-
-_HISTORY_CUE_RE = re.compile(
-    r"\b(?:durchschnitt|mittelwert|minimum|minimal|niedrigst|kleinst|maximum|"
-    r"maximal|hoechst|groesst|verbraucht|verbrauch|erzeugt|produziert|"
-    r"veraendert|veraenderung|im\s+schnitt)\w*\b"
-)
-_MEAN_RE = re.compile(r"\b(?:durchschnitt\w*|mittelwert\w*|im\s+schnitt)\b")
-_MIN_RE = re.compile(r"\b(?:minimum|minimal|niedrigst|kleinst|tiefst)\w*\b")
-_MAX_RE = re.compile(r"\b(?:maximum|maximal|hoechst|groesst)\w*\b")
-_CHANGE_RE = re.compile(
-    r"\b(?:verbraucht|verbrauch|erzeugt|produziert|veraendert|veraenderung)\w*\b"
-)
 
 # Spoken measurement cue -> HA sensor device classes. Lets "die Temperatur im
 # Wohnzimmer" or "wie kalt war es draussen" find the sensor through its area
@@ -181,77 +169,44 @@ def _measured_sensor(text: str, sensors: list[EntitySnapshot]) -> EntitySnapshot
     return located[0] if len(located) == 1 else None
 
 
-def _time_range(value: str, now: datetime) -> tuple[datetime, datetime, str, str] | None:
-    if re.search(r"\bvorgestern\b", value):
-        end = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-        return end - timedelta(days=1), end, "hour", "vorgestern"
-    if re.search(r"\bgestern\b", value):
-        end = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return end - timedelta(days=1), end, "hour", "gestern"
-    if re.search(r"\b(?:heute|heutigen)\b", value):
-        return now.replace(hour=0, minute=0, second=0, microsecond=0), now, "hour", "heute"
-    if re.search(r"\b(?:diese|dieser|aktuellen?)\s+woche\b", value):
-        start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        return start, now, "day", "diese Woche"
-    if re.search(r"\b(?:letzte|letzter|vergangenen?)\s+woche\b", value):
-        this_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        return this_week - timedelta(days=7), this_week, "day", "letzte Woche"
-    if re.search(r"\b(?:dieser|diesen|aktuellen?)\s+monat\b", value):
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), now, "day", "diesen Monat"
-    if re.search(r"\b(?:letzte[snm]?|vergangene[snm]?)\s+24\s+stunden\b", value):
-        return now - timedelta(hours=24), now, "hour", "in den letzten 24 Stunden"
-    if re.search(r"\b(?:zuletzt|letzte[snm]?\s+sieben\s+tage)\b", value):
-        return now - timedelta(days=7), now, "hour", "in den letzten sieben Tagen"
-    return None
-
-
 def parse_history_query(
     text: str, entities: list[EntitySnapshot], now: datetime
 ) -> HistoryQuery | StateHistoryQuery | ComparativeHistoryQuery | None:
-    """Parse only explicit statistic questions with one named sensor."""
-    value = normalize_for_compare(text)
-    comparison = re.search(r"\b(?:vergleich|verglichen|hoeher|niedriger|mehr|weniger)\b", value)
-    if comparison is not None:
-        entity = _measured_sensor(text, [item for item in entities if item.domain == "sensor"])
-        today = _time_range("heute", now)
-        day_before = _time_range("vorgestern", now)
-        yesterday = _time_range("gestern", now)
-        this_week = _time_range("diese woche", now)
-        last_week = _time_range("letzte woche", now)
-        periods = (
-            (yesterday, day_before)
-            if re.search(r"\bgestern\b", value) and "vorgestern" in value
-            else (today, yesterday)
-            if "heute" in value and re.search(r"\bgestern\b", value)
-            else (this_week, last_week)
-            if "woche" in value and re.search(r"\b(?:diese|aktuelle)\w*\b", value)
-            else None
-        )
-        if (
-            entity is not None
-            and periods is not None
-            and periods[0] is not None
-            and periods[1] is not None
-        ):
-            metric = (
-                HistoryMetric.CHANGE
-                if _CHANGE_RE.search(value)
-                else HistoryMetric.MEAN
-            )
-            return ComparativeHistoryQuery(entity, metric, periods[0], periods[1])
-    time_range = _time_range(value, now)
-    state_metric = (
-        StateHistoryMetric.COUNT
-        if re.search(r"\b(?:wie oft|anzahl)\b", value)
-        else StateHistoryMetric.DURATION
-        if re.search(r"\b(?:wie lange|dauer)\b", value)
-        else StateHistoryMetric.LAST
-        if re.search(r"\b(?:wann\b.*\bzuletzt|zuletzt\b.*\bwann|wann\s+wurde)\b", value)
-        else StateHistoryMetric.OCCURRED
-        if re.search(r"^(?:war|waren|hat|haben)\b", value)
-        else None
+    """Parse only explicit statistic questions with one named sensor.
+
+    Since 7.5.1 the language island "Verlauf" derives the frame from words
+    and lexicon tables (``derive_history_query``); the historic sentence
+    patterns are gone.
+    """
+    return derive_history_query(text, entities, now)
+
+
+def derive_history_query(
+    text: str, entities: list[EntitySnapshot], now: datetime
+) -> HistoryQuery | StateHistoryQuery | ComparativeHistoryQuery | None:
+    """Language island "Verlauf" (7.5.1): the same frames from words and
+    lexicon tables (``nlu.history_frame``) instead of sentence patterns."""
+    from .nlu.history_frame import (
+        comparison_periods,
+        period_key,
+        period_range,
+        state_question_of,
+        statistic_of,
+        words_of,
     )
-    if state_metric is not None and time_range is not None:
+
+    words = words_of(text)
+    value = " ".join(words)
+    compared = comparison_periods(words)
+    if compared is not None:
+        entity = _measured_sensor(text, [item for item in entities if item.domain == "sensor"])
+        first, second = period_range(compared[0], now), period_range(compared[1], now)
+        if entity is not None and first is not None and second is not None:
+            metric = HistoryMetric.CHANGE if statistic_of(words) == "CHANGE" else HistoryMetric.MEAN
+            return ComparativeHistoryQuery(entity, metric, first, second)
+    time_range = period_range(period_key(words), now)
+    state_question = state_question_of(words)
+    if state_question is not None and time_range is not None:
         entity = _mentioned_entity(
             text, [item for item in entities if item.domain in _STATE_HISTORY_DOMAINS]
         )
@@ -259,25 +214,16 @@ def parse_history_query(
         if entity is not None and target is not None:
             start, end, _period, label = time_range
             return StateHistoryQuery(
-                entity, state_metric, target[0], target[1], start, end, label
+                entity, StateHistoryMetric[state_question], target[0], target[1], start, end, label
             )
-    if _HISTORY_CUE_RE.search(value) is None:
+    statistic = statistic_of(words)
+    if statistic is None:
         return None
     entity = _measured_sensor(text, [item for item in entities if item.domain == "sensor"])
     if entity is None or time_range is None:
         return None
-    if _MEAN_RE.search(value):
-        metric = HistoryMetric.MEAN
-    elif _MIN_RE.search(value):
-        metric = HistoryMetric.MIN
-    elif _MAX_RE.search(value):
-        metric = HistoryMetric.MAX
-    elif _CHANGE_RE.search(value):
-        metric = HistoryMetric.CHANGE
-    else:
-        return None
     start, end, period, label = time_range
-    return HistoryQuery(entity, metric, start, end, period, label)
+    return HistoryQuery(entity, HistoryMetric[statistic], start, end, period, label)
 
 
 def _numeric_values(rows: list[dict], key: str) -> list[float]:

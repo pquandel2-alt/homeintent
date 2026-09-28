@@ -812,3 +812,50 @@ Einzelheiten zu den Läufen:
   keine Dienstaufrufe in IR und Arbiter, Kollisionskorpus mit Erwartungen
   (Arbiter-Entscheidung und Konversation).
 - Die Phase-4-Invarianten laufen unverändert grün.
+
+---
+
+## Phase 8 – Sprachinseln Bereich für Bereich (7.5.x)
+
+### 7.5.1: Regex-Klassifikation, Verlauf, Automationsverwaltung
+
+- **Regex-Klassifikation:**
+  - `scripts/regex_inventory.py` findet über den AST jedes literale Muster
+    (`re.compile`, `re.search`, …) und klassifiziert es heuristisch in
+    LEXICAL, MORPHOLOGICAL, STRUCTURAL oder SEMANTIC_SENTENCE_PATTERN
+    (mehrere Wörter in Folge mit Platzhalter, Anker oder Wildcard).
+  - Die Datei `docs/regex-klassifikation.json` hält jeden Eintrag (Datei,
+    Bereich, Hash des Musters, Klasse, Quelle heuristik/manuell), den
+    Verlauf je Release und das Maximum.
+  - `tests/test_regex_classification.py` scheitert, wenn Code und Datei
+    auseinanderlaufen oder die Zahl der Satzmuster über das Maximum steigt.
+  - Stand 7.5.0: 385 LEXICAL, 41 MORPHOLOGICAL, 109 STRUCTURAL,
+    **272 SEMANTIC_SENTENCE_PATTERN**.
+  - Stand 7.5.1: 363 / 39 / 113 / **258**.
+- **Werkzeug `scripts/island_shadow.py`:**
+  - Frames einer Insel für alle Korpussätze, alle Satzliterale der
+    Testsuite und einen erzeugten Inselkorpus.
+  - Der alte Stand läuft aus einem Git-Worktree (`--root`), der neue aus
+    dem Arbeitsbaum.
+  - Vergleich mit festem Hash-Seed, weil die Darstellung von `frozenset`
+    sonst zwischen Prozessen schwankt.
+- **Verlauf:**
+  - Kanonische Frames bleiben `HistoryQuery`, `StateHistoryQuery` und
+    `ComparativeHistoryQuery`.
+  - Die neue Ableitung (`nlu/history_frame.py`) arbeitet mit Wortstämmen
+    für Statistiken, Zustandsfrage-Hinweisen („wie oft“ als Wortpaar),
+    Zeitraum-Schlüsseln aus Wortfolgen und Vergleichszeiträumen.
+  - Shadow gegen 7.5.0: 6069 Sätze, 721 mit Frame, **0 Abweichungen**.
+  - Umgeschaltet; `_time_range` und die fünf Statistik-Muster sind
+    gelöscht.
+- **Automationsverwaltung:**
+  - Frame-Tabelle `nlu/management_frame.py` mit 15 Zeilen (16 Arten,
+    Zählen aktiv/deaktiviert in einer Zeile).
+  - Jede Zeile nennt Stichwörter (Stämme), Objektwort,
+    Namensgrenzen und Parameterleser (Uhrzeit, Anzahl inkl. „dreimal“,
+    Zustand, Tag).
+  - Shadow gegen 7.5.0: 5360 Sätze, 209 mit Frame, alle 16 Arten
+    abgedeckt, **0 Abweichungen**.
+  - Umgeschaltet; die sieben Satzmuster-Konstanten und die elf Inline-Muster
+    sind gelöscht.
+- Tests: 6304 grün; V8-Baseline unverändert.

@@ -66,23 +66,6 @@ class AutomationManagementSelection:
     error_text: str | None = None
 
 
-_RESCHEDULE_RE = re.compile(
-    r"\bverschieb\w*\s+(?:den|die)\s+(?:auftrag|automation)"
-    r"(?:\s+für\s+(?P<name>.+?))?\s+auf\s+(?P<hour>\d{1,2})"
-    r"(?::(?P<minute>\d{1,2}))?\s*uhr\b",
-    re.IGNORECASE,
-)
-_WHEN_RE = re.compile(
-    r"\bwann\s+wird\s+(?P<name>.+?)\s+"
-    r"(?:gefahren|geschaltet|eingeschaltet|ausgeschaltet|gestartet|ausgeführt)\b",
-    re.IGNORECASE,
-)
-_EXPLAIN_RE = re.compile(
-    r"\b(?:was\s+passiert|welche\s+automationen?\s+(?:reagier\w*|start\w*))\s*,?\s*"
-    r"(?:wenn\s+|sobald\s+)?(?P<name>.+?)(?:\s+(?:geöffnet|geoeffnet|geschlossen|an|aus|"
-    r"erkannt|ausgelöst|ausgeloest|gemeldet|eingeschaltet|ausgeschaltet|aktiv)\s+wird)?$",
-    re.IGNORECASE,
-)
 # Spoken trigger subject -> binary sensor device classes, for "wenn die
 # Bewegung im Flur erkannt wird" where no entity is named (F9).
 _SUBJECT_CLASSES: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
@@ -123,170 +106,43 @@ def _subject_by_class_and_area(
         longest = max(len(entity.area_name or "") for entity in pool)
         pool = [entity for entity in pool if len(entity.area_name or "") == longest]
     return pool[0] if len(pool) == 1 else None
-_CONTROLS_RE = re.compile(
-    r"\b(?:welche\s+automation\s+(?:steuert|schaltet)|was\s+steuert)\s+(?P<name>.+)$",
-    re.IGNORECASE,
-)
-_SET_MAX_RUNS_RE = re.compile(
-    r"\bwiederhol\w*\s+(?:die\s+)?automation"
-    r"(?:\s+für\s+(?P<name>.+?))?\s+nur\s+"
-    r"(?P<count>zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|[2-9]|10)\s*mal\b",
-    re.IGNORECASE,
-)
-_DETAIL_RE = re.compile(
-    r"\b(?:zeig\w*|erklaer\w*|erklär\w*)\s+(?:mir\s+)?(?:die\s+)?"
-    r"(?:details(?:\s+der\s+automation)?|automation)\s+"
-    r"(?:von|fuer|für|zu)\s+(?P<name>.+)$",
-    re.I,
-)
-_RUN_COUNTS = {
-    "zwei": 2,
-    "drei": 3,
-    "vier": 4,
-    "fünf": 5,
-    "sechs": 6,
-    "sieben": 7,
-    "acht": 8,
-    "neun": 9,
-    "zehn": 10,
-}
 
 
 def parse_automation_management(text: str) -> AutomationManagementRequest | None:
-    """Recognize the bounded management vocabulary without fuzzy matching."""
-    normalized = re.sub(r"[?.!]", "", text).strip()
-    simulation = re.search(
-        r"\b(?:simulier\w*|was\s+würde)\s+(?:die\s+)?automation"
-        r"(?:\s+(?:von|für|fuer|zu))?\s+(?P<name>.+?)(?:\s+jetzt\s+tun)?$",
-        normalized, re.IGNORECASE,
-    )
-    if simulation is not None:
-        return AutomationManagementRequest(
-            AutomationManagementKind.SIMULATE,
-            entity_name=simulation.group("name").strip(),
-        )
-    duplicate = re.search(
-        r"\b(?:duplizier\w*|kopier\w*)\s+(?:die\s+)?automation(?:\s+(?:von|für|fuer|zu)\s+)?(?P<name>.+)$",
-        normalized, re.IGNORECASE,
-    )
-    if duplicate is not None:
-        return AutomationManagementRequest(
-            AutomationManagementKind.DUPLICATE,
-            entity_name=duplicate.group("name").strip(),
-        )
-    diagnose = re.search(
-        r"\bwarum\s+wurde\s+(?:die\s+)?automation(?:\s+(?:von|für|fuer|zu)\s+)?(?P<name>.+?)\s+"
-        r"nicht\s+(?:ausgelöst|ausgeloest|ausgeführt|ausgefuehrt)\b",
-        normalized, re.IGNORECASE,
-    )
-    if diagnose is not None:
-        return AutomationManagementRequest(
-            AutomationManagementKind.DIAGNOSE,
-            entity_name=diagnose.group("name").strip(),
-        )
-    pause = re.search(
-        r"\bpausier\w*\s+(?:die\s+)?automation(?:\s+(?:von|für|fuer|zu)\s+(?P<name>.+?))?\s+"
-        r"bis\s+(?:(?P<day>morgen|übermorgen|uebermorgen)\s+)?"
-        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{1,2}))?\s*(?:uhr)?\b",
-        normalized, re.IGNORECASE,
-    )
-    if pause is not None:
-        hour, minute = int(pause.group("hour")), int(pause.group("minute") or 0)
-        if hour > 23 or minute > 59:
-            return None
-        day = (pause.group("day") or "").casefold()
-        return AutomationManagementRequest(
-            AutomationManagementKind.PAUSE_UNTIL,
-            entity_name=pause.group("name"), hour=hour, minute=minute,
-            day_offset=2 if day in {"übermorgen", "uebermorgen"} else 1 if day else 0,
-        )
-    count_match = re.search(
-        r"\bwie\s+viele\s+homeintent[- ]automationen\s+sind\s+"
-        r"(?P<state>aktiv|eingeschaltet|deaktiviert|ausgeschaltet)\b",
-        normalized,
-        re.IGNORECASE,
-    )
-    if count_match is not None:
-        kind = (
-            AutomationManagementKind.COUNT_ACTIVE
-            if count_match.group("state").casefold() in {"aktiv", "eingeschaltet"}
-            else AutomationManagementKind.COUNT_DISABLED
-        )
-        return AutomationManagementRequest(kind)
-    if re.search(r"\blösch\w*\s+alle\s+abgelaufenen\b", normalized, re.IGNORECASE):
-        return AutomationManagementRequest(AutomationManagementKind.CLEAN_EXPIRED)
-    if re.search(
-        r"\b(?:mach\w*|nimm\w*|setz\w*)\b.*\b(?:letzte|letzten)\b.*"
-        r"\b(?:homeintent[- ])?automations?(?:aenderung|änderung)\b.*"
-        r"\b(?:rueckgaengig|rückgängig|zurueck|zurück)\b",
-        normalized,
-        re.IGNORECASE,
-    ):
-        return AutomationManagementRequest(AutomationManagementKind.ROLLBACK)
-    match = _SET_MAX_RUNS_RE.search(normalized)
-    if match is not None:
-        raw_count = match.group("count").casefold()
-        return AutomationManagementRequest(
-            AutomationManagementKind.SET_MAX_RUNS,
-            entity_name=match.group("name"),
-            max_runs=int(raw_count) if raw_count.isdigit() else _RUN_COUNTS[raw_count],
-        )
-    match = _RESCHEDULE_RE.search(normalized)
-    if match is not None:
-        hour = int(match.group("hour"))
-        minute = int(match.group("minute") or 0)
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            return AutomationManagementRequest(
-                AutomationManagementKind.RESCHEDULE,
-                entity_name=match.group("name"),
-                hour=hour,
-                minute=minute,
-            )
+    """Recognize the bounded management vocabulary without fuzzy matching.
+
+    Since 7.5.2 the language island "Automationsverwaltung" derives the
+    request from the frame table (``derive_automation_management``); the
+    historic sentence patterns are gone.
+    """
+    return derive_automation_management(text)
+
+
+def derive_automation_management(text: str) -> AutomationManagementRequest | None:
+    """Language island "Automationsverwaltung" (7.5.2): the canonical
+    request from the frame table ``nlu.management_frame``."""
+    from .nlu.management_frame import management_frame
+
+    found = management_frame(text)
+    if found is None:
         return None
-    match = _WHEN_RE.search(normalized)
-    if match is not None:
+    kind, slots = found
+    if slots.get("invalid"):
+        return None
+    if kind == "COUNT":
         return AutomationManagementRequest(
-            AutomationManagementKind.WHEN,
-            entity_name=match.group("name"),
+            AutomationManagementKind.COUNT_ACTIVE
+            if slots["state"] == "active" else AutomationManagementKind.COUNT_DISABLED
         )
-    match = _CONTROLS_RE.search(normalized)
-    if match is not None:
-        return AutomationManagementRequest(
-            AutomationManagementKind.CONTROLS_ENTITY,
-            entity_name=match.group("name"),
-        )
-    match = _DETAIL_RE.search(normalized)
-    if match is not None:
-        return AutomationManagementRequest(
-            AutomationManagementKind.DETAIL, entity_name=match.group("name")
-        )
-    match = _EXPLAIN_RE.search(normalized)
-    if match is not None:
-        return AutomationManagementRequest(
-            AutomationManagementKind.EXPLAIN_TRIGGER,
-            entity_name=match.group("name"),
-        )
-    if re.search(
-        r"\b(?:welche|zeige)\b.*\bhomeintent[- ]automationen\b",
-        normalized,
-        re.IGNORECASE,
-    ) or re.search(
-        r"\bzeige\s+nur\s+homeintent\s+automationen\b",
-        normalized,
-        re.IGNORECASE,
-    ):
-        scope = re.search(r"\b(?:im|in der|in den)\s+(.+)$", normalized, re.IGNORECASE)
-        return AutomationManagementRequest(
-            AutomationManagementKind.LIST_HOMEINTENT,
-            scope_name=scope.group(1).strip() if scope else None,
-        )
-    if re.search(
-        r"\bwelche\s+(?:einmaligen\s+)?(?:aufträge|automationen)\s+sind\s+(?:noch\s+)?geplant\b",
-        normalized,
-        re.IGNORECASE,
-    ):
-        return AutomationManagementRequest(AutomationManagementKind.LIST_SCHEDULED)
-    return None
+    return AutomationManagementRequest(
+        AutomationManagementKind[kind],
+        entity_name=slots.get("entity_name"),  # type: ignore[arg-type]
+        hour=slots.get("hour"),  # type: ignore[arg-type]
+        minute=int(slots.get("minute", 0) or 0),
+        max_runs=slots.get("max_runs"),  # type: ignore[arg-type]
+        scope_name=slots.get("scope_name"),  # type: ignore[arg-type]
+        day_offset=int(slots.get("day_offset", 0) or 0),
+    )
 
 
 def select_automation_management(
