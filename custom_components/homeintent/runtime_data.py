@@ -15,6 +15,7 @@ from .memory import MemoryStore
 from .situation import RoutineStatistics, SituationEvaluator
 from .dialog_manager import DialogManager
 from .effect_monitor import EffectMonitor
+from .execution_trace import TraceRuntime
 from .adapters import AdapterEvidence
 from .goal_run import GoalRunStore
 from .monitor_goal import MonitorGoalRuntime, MonitorGoalStore
@@ -70,6 +71,9 @@ class HomeIntentRuntimeData:
     learning_tasks: set[asyncio.Task[None]] = field(default_factory=set)
     remove_learning_listener: Callable[[], None] | None = None
     remove_proactive_listener: Callable[[], None] | None = None
+    # 7.3.2: ring buffer of executions and HA automation/script runs.
+    trace: TraceRuntime | None = None
+    stop_trace: Callable[[], Any] | None = None
     # 7.1 Learning Center: runtime-only change counter and bounded audit.
     learning_center_revision: LearningCenterRevision = field(
         default_factory=LearningCenterRevision

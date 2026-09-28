@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
 )
 from .productivity import TimerOperation, TimerRequest, format_duration
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -316,6 +317,7 @@ class NativeTimerRuntime:
                     "media_content_type": "music",
                 },
                 blocking=True,
+                context=call_context(),
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("HomeIntent timer chime failed: %s", err)

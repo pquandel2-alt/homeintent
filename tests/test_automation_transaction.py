@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import sys
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 import yaml
@@ -33,7 +33,7 @@ from homeassistant.core import HomeAssistant  # noqa: E402
 def _hass(tmp_path: Path) -> HomeAssistant:
     hass = HomeAssistant()
     hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
-    hass.services.async_call = AsyncMock()
+    hass.services.async_call = ServiceMock()
     return hass
 
 

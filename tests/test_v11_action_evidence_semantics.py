@@ -62,7 +62,8 @@ class ServiceSink:
         self.fail = fail
 
     async def async_call(
-        self, domain: str, service: str, data: dict[str, Any], blocking: bool = False
+        self, domain: str, service: str, data: dict[str, Any], blocking: bool = False,
+        context: Any = None,
     ) -> None:
         self.calls.append((domain, service, dict(data)))
         if self.fail:

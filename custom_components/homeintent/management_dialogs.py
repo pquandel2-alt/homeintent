@@ -44,6 +44,7 @@ from .nlu.ha_automation_generator import (
     generate_ha_trigger_configs,
 )
 from .nlu.response_generator import _automation_label
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -442,6 +443,7 @@ async def async_handle_calendar_management(
                 target={"entity_id": list(request.calendar_entity_ids)},
                 blocking=True,
                 return_response=True,
+                context=call_context(),
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Calendar event query failed: %s", err)

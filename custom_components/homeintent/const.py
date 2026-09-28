@@ -12,6 +12,10 @@ CONF_MAX_ACTION_TARGETS = "max_action_targets"
 # be determined statically: "deny" (default) or "confirm".
 CONF_EFFECT_GRAPH_UNKNOWN = "effect_graph_unknown"
 EFFECT_GRAPH_UNKNOWN_OPTIONS = ("deny", "confirm")
+# 7.3.2 execution trace (ring buffer of executions, see execution_trace.py).
+CONF_TRACE_LIMIT = "trace_limit"
+CONF_TRACE_DAYS = "trace_days"
+CONF_TRACE_STORE_TEXT = "trace_store_text"
 CONF_ALLOW_NON_ADMIN_CRITICAL = "allow_non_admin_critical"
 CONF_ALLOW_NON_ADMIN_AUTOMATIONS = "allow_non_admin_automations"
 CONF_CONTEXT_TTL_SECONDS = "context_ttl_seconds"

@@ -14,12 +14,12 @@ rejection must leave proposals, situations, permissions and devices untouched.
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import json
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -90,7 +90,7 @@ async def _rig(tmp_path, monkeypatch, registry=(PHILIPP_PHONE,)) -> Rig:
         if (domain, service) == ("cover", "close_cover"):
             rig.entities["cover.garage"] = replace(rig.entities["cover.garage"], state="closed")
 
-    rig.hass.services.async_call = AsyncMock(side_effect=apply)
+    rig.hass.services.async_call = ServiceMock(side_effect=apply)
     rig.data.effect_monitor.timeout = timedelta(milliseconds=20)
     return rig
 

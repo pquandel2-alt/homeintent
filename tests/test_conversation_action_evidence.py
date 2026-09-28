@@ -70,7 +70,7 @@ def _agent(tmp_path, monkeypatch, *, fail: bool):
     agent._runtime_data.effect_monitor.timeout = timedelta(milliseconds=50)
     states = _entities()
 
-    async def _call(domain, service, data, blocking=False):
+    async def _call(domain, service, data, blocking=False, context=None):
         if fail:
             raise RuntimeError("abgelehnt")
         entity_id = data["entity_id"]

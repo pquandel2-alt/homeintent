@@ -57,6 +57,7 @@ from .learning_control import (
 )
 from .habit_discovery import routine_from_habit_model
 from .proactive_model import SituationKind
+from .execution_trace import actor_hash, trace_view
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -696,6 +697,30 @@ async def ws_history_list(hass: HomeAssistant, connection: Any, msg: dict[str, A
     await _run(hass, connection, msg, _h_history_list)
 
 
+async def _h_traces_list(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: dict[str, Any]) -> Any:
+    """"Was hat HomeIntent ausgelöst?": the execution trace, read-only.
+
+    Administrators see the household; everybody else only their own turns.
+    """
+    trace = getattr(entry.runtime_data, "trace", None)
+    records = trace.store.recent() if trace is not None else ()
+    own = actor_hash(viewer.user_id)
+    visible = [item for item in records if viewer.is_admin or item.actor == own]
+    limit = int(msg.get("limit", 40))
+    return {
+        "api_version": API_VERSION,
+        "traces": [trace_view(item) for item in visible[:limit]],
+    }
+
+
+@websocket_api.websocket_command(_cmd("traces/list", {
+    vol.Optional("limit", default=40): _limit(200),
+}))
+@websocket_api.async_response
+async def ws_traces_list(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
+    await _run(hass, connection, msg, _h_traces_list)
+
+
 @websocket_api.websocket_command(_cmd("tombstones/list"))
 @websocket_api.async_response
 async def ws_tombstones_list(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
@@ -730,7 +755,7 @@ _COMMANDS = (
     ws_models_forget, ws_models_reset, ws_preferences_confirm, ws_preferences_reject,
     ws_habits_preview, ws_habits_accept, ws_habits_reject, ws_permissions_list,
     ws_permissions_revoke, ws_mutes_list, ws_mutes_remove, ws_history_list,
-    ws_tombstones_list, ws_subscribe,
+    ws_tombstones_list, ws_traces_list, ws_subscribe,
 )
 
 

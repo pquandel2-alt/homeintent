@@ -201,3 +201,99 @@ Testhaus lädt dafür `sim/config/scripts.yaml` und `scenes.yaml`.
 `test_movie_need_starts_the_movie_scene` heißt jetzt
 `test_movie_need_proposes_the_movie_scene`: „Ich will fernsehen.“ schlägt die
 Szene vor, erst „Ja“ startet sie (gewollte Verhaltensänderung, S5).
+
+---
+
+## Phase 2 – ExecutionContext und ExecutionTrace (7.3.2)
+
+### Umgesetzt
+
+- **`execution_context.py`** (neu): Pro Nutzeräußerung öffnet
+  `conversation._async_handle_message` einen Turn (`begin_turn`/`end_turn`,
+  `ContextVar`). Der Turn trägt genau einen HA-`Context(user_id=<sprechender
+  Nutzer>, parent_id=<Kontext der Assist-Anfrage>)`; seine `id` ist die
+  `execution_id`. Der Executor nutzt diesen Kontext (oder einen expliziten,
+  oder einen neuen mit dem Nutzer) für den Dienstaufruf und gibt die
+  `execution_id` in `ExecutionResult` zurück. Agent und Proaktiv laufen
+  außerhalb eines Turns und bekommen einen eigenen Kontext ohne Benutzer.
+- **Alle 45 `hass.services.async_call`-Aufrufe** übergeben `context=`:
+  Gerätewrites über den Executor, alle übrigen (Listen, Timer, Kalender,
+  Benachrichtigungen, Automations-Reload, Recorder-Statistik) über
+  `call_context()`. Ein statischer AST-Test (`test_every_service_call_passes_a_context`)
+  hält das dauerhaft ein.
+- **HA-Berechtigung:** Lehnt Home Assistant einen Aufruf wegen der
+  Benutzerrechte ab (`Unauthorized`), meldet HomeIntent „Home Assistant
+  erlaubt diesem Benutzer diese Aktion nicht.“ – ergänzend zur
+  HomeIntent-Policy, nicht als Ersatz.
+- **`execution_trace.py`** (neu, nur lesend): Ringspeicher
+  `ExecutionTraceStore` (Standard 500 Ausführungen / 14 Tage, Optionen
+  `trace_limit`, `trace_days`), ein Eintrag je `execution_id` mit Satz
+  (gekürzt oder mit `trace_store_text: false` nur als Hash), gehashtem Akteur
+  wie im Audit, Herkunft, Plänen, Zielen, geprüften Effekten (aus dem
+  EffectGraph), möglichen Folge-Automationen, Policy-Ergebnis und Risiko.
+  Persistenz als `.storage/homeintent_trace.json` (minütlich bei Änderung und
+  beim Entladen). Ein `ContextIndex` folgt den HA-Ereignissen
+  `automation_triggered` und `script_started` (Kontext-ID → Lauf, Name,
+  Auslöser, `parent_id`) – das sind die Glieder der HA-Kette; Zustände selbst
+  liest HomeIntent live aus Home Assistant und kopiert sie nicht.
+- **`explain_change`**: geht vom aktuellen Zustandskontext des Geräts über
+  HAs Kette (`id` → Automations-/Skriptlauf → `parent_id` …, höchstens 8
+  Glieder) zurück. Effektarten `DIRECT_EFFECT`, `SCRIPT_EFFECT`,
+  `SCENE_EFFECT`, `AUTOMATION_EFFECT`, `SECONDARY_EFFECT`, `EXTERNAL_EFFECT`,
+  `UNKNOWN_CAUSE`; Belegstufen nur `VERIFIED` (Kette), `POSSIBLE` (zeitliche
+  Nähe ± 2 min und Bezug im EffectGraph, immer als Vermutung: „Dafür finde ich
+  keine Ursache, die ich belegen kann; zeitgleich lief … Das könnte
+  zusammenhängen.“) und `UNKNOWN`.
+- **Sprache:** `nlu/causal_question.py` erkennt Ursachenfragen zu einem
+  benannten Gerät („Warum/Wieso ist … an/angegangen?“, „Wer hat … eingeschaltet?“)
+  über die gemeinsame Zielauflösung. Fragen an HomeIntent selbst („Warum hast
+  du …“), über Automationen und über die Vergangenheit („gestern“) bleiben bei
+  ihren bestehenden Antworten. Findet der Trace **keinen** Beleg, antwortet
+  weiter der bisherige, vorsichtig formulierte Automationsbezug („könnte …
+  beeinflusst werden“) – es entsteht keine erfundene Kausalkette.
+- **Learning Center:** WebSocket-Befehl `traces/list` und Abschnitt „Was hat
+  HomeIntent ausgelöst?“ im Tab Aktivität (Admins: Haushalt; sonst nur eigene
+  Ausführungen). Mobile-Prüfung (390×844, hell/dunkel) bestanden.
+
+### Tests
+
+`tests/test_execution_trace.py` (14 Fälle): AST-Regel für `context=`, direkter
+Befehl → DIRECT/VERIFIED, Skript → SCRIPT/VERIFIED mit Schrittname, durch
+Zustandsänderung ausgelöste Automation → SECONDARY bzw. AUTOMATION/VERIFIED
+über `parent_id`, Person in der App → EXTERNAL/VERIFIED, zeitgleicher fremder
+Effekt höchstens POSSIBLE ohne Kausalbehauptung, kein Bezug → UNKNOWN,
+Ringspeicher mit Alters- und Mengengrenze, Hash-Datenschutz, ein Kontext pro
+Turn über mehrere Pläne, Kontext ohne Benutzer außerhalb eines Turns,
+HA-`Unauthorized` sauber gemeldet, Gespräch „Aktiviere Nachtruhe.“ → „Warum ist
+der Saugroboter angegangen?“. Dazu ein Learning-Center-Test für die
+Sichtbarkeit von `traces/list`.
+
+Test-Attrappen: `tests/_ha_stub.ServiceMock` zeichnet den Kontext getrennt auf
+(`.contexts`), damit die bestehenden Assertions auf Domäne/Dienst/Ziel
+unverändert bleiben; der Kontext selbst wird in den neuen Tests geprüft.
+
+### Live-Prüfung
+
+Frisches Testhaus, eigenes Prüfskript: **8/8**.
+- „Aktiviere Nachtruhe.“ (Skript mit `vacuum.start`, Saugroboter absichtlich
+  freigegeben) → der HA-Zustand des Saugroboters trägt den Kontext mit der
+  Benutzer-ID; „Warum ist der Saugroboter angegangen?“ → „Du hast um 11:36
+  „Aktiviere Nachtruhe.“ gesagt. Ich habe das Skript Nachtruhe gestartet.
+  Dessen Schritt ‚Saugen starten‘ hat Saugroboter gestartet.“
+- Direkter Befehl → „… Ich habe daraufhin Küchenlicht eingeschaltet.“
+- Anna schaltet das Bürolicht über die HA-API → „Anna hat Bürolicht um … selbst
+  geschaltet, zum Beispiel in der App.“
+- Bewegungsmelder löst die Benutzer-Automation „Flurlicht bei Bewegung“ aus →
+  „Automation „Flurlicht bei Bewegung“, ausgelöst durch eine Zustandsänderung
+  von Bewegungsmelder Flur, hat … Flurlicht geschaltet.“
+- `traces/list`: Admin sieht die Ausführungen, Anna keine fremden.
+- Im ersten Durchlauf fielen zwei Formulierungsfehler auf und wurden behoben:
+  Uhrzeiten aus HA-Zuständen kamen in UTC, HAs englische Auslöserbeschreibung
+  („state of binary_sensor…“) wird jetzt deutsch mit Gerätenamen genannt.
+
+### Bewusst offen
+
+- Einmalige, zeitversetzte Befehle führt Home Assistant als von HomeIntent
+  angelegte Automation aus; deren spätere Wirkung erscheint im Trace als
+  AUTOMATION_EFFECT dieser Automation, nicht als Glied der ursprünglichen
+  Äußerung (HA verknüpft den Zeit-Auslöser nicht mit dem Anlegekontext).

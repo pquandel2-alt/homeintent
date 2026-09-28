@@ -267,6 +267,11 @@ const STRINGS = {
     to: (name) => `→ ${name}`,
     toYou: "→ dich",
     activityEmpty: "Noch keine proaktive Aktivität aufgezeichnet.",
+    tracesTitle: "Was hat HomeIntent ausgelöst?",
+    tracesEmpty: "HomeIntent hat noch nichts ausgelöst.",
+    tracesUnattended: "ohne Rückfrage (Daueranweisung oder proaktiv)",
+    tracesVia: (via, step) => (step ? `über ${via}, Schritt „${step}“` : `über ${via}`),
+    tracesFollowups: "Kann ausgelöst haben:",
     loadMore: "Weitere laden",
     tombstonesTitle: "Vergessen & unterdrückt",
     tombstonesShow: "Anzeigen",
@@ -496,6 +501,11 @@ const STRINGS = {
     to: (name) => `→ ${name}`,
     toYou: "→ you",
     activityEmpty: "No proactive activity recorded yet.",
+    tracesTitle: "What did HomeIntent trigger?",
+    tracesEmpty: "HomeIntent has not triggered anything yet.",
+    tracesUnattended: "without asking (standing permission or proactive)",
+    tracesVia: (via, step) => (step ? `via ${via}, step “${step}”` : `via ${via}`),
+    tracesFollowups: "May have triggered:",
     loadMore: "Load more",
     tombstonesTitle: "Forgotten & suppressed",
     tombstonesShow: "Show",
@@ -573,6 +583,7 @@ class HomeIntentLearningCenter extends HTMLElement {
     this._mutes = null;
     this._history = null;
     this._historyCursor = null;
+    this._traces = null;
     this._tombstones = null;
     this._error = null;
     this._toast = null;
@@ -790,9 +801,13 @@ class HomeIntentLearningCenter extends HTMLElement {
         this._features = permissions.features;
         this._mutes = mutes.mutes;
       } else if (view.tab === "activity") {
-        const history = await this._call("history/list", { limit: 40 });
+        const [history, traces] = await Promise.all([
+          this._call("history/list", { limit: 40 }),
+          this._call("traces/list", { limit: 40 }).catch(() => ({ traces: [] })),
+        ]);
         this._history = history.records;
         this._historyCursor = history.next_cursor;
+        this._traces = traces.traces || [];
       }
       this._error = null;
     } catch (err) {
@@ -1285,9 +1300,32 @@ class HomeIntentLearningCenter extends HTMLElement {
       }) }, p.revoke) : null);
   }
 
+  _traceSection() {
+    const t = this.t;
+    const traces = this._traces || [];
+    const section = h("section", { class: "card" }, h("h2", null, t.tracesTitle));
+    if (!traces.length) { section.appendChild(h("p", { class: "muted" }, t.tracesEmpty)); return section; }
+    const list = h("ol", { class: "timeline" });
+    for (const trace of traces) {
+      const effects = (trace.effects || []).slice(0, 8).map((effect) => h("li", { class: "small wrap" },
+        effect.label, effect.via ? ` (${t.tracesVia(effect.via, effect.step)})` : ""));
+      list.appendChild(h("li", { class: "timeline-item" },
+        h("div", { class: "muted small" }, this._date(trace.timestamp)),
+        h("div", { class: "strong wrap" }, trace.utterance ? `„${trace.utterance}“` : (trace.targets || []).join(", ")),
+        trace.user_present ? null : h("div", { class: "small muted" }, t.tracesUnattended),
+        h("div", { class: "wrap" }, (trace.targets || []).join(", ")),
+        effects.length ? h("ul", { class: "sequence" }, effects) : null,
+        (trace.possible_followups || []).length
+          ? h("div", { class: "small muted wrap" }, `${t.tracesFollowups} ${trace.possible_followups.join(", ")}`) : null));
+    }
+    section.appendChild(list);
+    return section;
+  }
+
   _activity() {
     const t = this.t;
     const wrap = h("div", { class: "stack" });
+    if (this._traces !== null) wrap.appendChild(this._traceSection());
     const records = this._history;
     if (records === null) { wrap.appendChild(h("p", { class: "muted" }, t.loading)); return wrap; }
     if (!records.length) { wrap.appendChild(h("section", { class: "card" }, h("p", { class: "muted" }, t.activityEmpty))); return wrap; }

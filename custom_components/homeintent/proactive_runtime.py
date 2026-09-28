@@ -91,6 +91,7 @@ from .situation_detection import (
     parse_habit_sequence,
 )
 from .user_context import BindingStatus
+from .execution_context import call_context
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -526,6 +527,7 @@ class ProactiveRuntime:
                     {"title": message.title, "message": message.text,
                      "notification_id": "homeintent_v12_critical"},
                     blocking=True,
+                    context=call_context(),
                 )
                 delivered.append(CommunicationChannel.PUSH)
             except Exception as err:  # noqa: BLE001

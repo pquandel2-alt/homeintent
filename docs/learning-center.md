@@ -186,6 +186,7 @@ Alle Befehle: `homeintent/learning_center/<name>`, optional `entry_id`
 | `mutes/remove` | `situation_kind` | `{removed}` |
 | `history/list` | `cursor` (≥0), `limit` (1–100, Standard 40) | `{records: HistoryView[], next_cursor}` |
 | `tombstones/list` | – | `{tombstones: TombstoneView[]}` (nur Admin) |
+| `traces/list` | `limit` (1–200, Standard 40) | `{traces: TraceView[]}` – „Was hat HomeIntent ausgelöst?“ (Admins: Haushalt, sonst nur eigene Ausführungen; seit 7.3.2) |
 | `subscribe` | – | Ergebnis `{entry_id, revision}`, danach Ereignisse `{entry_id, revision}` |
 
 Die Felder aller Ansichtsmodelle sind in `learning_center.py` als

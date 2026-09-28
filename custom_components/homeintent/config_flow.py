@@ -78,6 +78,9 @@ from .const import (
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
     CONF_EFFECT_GRAPH_UNKNOWN,
+    CONF_TRACE_DAYS,
+    CONF_TRACE_LIMIT,
+    CONF_TRACE_STORE_TEXT,
     CONF_CONTEXT_TTL_SECONDS,
     CONF_BANTER_LEVEL,
     CONF_CONTROL_USER_IDS,
@@ -286,6 +289,18 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_EFFECT_GRAPH_UNKNOWN,
                         default=defaults.get(CONF_EFFECT_GRAPH_UNKNOWN, "deny"),
                     ): vol.In(("deny", "confirm")),
+                    vol.Optional(
+                        CONF_TRACE_LIMIT,
+                        default=defaults.get(CONF_TRACE_LIMIT, 500),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=5000)),
+                    vol.Optional(
+                        CONF_TRACE_DAYS,
+                        default=defaults.get(CONF_TRACE_DAYS, 14),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=90)),
+                    vol.Optional(
+                        CONF_TRACE_STORE_TEXT,
+                        default=defaults.get(CONF_TRACE_STORE_TEXT, True),
+                    ): bool,
                     vol.Optional(
                         CONF_ALLOW_NON_ADMIN_CRITICAL,
                         default=defaults.get(CONF_ALLOW_NON_ADMIN_CRITICAL, False),

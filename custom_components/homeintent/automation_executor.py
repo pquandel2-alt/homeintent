@@ -78,6 +78,7 @@ from .automation_transaction import (
     LEGACY_TRANSACTION_JOURNAL_FILENAME,
 )
 from .storage_migration import resolve_storage_path
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -366,7 +367,7 @@ class AutomationExecutor:
             )
 
             try:
-                await self._hass.services.async_call("automation", "reload", {}, blocking=True)
+                await self._hass.services.async_call("automation", "reload", {}, blocking=True, context=call_context())
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 raise
@@ -393,7 +394,7 @@ class AutomationExecutor:
                 # caused this rollback - the file is already correct either
                 # way.
                 try:
-                    await self._hass.services.async_call("automation", "reload", {}, blocking=True)
+                    await self._hass.services.async_call("automation", "reload", {}, blocking=True, context=call_context())
                 except Exception:  # noqa: BLE001 - see comment above
                     pass
                 raise
@@ -544,7 +545,7 @@ class AutomationExecutor:
             )
 
             try:
-                await self._hass.services.async_call("automation", "reload", {}, blocking=True)
+                await self._hass.services.async_call("automation", "reload", {}, blocking=True, context=call_context())
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 raise
@@ -553,7 +554,7 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 raise
             await self._async_complete_transaction()
@@ -641,7 +642,7 @@ class AutomationExecutor:
             )
 
             try:
-                await self._hass.services.async_call("automation", "reload", {}, blocking=True)
+                await self._hass.services.async_call("automation", "reload", {}, blocking=True, context=call_context())
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 raise
@@ -783,7 +784,7 @@ class AutomationExecutor:
             )
             try:
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 await self._metadata_store.async_update(
                     automation_id,
@@ -793,7 +794,7 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 raise
             await self._async_complete_transaction()
@@ -869,7 +870,7 @@ class AutomationExecutor:
             )
             try:
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 await self._metadata_store.async_update(
                     automation_id,
@@ -880,7 +881,7 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 raise
             await self._async_complete_transaction()
@@ -932,7 +933,7 @@ class AutomationExecutor:
             )
             try:
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 await self._metadata_store.async_update(
                     automation_id,
@@ -942,7 +943,7 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 raise
             await self._async_complete_transaction()
@@ -992,7 +993,7 @@ class AutomationExecutor:
             )
             try:
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 await self._metadata_store.async_update(
                     automation_id,
@@ -1002,7 +1003,7 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 raise
             await self._async_complete_transaction()
@@ -1061,7 +1062,7 @@ class AutomationExecutor:
                 )
                 try:
                     await self._hass.services.async_call(
-                        "automation", "reload", {}, blocking=True
+                        "automation", "reload", {}, blocking=True, context=call_context()
                     )
                 except Exception:
                     await self._async_rollback_transaction(path, transaction)
@@ -1097,7 +1098,7 @@ class AutomationExecutor:
                 else:
                     await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 return True
             raise ConcurrentAutomationUpdateError(
@@ -1164,7 +1165,7 @@ class AutomationExecutor:
             )
             try:
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 previous_metadata = history.get("metadata", {})
                 if not isinstance(previous_metadata, dict):
@@ -1173,7 +1174,7 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
-                    "automation", "reload", {}, blocking=True
+                    "automation", "reload", {}, blocking=True, context=call_context()
                 )
                 raise
             await self._async_complete_transaction()

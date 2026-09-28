@@ -37,7 +37,7 @@ DOC_COMMANDS = (
     "entries", "summary", "models/list", "models/get", "models/evidence", "models/forget",
     "models/reset", "preferences/confirm", "preferences/reject", "habits/preview",
     "habits/accept", "habits/reject", "permissions/list", "permissions/revoke",
-    "mutes/list", "mutes/remove", "history/list", "tombstones/list", "subscribe",
+    "mutes/list", "mutes/remove", "history/list", "tombstones/list", "traces/list", "subscribe",
 )
 
 
@@ -312,3 +312,29 @@ def test_frontend_is_packaged_inside_the_integration_for_hacs():
     for dependency in ("frontend", "http", "panel_custom", "websocket_api"):
         assert dependency in manifest["dependencies"]
     assert manifest["dependencies"] == sorted(manifest["dependencies"])
+
+
+def test_traces_list_shows_admins_everything_and_users_their_own(tmp_path):
+    from datetime import datetime
+
+    from homeintent.execution_trace import (
+        ContextIndex, ExecutionTraceStore, TraceRecord, actor_hash, register_trace,
+    )
+
+    async def _go():
+        env = await make_env(tmp_path)
+        store = ExecutionTraceStore()
+        for execution_id, user in (("e1", USER_A), ("e2", USER_B)):
+            store.add(TraceRecord(
+                execution_id=execution_id, created_at=datetime(2026, 9, 28, 22, 13).isoformat(),
+                actor=actor_hash(user), user_present=True, utterance="Aktiviere Schlafen",
+                targets=("script.schlafen",), names={"script.schlafen": "Schlafen"},
+            ))
+        env.entry.runtime_data.trace = register_trace(env.hass, store, ContextIndex())
+        own, error = await env.call(USER_A, "traces/list")
+        assert error is None
+        assert [item["execution_id"] for item in own["traces"]] == ["e1"]
+        assert own["traces"][0]["targets"] == ["Schlafen"]
+        everything, error = await env.call(ADMIN, "traces/list")
+        assert error is None and len(everything["traces"]) == 2
+    run(_go())

@@ -23,6 +23,9 @@ from .const import (
     CONF_DOCUMENTS_DIRECTORY,
     CONF_DOCUMENTS_ENABLED,
     CONF_MEMORY_ENABLED,
+    CONF_TRACE_DAYS,
+    CONF_TRACE_LIMIT,
+    CONF_TRACE_STORE_TEXT,
     CONF_MEMORY_RETENTION_DAYS,
     CONF_EXPERIENCE_LEARNING_ENABLED,
     CONF_PREDICTIVE_MODELS_ENABLED,
@@ -38,6 +41,7 @@ from .monitor_goal import MonitorGoalRuntime, MonitorGoalStore
 from .nlu.context import ConversationContextStore
 from .profiles import ProfileStore
 from .engine import NluEngine
+from .execution_trace import DEFAULT_TRACE_DAYS, DEFAULT_TRACE_LIMIT, async_setup_trace
 from .runtime_data import HomeIntentRuntimeData
 from .storage_migration import resolve_storage_path
 from .user_context import UserContextStore
@@ -244,6 +248,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _queue_learning
     )
     await memory.async_initialize()
+    configured_trace_limit = entry.options.get(CONF_TRACE_LIMIT, DEFAULT_TRACE_LIMIT)
+    configured_trace_days = entry.options.get(CONF_TRACE_DAYS, DEFAULT_TRACE_DAYS)
+    entry.runtime_data.trace, entry.runtime_data.stop_trace = await async_setup_trace(
+        hass,
+        hass.config.path(".storage", "homeintent_trace.json"),
+        limit=configured_trace_limit if isinstance(configured_trace_limit, int) else DEFAULT_TRACE_LIMIT,
+        days=configured_trace_days if isinstance(configured_trace_days, int) else DEFAULT_TRACE_DAYS,
+        store_text=bool(entry.options.get(CONF_TRACE_STORE_TEXT, True)),
+    )
     await user_contexts.async_load()
     await profile_store.async_load()
     await learning_manager.async_restore_models()
@@ -740,6 +753,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         entry.runtime_data.learning_tasks.clear()
         await entry.runtime_data.effect_monitor.async_close()
+        if entry.runtime_data.stop_trace is not None:
+            await entry.runtime_data.stop_trace()
+            entry.runtime_data.stop_trace = None
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_DELETE_AUTOMATION):
         hass.services.async_remove(DOMAIN, SERVICE_DELETE_AUTOMATION)
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_RECORD_AUTOMATION_RUN):

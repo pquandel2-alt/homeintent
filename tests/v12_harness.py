@@ -73,7 +73,7 @@ class ServiceSink:
         self.fail_entities: set[str] = set()
         self.no_effect_entities: set[str] = set()
 
-    async def async_call(self, domain: str, service: str, data: dict[str, Any], blocking: bool = False) -> None:
+    async def async_call(self, domain: str, service: str, data: dict[str, Any], blocking: bool = False, context: Any = None) -> None:
         self.calls.append((domain, service, dict(data)))
         raw = data.get("entity_id")
         targets = [raw] if isinstance(raw, str) else list(raw or [])

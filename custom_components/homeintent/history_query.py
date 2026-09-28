@@ -17,6 +17,7 @@ from .entities import (
     spoken_unit,
 )
 from .nlu.entity_resolution import ResolutionStatus, resolve_mentioned_target
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -382,6 +383,7 @@ async def async_execute_history_query(
             service_data,
             blocking=True,
             return_response=True,
+            context=call_context(),
         )
     except Exception as err:  # Recorder absent/disabled or API not supported.
         _LOGGER.warning("Recorder statistics query failed: %s", err, exc_info=True)
@@ -408,6 +410,7 @@ async def _async_execute_comparative_history_query(
             },
             blocking=True,
             return_response=True,
+            context=call_context(),
         )
 
     try:

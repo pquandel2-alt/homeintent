@@ -16,6 +16,7 @@ instead of stubbed.
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import sys
 from dataclasses import replace
@@ -364,7 +365,7 @@ def test_multi_command_runtime_failure_stops_remaining_actions(monkeypatch):
     entity = _make_entity(
         monkeypatch, [FLUR_LICHT_OFF, KUECHE_LICHT, third]
     )
-    entity.hass.services.async_call = AsyncMock(
+    entity.hass.services.async_call = ServiceMock(
         side_effect=[None, RuntimeError("second failed"), None]
     )
 
@@ -954,7 +955,7 @@ def test_service_call_exception_produces_clean_failed_to_handle_response(monkeyp
     intent recognition" (the broadened ``except Exception`` in
     conversation.py's two service-call sites)."""
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
-    entity.hass.services.async_call = AsyncMock(side_effect=RuntimeError("boom"))
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("boom"))
 
     result = _run(entity, "Schalte das Flurlicht ein")
 
@@ -1005,7 +1006,7 @@ def test_service_confirmation_retries_declines_and_executes(monkeypatch):
 
 def test_confirmed_service_failure_is_reported_without_success(monkeypatch):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
-    entity.hass.services.async_call = AsyncMock(side_effect=RuntimeError("confirm boom"))
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("confirm boom"))
     _store_confirmation(entity, "confirm-failure")
 
     result = _run(entity, "ja", "confirm-failure")
@@ -1050,7 +1051,7 @@ def test_undo_reports_empty_context_then_reverses_last_light_action(monkeypatch)
 def test_undo_service_failure_is_cleanly_reported(monkeypatch):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
     _run(entity, "Schalte das Flurlicht ein", "undo-failure")
-    entity.hass.services.async_call = AsyncMock(side_effect=RuntimeError("undo boom"))
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("undo boom"))
 
     result = _run(entity, "Mach das rückgängig", "undo-failure")
 

@@ -22,6 +22,7 @@ from .const import (
     CONF_AGENT_QUIET_START,
 )
 from .user_context import NotificationTarget, NotificationTargetKind
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class AgentDelivery:
                 "send_message",
                 {"entity_id": targets, "title": event.title, "message": event.message},
                 blocking=True,
+                context=call_context(),
             )
             return
         await self._hass.services.async_call(
@@ -120,6 +122,7 @@ class AgentDelivery:
                 "notification_id": f"homeintent_{event.event_id}",
             },
             blocking=True,
+            context=call_context(),
         )
 
     async def async_deliver_typed_notification(
@@ -163,6 +166,7 @@ class AgentDelivery:
                 "send_message",
                 {"entity_id": [target_id], "title": title, "message": message},
                 blocking=True,
+                context=call_context(),
             )
             return True
         data: dict[str, object] = {
@@ -182,7 +186,7 @@ class AgentDelivery:
         }
         if not self._hass.services.has_service("notify", service):
             raise ValueError("The explicitly bound notify service is unavailable")
-        await self._hass.services.async_call("notify", service, payload, blocking=True)
+        await self._hass.services.async_call("notify", service, payload, blocking=True, context=call_context())
         return True
 
     def effective_target_kind(
@@ -264,6 +268,7 @@ class AgentDelivery:
                     "send_message",
                     {"entity_id": entity_ids, "title": title, "message": message},
                     blocking=True,
+                    context=call_context(),
                 )
                 delivered.extend(entity_ids)
             for item in available:
@@ -273,6 +278,7 @@ class AgentDelivery:
                         item.target_id.partition(".")[2],
                         {"title": title, "message": message},
                         blocking=True,
+                        context=call_context(),
                     )
                     delivered.append(item.target_id)
         except Exception as err:  # noqa: BLE001 - HA services fail heterogeneously
@@ -307,6 +313,7 @@ class AgentDelivery:
             service,
             {"entity_id": satellite_entity_id, key: message},
             blocking=True,
+            context=call_context(),
         )
 
     async def _async_tts(
@@ -336,6 +343,7 @@ class AgentDelivery:
                 "message": message,
             },
             blocking=True,
+            context=call_context(),
         )
 
 

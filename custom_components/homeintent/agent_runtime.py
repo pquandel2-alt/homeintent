@@ -36,6 +36,7 @@ from .service_call import ServiceCallPlan
 from .effect_graph import build_plan_effects
 from .plan_origin import PlanOrigin
 from .service_executor import async_execute_service_plan
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -433,6 +434,7 @@ class ProactiveAgentRuntime:
                     "trigger",
                     {"entity_id": automation_entity_id, "skip_condition": False},
                     blocking=True,
+                    context=call_context(),
                 )
             except Exception as err:  # noqa: BLE001
                 await self._store.async_save(

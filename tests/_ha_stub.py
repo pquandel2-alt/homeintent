@@ -37,6 +37,26 @@ from typing import Any, Callable
 from unittest.mock import AsyncMock
 
 
+class ServiceMock(AsyncMock):
+    """``hass.services.async_call`` double that records the HA ``Context``
+    separately (``.contexts``) instead of in the call arguments.
+
+    Since 7.3.2 every HomeIntent service call passes ``context=``; existing
+    tests keep asserting domain/service/data/targets unchanged, while the
+    context itself is verified by ``tests/test_execution_trace.py``.
+    """
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        context = kwargs.pop("context", None)
+        contexts = self.__dict__.setdefault("_contexts", [])
+        contexts.append(context)
+        return super().__call__(*args, **kwargs)
+
+    @property
+    def contexts(self) -> list[Any]:
+        return self.__dict__.setdefault("_contexts", [])
+
+
 def install() -> None:
     if "homeassistant" in sys.modules:
         return  # already installed (or the real package is present)
@@ -158,7 +178,7 @@ def install() -> None:
         the same way HA itself would dispatch a real service call."""
 
         def __init__(self) -> None:
-            self.async_call = AsyncMock()
+            self.async_call = ServiceMock()
             self._handlers: dict[tuple[str, str], Callable[..., Any]] = {}
 
         def async_register(self, domain: str, service: str, handler: Callable[..., Any], schema: Any = None) -> None:

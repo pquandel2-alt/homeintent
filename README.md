@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.3.1** (transitive Sicherheit für Skripte, Szenen und Gruppen)
+- Aktuelle Version: **7.3.2** (nachvollziehbare Ausführung: HA-Kontext und Ursache-Wirkungs-Kette)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,36 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.3.2 neu?
+
+**Nachvollziehbar, was HomeIntent ausgelöst hat.**
+
+- **Home-Assistant-Kontext an jedem Dienstaufruf.** Jede Äußerung, die zu einer
+  Ausführung führt, bekommt genau einen HA-`Context` (mit dem sprechenden
+  Benutzer); alle Aufrufe dieser Äußerung – auch Skripte, Undo und
+  Mehrfachbefehle – tragen ihn. Dessen ID ist die `execution_id`. Home
+  Assistant kann Folgeeffekte (Skripte, ausgelöste Automationen) damit der
+  HomeIntent-Aktion und dem Nutzer zuordnen und prüft zusätzlich dessen
+  eigene Entitätsberechtigungen. Proaktive Aktionen und Daueranweisungen laufen
+  mit einem Kontext ohne Benutzer.
+- **Ausführungsprotokoll (ExecutionTrace).** Ein begrenzter Ringspeicher
+  (Standard 500 Ausführungen, 14 Tage, einstellbar) hält je Ausführung Satz
+  (gekürzt oder nur als Hash), Herkunft, Plan, geprüfte Wirkung und Risiko fest
+  – mit gehashter Benutzerkennung wie im Audit. Er verweist auf HA-Daten statt
+  sie zu kopieren.
+- **„Warum ist der Saugroboter angegangen?“** beantwortet HomeIntent aus der
+  Kontextkette von Home Assistant: „Du hast um 22:13 ‚Aktiviere Nachtruhe‘
+  gesagt. Ich habe das Skript Nachtruhe gestartet. Dessen Schritt ‚Saugen
+  starten‘ hat Saugroboter gestartet.“ Auch fremde Ursachen werden genannt,
+  soweit HA sie belegt (Automation X, ausgelöst durch …; Anna in der App).
+  Belegstufen: **belegt** (Kontextkette), **möglich** (nur zeitliche Nähe –
+  immer als Vermutung formuliert) und **unbekannt**. Ohne Beleg gibt es keine
+  erfundene Kausalkette.
+- **Learning Center:** neuer Abschnitt „Was hat HomeIntent ausgelöst?“ im
+  Tab Aktivität (Admins sehen den Haushalt, alle anderen nur eigene
+  Ausführungen).
+- Neue Optionen: `trace_limit`, `trace_days`, `trace_store_text`.
 
 ## Was ist in Version 7.3.1 neu?
 
@@ -1665,10 +1695,10 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.3.1:
+Geprüfter Release-Stand von Version 7.3.2:
 
 ```text
-6073 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6088 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
 tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
@@ -1713,7 +1743,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.3.1.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.3.2.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

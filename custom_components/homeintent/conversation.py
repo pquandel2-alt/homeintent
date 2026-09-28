@@ -311,6 +311,15 @@ from .execution_policy import (
 from .world_model import WorldModel, build_world_model as assemble_world_model
 from .undo import UndoPlan, build_undo_plan, is_undo_request
 from .runtime_data import HomeIntentRuntimeData
+from .execution_context import begin_turn, call_context, end_turn
+from .execution_trace import (
+    CauseExplanation,
+    ContextIndex,
+    Evidence,
+    ExecutionTraceStore,
+    explain_change,
+)
+from .nlu.causal_question import interpret_cause_question
 
 
 @dataclass(frozen=True)
@@ -723,9 +732,47 @@ class NluConversationEntity(
             proactive.record_authenticated_turn(
                 conversation_user_id(user_input), getattr(user_input, "device_id", None)
             )
-        result = await self._async_handle_message_inner(user_input, chat_log)
+        # One Home Assistant context per turn: every execution in this turn
+        # shares one execution id (7.3.2).
+        turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
+        try:
+            result = await self._async_handle_message_inner(user_input, chat_log)
+        finally:
+            end_turn(turn)
         self._apply_continue_conversation(user_input, result)
         return result
+
+    async def _async_explain_cause(self, entity: EntitySnapshot) -> CauseExplanation:
+        """Cause of a device's current state, strictly from evidence."""
+        trace = self._runtime_data.trace
+        store = trace.store if trace is not None else ExecutionTraceStore()
+        index = trace.index if trace is not None else ContextIndex()
+        state = self.hass.states.get(entity.entity_id)
+        users: dict[str, str] = {}
+        try:
+            users = {
+                user.id: user.name
+                for user in await self.hass.auth.async_get_users()
+                if getattr(user, "name", None)
+            }
+        except Exception:  # noqa: BLE001 - names are cosmetic only
+            users = {}
+        cause = explain_change(
+            entity.entity_id,
+            entity.friendly_name,
+            getattr(state, "context", None),
+            getattr(state, "last_changed", None) or entity.last_changed,
+            store,
+            index,
+            users,
+            name_of=lambda entity_id: (
+                str(item.attributes.get("friendly_name"))
+                if (item := self.hass.states.get(entity_id)) is not None
+                and item.attributes.get("friendly_name")
+                else None
+            ),
+        )
+        return cause
 
     def _apply_continue_conversation(
         self,
@@ -1038,6 +1085,24 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+
+        if active_dialog is None:
+            # "Warum ist der Saugroboter angegangen?": answered only from HA's
+            # context chain and the execution trace (7.3.2).
+            cause_question = interpret_cause_question(language_document, entities)
+            cause = (
+                await self._async_explain_cause(cause_question.entity)
+                if cause_question is not None and cause_question.entity is not None
+                else None
+            )
+            # Without any evidence the existing answers (automation
+            # references, history) keep answering, always hedged.
+            if cause is not None and cause.evidence is not Evidence.UNKNOWN:
+                response.response_type = intent.IntentResponseType.QUERY_ANSWER
+                response.async_set_speech(cause.text)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
 
         if active_dialog is None and (
             language_document.utterance.speech_act is SpeechAct.QUERY
@@ -3671,6 +3736,7 @@ class NluConversationEntity(
                     "notification_id": f"homeintent_plan_{run_id}",
                 },
                 blocking=False,
+                context=call_context(),
             )
         except Exception:  # noqa: BLE001 - reporting must never raise
             _LOGGER.warning("HomeIntent could not report a failed plan", exc_info=True)
@@ -6194,6 +6260,7 @@ class NluConversationEntity(
             target={"entity_id": entity_id},
             blocking=True,
             return_response=True,
+            context=call_context(),
         )
         container = result.get(entity_id, result) if isinstance(result, dict) else {}
         items = container.get("items", []) if isinstance(container, dict) else []
@@ -6227,6 +6294,7 @@ class NluConversationEntity(
                 await self.hass.services.async_call(
                     "todo", "remove_completed_items", {},
                     target={"entity_id": request.entity_id}, blocking=True,
+                    context=call_context(),
                 )
             return (
                 "Es gab keine erledigten Einträge."
@@ -6284,6 +6352,7 @@ class NluConversationEntity(
                 await self.hass.services.async_call(
                     "todo", service, data,
                     target={"entity_id": request.entity_id}, blocking=True,
+                    context=call_context(),
                 )
             count = len(selected)
             if request.operation is TodoOperation.COMPLETE:
@@ -6310,6 +6379,7 @@ class NluConversationEntity(
                     await self.hass.services.async_call(
                         "todo", "add_item", data,
                         target={"entity_id": request.destination_entity_id}, blocking=True,
+                        context=call_context(),
                     )
                     added.append(item)
                 for item in selected:
@@ -6319,6 +6389,7 @@ class NluConversationEntity(
                     await self.hass.services.async_call(
                         "todo", "remove_item", {"item": uid},
                         target={"entity_id": request.entity_id}, blocking=True,
+                        context=call_context(),
                     )
             except Exception:
                 _LOGGER.warning(
@@ -6343,6 +6414,7 @@ class NluConversationEntity(
             await self.hass.services.async_call(
                 "todo", "add_item", data,
                 target={"entity_id": request.entity_id}, blocking=True,
+                context=call_context(),
             )
         count = len(request.items)
         return (
@@ -6405,6 +6477,7 @@ class NluConversationEntity(
         await self.hass.services.async_call(
             "timer", service, data,
             target={"entity_id": request.entity_id}, blocking=True,
+            context=call_context(),
         )
         if request.operation is TimerOperation.START:
             return f"Timer für {format_duration(request.duration_seconds or 0)} gestartet."
@@ -6793,6 +6866,7 @@ class NluConversationEntity(
                     call.data,
                     target={"entity_id": call.entity_id},
                     blocking=True,
+                    context=call_context(),
                 )
             except Exception as err:  # noqa: BLE001 - HA calendar integrations raise heterogeneous errors
                 _LOGGER.error("Calendar event creation failed: %s", err)
