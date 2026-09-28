@@ -1,4 +1,4 @@
-# Gesamtauftrag HomeIntent 7.3.1 – 7.6: sicherer, nachvollziehbarer, sprachlich flexibler
+# Gesamtauftrag HomeIntent 7.3.1 – 7.6 (vollständig umsetzen): sicherer, nachvollziehbarer, sprachlich flexibler
 
 Repository `pquandel2-alt/homeintent`, Integration `custom_components/homeintent/`.
 Basis ist **7.3.0** (Branch `claude/sprachverstaendnis-prompt-dkzpr9`, Commit
@@ -9,6 +9,12 @@ Branch `claude/sleepy-meitner-xd7oux` (`docs/nachtest-sprachverstaendnis-7.3.0.m
 Dieser Auftrag ersetzt `sim/PROMPT_7.4.md` und `sim/FIX_PROMPT_SKRIPT_FREIGABE.md`.
 Die dort beschriebenen Punkte sind hier vollständig enthalten und mit den zusätzlichen
 Architekturanforderungen zusammengeführt.
+
+**Setze den gesamten Auftrag in dieser Session vollständig um: alle Phasen 1 bis 9,
+nacheinander, ohne zwischendurch auf eine Freigabe zu warten.** Halte nicht nach
+Phase 1 an. Die Phasen bauen aufeinander auf; ihre Reihenfolge und die
+Abnahmekriterien jeder Phase bleiben verbindlich (siehe „Arbeitsweise“ am Ende).
+Die Test-Session prüft das Ergebnis danach im Live-Testhaus.
 
 ---
 
@@ -45,10 +51,13 @@ Sprachverständnis → Grounding → Plan → Validator → ExecutionPolicy
 Regel über Bedeutungsbausteine (Lexikon, Ontologie, Struktur, Diskurs), nie ein
 Satzmuster für einen Einzelsatz.
 
-**Migration statt Big Bang.** Jede Phase ist ein eigenes Release mit eigener Version,
-eigenem Commit, eigenem Bericht in `docs/` und grünen Tests: hassil 3.11 und 3.12,
-`ruff`, hassfest und die bestehenden Pyright-Strict-Profile. Die Test-Session prüft
-jede Phase im Live-Testhaus, bevor die nächste beginnt.
+**Migration statt Big Bang, auch innerhalb dieser einen Session.** Jede Phase wird
+für sich abgeschlossen, bevor die nächste beginnt: eigene Versionsnummer, eigener
+Commit (bzw. mehrere), Push, Abschnitt im Bericht und grüne Tests (hassil 3.11 und
+3.12, `ruff`, hassfest, bestehende Pyright-Strict-Profile, die Tests der Phase).
+Große Umbauten (Phasen 5, 7, 8) laufen zuerst im Shadow-Modus und werden erst nach
+sauberem Shadow-Report umgeschaltet. Das bleibt so, obwohl alles in einer Session
+passiert.
 
 ---
 
@@ -253,7 +262,7 @@ Audit und Diagnose. Nach erfolgreicher Ausführung eine kurze Zusammenfassung au
   - Keine Szene und kein Skript wird allein wegen Wortähnlichkeit ohne Bestätigung
     gestartet.
   - Keine zusätzliche Gattung entsteht durch Zielverbreiterung.
-- **Abnahme in der Test-Session:** „Nachtruhe“-Nachweis und Etagen-Button-Fall;
+- **Live-Prüfung im Testbett (selbst) und später in der Test-Session:** „Nachtruhe“-Nachweis und Etagen-Button-Fall;
   alle bisherigen Funktionsszenarien grün.
 
 ---
@@ -700,4 +709,34 @@ Testsätze bekommst du bewusst nicht:
 | 8 | 7.5.x | Sprachinseln je Bereich | 7 |
 | 9 | 7.6.0 | Generalisierung | 7, 8 |
 
-Nach jeder Phase: Commit, Push, Bericht in `docs/`, Übergabe an die Test-Session.
+## Arbeitsweise für die Umsetzung in einer Session
+
+1. **Phase für Phase in der Tabellenreihenfolge.** Vor Beginn einer Phase die
+   Abhängigkeiten prüfen. Nach jeder Phase:
+   - vollständige Testsuite und die neuen Tests der Phase grün,
+   - Version in `manifest.json` hochzählen (7.3.1 … 7.6.0),
+   - Commit(s) und Push auf den Arbeitsbranch,
+   - Abschnitt in `docs/umsetzung-7.3.1-7.6.md`: was umgesetzt wurde, Shadow-Report
+     (Anzahl und Drift-Klassen), Messwerte vorher/nachher, bewusst Offengelassenes.
+2. **Harte Haltepunkte:** Weiter geht es nur, wenn
+   - alle Tests grün sind,
+   - die Property-Suite (ab Phase 4) keine verletzte Invariante zeigt,
+   - kein Shadow-Report ein `SAFETY_DRIFT` enthält.
+
+   Lässt sich eines davon nicht beheben, wird die betroffene Umschaltung **nicht**
+   gemacht: Der neue Pfad bleibt im Shadow-Modus, der Grund wird im Bericht
+   dokumentiert, und die unabhängigen Teile der folgenden Phasen werden trotzdem
+   umgesetzt. Sicherheit geht vor Vollständigkeit.
+3. **Selbst live prüfen:** Das Testbett liegt im Branch `claude/sleepy-meitner-xd7oux`
+   unter `sim/` (siehe `sim/README.md`; echtes Home Assistant aus PyPI, simuliertes
+   Haus, `runner.py`, `push_check.py`, `readme_check.py`, `nlu_probe.py`). Nach den
+   Phasen 1, 3, 5 und 9 dort mindestens `runner.py` und die Schlafen-Regressionen
+   laufen lassen. **Keine Änderungen an `sim/` committen** (Ausnahme: das Entfernen
+   der 16 Test-Automationen aus `sim/config/automations.yaml`).
+4. **Kein Abkürzen:** Schritte wie Shadow-Vergleich, Tests oder Bericht werden nicht
+   übersprungen, um schneller fertig zu werden. Wird der Kontext knapp, den aktuellen
+   Stand committen und im Bericht festhalten, an welcher Stelle weitergemacht wird.
+5. **Abschluss:** Die README beschreibt Version 7.6.0 mit Release-Notes für jede
+   Phase, ehrlichen Messwerten (auch auf ungesehenen Sätzen, soweit messbar) und den
+   neuen Optionen (`effect_graph_unknown`, `implicit_action_level`, `shadow_mode`,
+   Trace-Speicher). Einen Pull Request nur erstellen, wenn der Nutzer das verlangt.
