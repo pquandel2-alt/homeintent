@@ -10,13 +10,14 @@ Projektinhaber ergeben haben. Messbericht: `docs/nachtest-sprachverstaendnis-7.3
 im Branch `claude/sleepy-meitner-xd7oux`.
 
 **Kein großes Release.** Liefere in **getrennten, einzeln testbaren Schritten**, jeweils
-mit eigener Versionsnummer und eigenem Commit. Die Reihenfolge ist verbindlich:
+mit eigener Versionsnummer und eigenem Commit. Die Reihenfolge ist verbindlich (G folgt direkt auf C):
 
 | Schritt | Inhalt | Version |
 | --- | --- | --- |
 | A | Sicherheit: Skripte, Szenen und Gruppen gegen die Freigabeliste prüfen | 7.3.1 |
 | B | Nie raten: Ort, Einmaligkeit und Transparenz | 7.3.2 |
 | C | Eine einzige Geräteauflösung (Shadow-Vergleich, dann Umschalten) | 7.4.0 |
+| G | Selbstlernen aus dem Dialog (Wörter, Rückfragen, Korrekturen, Gedächtnis) | 7.4.1 |
 | D | Sprachinseln Bereich für Bereich auf die gemeinsame Bedeutung umstellen | 7.4.x |
 | E | Generalisierung: Bedeutung statt Sätze | 7.5.0 |
 | F | Ehrliche Messung und sauberes Testbett | laufend |
@@ -233,6 +234,100 @@ mit Rückfrage, sonst eine freundliche Antwort ohne Aktion.
 
 ---
 
+## Schritt G – Selbstlernen aus dem Dialog (7.4.1, direkt nach C)
+
+Das ist der wichtigste Hebel für „versteht wie ein LLM“ **ohne** LLM: HomeIntent lernt
+die Sprache **dieses Haushalts**, und zwar deterministisch, nur mit Bestätigung und nur
+als Bedeutungsbaustein, nie als Satz.
+
+### Live-Befund 7.3.0
+
+| Test | Ergebnis |
+| --- | --- |
+| „Mit Funzel meine ich das Flurlicht.“ → „Ja.“ | ✓ gespeichert; wirkt danach in „Mach die Funzel an“, „Ist die Funzel an?“, „Funzel aus“, auch für Anna. **Das ist das richtige Prinzip.** |
+| Unbekanntes Wort („Mach den Klunker im Wohnzimmer an.“) | ✗ „kein passendes Gerät“; keine Frage „Was meinst du mit Klunker?“, kein Angebot zu lernen |
+| Rückfrage „Lampe im Kinderzimmer?“ → „Das Nachtlicht.“, danach derselbe Satz | ✗ fragt jedes Mal neu; kein Angebot, sich die Antwort zu merken |
+| „Licht im Wohnzimmer an“ → „Nein, nur die Stehlampe.“, danach derselbe Satz | ✗ schaltet wieder alle 3 Lichter; Korrektur wird nicht gelernt |
+| „Merk dir, dass ich beim Lesen die Stehlampe auf 40 % möchte.“ | ✓ gespeichert (nur mit `memory_enabled`), aber **nie benutzt**: „Ich lese jetzt.“ → nicht verstanden; „Ich will lesen.“ → keine Szene; „Was weißt du über mich?“ → nicht gefunden |
+| „Ja.“ nach „Das lokale Gedächtnis ist deaktiviert.“ | ✗ „nicht verstanden“; besser: sagen, wo man es einschaltet |
+| „Was hast du gelernt?“ | ✓ antwortet, aber mit englischem „preference“ statt „Vorliebe/Präferenz“ |
+| Alias-Lernen selbst | läuft über 3 eigene Regex in `alias_learning.py`, also eine Sprachinsel |
+
+### Soll
+
+**G1 Unbekannte Wörter erfragen.** Erkennt die Struktur ein Geräte-Nomen, das weder
+Lexikon, Gattung noch Alias kennt, antwortet HomeIntent: „Was meinst du mit ‚Klunker‘?“
+und bietet Optionen aus Ort und Aktion an (z. B. alle schaltbaren Geräte im
+Wohnzimmer). Nach der Antwort führt es aus und fragt dann: „Soll ich mir merken, dass
+‚Klunker‘ die Stehlampe ist?“
+
+**G2 Aus Rückfragen lernen.** Wird dieselbe Mehrdeutigkeit (gleiche Gattung × Ort ×
+Sprecher) **zweimal gleich** aufgelöst, fragt HomeIntent einmal: „Soll ich künftig bei
+‚Lampe im Kinderzimmer‘ direkt das Nachtlicht nehmen?“ Erst nach „Ja“ wird das eine
+Standardauswahl. Eine Konfidenz ist keine Einwilligung; ohne Zustimmung wird nichts
+übernommen.
+
+**G3 Aus Korrekturen lernen.** Gleiche Logik für „Nein, nur X“/„Ich meinte X“. Nach
+wiederholter, gleicher Korrektur einmal fragen, ob die Korrektur künftig gelten soll.
+
+**G4 Gelerntes Wissen wird benutzt.**
+- Gespeicherte Vorlieben werden zu Parametern von Aktivitäten: „Ich lese jetzt“, „Ich
+  will lesen“ und „Lesezeit“ lösen die gemerkte Einstellung aus. Beim ersten Mal kommt
+  eine Vorschau, danach wird wie ein normaler Befehl ausgeführt, durch Policy und
+  Executor.
+- „Was weißt du über mich?“ und „Wie hell möchte ich …?“ beantworten aus dem
+  Gedächtnis.
+- „Vergiss, dass …“ und „Vergiss Funzel“ löschen gezielt.
+
+**G5 Sprachmakros.** „Wenn ich ‚Kinoabend‘ sage, mach das Licht im Wohnzimmer aus und
+die Rollläden runter.“ wird als benannter, bestätigter Ablauf gespeichert (Vorschau,
+dann „Ja“). Jeder Aufruf läuft erneut durch Validator, Policy und die
+Skript-Freigabeprüfung aus Schritt A. Es wird **keine** HA-Automation angelegt.
+
+**G6 Gelerntes ist Lexikon, nicht Satz.** Jede gelernte Einheit ist ein Eintrag der
+gemeinsamen Bedeutungsschicht, z. B. `Alias(wort → entity)`,
+`Standardauswahl(gattung × ort × sprecher → entity)`, `Vorliebe(aktivität → Zustand)`
+oder `Makro(name → Plan)`. Sie wirkt dadurch in allen Satzformen, Zeiten,
+Wortstellungen, Fragen und Push-Sätzen. `alias_learning.py` wird dabei auf die
+gemeinsame Bedeutung umgestellt (keine eigenen Regex mehr).
+
+**G7 Sicherheit beim Lernen.**
+- Lernen nur nach ausdrücklichem „Ja“ und nie aus unbestätigten Beobachtungen.
+- Gelernte Wörter dürfen nur auf **freigegebene** Entitäten zeigen. Wird eine Entität
+  später entzogen, ist der Eintrag wirkungslos und wird im Learning Center markiert.
+- Ein Alias darf einen vorhandenen Geräte- oder Gattungsnamen nicht überschreiben (z. B.
+  „Licht“). Für kritische Ziele (Schloss, Alarmanlage, Garagentor, Ventil) dürfen nur
+  Admins einen Alias anlegen; der kritische Befehl bleibt bestätigungspflichtig.
+- **Geltungsbereich** beim Speichern fragen oder als Option festlegen: nur für mich
+  oder für den Haushalt. Standardauswahlen und Vorlieben gelten standardmäßig pro
+  Person.
+- Alles erscheint im Learning Center: wann, von wem, wie oft benutzt. Dort lässt es sich
+  bearbeiten und löschen, und es ist exportierbar.
+
+**G8 Kleinigkeiten.**
+- Deutsche Bezeichnungen in allen Lern-Antworten.
+- Nach „Gedächtnis ist deaktiviert“ auf „Ja“ erklären, wo man es einschaltet.
+- Nicht dimmbare Lichter: „Das Flurlicht lässt sich nur ein- und ausschalten.“ statt
+  „nicht eindeutig unterstützt“.
+
+### Tests G
+
+Unit-Tests für G1–G8, zusätzlich ein Live-Szenario pro Punkt. Messgröße: Nach dem Lernen
+eines Wortes funktioniert es in mindestens 10 **verschiedenen** Satzformen (Befehl,
+Frage, Kurzform, mit Ort, mit Zeit, als Push-Auslöser, als Teil eines
+Mehrfachbefehls), ohne dass eine davon eigens programmiert wurde.
+
+### Langzeit-Lernen (Verhalten, V11/V12)
+
+Effektzeiten, Zuverlässigkeit, Heizmodell und Gewohnheitsvorschläge bleiben, wie sie
+sind: lokal, transparent und ohne automatisches Ausführen. Für die Abnahme braucht das
+Testbett einen **Zeitraffer-Test**: Das Testhaus simuliert zwei Wochen Nutzung, und es
+wird geprüft, dass passende Gewohnheiten nur **vorgeschlagen** werden, nie eine
+Automation entsteht und falsche Vorschläge nach Ablehnung nicht wiederkommen.
+Stelle dafür im Code eine testbare Zeitquelle bereit, falls sie fehlt.
+
+---
+
 ## Schritt F – Ehrliche Messung und sauberes Testbett (laufend)
 
 1. **Messung der kanonischen Bedeutung:** Für einen Entwicklungskorpus wird nicht nur
@@ -261,6 +356,7 @@ mit Rückfrage, sonst eine freundliche Antwort ohne Aktion.
 | Geräteauflösungen im Code | 2 + private | **1** |
 | Regex-Verwendungen | 770 | deutlich sinkend, pro Bereich ausgewiesen |
 | Unveröffentlichter Korpus | 38 % | **≥ 65 %** |
+| Gelerntes Wort wirkt in verschiedenen Satzformen | 3 von 4 (Alias) | **≥ 10 Formen, auch für Rückfragen, Korrekturen und Vorlieben** |
 | Veröffentlichte Korpora, Push-Matrix, Funktionsszenarien | 85 % / 35/35 / 162/162 | nicht schlechter |
 | Latenz p95 | < 100 ms | < 100 ms |
 
