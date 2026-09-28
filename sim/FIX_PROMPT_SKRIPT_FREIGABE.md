@@ -1,5 +1,7 @@
 # Auftrag: Skripte, Szenen und Gruppen dürfen die Freigabeliste nicht umgehen
 
+> **Ersetzt durch [`PROMPT_GESAMT.md`](PROMPT_GESAMT.md).** Dieser Auftrag ist dort vollständig enthalten und mit weiteren Architekturanforderungen zusammengeführt. Bitte nur noch `PROMPT_GESAMT.md` umsetzen; diese Datei bleibt als Verlauf erhalten.
+
 Dringender Sicherheitsfix für HomeIntent. Umsetzen auf Basis von **7.3.0**
 (Branch `claude/sprachverstaendnis-prompt-dkzpr9`, Commit `df3ae85`) als **7.3.1**.
 Nur dieser Fix: keine NLU-Arbeit, keine Refactorings außerhalb des Ausführungspfads.

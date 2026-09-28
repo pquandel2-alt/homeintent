@@ -1,5 +1,7 @@
 # Auftrag: HomeIntent nach 7.3.0 – was jetzt verbessert werden muss
 
+> **Ersetzt durch [`PROMPT_GESAMT.md`](PROMPT_GESAMT.md).** Dieser Auftrag ist dort vollständig enthalten und mit weiteren Architekturanforderungen zusammengeführt. Bitte nur noch `PROMPT_GESAMT.md` umsetzen; diese Datei bleibt als Verlauf erhalten.
+
 Du arbeitest im Repository `pquandel2-alt/homeintent`. Basis ist **7.3.0** (Branch
 `claude/sprachverstaendnis-prompt-dkzpr9`, Commit `df3ae85`). Lege von dort einen
 eigenen Arbeitsbranch an.
