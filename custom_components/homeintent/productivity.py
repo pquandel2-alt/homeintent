@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import Enum, auto
 
+from .nlu.phrases import Word, find, has, match_at, word_is, words
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.entity_clarification import CandidateReplyKind, resolve_candidate_reply
 from .nlu.language_frontend import LanguageDocument
@@ -74,15 +75,14 @@ _ADD_RE = re.compile(
     r"\b(?:füg(?:e|t)|fueg(?:e|t)|hinzufügen|hinzufuegen|setz(?:e|t)?|"
     r"schreib(?:e|t)?|pack(?:e|t)?|notier(?:e|t)?|trag(?:e|t)?)\b", re.IGNORECASE
 )
-_LIST_RE = re.compile(
-    r"\b(?:zeig(?:e|t)?|lies|lese|nenne|was\s+(?:steht|ist|fehlt)|welche\s+(?:sachen|dinge|"
-    r"artikel|einträge|eintraege|punkte))\b", re.IGNORECASE
+# Language island "Listen/Timer" (7.5.2): operation cues are lexicon data
+# matched on word tokens (``nlu.phrases``), not sentence patterns.
+_LIST_PHRASES = (
+    "zeig|zeige|zeigt", "lies", "lese", "nenne", "was steht|ist|fehlt",
+    "welche sachen|dinge|artikel|eintraege|punkte",
 )
-_COMPLETE_RE = re.compile(
-    r"\b(?:erledig(?:e|t|en)|hak(?:e|t)?\s+ab|hak(?:e|t)?(?=\s.+\bab\b)|abhaken|"
-    r"markier(?:e|t)?(?:\s+als\s+erledigt)?)\b",
-    re.IGNORECASE,
-)
+_COMPLETE_WORDS = "erledige|erledigt|erledigen|abhaken|markier|markiere|markiert"
+_HOOK_WORDS = "hak|hake|hakt"
 _REMOVE_RE = re.compile(
     r"\b(?:entfern(?:e|t|en)|lösch(?:e|t|en)|loesch(?:e|t|en)|streich(?:e|t|en))\b",
     re.IGNORECASE,
@@ -94,19 +94,79 @@ _CLEAR_COMPLETED_RE = re.compile(
 )
 # Unmistakable list operations even without the word "Liste" (F27):
 # "Markiere Milch und Brot als erledigt", "Lösche alle erledigten Einträge".
-_TODO_OPERATION_CUE_RE = re.compile(
-    r"\bals\s+erledigt\b|\babhaken\b|\bhak(?:e|t)?\b.+\bab\b|\berledigten\s+"
-    r"(?:einträge|eintraege|punkte|sachen|aufgaben|artikel)\b",
-    re.IGNORECASE,
+_OPERATION_CUE_PHRASES = (
+    "als erledigt", "abhaken", "erledigten eintraege|punkte|sachen|aufgaben|artikel",
 )
+
+
+def _hook_off(tokens: list[Word], start: int = 0) -> int | None:
+    """Index of "hak"/"hake"/"hakt" that has a later separable "ab"."""
+    for index in range(start, len(tokens)):
+        if word_is(tokens[index], _HOOK_WORDS) and any(
+            token.key == "ab" for token in tokens[index + 1:]
+        ):
+            return index
+    return None
+
+
+def _todo_operation_cue(text: str) -> bool:
+    tokens = words(text)
+    if has(tokens, *_OPERATION_CUE_PHRASES):
+        return True
+    return _hook_off(tokens) is not None
+
+
+def _list_cue(text: str) -> tuple[int, int] | None:
+    tokens = words(text)
+    found = find(tokens, _LIST_PHRASES)
+    if found is None:
+        return None
+    index, length = found
+    return tokens[index].start, tokens[index + length - 1].end
+
+
+def _complete_cue(text: str) -> tuple[int, int] | None:
+    """Span of the completing verb ("erledige", "hake … ab", "markiere")."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if word_is(token, _COMPLETE_WORDS):
+            end = token.end
+            if (
+                token.key.startswith("markier") and index + 2 < len(tokens)
+                and tokens[index + 1].key == "als" and tokens[index + 2].key == "erledigt"
+            ):
+                end = tokens[index + 2].end
+            return token.start, end
+        if word_is(token, _HOOK_WORDS) and any(item.key == "ab" for item in tokens[index + 1:]):
+            if index + 1 < len(tokens) and tokens[index + 1].key == "ab":
+                return token.start, tokens[index + 1].end
+            return token.start, token.end
+    return None
 _PREPOSITION_RE = re.compile(
     r"\b(?:auf|in|zu|zur|von|aus)\s+(?:(?:die|der|den|meine[rmn]?)\s+)?",
     re.IGNORECASE,
 )
-_LEADING_FILLER_RE = re.compile(
-    r"^(?:bitte\s+|doch\s+|mal\s+|noch\s+|mir\s+|für\s+mich\s+|fuer\s+mich\s+)+",
-    re.IGNORECASE,
-)
+_LEADING_FILLERS = frozenset({"bitte", "doch", "mal", "noch", "mir"})
+
+
+def _strip_leading_fillers(value: str) -> str:
+    """"bitte noch Milch" -> "Milch" ("für mich" counts as one filler)."""
+    while True:
+        tokens = words(value)
+        if len(tokens) >= 1 and tokens[0].start == 0 and tokens[0].key in _LEADING_FILLERS:
+            rest = value[tokens[0].end:]
+            if not rest[:1].isspace():
+                return value
+            value = rest.lstrip()
+            continue
+        if (
+            len(tokens) >= 2 and tokens[0].start == 0 and tokens[0].key in {"fuer", "fur"}
+            and tokens[0].text.casefold() in {"für", "fuer"} and tokens[1].key == "mich"
+            and value[tokens[1].end:][:1].isspace()
+        ):
+            value = value[tokens[1].end:].lstrip()
+            continue
+        return value
 _TRAILING_FILLER_RE = re.compile(
     r"\s+(?:bitte|hinzu|dazu|drauf|darauf|rein|ein)\s*$", re.IGNORECASE
 )
@@ -128,10 +188,50 @@ _DURATION_PART_RE = re.compile(
     re.IGNORECASE,
 )
 _MOVE_RE = re.compile(r"\bverschieb(?:e|en|t)?\b", re.IGNORECASE)
-_DESCRIPTION_RE = re.compile(
-    r"\bmit\s+(?:der\s+)?beschreibung\s+(.+?)(?=\s+\b(?:bis|mit\s+priorität|mit\s+prioritaet|"
-    r"auf|in|zu|zur)\b|[.!?]?$)", re.IGNORECASE
-)
+_DESCRIPTION_STOPS = frozenset({"bis", "auf", "in", "zu", "zur"})
+
+
+class _Span:
+    """The part of ``re.Match`` the metadata extraction uses."""
+
+    def __init__(self, start: int, end: int, value: str) -> None:
+        self._start, self._end, self._value = start, end, value
+
+    def start(self) -> int:
+        return self._start
+
+    def end(self) -> int:
+        return self._end
+
+    def group(self, _index: int = 0) -> str:
+        return self._value
+
+
+def _description(text: str) -> _Span | None:
+    """"mit (der) Beschreibung X" up to "bis", "mit Priorität", a list
+    preposition or the end of the sentence."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if token.key != "mit":
+            continue
+        cursor = index + 1
+        if cursor < len(tokens) and tokens[cursor].key == "der":
+            cursor += 1
+        if cursor >= len(tokens) - 1 or tokens[cursor].key != "beschreibung":
+            continue
+        first = cursor + 1
+        end_token = len(tokens) - 1
+        for later in range(first + 1, len(tokens)):
+            key = tokens[later].key
+            if key in _DESCRIPTION_STOPS or (
+                key == "mit" and later + 1 < len(tokens) and tokens[later + 1].key == "prioritaet"
+            ):
+                end_token = later - 1
+                break
+        start, end = tokens[first].start, tokens[end_token].end
+        value = text[start:end]
+        return _Span(token.start, end, value)
+    return None
 _PRIORITY_RE = re.compile(
     r"\b(?:mit\s+)?(?:priorität|prioritaet)\s+(hoch|mittel|niedrig)\b", re.IGNORECASE
 )
@@ -199,7 +299,7 @@ def _select_target(
 
 def _clean_payload(raw: str) -> str:
     value = raw.strip(" \t.,;:!?")
-    value = _LEADING_FILLER_RE.sub("", value)
+    value = _strip_leading_fillers(value)
     value = _TRAILING_FILLER_RE.sub("", value)
     return value.strip(" \t.,;:!?")
 
@@ -219,9 +319,9 @@ def split_todo_items(raw: str) -> tuple[str, ...]:
     return tuple(result[:20])
 
 
-def _todo_payload(text: str, operation_match: re.Match[str]) -> str:
+def _todo_payload(text: str, operation_span: tuple[int, int]) -> str:
     """Remove operation and list-target phrases, preserving only item text."""
-    spans = [operation_match.span()]
+    spans = [operation_span]
     for noun in _TODO_NOUN_RE.finditer(text):
         start, end = noun.span()
         prefix = list(_PREPOSITION_RE.finditer(text[:start]))
@@ -239,7 +339,7 @@ def _todo_payload(text: str, operation_match: re.Match[str]) -> str:
 def _extract_todo_metadata(
     text: str, now: datetime | None
 ) -> tuple[str, str | None, str | None, str | None]:
-    description_match = _DESCRIPTION_RE.search(text)
+    description_match = _description(text)
     priority_match = _PRIORITY_RE.search(text)
     due_match = _DUE_RE.search(text)
     description = (
@@ -284,7 +384,7 @@ def parse_todo_request(
     if (
         not _TODO_NOUN_RE.search(text)
         and not mentioned_lists
-        and not (todo_entities and _TODO_OPERATION_CUE_RE.search(text))
+        and not (todo_entities and _todo_operation_cue(text))
     ):
         return None
     move_match = _MOVE_RE.search(text)
@@ -315,17 +415,23 @@ def parse_todo_request(
     entity_id, candidates = _select_target(text, entities, "todo")
     if _CLEAR_COMPLETED_RE.search(text):
         return TodoRequest(TodoOperation.CLEAR_COMPLETED, entity_id=entity_id, candidates=candidates)
+    def lexical(pattern: re.Pattern[str]):
+        def finder(value: str) -> tuple[int, int] | None:
+            found = pattern.search(value)
+            return found.span() if found is not None else None
+        return finder
+
     checks = (
-        (TodoOperation.COMPLETE, _COMPLETE_RE),
-        (TodoOperation.REMOVE, _REMOVE_RE),
-        (TodoOperation.ADD, _ADD_RE),
-        (TodoOperation.LIST, _LIST_RE),
+        (TodoOperation.COMPLETE, _complete_cue),
+        (TodoOperation.REMOVE, lexical(_REMOVE_RE)),
+        (TodoOperation.ADD, lexical(_ADD_RE)),
+        (TodoOperation.LIST, _list_cue),
     )
-    for operation, pattern in checks:
-        match = pattern.search(text)
-        if match is None:
+    for operation, finder in checks:
+        span = finder(text)
+        if span is None:
             continue
-        items = () if operation is TodoOperation.LIST else split_todo_items(_todo_payload(text, match))
+        items = () if operation is TodoOperation.LIST else split_todo_items(_todo_payload(text, span))
         if operation is not TodoOperation.LIST and not items:
             return None
         return TodoRequest(
@@ -365,31 +471,43 @@ def parse_duration_seconds(text: str) -> int | None:
 
 def _timer_name(text: str) -> str | None:
     """Extract bounded user data used only as the native timer label."""
-    explicit = re.search(
-        r"\bmit\s+(?:(?:dem|der)\s+)?(?:hinweis|namen|info(?:rmation)?)\s+"
-        r"(?P<name>.+?)(?:[.!?]+)?$",
-        text,
-        re.IGNORECASE,
-    )
-    if explicit is not None:
-        raw = explicit.group("name")
-    else:
+    raw = _explicit_timer_name(text)
+    if raw is None:
         duration_parts = list(_DURATION_PART_RE.finditer(text))
         if not duration_parts:
             return None
         suffix = text[duration_parts[-1].end():]
-        trailing = re.match(
-            r"\s+(?:für|fuer)\s+(?P<name>.+?)(?:[.!?]+)?$",
-            suffix,
-            re.IGNORECASE,
-        )
-        if trailing is None:
+        tokens = words(suffix)
+        if not (
+            suffix[:1].isspace() and len(tokens) >= 2
+            and tokens[0].text.casefold() in {"für", "fuer"}
+            and suffix[tokens[0].end:tokens[1].start].isspace()
+        ):
             return None
-        raw = trailing.group("name")
+        raw = suffix[tokens[1].start:].rstrip(".!?")
     name = re.sub(r"\s+", " ", raw).strip(" ,.;:!?\t\r\n")
     if not name or len(name) > 80 or any(ord(char) < 32 for char in name):
         return None
     return name
+
+
+_NAME_NOUNS = "hinweis|namen|info|information"
+
+
+def _explicit_timer_name(text: str) -> str | None:
+    """"… mit (dem) Namen X" / "mit Hinweis X" up to the end of the text."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if token.key != "mit":
+            continue
+        cursor = index + 1
+        if cursor < len(tokens) and tokens[cursor].key in {"dem", "der"}:
+            cursor += 1
+        if cursor + 1 < len(tokens) and word_is(tokens[cursor], _NAME_NOUNS) and (
+            text[tokens[cursor].end:tokens[cursor + 1].start].isspace()
+        ):
+            return text[tokens[cursor + 1].start:].rstrip(".!?")
+    return None
 
 
 # Words that can follow "Timer" in a command without being its name.
@@ -412,10 +530,13 @@ _TIMER_FOLLOWING_NAME_RE = re.compile(
     r"\btimers?\s+(?:namens\s+)?(?P<name>[a-zäöüß][\wäöüß-]*)", re.IGNORECASE
 )
 _ALL_TIMERS_RE = re.compile(r"\b(?:alle|sämtliche|saemtliche)\s+timer\b", re.IGNORECASE)
-_LIST_TIMERS_RE = re.compile(
-    r"\bwelche\s+timer\b|\b(?:zeig(?:e|t)?|nenn(?:e|t)?|lies|liste)\b.*\btimer\b",
-    re.IGNORECASE,
-)
+def _lists_timers(text: str) -> bool:
+    """"Welche Timer …", "Zeige alle Timer", "Nenne die Timer"."""
+    tokens = words(text)
+    if has(tokens, "welche timer"):
+        return True
+    verb = find(tokens, ("zeig|zeige|zeigt|nenn|nenne|nennt|lies|liste",))
+    return verb is not None and any(token.key == "timer" for token in tokens[verb[0] + 1:])
 _TIMER_CANCEL_RE = re.compile(
     r"\b(?:abbrechen|stopp(?:e|en|t)?|stop(?:pe|pen|pt)?|zurücksetzen|zuruecksetzen|"
     r"lösch(?:e|en|t)?|loesch(?:e|en|t)?|beenden|beende)\b|\b(?:brich|brech(?:e|t)?)\b.*\bab\b",
@@ -456,7 +577,7 @@ def parse_timer_request(text: str, entities: list[EntitySnapshot]) -> TimerReque
             return TimerRequest(TimerOperation.CANCEL_ALL)
         return TimerRequest(TimerOperation.LIST)
     if entity_id is None and not candidates and (
-        _LIST_TIMERS_RE.search(text) or "wie viele" in lowered or "wieviele" in lowered
+        _lists_timers(text) or "wie viele" in lowered or "wieviele" in lowered
     ):
         # "Wie viele Timer laufen?" is answered by the same timer listing,
         # which states the count first.
@@ -528,16 +649,42 @@ def format_duration(seconds: int) -> str:
     return " und ".join(parts)
 
 
-_TIMER_NAME_REPLY_PREFIX_RE = re.compile(
-    r"^(?:(?:der|den)\s+timer\s+)?(?:(?:er|der\s+timer)\s+)?"
-    r"(?:heißt|heisst|soll\s+(?:heißen|heissen)|nenne?\s+(?:ihn|es)|name(?:\s+ist)?:?)\s+",
-    re.IGNORECASE,
+_REPLY_PREFIXES = (
+    "heisst", "soll heissen", "nenn|nenne ihn|es", "name ist", "name",
 )
-_TIMER_NO_NAME_RE = re.compile(
-    r"^(?:ohne(?:\s+einen)?\s+namen?|kein(?:en)?\s+namen?|egal|ist\s+egal|"
-    r"brauch(?:e|t)\s+(?:er\s+)?keinen(?:\s+namen)?)[.!]?$",
-    re.IGNORECASE,
-)
+_NO_NAME_REPLIES = frozenset({
+    ("ohne", "name"), ("ohne", "namen"), ("ohne", "einen", "name"), ("ohne", "einen", "namen"),
+    ("kein", "name"), ("kein", "namen"), ("keinen", "name"), ("keinen", "namen"),
+    ("egal",), ("ist", "egal"),
+    ("brauche", "keinen"), ("braucht", "keinen"), ("brauche", "er", "keinen"), ("braucht", "er", "keinen"),
+    ("brauche", "keinen", "namen"), ("braucht", "keinen", "namen"),
+    ("brauche", "er", "keinen", "namen"), ("braucht", "er", "keinen", "namen"),
+})
+
+
+def _strip_reply_prefix(value: str) -> str:
+    """"Der Timer heißt Tee" / "Er soll heißen Tee" / "Name: Tee" -> "Tee"."""
+    tokens = words(value)
+    index = 0
+    if len(tokens) >= 2 and tokens[0].key in {"der", "den"} and tokens[1].key == "timer":
+        index = 2
+    if index < len(tokens) and tokens[index].key == "er":
+        index += 1
+    elif index + 1 < len(tokens) and tokens[index].key == "der" and tokens[index + 1].key == "timer":
+        index += 2
+    for phrase in _REPLY_PREFIXES:
+        length = match_at(tokens, index, phrase)
+        if length is None:
+            continue
+        last = tokens[index + length - 1]
+        rest = value[last.end:]
+        rest = rest[1:] if phrase == "name" and rest.startswith(":") else rest
+        if phrase == "name ist" and rest.startswith(":"):
+            rest = rest[1:]
+        if rest[:1].isspace() and rest.strip():
+            return rest.strip()
+        return value
+    return value
 _ORDINALS = {
     "erste": 1, "ersten": 1, "erster": 1, "eins": 1, "1": 1,
     "zweite": 2, "zweiten": 2, "zweiter": 2, "zwei": 2, "2": 2,
@@ -555,16 +702,18 @@ def timer_name_reply(text: str) -> str | None:
     if "?" in text:
         return None
     cleaned = text.strip().strip(".!„“\"'").strip()
-    if _TIMER_NO_NAME_RE.match(cleaned):
+    if tuple(token.key for token in words(cleaned.rstrip(".!"))) in _NO_NAME_REPLIES:
         return ""
-    trailing = re.match(
-        r"^(?:er|es|der\s+timer)\s+soll\s+(?P<name>.+?)\s+(?:heißen|heissen)$",
-        cleaned,
-        re.IGNORECASE,
-    )
-    if trailing is not None:
-        cleaned = trailing.group("name")
-    cleaned = _TIMER_NAME_REPLY_PREFIX_RE.sub("", cleaned).strip()
+    tokens = words(cleaned)
+    subject = 1 if tokens and tokens[0].key in {"er", "es"} else 2 if (
+        len(tokens) >= 2 and tokens[0].key == "der" and tokens[1].key == "timer"
+    ) else 0
+    if (
+        subject and len(tokens) >= subject + 3 and tokens[subject].key == "soll"
+        and tokens[-1].key == "heissen" and tokens[-1].end == len(cleaned)
+    ):
+        cleaned = cleaned[tokens[subject + 1].start:tokens[-1].start].strip()
+    cleaned = _strip_reply_prefix(cleaned).strip()
     cleaned = re.sub(r"^(?:timer\s+)", "", cleaned, flags=re.IGNORECASE).strip()
     if (
         not cleaned

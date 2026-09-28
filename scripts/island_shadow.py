@@ -19,6 +19,7 @@ import argparse
 import ast
 import itertools
 import pickle
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -190,12 +191,15 @@ def _island(name: str, entities):
 
         return (lambda text: (parse_productivity_request(text, entities, NOW), timer_name_reply(text))), _lists_corpus(entities)
     if name == "kalender":
-        from homeintent.calendar_event import parse_calendar_date
+        from homeintent.calendar_event import parse_calendar_date, start_calendar_event_draft
         from homeintent.calendar_management import parse_calendar_management
 
         calendars = tuple(e for e in entities if e.domain == "calendar")
         return (
-            lambda text: (parse_calendar_management(text, calendars, NOW), parse_calendar_date(text, NOW))
+            lambda text: (
+                parse_calendar_management(text, calendars, NOW), parse_calendar_date(text, NOW),
+                start_calendar_event_draft(text, calendars, NOW),
+            )
         ), _calendar_corpus(entities)
     if name == "haushalt":
         from homeintent.household_query import match_household_query
@@ -245,7 +249,8 @@ def dump(name: str) -> dict[str, str]:
     results: dict[str, str] = {}
     for text in dict.fromkeys(sentences):
         try:
-            results[text] = repr(function(text))
+            # Random identifiers (uuid4 hex) are not part of the meaning.
+            results[text] = re.sub(r"[0-9a-f]{32}", "<id>", repr(function(text)))
         except Exception as err:  # noqa: BLE001
             results[text] = f"ERROR {type(err).__name__}: {err}"
     return results
@@ -270,7 +275,7 @@ def main() -> int:
         old = pickle.loads(args.compare[0].read_bytes())
         new = pickle.loads(args.compare[1].read_bytes())
         differences = compare(old, new)
-        empty = {"None", "(None, None)", "(None, None, None)"}
+        empty = {"None", "(None, None)", "(None, None, None)", "(None, None, None, None)"}
         active = sum(1 for value in new.values() if value not in empty)
         print(f"{args.island}: {len(old)} Sätze, {active} mit Frame, {len(differences)} Abweichungen")
         for line in differences[:30]:

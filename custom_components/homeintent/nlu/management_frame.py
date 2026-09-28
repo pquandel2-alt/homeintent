@@ -92,7 +92,7 @@ def _name_after_object(tokens: Sequence[Token], index: int) -> int:
     return index + 1 if index < len(tokens) and tokens[index].key in _PREPOSITIONS else index
 
 
-def _simulate(tokens):
+def _simulate(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("simulier",))
     if cue is None:
         was = _find(tokens, {"was"})
@@ -110,7 +110,7 @@ def _simulate(tokens):
     return {"entity_name": name} if name else None
 
 
-def _duplicate(tokens):
+def _duplicate(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("duplizier", "kopier"))
     obj = _object(tokens, cue + 1, frozenset({"automation"})) if cue is not None else None
     if obj is None:
@@ -119,7 +119,7 @@ def _duplicate(tokens):
     return {"entity_name": name} if name else None
 
 
-def _diagnose(tokens):
+def _diagnose(tokens: list[Token]) -> dict[str, object] | None:
     warum = _find(tokens, {"warum"})
     if warum is None or warum + 1 >= len(tokens) or tokens[warum + 1].key != "wurde":
         return None
@@ -134,7 +134,7 @@ def _diagnose(tokens):
     return {"entity_name": name} if name else None
 
 
-def _pause(tokens):
+def _pause(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("pausier",))
     obj = _object(tokens, cue + 1, frozenset({"automation"})) if cue is not None else None
     if obj is None:
@@ -160,7 +160,7 @@ def _pause(tokens):
     return {"entity_name": name, "hour": hour, "minute": minute, "day_offset": day}
 
 
-def _count(tokens):
+def _count(tokens: list[Token]) -> dict[str, object] | None:
     keys = [token.key for token in tokens]
     for index in range(len(keys) - 1):
         if keys[index] == "wie" and keys[index + 1] == "viele":
@@ -176,14 +176,14 @@ def _count(tokens):
     return None
 
 
-def _clean_expired(tokens):
+def _clean_expired(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("loesch",))
     if cue is None or cue + 2 >= len(tokens):
         return None
     return {} if tokens[cue + 1].key == "alle" and tokens[cue + 2].key == "abgelaufenen" else None
 
 
-def _rollback(tokens):
+def _rollback(tokens: list[Token]) -> dict[str, object] | None:
     verb = _find(tokens, set(), ("mach", "nimm", "setz"))
     last = _find(tokens, {"letzte", "letzten"}, start=(verb or 0) + 1) if verb is not None else None
     change = _find(tokens, set(), ("homeintent-automationaenderung", "homeintent-automationsaenderung", "automationaenderung", "automationsaenderung"), start=(last or 0) + 1) if last is not None else None
@@ -191,7 +191,7 @@ def _rollback(tokens):
     return {} if back is not None else None
 
 
-def _set_max_runs(tokens):
+def _set_max_runs(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("wiederhol",))
     obj = _object(tokens, cue + 1, frozenset({"automation"})) if cue is not None else None
     if obj is None:
@@ -210,7 +210,7 @@ def _set_max_runs(tokens):
     return {"entity_name": name, "max_runs": count}
 
 
-def _reschedule(tokens):
+def _reschedule(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("verschieb",))
     if cue is None or cue + 2 >= len(tokens) or tokens[cue + 1].key not in {"den", "die"}:
         return None
@@ -236,7 +236,7 @@ def _reschedule(tokens):
 _WHEN_PARTICIPLES = frozenset({"gefahren", "geschaltet", "eingeschaltet", "ausgeschaltet", "gestartet", "ausgefuehrt"})
 
 
-def _when(tokens):
+def _when(tokens: list[Token]) -> dict[str, object] | None:
     wann = _find(tokens, {"wann"})
     if wann is None or wann + 1 >= len(tokens) or tokens[wann + 1].key != "wird":
         return None
@@ -245,7 +245,7 @@ def _when(tokens):
     return {"entity_name": name} if name else None
 
 
-def _controls(tokens):
+def _controls(tokens: list[Token]) -> dict[str, object] | None:
     for index, token in enumerate(tokens):
         if token.key in {"steuert", "schaltet"}:
             before = [item.key for item in tokens[max(0, index - 2):index]]
@@ -257,7 +257,7 @@ def _controls(tokens):
     return None
 
 
-def _detail(tokens):
+def _detail(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("zeig", "erklaer"))
     if cue is None:
         return None
@@ -286,7 +286,7 @@ _EXPLAIN_PARTICIPLES = frozenset({
 })
 
 
-def _explain(tokens):
+def _explain(tokens: list[Token]) -> dict[str, object] | None:
     keys = [token.key for token in tokens]
     start = None
     for index in range(len(keys) - 1):
@@ -309,7 +309,7 @@ def _explain(tokens):
     return {"entity_name": name} if name else None
 
 
-def _list_homeintent(tokens):
+def _list_homeintent(tokens: list[Token]) -> dict[str, object] | None:
     keys = [token.key for token in tokens]
     listed = (
         any(key in {"welche", "zeige"} for key in keys)
@@ -330,7 +330,7 @@ def _list_homeintent(tokens):
     return {"scope_name": scope}
 
 
-def _list_scheduled(tokens):
+def _list_scheduled(tokens: list[Token]) -> dict[str, object] | None:
     keys = [token.key for token in tokens]
     welche = _find(tokens, {"welche"})
     if welche is None:

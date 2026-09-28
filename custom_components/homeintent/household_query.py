@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Mapping, cast
 
 from .device_result import DeviceControlResult
+from .nlu.phrases import Word, find, has, match_at, words
 from .entities import (
     ACTIVATION_TIMESTAMP_DOMAINS,
     EntitySnapshot,
@@ -104,10 +105,49 @@ _COMPLETION_SENSOR_RE = re.compile(
     r"(?:fertigstellungs?zeit|fertig(?:\s*um)?|programmende|programm\s*ende|"
     r"endzeit|completion(?:\s*time)?)"
 )
-_COMPLETION_QUESTION_RE = re.compile(
-    r"\bwann\s+(?:ist|wird|waere|wäre)\s+(?:die|der|das|mein(?:e|er|es)?)?\s*"
-    r"(?P<target>.+?)\s+(?:fertig|beendet|durch)\s*[?.!]*$"
-)
+_COMPLETION_ARTICLES = frozenset({"die", "der", "das", "mein", "meine", "meiner", "meines"})
+
+
+def _completion_target(key: str) -> str | None:
+    """"wann ist die waschmaschine fertig" -> "waschmaschine"."""
+    tokens = words(key)
+    for index in range(len(tokens) - 1):
+        if tokens[index].key != "wann" or tokens[index + 1].key not in {"ist", "wird", "waere"}:
+            continue
+        last = tokens[-1]
+        if last.key not in {"fertig", "beendet", "durch"} or key[last.end:].strip(" ?.!"):
+            return None
+        start = index + 2
+        if start < len(tokens) - 1 and tokens[start].key in _COMPLETION_ARTICLES and start + 1 < len(tokens) - 1:
+            start += 1
+        if start >= len(tokens) - 1:
+            return None
+        return key[tokens[start].start:tokens[-2].end]
+    return None
+
+
+def _battery_limit(tokens: list[Word]) -> int | None:
+    """"welche/zeige/gibt es … batterie(n) … unter|kleiner als|weniger als N prozent"."""
+    cue = find(tokens, ("welche|zeige", "gibt es"))
+    if cue is None:
+        return None
+    battery = next((
+        index for index in range(cue[0] + cue[1], len(tokens))
+        if tokens[index].key in {"batterie", "batterien"}
+    ), None)
+    if battery is None:
+        return None
+    for index in range(battery + 1, len(tokens)):
+        length = match_at(tokens, index, "unter") or match_at(tokens, index, "kleiner|weniger als")
+        if length is None:
+            continue
+        number = index + length
+        if (
+            number + 1 < len(tokens) and tokens[number].key.isdigit() and len(tokens[number].key) <= 3
+            and tokens[number + 1].key == "prozent"
+        ):
+            return int(tokens[number].key)
+    return None
 
 
 def _completion_time_query(
@@ -117,10 +157,10 @@ def _completion_time_query(
     world_model: WorldModel | None,
 ) -> DeviceControlResult | None:
     """Resolve an appliance completion timestamp without inferring an action."""
-    match = _COMPLETION_QUESTION_RE.search(key)
-    if match is None:
+    spoken_target = _completion_target(key)
+    if spoken_target is None:
         return None
-    target = match.group("target").strip()
+    target = spoken_target.strip()
     candidates = [
         entity
         for entity in entities
@@ -174,19 +214,45 @@ _ACTIVE_STATES: Mapping[str, frozenset[str]] = {
     "media_player": frozenset({"on", "playing", "paused", "buffering"}),
     "vacuum": frozenset({"cleaning", "returning"}), "lawn_mower": frozenset({"mowing"}),
 }
-_AREA_ON_RE = re.compile(
-    r"^(?:und\s+)?was\s+(?:ist|laeuft|sind)\s+(?:gerade\s+|noch\s+|alles\s+|jetzt\s+)*"
-    r"(?:im|in\s+der|in\s+dem|am|auf\s+dem|auf\s+der)\s+(?P<area>.+?)"
-    r"(?:\s+(?:gerade|noch|alles|jetzt))*(?:\s+(?:eingeschaltet|an|aktiv|in\s+betrieb|ein))?$"
-)
+_AREA_FILLERS = frozenset({"gerade", "noch", "alles", "jetzt"})
+_AREA_STATES = frozenset({"eingeschaltet", "an", "aktiv", "ein"})
+
+
+def _area_of_on_question(key: str) -> str | None:
+    """"(und) was ist (gerade) im wohnzimmer (noch) an" -> "wohnzimmer"."""
+    tokens = words(key)
+    index = 1 if tokens and tokens[0].key == "und" else 0
+    if index + 1 >= len(tokens) or tokens[index].key != "was" or tokens[index + 1].key not in {"ist", "laeuft", "sind"}:
+        return None
+    index += 2
+    while index < len(tokens) and tokens[index].key in _AREA_FILLERS:
+        index += 1
+    if index < len(tokens) and tokens[index].key in {"im", "am"}:
+        index += 1
+    elif index + 1 < len(tokens) and (tokens[index].key, tokens[index + 1].key) in {
+        ("in", "der"), ("in", "dem"), ("auf", "dem"), ("auf", "der"),
+    }:
+        index += 2
+    else:
+        return None
+    end = len(tokens)
+    if end - index >= 3 and tokens[end - 2].key == "in" and tokens[end - 1].key == "betrieb":
+        end -= 2
+    elif end - index >= 2 and tokens[end - 1].key in _AREA_STATES:
+        end -= 1
+    while end - index >= 2 and tokens[end - 1].key in _AREA_FILLERS:
+        end -= 1
+    if end <= index:
+        return None
+    return key[tokens[index].start:tokens[end - 1].end]
 
 
 def _area_on_query(key: str, entities: list[EntitySnapshot]) -> DeviceControlResult | None:
     """ "Was ist im Badezimmer eingeschaltet?" - every active device there (F12)."""
-    match = _AREA_ON_RE.search(key.strip(" ?.!"))
-    if match is None:
+    spoken_area = _area_of_on_question(key.strip(" ?.!"))
+    if spoken_area is None:
         return None
-    spoken = match.group("area").strip()
+    spoken = spoken_area.strip()
     area_names = {
         normalize_for_compare(name): (entity.area_id, entity.area_name or name)
         for entity in entities if entity.area_id is not None
@@ -266,21 +332,22 @@ def match_household_query(
     )) is not None:
         return _read_only(lifecycle.text)
 
-    if re.search(r"\b(?:wie\s+spaet|wieviel\s+uhr|welche\s+uhrzeit)\b", key):
+    tokens = words(key)
+    if has(tokens, "wie spaet", "wieviel uhr", "welche uhrzeit"):
         return _read_only(f"Es ist {now:%H:%M} Uhr.")
-    if re.search(r"\b(?:welches\s+datum|welcher\s+tag|was\s+haben\s+wir\s+heute)\b", key):
+    if has(tokens, "welches datum", "welcher tag", "was haben wir heute"):
         return _read_only(
             f"Heute ist {_WEEKDAYS_DE[now.weekday()]}, der {now.day}. {_MONTHS_DE[now.month - 1]} {now.year}."
         )
 
-    if re.search(r"\bwas\s+kannst\s+du\b", key):
+    if has(tokens, "was kannst du"):
         return _read_only(
             "Ich kann Geräte steuern und abfragen, Automationen und Erinnerungen erstellen, "
             "Kalender, Aufgabenlisten und Timer verwalten sowie Zustände, Verlauf, "
             "Anwesenheit, Wetter und Gerätefähigkeiten erklären."
         )
 
-    if re.search(r"\bwer\s+ist\s+(?:zu\s*hause|daheim|anwesend)\b", key):
+    if has(tokens, "wer ist zu hause", "wer ist zuhause|daheim|anwesend"):
         persons = [entity for entity in entities if entity.domain == "person"]
         if not persons:
             # Without exposed persons "nobody is home" would be a guess (F12).
@@ -293,7 +360,10 @@ def match_household_query(
             return _read_only("Laut Home Assistant ist derzeit niemand zuhause.")
         return _read_only("Zuhause: " + ", ".join(people) + ".")
 
-    presence = re.search(r"\bist\s+(.+?)\s+(?:zu\s*hause|daheim|anwesend)\b", key)
+    presence = next((
+        index for index, token in enumerate(tokens)
+        if token.key == "ist" and find(tokens, ("zu hause", "zuhause|daheim|anwesend"), index + 2) is not None
+    ), None)
     if presence is not None:
         people = mentioned_entities(value, [e for e in entities if e.domain == "person"])
         if len(people) == 1:
@@ -329,18 +399,26 @@ def match_household_query(
                 f"{sensor.friendly_name}: {format_spoken_number(reading)} {sensor.unit or 'ppm'}."
             )
 
-    if re.search(
-        r"\bwie\s+viel\s+(?:strom|leistung|energie)\s+(?:verbraucht|braucht|zieht)\s+"
-        r"(?:das\s+haus|der\s+haushalt|das\s+ganze\s+haus|alles)\b|"
-        r"\b(?:aktuelle[rn]?\s+)?(?:haus|gesamt)(?:strom)?verbrauch\b",
-        key,
+    if has(
+        tokens,
+        "wie viel strom|leistung|energie verbraucht|braucht|zieht das haus",
+        "wie viel strom|leistung|energie verbraucht|braucht|zieht der haushalt",
+        "wie viel strom|leistung|energie verbraucht|braucht|zieht das ganze haus",
+        "wie viel strom|leistung|energie verbraucht|braucht|zieht alles",
+        "hausverbrauch|gesamtverbrauch|hausstromverbrauch|gesamtstromverbrauch",
     ):
         house = _house_power(entities)
         if house is not None:
             return _read_only(f"Das Haus verbraucht gerade {_power_text(house)} ({house.friendly_name}).")
         return _read_only("Ich finde keinen eindeutigen Leistungssensor für das ganze Haus.")
 
-    if re.search(r"\b(?:durchschnittliche|mittlere)\s+temperatur\s+(?:im|in\s+dem)\s+(?:ganzen\s+|gesamten\s+)?haus\b", key):
+    if has(
+        tokens,
+        "durchschnittliche|mittlere temperatur im haus",
+        "durchschnittliche|mittlere temperatur im ganzen|gesamten haus",
+        "durchschnittliche|mittlere temperatur in dem haus",
+        "durchschnittliche|mittlere temperatur in dem ganzen|gesamten haus",
+    ):
         indoor = [
             value for entity in entities
             if entity.domain == "sensor" and entity.device_class == "temperature"
@@ -354,11 +432,11 @@ def match_household_query(
             f"(aus {len(indoor)} Sensoren)."
         )
 
-    setpoint = re.search(
-        r"\b(?:auf\s+(?:wie\s+viel|welche)\s+(?:grad|temperatur)|welche\s+(?:soll|ziel)temperatur|"
-        r"wie\s+hoch\s+ist\s+die\s+(?:soll|ziel)temperatur)\b", key,
-    )
-    if setpoint is not None:
+    if has(
+        tokens,
+        "auf wie viel grad|temperatur", "auf welche grad|temperatur",
+        "welche solltemperatur|zieltemperatur", "wie hoch ist die solltemperatur|zieltemperatur",
+    ):
         climates = [entity for entity in entities if entity.domain == "climate"]
         target = climate_in_named_area(value, climates) or (
             named[0] if len(named := mentioned_entities(value, climates)) == 1 else None
@@ -387,7 +465,7 @@ def match_household_query(
                     else f"Nein, {target.friendly_name} {verb} gerade nicht."
                 )
 
-    if re.search(r"\b(?:gibt\s+es\s+)?(?:probleme|stoerungen|fehler)\s+(?:im|zu\s+hause|daheim)\b", key):
+    if has(tokens, "probleme|stoerungen|fehler im|daheim", "probleme|stoerungen|fehler zu hause"):
         unavailable = [
             entity.friendly_name for entity in entities
             if normalize_for_compare(entity.state) == "unavailable"
@@ -411,13 +489,9 @@ def match_household_query(
             parts.append("Schwache Batterien: " + ", ".join(weak_batteries[:8]))
         return _read_only(". ".join(parts) + ".")
 
-    battery_limit = re.search(
-        r"\b(?:welche|zeige|gibt\s+es).*\bbatter(?:ie|ien)\b.*?"
-        r"(?:unter|kleiner\s+als|weniger\s+als)\s*(\d{1,3})\s*(?:prozent|%)",
-        key,
-    )
+    battery_limit = _battery_limit(tokens)
     if battery_limit is not None:
-        limit = min(100, int(battery_limit.group(1)))
+        limit = min(100, battery_limit)
         matches = [
             (entity, value) for entity in entities
             if entity.domain == "sensor" and entity.device_class == "battery"
@@ -432,7 +506,7 @@ def match_household_query(
             ) + "."
         )
 
-    if re.search(r"\bwann\s+geht\s+die\s+sonne\s+(?:auf|unter)\b", key):
+    if has(tokens, "wann geht die sonne auf|unter"):
         sun = next((entity for entity in entities if entity.entity_id == "sun.sun"), None)
         if sun is None:
             return _read_only("Ich finde in Home Assistant keine Sonneninformationen.")
@@ -454,10 +528,9 @@ def match_household_query(
     ):
         return None
 
-    if re.search(
-        r"\b(?:wie\s+ist\s+das\s+wetter|welches\s+wetter|aussen(?:temperatur)?|"
-        r"wie\s+(?:warm|kalt)\s+ist\s+es\s+(?:draussen|aussen))\b",
-        key,
+    if has(
+        tokens, "wie ist das wetter", "welches wetter", "aussen|aussentemperatur",
+        "wie warm|kalt ist es draussen|aussen",
     ):
         weather_entities = [e for e in entities if e.domain == "weather"]
         mentioned = mentioned_entities(value, weather_entities)
@@ -498,7 +571,8 @@ def match_household_query(
             details.append(f"{format_spoken_number(humidity)} Prozent Luftfeuchtigkeit")
         return _read_only(f"{weather.friendly_name}: " + ", ".join(details) + ".")
 
-    if re.search(r"\b(?:wie\s+wird|wetter|vorhersage)\b.*\b(?:morgen|uebermorgen)\b", key):
+    cue = find(tokens, ("wie wird", "wetter|vorhersage"))
+    if cue is not None and any(token.key in {"morgen", "uebermorgen"} for token in tokens[cue[0] + cue[1]:]):
         weather_entities = [e for e in entities if e.domain == "weather"]
         if len(weather_entities) != 1:
             return _read_only("Welche Wetter-Entität meinst du?") if weather_entities else None
@@ -530,9 +604,9 @@ def match_household_query(
             + ((", " + ", ".join(temperatures)) if temperatures else "") + "."
         )
 
-    catalogue = re.search(r"\bwelche\s+(szenen|skripte)\s+(?:gibt\s+es|sind\s+verfuegbar)\b", key)
+    catalogue = find(tokens, ("welche szenen|skripte gibt es", "welche szenen|skripte sind verfuegbar"))
     if catalogue is not None:
-        domain = "scene" if catalogue.group(1) == "szenen" else "script"
+        domain = "scene" if tokens[catalogue[0] + 1].key == "szenen" else "script"
         names = sorted(e.friendly_name for e in entities if e.domain == domain)
         if not names:
             return _read_only(f"Es sind keine {'Szenen' if domain == 'scene' else 'Skripte'} verfügbar.")

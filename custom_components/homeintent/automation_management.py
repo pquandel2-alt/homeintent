@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
+from typing import cast
 
 from .automation_summary import AutomationSummary, CREATED_BY_HOMEINTENT
 from .entities import EntitySnapshot, normalize_for_compare
@@ -138,10 +139,10 @@ def derive_automation_management(text: str) -> AutomationManagementRequest | Non
         AutomationManagementKind[kind],
         entity_name=slots.get("entity_name"),  # type: ignore[arg-type]
         hour=slots.get("hour"),  # type: ignore[arg-type]
-        minute=int(slots.get("minute", 0) or 0),
+        minute=int(cast(int, slots.get("minute", 0) or 0)),
         max_runs=slots.get("max_runs"),  # type: ignore[arg-type]
         scope_name=slots.get("scope_name"),  # type: ignore[arg-type]
-        day_offset=int(slots.get("day_offset", 0) or 0),
+        day_offset=int(cast(int, slots.get("day_offset", 0) or 0)),
     )
 
 

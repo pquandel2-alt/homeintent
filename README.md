@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.5.1** (Sprachinseln Verlauf und Automationsverwaltung)
+- Aktuelle Version: **7.5.2** (alle Sprachinseln auf Bedeutungsbausteine umgestellt)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,38 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.5.2 neu?
+
+**Die übrigen Sprachinseln: Listen und Timer, Kalender, Haushaltsfragen,
+Ziele/Prozeduren und Erinnerungen.**
+
+- Mehrwortausdrücke sind Lexikondaten (`nlu/phrases.py`): Phrasen mit
+  Alternativen und Wortstämmen („was steht|ist|fehlt“, „erledig*“) werden
+  auf Wort-Tokens mit Zeichenpositionen geprüft. Namens-, Titel- und
+  Nachrichten-Platzhalter werden über Wortgrenzen bestimmt, nicht über
+  Satzmuster.
+- Umgestellt und die alten Satzmuster gelöscht:
+  - Listen und Timer: Anzeigen, Abhaken, Fülltexte, Beschreibung,
+    Timername, Antwort auf „Wie soll der Timer heißen?“
+  - Kalender: Liste, „Wann ist mein …“, freie Zeit, Zeitfenster,
+    Umbenennen, Dauer ändern, Verschieben, ganztägig, halbe Stunde, Titel
+  - Haushaltsfragen: Uhrzeit, Datum, Anwesenheit, Raumfrage,
+    Hausverbrauch, Durchschnittstemperatur, Solltemperatur, Probleme,
+    Batteriegrenze, Sonne, Wetter, Vorhersage, Szenen und Skripte
+  - Ziele/Prozeduren: speichern, starten, vergessen, auflisten
+  - Erinnerungen: „Sag … Bescheid“, „Benachrichtige …“, Ruhezeiten
+- Shadow je Insel gegen 7.5.1 (alle Korpussätze, alle Satzliterale der
+  Testsuite, erzeugte Inselkorpora), jeweils **0 Abweichungen**:
+
+  | Insel | Sätze | mit Frame |
+  |---|---|---|
+  | Listen/Timer | 5257 | 1931 |
+  | Kalender | 5218 | 178 |
+  | Haushalt | 5214 | 56 |
+  | Ziele | 5200 | 49 |
+  | Erinnerung | 5197 | 19 |
+- SEMANTIC_SENTENCE_PATTERN: 272 (7.5.0) → 258 (7.5.1) → **212** (7.5.2).
 
 ## Was ist in Version 7.5.1 neu?
 
@@ -1912,7 +1944,7 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.5.1:
+Geprüfter Release-Stand von Version 7.5.2:
 
 ```text
 6304 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
@@ -1961,7 +1993,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.5.1.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.5.2.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

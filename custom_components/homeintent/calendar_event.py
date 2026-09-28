@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 
+from .nlu.phrases import Span, find, words
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.entity_clarification import (
     CandidateReplyKind,
@@ -108,10 +109,6 @@ _CREATE_VERB_RE = re.compile(
 _EVENT_NOUN_RE = re.compile(
     r"\b(?:termin|kalendertermin|kalendereintrag|kalender)\b", re.IGNORECASE
 )
-_ALL_DAY_RE = re.compile(
-    r"\b(?:ganztägig|ganztaegig|den ganzen tag|für den ganzen tag|fuer den ganzen tag)\b",
-    re.IGNORECASE,
-)
 _RELATIVE_DATE_RE = re.compile(r"\b(heute|morgen|übermorgen|uebermorgen)\b", re.IGNORECASE)
 _IN_DAYS_RE = re.compile(rf"\bin\s+({_NUMBER_TOKEN})\s+tagen?\b", re.IGNORECASE)
 _WEEKDAY_RE = re.compile(
@@ -164,16 +161,60 @@ _BARE_DURATION_RE = re.compile(
     rf"(?:\s+(?:und\s+)?({_NUMBER_TOKEN})\s*(minuten?|min\.?))?\s*[.!?]?\s*$",
     re.IGNORECASE,
 )
-_FRACTION_DURATION_RE = re.compile(
-    r"\b(?:für|fuer|dauert?|dauer)?\s*(?:(?:eine|einer)\s+)?"
-    r"(halbe\s+stunde|viertelstunde)\b",
-    re.IGNORECASE,
-)
-_EXPLICIT_TITLE_PATTERNS = (
-    re.compile(r"\b(?:der\s+)?(?:titel|name)\s+(?:ist|lautet)\s+(.+)$", re.IGNORECASE),
-    re.compile(r"\b(?:der\s+)?(?:titel|name)\s+soll\s+(.+?)\s+(?:sein|heißen)\s*$", re.IGNORECASE),
-    re.compile(r"\b(?:nenn|nenne)\s+(?:ihn|den termin)\s+(.+)$", re.IGNORECASE),
-)
+
+# Language island "Kalender" (7.5.2): phrases and title slots as lexicon data.
+_ALL_DAY_PHRASES = ("fuer den ganzen tag", "den ganzen tag", "ganztaegig")
+
+
+def _all_day(text: str) -> Span | None:
+    tokens = words(text)
+    found = find(tokens, _ALL_DAY_PHRASES)
+    if found is None:
+        return None
+    index, length = found
+    return Span(tokens[index].start, tokens[index + length - 1].end)
+
+
+def _fraction_duration(text: str) -> Span | None:
+    """"(für) (eine) halbe Stunde" / "Viertelstunde" -> span and fraction word."""
+    tokens = words(text)
+    found = find(tokens, ("halbe stunde", "viertelstunde"))
+    if found is None:
+        return None
+    index, length = found
+    start = index
+    if start > 0 and tokens[start - 1].key in {"eine", "einer"}:
+        start -= 1
+    if start > 0 and tokens[start - 1].key in {"fuer", "dauer", "dauert"} and tokens[start - 1].text.casefold() != "fur":
+        start -= 1
+    fraction = text[tokens[index].start:tokens[index + length - 1].end]
+    return Span(tokens[start].start, tokens[index + length - 1].end, fraction)
+
+
+def _explicit_title(text: str) -> str | None:
+    """"Der Titel ist X", "Der Name soll X sein/heißen", "Nenne ihn X"."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if token.key in {"titel", "name"} and index + 1 < len(tokens):
+            verb = tokens[index + 1].key
+            if verb in {"ist", "lautet"} and index + 2 < len(tokens):
+                return text[tokens[index + 2].start:]
+            last = tokens[-1]
+            if (
+                verb == "soll" and len(tokens) - index >= 4
+                and (last.key == "sein" or last.text.casefold() == "heißen")
+                and last.end == len(text.rstrip())
+            ):
+                return text[tokens[index + 2].start:tokens[-2].end]
+        if token.key in {"nenn", "nenne"} and index + 1 < len(tokens):
+            if tokens[index + 1].key == "ihn" and index + 2 < len(tokens):
+                return text[tokens[index + 2].start:]
+            if (
+                tokens[index + 1].key == "den" and index + 3 < len(tokens)
+                and tokens[index + 2].key == "termin"
+            ):
+                return text[tokens[index + 3].start:]
+    return None
 
 
 @dataclass(frozen=True)
@@ -315,7 +356,7 @@ def parse_calendar_date(text: str, now: datetime) -> date | None:
 
 
 def _parse_duration(text: str, *, allow_bare: bool) -> tuple[int | None, tuple[int, int] | None]:
-    fraction = _FRACTION_DURATION_RE.search(text)
+    fraction = _fraction_duration(text)
     if fraction is not None:
         minutes = 30 if fraction.group(1).casefold().startswith("halbe") else 15
         return minutes, fraction.span()
@@ -342,7 +383,7 @@ def _parse_pieces(text: str, now: datetime, *, allow_bare: bool = False) -> _Pie
     if date_span is not None:
         spans.append(date_span)
 
-    all_day_match = _ALL_DAY_RE.search(text)
+    all_day_match = _all_day(text)
     all_day = all_day_match is not None
     if all_day_match is not None:
         spans.append(all_day_match.span())
@@ -441,10 +482,9 @@ def _clean_title(
     spans: tuple[tuple[int, int], ...],
     calendars: tuple[EntitySnapshot, ...],
 ) -> str | None:
-    for pattern in _EXPLICIT_TITLE_PATTERNS:
-        explicit = pattern.search(text)
-        if explicit is not None:
-            return explicit.group(1).strip(" .,!?:;\"'") or None
+    explicit = _explicit_title(text)
+    if explicit is not None:
+        return explicit.strip(" .,!?:;\"'") or None
 
     chars = list(text)
     for start, end in spans:
@@ -568,7 +608,7 @@ def update_calendar_event_draft(
         changes["calendar_entity_id"] = None
 
     title = _clean_title(text, pieces.spans, matches)
-    explicit_title = any(pattern.search(text) is not None for pattern in _EXPLICIT_TITLE_PATTERNS)
+    explicit_title = _explicit_title(text) is not None
     has_metadata = bool(pieces.spans or matches)
     if explicit_title and title:
         changes["title"] = title

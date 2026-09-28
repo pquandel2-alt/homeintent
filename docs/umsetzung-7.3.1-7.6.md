@@ -859,3 +859,53 @@ Einzelheiten zu den Läufen:
   - Umgeschaltet; die sieben Satzmuster-Konstanten und die elf Inline-Muster
     sind gelöscht.
 - Tests: 6304 grün; V8-Baseline unverändert.
+
+### 7.5.2: Listen/Timer, Kalender, Haushaltsfragen, Ziele, Erinnerungen
+
+- **`nlu/phrases.py`:**
+  - Wort-Tokens mit normalisierten Schlüsseln und Zeichenpositionen;
+    Uhrzeiten wie „14:30“ bleiben ein Token.
+  - Phrasen als Daten: Leerzeichen trennt Wörter, `|` Alternativen, `*`
+    Wortstamm; dazu `find`, `has`, `match_at` und `word_is`.
+  - `Span` liefert den Teil von `re.Match`, den die Aufrufer brauchen
+    (`start`, `end`, `span`, `group`, `groupdict`). So blieben die
+    Aufrufer unverändert.
+- **Umgestellt:**
+  - `productivity.py`: 11 Satzmuster, unter anderem Anzeigen, Abhaken,
+    Operationshinweise, Fülltexte, Beschreibung, Timername nach „mit dem
+    Namen“/„für“, Timer auflisten, Namensantwort, „ohne Namen“,
+    „er soll X heißen“
+  - `calendar_management.py`: 7 Muster
+  - `calendar_event.py`: 5 Muster
+  - `household_query.py`: 16 Muster
+  - `procedure_intent.py`: 4 Muster (geschlossene Rahmen als Wortfolgen)
+  - `reminder.py`: 3 Muster
+- **Shadow je Insel** gegen 7.5.1 (`scripts/island_shadow.py`, alter
+  Stand im Git-Worktree), alles Sätze aus Korpora, Testliteralen und
+  erzeugten Inselkorpora:
+
+  | Insel | Sätze | mit Frame | Abweichungen |
+  |---|---|---|---|
+  | Listen/Timer | 5257 | 1931 | 0 |
+  | Kalender | 5218 | 178 | 0 |
+  | Haushalt | 5214 | 56 | 0 |
+  | Ziele (Prozeduren + Ziele) | 5200 | 49 | 0 |
+  | Erinnerung | 5197 | 19 | 0 |
+
+  Messhinweise: fester Hash-Seed; zufällige Ziel-IDs (uuid4) werden vor
+  dem Vergleich neutralisiert.
+- **Satzmuster:** 272 (7.5.0) → 258 (7.5.1) → **212** (7.5.2).
+- **Bewusst offen:**
+  - Satzmuster außerhalb der sechs Inseln bleiben vorerst: Normalisierung,
+    Sprechaktklassifikation in `semantic_utterance.py`, Engine-Router,
+    `automation_language.py`, `dialog_learning.py` (Phase 6) und
+    `location_property_query.py`.
+  - Sie werden weiter pro Release gezählt; der Test verhindert, dass es
+    mehr werden.
+- **Befund zu 7.5.1:** Der gepushte Stand 7.5.1 hatte 15 Pyright-Fehler.
+  Es waren Typangaben in den neuen Inselfunktionen (Frame-Tabelle,
+  `int()` auf `object`), kein Verhaltensfehler; der blockierende
+  Pyright-Schritt in CI wäre dort rot gewesen. Behoben in 7.5.2 (Pyright
+  0 Fehler, strikte Prüfungen 0); alle Insel-Shadows danach erneut mit 0
+  Abweichungen.
+- Tests: 6304 grün; Ruff-Baseline 57; V8-Baseline unverändert.
