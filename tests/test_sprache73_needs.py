@@ -117,9 +117,13 @@ def test_routine_statements_propose_the_matching_routine(monkeypatch, sentence, 
 
 
 @pytest.mark.parametrize("sentence", ["Ich will fernsehen.", "Ich möchte einen Film schauen."])
-def test_movie_need_starts_the_movie_scene(monkeypatch, sentence):
-    turn = HouseConversation(monkeypatch).say(sentence)
-    assert turn.targets == {"scene.filmabend"}
+def test_movie_need_proposes_the_movie_scene(monkeypatch, sentence):
+    # 7.3.1 (S5): a routine derived from a statement is a proposal, scenes
+    # included; only the "Ja" starts it.
+    house = HouseConversation(monkeypatch)
+    turn = house.say(sentence)
+    assert turn.calls == [] and "Filmabend" in turn.speech and "?" in turn.speech, turn.speech
+    assert house.say("Ja.").targets == {"scene.filmabend"}
 
 
 @pytest.mark.parametrize("sentence", ["Ich hätte gern etwas mehr Wärme im Büro.", "Ich hätte gerne mehr Wärme im Büro."])

@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.3.0** (Sprachverständnis ohne Sprachmodell)
+- Aktuelle Version: **7.3.1** (transitive Sicherheit für Skripte, Szenen und Gruppen)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,32 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.3.1 neu?
+
+**Transitive Sicherheit für Skripte, Szenen und Gruppen.** Bisher prüfte
+HomeIntent bei „Aktiviere Nachtruhe.“ nur, ob das Skript selbst freigegeben
+ist – nicht, was es schaltet. Ein realer Vorfall (ein Skript drückte per
+`floor_id` alle Buttons einer Etage; Saugroboter und Brandmelder-Selbsttest
+liefen los) zeigte die Lücke. Jetzt:
+
+- **EffectGraph:** HomeIntent liest Skripte, Szenen, Gruppen und per
+  `automation.trigger` ausgelöste Automationen nur lesend aus und ermittelt
+  alle wirksamen Ziele – über alle Zweige, Verschachtelungen, Geräte-Aktionen
+  und `device_id`/`area_id`/`floor_id`/`label_id` so, wie Home Assistant sie
+  auflöst. Details: [Skripte, Szenen und Gruppen](#skripte-szenen-und-gruppen-transitive-prüfung-seit-731).
+- **Freigabe gilt transitiv:** Schaltet ein Skript ein nicht freigegebenes
+  Gerät, lehnt HomeIntent ab und nennt es – auch ein „Ja“ ändert das nicht.
+- **Risiko = höchste Wirkung:** Ein Schloss im Skript macht das Skript HIGH,
+  eine Alarmanlage CRITICAL; ein reines Lichtskript bleibt LOW.
+- **Nicht prüfbare Schritte** (Vorlagen, `event:`, `shell_command` …) gelten
+  nie als harmlos: Standard ist Ablehnen, neue Option `effect_graph_unknown:
+  confirm` fragt stattdessen nach.
+- **Geprüft wird direkt vor dem Schalten**, auch nach einer Bestätigung.
+- **Abgeleitete Routinen** („Ich gehe schlafen“, „Filmabend“, „Starte die
+  Schlafroutine“) starten nie ohne Bestätigung – auch Szenen nicht.
+- Nach dem Ausführen nennt HomeIntent kurz die geprüfte Wirkung
+  („Schlafen ausgeführt: 2 Rollläden und 2 Lichter.“).
 
 ## Was ist in Version 7.3.0 neu?
 
@@ -1380,6 +1406,52 @@ Ein Alias darf nie auf mehrere Entity-IDs zeigen. Für einen gemeinsamen Namen
 mehrerer Geräte sollte stattdessen eine echte Home-Assistant-Gruppe freigegeben
 werden.
 
+### Skripte, Szenen und Gruppen: transitive Prüfung (seit 7.3.1)
+
+Ein Skript, eine Szene, eine Gruppe oder eine per `automation.trigger`
+ausgelöste Automation schaltet mehr als die eine äußere Entität. HomeIntent
+liest deshalb vor jeder Ausführung ihre Konfiguration nur lesend aus und bildet
+einen **EffectGraph**: alle Aktionen aller Zweige (`if`, `choose`, `parallel`,
+`repeat`, auch die gerade nicht zutreffenden), verschachtelte Skripte und
+Szenen (mit Zyklenschutz, höchstens 8 Ebenen), Gruppenmitglieder,
+Geräte-Aktionen und Ziele über `device_id`, `area_id`, `floor_id` oder
+`label_id` – aufgelöst genau so, wie Home Assistant sie auflöst, und nur in der
+Domäne der Aktion (`button.press` auf eine Etage = alle Buttons dieser Etage).
+
+Für diese **wirksamen Ziele** gelten dieselben Regeln wie für direkte Befehle:
+
+- Ist ein wirksames Ziel nicht für HomeIntent freigegeben, lehnt HomeIntent ab
+  und nennt die Geräte. Eine Bestätigung kann das nicht überstimmen.
+- Nur-Lesen, Nur-Admin und die maximale Zielzahl zählen die wirksamen Ziele.
+- Das Risiko ist das höchste Risiko aller wirksamen Effekte (Schloss im
+  `choose`-Zweig → HIGH, Alarmanlage → CRITICAL).
+- Schritte, deren Wirkung sich nicht statisch bestimmen lässt (Vorlagen im
+  Ziel, `event:`, `python_script`, `shell_command`, `rest_command`, Ziele in
+  Dienstdaten fremder Dienste, unlesbare Konfiguration), gelten nie als LOW.
+  Standard ist Ablehnen (`effect_graph_unknown: deny`); mit `confirm` fragt
+  HomeIntent nach und sagt „Schritt ‚…‘ kann ich nicht prüfen“. Ohne
+  anwesenden Nutzer (Daueranweisung, proaktiv, zeitversetzt) wird immer
+  abgelehnt.
+- Automationen, die durch die Wirkung ausgelöst werden könnten, erscheinen nur
+  als Hinweis („Kann Automation X auslösen“), nicht im Risiko.
+
+Der EffectGraph wird im Executor unmittelbar vor dem Dienstaufruf neu gebaut,
+auch nach einem „Ja“. Ein Skript, das zwischen Rückfrage und Bestätigung
+geändert wurde, wird also mit seinem neuen Inhalt geprüft. Von HomeIntent
+angelegte Automationen, die ein Skript oder eine Szene ausführen, werden beim
+Anlegen geprüft. **Wird das Skript später geändert, prüft HomeIntent die
+Automation nicht erneut**, denn sie läuft in Home Assistant ohne HomeIntent.
+
+Beispiel: „Aktiviere Gute Nacht.“ → „Das Skript „Gute Nacht“ schaltet auch
+Geräte, die für HomeIntent nicht freigegeben sind: Saugroboter Reinigung
+starten und Brandmelder Flur Selbsttest. Der Schritt ‚Rolladen Runterfahren‘
+drückt alle Buttons im Erdgeschoss. Ich habe nichts ausgeführt.“
+
+Routinen, die HomeIntent nur ableitet („Ich gehe schlafen“, „Filmabend“,
+„Starte die Schlafroutine“ für ein Skript namens „Schlafen“), werden nie allein
+wegen Namensähnlichkeit gestartet, auch Szenen nicht: HomeIntent schlägt sie
+vor und wartet auf „Ja“.
+
 ### Benutzergebundene Bestätigungen
 
 Wenn Home Assistant eine Benutzer-ID bereitstellt, kann nur derselbe Benutzer
@@ -1593,21 +1665,21 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.3.0:
+Geprüfter Release-Stand von Version 7.3.1:
 
 ```text
-6034 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
-16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
-90 % Gesamt-Coverage
-76 % Coverage für conversation.py
-Held-out-Automationskorpus (7.2.0): 95,5 % korrekt (317/332), 0 unsichere Ausführungen
-Attribut-Automation im echten Home-Assistant-Core ausgeführt
-(scripts/validate_measurement_automation_ha.py)
+6073 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
+V8-Shadow-Report unverändert gegenüber 7.3.0
+tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
+scheitert lokal wie schon auf 7.3.0 an der Fixture der HA-Testumgebung
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 162 / 162
-Szenarien (davon 36 in der Kategorie „Sprache 7.3“), keine
-HomeIntent-Warnung im Log.
+Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 155 / 155
+Szenarien ohne die nächtlichen Proaktiv-Szenarien, dazu 14 / 14
+Live-Prüfungen der transitiven Sicherheit (Skript „Nachtruhe“ mit nicht
+freigegebenem Saugroboter, `button.press` auf eine Etage, abgeleitete
+Schlafroutinen). Details: `docs/umsetzung-7.3.1-7.6.md`.
 
 Zusätzlich wurden ausgeführt:
 
@@ -1641,7 +1713,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.3.0.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.3.1.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

@@ -24,6 +24,7 @@
           "custom_aliases": "Zusätzliche Sprach-Aliase (Alias = entity.id, eine Regel pro Zeile)",
           "confirmation_level": "Ab welcher Risikostufe bestätigen",
           "max_action_targets": "Maximale Ziele pro Aktion",
+          "effect_graph_unknown": "Skript-/Szenenschritt, dessen Wirkung nicht prüfbar ist (deny: ablehnen, confirm: nur mit Bestätigung)",
           "allow_non_admin_critical": "Kritische Aktionen für authentifizierte Nicht-Administratoren erlauben",
           "allow_non_admin_automations": "Automationserstellung für Nicht-Administratoren erlauben",
           "context_ttl_seconds": "Dialogkontext in Sekunden",

@@ -47,6 +47,9 @@ def _make_entity(monkeypatch, tmp_path: Path) -> NluConversationEntity:
     entry = ConfigEntry()
     entity = NluConversationEntity(entry)
     entity.hass = HomeAssistant()
+    _ha_stub.register_script(entity.hass, "script.gute_nacht", [
+        {"action": "persistent_notification.create", "data": {"message": "Gute Nacht"}},
+    ])
     entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
     monkeypatch.setattr(
         ha_conversation, "build_entity_snapshots", lambda hass, entry: ALL_ENTITIES

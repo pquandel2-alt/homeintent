@@ -24,6 +24,7 @@ from .need_semantics import NeedKind, NeedMeaning, RoutineConcept
 from .parser import ParseResult
 from .place_model import Place
 from .primitives import SemanticAction, SemanticDirection, SemanticProperty
+from ..plan_origin import PlanOrigin
 from ..service_call import REGISTERED_OPERATION_INTENT
 
 __all__ = ("NeedOutcome", "compile_need")
@@ -46,6 +47,7 @@ class NeedOutcome:
     reason: str | None = None
     confirm: str | None = None
     message: str | None = None
+    origin: PlanOrigin = PlanOrigin.IMPLICIT_NEED
 
 
 def _frame(
@@ -275,6 +277,24 @@ def _routine_candidates(
     return found
 
 
+def routine_named_explicitly(source_text: str, entity: EntitySnapshot) -> bool:
+    """Whether the turn says the script/scene name (or an alias) verbatim.
+
+    A name found only by similarity ("Schlafroutine" -> "Schlafen") is an
+    inferred routine and needs confirmation (7.3.1, S5).
+    """
+    def words_of(text: str) -> str:
+        folded = normalize_for_compare(text)
+        return " ".join("".join(char if char.isalnum() else " " for char in folded).split())
+
+    words = f" {words_of(source_text)} "
+    for name in (entity.friendly_name, *entity.aliases):
+        normalized = words_of(name)
+        if normalized and f" {normalized} " in words:
+            return True
+    return False
+
+
 def _routine(
     concept: RoutineConcept, entities: Sequence[EntitySnapshot], source_text: str
 ) -> NeedOutcome:
@@ -289,14 +309,13 @@ def _routine(
     kind_word = "die Szene" if entity.domain == "scene" else "das Skript"
     intent = "HassActivateScene" if entity.domain == "scene" else "HassRunScript"
     result = _frame(intent, (entity,), source_text, action=SemanticAction.TURN_ON)
-    if concept.confirm or entity.domain == "script":
-        return NeedOutcome(
-            results=(result,),
-            confirm=f"Soll ich {kind_word} {entity.friendly_name} starten?",
-        )
+    # A routine derived from a statement ("Ich gehe schlafen") was found by
+    # name similarity only: it is always a proposal, scenes included, until
+    # the user has confirmed a binding (7.3.1, S5).
     return NeedOutcome(
         results=(result,),
-        reason=f"Ich habe {kind_word} {entity.friendly_name} gestartet.",
+        confirm=f"Soll ich {kind_word} {entity.friendly_name} starten?",
+        origin=PlanOrigin.INFERRED_ROUTINE,
     )
 
 

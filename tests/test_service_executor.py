@@ -131,6 +131,12 @@ def test_brightness_rechecks_turn_on_and_brightness_capabilities():
 
 def _execute(entity: EntitySnapshot, plan: ServiceCallPlan):
     hass = HomeAssistant()
+    # Scripts and scenes are checked through their effect graph (7.3.1);
+    # these have no effect beyond a message.
+    _ha_stub.register_script(hass, "script.gute_nacht", [
+        {"action": "persistent_notification.create", "data": {"message": "Gute Nacht"}},
+    ])
+    _ha_stub.register_scene(hass, "scene.abend", {})
     result = asyncio.run(
         async_execute_service_plan(
             hass,

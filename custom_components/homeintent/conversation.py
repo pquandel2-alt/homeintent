@@ -288,6 +288,7 @@ from .nlu.understanding import UnderstandingAuthority
 from .nlu.understanding_context import UnderstandingContext
 from .service_call import QUERY_INTENTS, ServiceCallPlan
 from .service_executor import async_execute_service_plan
+from .effect_graph import build_plan_effects, is_composite_entity, summarize_effects
 from .semantic_dialog import continue_semantic_dialog, start_semantic_dialog
 from .reminder import (
     reminder_automation_text,
@@ -479,14 +480,28 @@ _CONFIRMATION_INFINITIVES: tuple[tuple[str, str], ...] = (
 )
 
 
-def _confirmation_question(response_text: str) -> str:
-    """Turn a device response text into a grammatical safety question."""
+def _with_effect_summary(text: str, execution: Any) -> str:
+    """„Gute Nacht ausgeführt: 9 Rollläden.“ after a script/scene/group."""
+    effects = getattr(getattr(execution, "decision", None), "effects", None)
+    summary = summarize_effects(effects) if effects is not None else None
+    if not summary or not text:
+        return text
+    return f"{text.rstrip().rstrip('.')}: {summary}."
+
+
+def _confirmation_question(response_text: str, note: str | None = None) -> str:
+    """Turn a device response text into a grammatical safety question.
+
+    ``note`` is the policy's hint (an unverifiable script step, possible
+    follow-up automations); it is said before the question.
+    """
     text = response_text.rstrip(".")
     for ending, infinitive in _CONFIRMATION_INFINITIVES:
         if text.endswith(f" {ending}"):
             text = f"{text[: -len(ending)]}{infinitive}"
             break
-    return f"Soll ich wirklich {text}?"
+    question = f"Soll ich wirklich {text}?"
+    return f"{note} {question}" if note else question
 
 
 def _helper_timer_seconds_left(entity: EntitySnapshot) -> int | None:
@@ -2977,6 +2992,8 @@ class NluConversationEntity(
                             self.entry.options,
                             is_admin=is_admin,
                             user_id=actor_id,
+                            effects=build_plan_effects(self.hass, action),
+                            attended=False,
                         )
                         if decision.outcome is PolicyOutcome.DENY:
                             return _ScheduledOutcome(False, decision.reason)
@@ -4384,6 +4401,7 @@ class NluConversationEntity(
                             self.entry.options,
                             is_admin=is_admin,
                             user_id=current_user_id,
+                            effects=build_plan_effects(self.hass, plan),
                         )
                     ).outcome
                     is PolicyOutcome.DENY
@@ -4859,6 +4877,8 @@ class NluConversationEntity(
                 self.entry.options,
                 is_admin=await user_is_admin(self.hass, user_input),
                 user_id=conversation_user_id(user_input),
+                effects=build_plan_effects(self.hass, result.plan),
+                origin=result.origin,
             )
             if policy.outcome is PolicyOutcome.DENY:
                 self._context_store.clear(user_input.conversation_id)
@@ -4890,7 +4910,7 @@ class NluConversationEntity(
                     ),
                 )
                 response.async_set_speech(
-                    _confirmation_question(result.response_text)
+                    _confirmation_question(result.response_text, policy.note)
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
@@ -4992,6 +5012,7 @@ class NluConversationEntity(
                 audit_trail=self._audit_trail,
                 audit_actor_id=conversation_user_id(user_input),
                 effect_monitor=self._runtime_data.effect_monitor,
+                origin=result.origin,
             )
             if not execution.executed:
                 self._context_store.clear(user_input.conversation_id)
@@ -5009,6 +5030,9 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+            result = replace(
+                result, response_text=_with_effect_summary(result.response_text, execution)
+            )
 
         if (
             result.command is not None and result.command.intent in QUERY_INTENT_NAMES
@@ -5478,6 +5502,8 @@ class NluConversationEntity(
                 self.entry.options,
                 is_admin=is_admin,
                 user_id=actor_id,
+                effects=build_plan_effects(self.hass, sub_result.plan),
+                origin=result.origin,
             )
             if policy.outcome is PolicyOutcome.DENY:
                 self._context_store.clear(user_input.conversation_id)
@@ -5526,6 +5552,7 @@ class NluConversationEntity(
                             actor_id,
                             None,
                             tuple(plans[1:]),
+                            origin=result.origin,
                         ),
                     ),
                 )
@@ -5561,6 +5588,7 @@ class NluConversationEntity(
                 audit_trail=self._audit_trail,
                 audit_actor_id=actor_id,
                 effect_monitor=self._runtime_data.effect_monitor,
+                origin=result.origin,
             )
             if not execution.executed:
                 error = execution.error or "Die Aktion konnte nicht ausgeführt werden."
@@ -6463,11 +6491,23 @@ class NluConversationEntity(
         controlled_ids = resolve_automation_action_entity_ids(
             confirmation.model, entities
         )
+        composite_ids = sorted(
+            entity.entity_id for entity in entities
+            if entity.entity_id in controlled_ids
+            and is_composite_entity(entity.entity_id, entity.attributes)
+        )
         target_policy_error = validate_automation_action_targets(
             controlled_ids,
             self.entry.options,
             is_admin=await user_is_admin(self.hass, user_input),
             user_id=conversation_user_id(user_input),
+            effects=(
+                build_plan_effects(
+                    self.hass, ServiceCallPlan("homeassistant", "turn_on", composite_ids)
+                )
+                if composite_ids else None
+            ),
+            exposed_ids=frozenset(entity.entity_id for entity in entities),
         )
         if target_policy_error is not None:
             response.async_set_error(
@@ -6580,10 +6620,11 @@ class NluConversationEntity(
             is_admin = await user_is_admin(self.hass, user_input)
             policy = evaluate_service_plan(
                 device_control.plan,
-                resolved_entities,
+                build_entity_snapshots(self.hass, self.entry),
                 self.entry.options,
                 is_admin=is_admin,
                 user_id=actor_id,
+                effects=build_plan_effects(self.hass, device_control.plan),
             )
             if policy.outcome is PolicyOutcome.DENY:
                 self._context_store.clear(user_input.conversation_id)
@@ -6619,7 +6660,7 @@ class NluConversationEntity(
                     ),
                 )
                 response.async_set_speech(
-                    _confirmation_question(device_control.response_text)
+                    _confirmation_question(device_control.response_text, policy.note)
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
@@ -7329,6 +7370,7 @@ class NluConversationEntity(
                 audit_trail=self._audit_trail,
                 audit_actor_id=current_user_id,
                 effect_monitor=self._runtime_data.effect_monitor,
+                origin=confirmation.origin,
             )
             for additional in confirmation.additional_plans:
                 if not execution.executed:
@@ -7344,6 +7386,7 @@ class NluConversationEntity(
                     audit_trail=self._audit_trail,
                     audit_actor_id=current_user_id,
                     effect_monitor=self._runtime_data.effect_monitor,
+                    origin=confirmation.origin,
                 )
             if not execution.executed:
                 _LOGGER.error(
@@ -7358,7 +7401,9 @@ class NluConversationEntity(
                     f"Fehler beim Ausführen: {execution.error}",
                 )
             else:
-                response.async_set_speech(confirmation.success_text)
+                response.async_set_speech(
+                    _with_effect_summary(confirmation.success_text, execution)
+                )
                 if undo is not None:
                     self._context_store.set(
                         user_input.conversation_id,

@@ -124,6 +124,8 @@ class HouseConversation:
         self.tmp_path = tmp_path
         self.entity = NluConversationEntity(ConfigEntry(options=options or {}))
         self.entity.hass = HomeAssistant()
+        # Real script/scene configuration for the EffectGraph (7.3.1).
+        _ha_stub.register_sim_config(self.entity.hass, self.entities)
         self.sink = None
         if tmp_path is not None:
             # Push setup exactly like sim/push_check.py: both phones are

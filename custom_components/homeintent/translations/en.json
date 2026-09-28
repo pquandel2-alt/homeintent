@@ -24,6 +24,7 @@
           "custom_aliases": "Additional spoken aliases (Alias = entity.id, one per line)",
           "confirmation_level": "Confirmation risk threshold",
           "max_action_targets": "Maximum targets per action",
+          "effect_graph_unknown": "Script/scene step whose effect cannot be verified (deny: refuse, confirm: only with confirmation)",
           "allow_non_admin_critical": "Allow critical actions for authenticated non-admin users",
           "allow_non_admin_automations": "Allow non-admin users to create automations",
           "context_ttl_seconds": "Conversation context in seconds",

@@ -71,7 +71,8 @@ from .nlu.normalize import normalize
 from .nlu.device_ontology import analyse_word
 from .nlu.ontology_compiler import compile_ontology_command, compile_release
 from .nlu.discourse_compiler import compile_discourse
-from .nlu.need_compiler import compile_need
+from .nlu.need_compiler import compile_need, routine_named_explicitly
+from .plan_origin import PlanOrigin
 from .nlu.need_semantics import interpret_need
 from .nlu.place_model import PlaceKind, build_place_lexicon
 from .nlu.language_frontend import LanguageDocument, analyse_language, tokenize_language
@@ -648,6 +649,9 @@ class MatchResult:
     # es keinen Ventilator."). Never executable; spoken instead of the
     # generic "nicht verstanden".
     failure_text: str | None = None
+    # Where the plan came from (explicit command, need, inferred routine);
+    # read only by the execution policy.
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
 
 
 @dataclass(frozen=True)
@@ -678,6 +682,38 @@ class CommandPlan:
     # Group operations over several device kinds or many targets are
     # previewed first; the plan runs only after an explicit "Ja".
     confirmation_text: str | None = None
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+
+
+def _mark_inferred_routines(
+    payload: "MatchResult | CommandPlan | None",
+    text: str,
+    entities: list[EntitySnapshot],
+) -> "MatchResult | CommandPlan | None":
+    """Scripts/scenes found by name similarity become inferred routines."""
+    by_id = {entity.entity_id: entity for entity in entities}
+
+    def mark(result: MatchResult) -> MatchResult:
+        plan = result.plan
+        if plan is None or result.origin is not PlanOrigin.EXPLICIT_COMMAND:
+            return result
+        target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+        routines = [
+            by_id[entity_id] for entity_id in target_ids
+            if entity_id.split(".", 1)[0] in {"script", "scene"} and entity_id in by_id
+        ]
+        if routines and not all(routine_named_explicitly(text, entity) for entity in routines):
+            return replace(result, origin=PlanOrigin.INFERRED_ROUTINE)
+        return result
+
+    if isinstance(payload, MatchResult):
+        return mark(payload)
+    if isinstance(payload, CommandPlan):
+        commands = tuple(mark(item) for item in payload.commands)
+        if all(new is old for new, old in zip(commands, payload.commands)):
+            return payload
+        return replace(payload, commands=commands, origin=PlanOrigin.INFERRED_ROUTINE)
+    return payload
 
 
 # Sentinel: the genus model proved the legacy reading incomplete.
@@ -1250,6 +1286,25 @@ class NluEngine:
         *,
         context: UnderstandingContext | None = None,
     ) -> UnderstandingOutcome[MatchResult | CommandPlan]:
+        """Canonical result of one direct turn, with the plan's origin set."""
+        outcome = self._understand(
+            text, entities, world_model, document, context=context
+        )
+        payload = outcome.payload
+        marked = _mark_inferred_routines(payload, text, entities)
+        if marked is payload:
+            return outcome
+        return replace(outcome, payload=marked)
+
+    def _understand(
+        self,
+        text: str,
+        entities: list[EntitySnapshot],
+        world_model: WorldModel | None = None,
+        document: LanguageDocument | None = None,
+        *,
+        context: UnderstandingContext | None = None,
+    ) -> UnderstandingOutcome[MatchResult | CommandPlan]:
         """Return a canonical, reason-carrying result for one direct turn.
 
         The V8 language document and semantic interpreter are the sole
@@ -1446,14 +1501,18 @@ class NluEngine:
             rendered.append(item)
         if not rendered:
             return None
+        rendered = [replace(item, origin=outcome.origin) for item in rendered]
         if outcome.confirm is not None:
-            return CommandPlan(tuple(rendered), confirmation_text=outcome.confirm)
+            return CommandPlan(
+                tuple(rendered), confirmation_text=outcome.confirm, origin=outcome.origin
+            )
         if len(rendered) == 1:
             return replace(rendered[0], response_text=outcome.reason or rendered[0].response_text)
         first, *rest = rendered
         return CommandPlan(
             (replace(first, response_text=outcome.reason or first.response_text),
-             *(replace(item, response_text="") for item in rest))
+             *(replace(item, response_text="") for item in rest)),
+            origin=outcome.origin,
         )
 
     def understand_release(

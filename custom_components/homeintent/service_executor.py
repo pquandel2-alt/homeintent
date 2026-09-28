@@ -10,8 +10,10 @@ from homeassistant.core import HomeAssistant
 from .agent_action_policy import RESERVED_TARGET_DATA_KEYS
 from .audit_log import AuditTrail
 from .entities import STATELESS_ACTION_DOMAINS, EntitySnapshot
+from .effect_graph import build_plan_effects
 from .effect_monitor import EffectMonitor
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
+from .plan_origin import PlanOrigin
 from .service_call import ServiceCallPlan
 
 
@@ -34,10 +36,27 @@ async def async_execute_service_plan(
     audit_trail: AuditTrail | None = None,
     audit_actor_id: str | None = None,
     effect_monitor: EffectMonitor | None = None,
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND,
+    attended: bool = True,
+    binding_confirmed: bool = False,
 ) -> ExecutionResult:
-    """Re-evaluate policy immediately before the only physical write."""
+    """Re-evaluate policy immediately before the only physical write.
+
+    The transitive effect graph of scripts, scenes and groups is rebuilt
+    here, after any confirmation, so a script edited between the preview and
+    the "Ja" is checked with its new content.
+    """
+    effects = build_plan_effects(hass, plan)
     decision = evaluate_service_plan(
-        plan, entities, options, is_admin=is_admin, user_id=user_id
+        plan,
+        entities,
+        options,
+        is_admin=is_admin,
+        user_id=user_id,
+        effects=effects,
+        origin=origin,
+        attended=attended,
+        binding_confirmed=binding_confirmed,
     )
     if decision.outcome is PolicyOutcome.DENY:
         return ExecutionResult(False, decision, decision.reason)

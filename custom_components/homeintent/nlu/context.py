@@ -19,6 +19,7 @@ from ..areas import AreaSnapshot
 from ..automation_summary import AutomationSummary
 from ..entities import EntitySnapshot
 from ..floors import FloorSnapshot
+from ..plan_origin import PlanOrigin
 from ..service_call import ServiceCallPlan
 from .automation_model import AutomationModel, TriggerModel
 from .command import SemanticCommand
@@ -168,6 +169,7 @@ class PendingServiceConfirmation:
     # A previewed group operation ("Soll ich A, B und C ausschalten?") runs
     # these plans after ``plan`` once the user confirms.
     additional_plans: tuple[ServiceCallPlan, ...] = ()
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
 
 
 @dataclass(frozen=True)

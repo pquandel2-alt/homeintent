@@ -77,6 +77,7 @@ from .const import (
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
+    CONF_EFFECT_GRAPH_UNKNOWN,
     CONF_CONTEXT_TTL_SECONDS,
     CONF_BANTER_LEVEL,
     CONF_CONTROL_USER_IDS,
@@ -281,6 +282,10 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_MAX_ACTION_TARGETS,
                         default=defaults.get(CONF_MAX_ACTION_TARGETS, 50),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
+                    vol.Optional(
+                        CONF_EFFECT_GRAPH_UNKNOWN,
+                        default=defaults.get(CONF_EFFECT_GRAPH_UNKNOWN, "deny"),
+                    ): vol.In(("deny", "confirm")),
                     vol.Optional(
                         CONF_ALLOW_NON_ADMIN_CRITICAL,
                         default=defaults.get(CONF_ALLOW_NON_ADMIN_CRITICAL, False),

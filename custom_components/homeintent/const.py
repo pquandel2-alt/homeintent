@@ -8,6 +8,10 @@ CONF_SELECTED_ENTITIES = "selected_entities"
 CONF_READ_ONLY_ENTITIES = "read_only_entities"
 CONF_CONFIRMATION_LEVEL = "confirmation_level"
 CONF_MAX_ACTION_TARGETS = "max_action_targets"
+# What to do when a script/scene/group contains a step whose effect cannot
+# be determined statically: "deny" (default) or "confirm".
+CONF_EFFECT_GRAPH_UNKNOWN = "effect_graph_unknown"
+EFFECT_GRAPH_UNKNOWN_OPTIONS = ("deny", "confirm")
 CONF_ALLOW_NON_ADMIN_CRITICAL = "allow_non_admin_critical"
 CONF_ALLOW_NON_ADMIN_AUTOMATIONS = "allow_non_admin_automations"
 CONF_CONTEXT_TTL_SECONDS = "context_ttl_seconds"
