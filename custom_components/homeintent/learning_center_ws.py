@@ -58,6 +58,9 @@ from .learning_control import (
 from .habit_discovery import routine_from_habit_model
 from .proactive_model import SituationKind
 from .execution_trace import actor_hash, trace_view
+from .bindings import KIND_LABELS_DE, BindingKind, binding_state
+from .const import CONF_IMPLICIT_ACTION_LEVEL, DEFAULT_IMPLICIT_ACTION_LEVEL, IMPLICIT_ACTION_LEVELS
+from .nlu.need_semantics import routine_concept_by_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -713,6 +716,103 @@ async def _h_traces_list(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: d
     }
 
 
+def _binding_view(hass: HomeAssistant, entry: Any, binding: Any, viewer: Viewer) -> dict[str, Any]:
+    exposed = {item.entity_id for item in _exposed_snapshots(hass, entry)}
+    existing = {item for item in binding.targets() if hass.states.get(item) is not None}
+    concept = routine_concept_by_key(binding.key) if binding.kind is BindingKind.ROUTINE else None
+    state = hass.states.get(binding.target)
+    return {
+        "binding_id": binding.binding_id,
+        "kind": binding.kind.value,
+        "kind_label": KIND_LABELS_DE.get(binding.kind, binding.kind.value),
+        "key": binding.key,
+        "key_label": concept.label if concept is not None else binding.key,
+        "target": binding.target,
+        "target_label": (
+            str(state.attributes.get("friendly_name") or binding.target)
+            if state is not None else binding.target
+        ),
+        "scope": binding.scope.value,
+        "uses": binding.uses,
+        "last_used": binding.last_used,
+        "created_at": binding.created_at,
+        "state": binding_state(binding, existing, exposed).value,
+        "can_remove": viewer.is_admin or binding.user_id == viewer.user_id
+        or binding.created_by == viewer.user_id,
+    }
+
+
+def _exposed_snapshots(hass: HomeAssistant, entry: Any) -> list[Any]:
+    from .hass_entities import build_entity_snapshots
+
+    try:
+        return build_entity_snapshots(hass, entry)
+    except Exception:  # noqa: BLE001 - a missing registry must not break the view
+        return []
+
+
+async def _h_bindings_list(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: dict[str, Any]) -> Any:
+    """Confirmed bindings (7.3.3): visible, changeable and removable."""
+    store = entry.runtime_data.bindings
+    return {
+        "api_version": API_VERSION,
+        "bindings": [
+            _binding_view(hass, entry, item, viewer)
+            for item in store.visible_to(viewer.user_id, is_admin=viewer.is_admin)
+        ],
+        "implicit_action_level": str(
+            entry.options.get(CONF_IMPLICIT_ACTION_LEVEL, DEFAULT_IMPLICIT_ACTION_LEVEL)
+        ),
+        "implicit_action_levels": list(IMPLICIT_ACTION_LEVELS),
+        "can_change_level": viewer.is_admin,
+    }
+
+
+async def _h_bindings_remove(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: dict[str, Any]) -> Any:
+    store = entry.runtime_data.bindings
+    binding = store.get(str(msg["binding_id"]))
+    if binding is None:
+        raise LearningCenterError("not_found")
+    if not (viewer.is_admin or binding.user_id == viewer.user_id or binding.created_by == viewer.user_id):
+        raise LearningCenterError("not_authorized")
+    await store.async_remove(binding.binding_id)
+    entry.runtime_data.learning_center_revision.bump()
+    return {"removed": True}
+
+
+async def _h_set_implicit_level(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: dict[str, Any]) -> Any:
+    if not viewer.is_admin:
+        raise LearningCenterError("not_authorized")
+    level = str(msg["level"])
+    if level not in IMPLICIT_ACTION_LEVELS:
+        raise LearningCenterError("not_found")
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_IMPLICIT_ACTION_LEVEL: level}
+    )
+    entry.runtime_data.learning_center_revision.bump()
+    return {"implicit_action_level": level}
+
+
+@websocket_api.websocket_command(_cmd("bindings/list"))
+@websocket_api.async_response
+async def ws_bindings_list(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
+    await _run(hass, connection, msg, _h_bindings_list)
+
+
+@websocket_api.websocket_command(_cmd("bindings/remove", {vol.Required("binding_id"): str}))
+@websocket_api.async_response
+async def ws_bindings_remove(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
+    await _run(hass, connection, msg, _h_bindings_remove, audit_action="bindings/remove")
+
+
+@websocket_api.websocket_command(_cmd("settings/implicit_action_level", {
+    vol.Required("level"): vol.In(IMPLICIT_ACTION_LEVELS),
+}))
+@websocket_api.async_response
+async def ws_set_implicit_level(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
+    await _run(hass, connection, msg, _h_set_implicit_level, audit_action="settings/implicit_action_level")
+
+
 @websocket_api.websocket_command(_cmd("traces/list", {
     vol.Optional("limit", default=40): _limit(200),
 }))
@@ -755,7 +855,8 @@ _COMMANDS = (
     ws_models_forget, ws_models_reset, ws_preferences_confirm, ws_preferences_reject,
     ws_habits_preview, ws_habits_accept, ws_habits_reject, ws_permissions_list,
     ws_permissions_revoke, ws_mutes_list, ws_mutes_remove, ws_history_list,
-    ws_tombstones_list, ws_traces_list, ws_subscribe,
+    ws_tombstones_list, ws_traces_list, ws_bindings_list, ws_bindings_remove,
+    ws_set_implicit_level, ws_subscribe,
 )
 
 

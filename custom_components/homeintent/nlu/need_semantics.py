@@ -27,6 +27,8 @@ __all__ = (
     "NeedKind",
     "NeedMeaning",
     "ROUTINE_CONCEPTS",
+    "routine_concept_by_key",
+    "routine_concept_of_compound",
     "RoutineConcept",
     "interpret_need",
 )
@@ -174,6 +176,22 @@ class NeedMeaning:
     routine: RoutineConcept | None = None
 
 
+def routine_concept_of_compound(word: str) -> RoutineConcept | None:
+    """„Schlafroutine“, „Nachtroutine“, „Filmroutine“ name a routine concept."""
+    folded = normalize_for_compare(word)
+    if not folded.endswith("routine") or len(folded) <= len("routine"):
+        return None
+    prefix = folded[: -len("routine")].rstrip("s")
+    for concept in ROUTINE_CONCEPTS:
+        if any(prefix.startswith(stem) for stem in concept.names) or prefix in concept.cues:
+            return concept
+    return None
+
+
+def routine_concept_by_key(key: str) -> RoutineConcept | None:
+    return next((concept for concept in ROUTINE_CONCEPTS if concept.key == key), None)
+
+
 def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeaning | None:
     """Recognise a need statement in normalized words, or ``None``."""
     normalized = [normalize_for_compare(word) for word in words]
@@ -184,6 +202,11 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
         # Negated, concessive, conditional or reported sensations and
         # memory instructions do not state a present need.
         return None
+    # A routine named by its concept ("Starte die Schlafroutine").
+    for word in normalized:
+        concept = routine_concept_of_compound(word)
+        if concept is not None:
+            return NeedMeaning(NeedKind.ROUTINE, word, concept)
     # Routine concepts: first-person announcement + concept cue.
     first_person = bool(word_set & {"ich", "wir", "bin", "sind"}) or (
         len(normalized) >= 2 and normalized[:2] in (["gute", "nacht"],)

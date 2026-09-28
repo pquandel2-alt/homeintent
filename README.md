@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.3.2** (nachvollziehbare Ausführung: HA-Kontext und Ursache-Wirkungs-Kette)
+- Aktuelle Version: **7.3.3** (Routine-Bindungen, Implicit Action Policy, nie raten)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,49 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.3.3 neu?
+
+**Gelernte Routinen, vorsichtige Bedürfnisse, nie raten.**
+
+- **Routine-Bindungen.** „Ich gehe schlafen“, „Gute Nacht“, „Filmabend“ oder
+  „Starte die Schlafroutine“ suchen beim ersten Mal nach passenden Skripten und
+  Szenen und **fragen**: „Welche Routine meinst du: Schlafen und Gute Nacht?“
+  bzw. „Meinst du mit schlafen gehen das Skript Gute Nacht?“. Erst nach deiner
+  Wahl oder deinem „Ja“ wird die Zuordnung gespeichert; danach sucht HomeIntent
+  für diesen Anlass nicht mehr nach Namensähnlichkeit. Jede Ausführung prüft
+  trotzdem wieder Freigabe, EffectGraph und Richtlinie; wird die gewählte
+  Routine abgelehnt (z. B. weil sie einen nicht freigegebenen Saugroboter
+  startet), wird auch nichts gespeichert. Ist das gebundene Ziel verschwunden
+  oder nicht mehr freigegeben, führt HomeIntent nichts aus und bietet eine neue
+  Zuordnung an.
+- Per Sprache steuerbar: „Vergiss die Schlafroutine“, „Schlafen ist ab jetzt das
+  Skript Gute Nacht“, „Welche Routine nutzt du für den Filmabend?“. Im Learning
+  Center (Tab Autonomie) sind alle Zuordnungen sichtbar und löschbar.
+- **Implicit Action Policy.** Neue Option `implicit_action_level` (auch im
+  Learning Center einstellbar):
+
+  | Stufe | Bedürfnis („Mir ist kalt“) | abgeleitete Routine |
+  | --- | --- | --- |
+  | `understand_only` | nur Antwort | nur Antwort |
+  | `propose` (**Standard**) | Vorschlag + „Ja“ | Vorschlag + „Ja“ |
+  | `low_risk_auto` | Harmloses direkt, sonst Vorschlag | Vorschlag + „Ja“ |
+  | `bound_routines_auto` | wie `low_risk_auto` | gebundene Routine direkt, wenn unter der Bestätigungsschwelle |
+
+  Eine indirekte Herkunft ist nie lockerer als derselbe ausdrückliche Befehl;
+  NEVER_AUTO gilt unverändert.
+- **Nie raten.**
+  - „hier“/„da“ nur aus dem Bereich des Sprachsatelliten oder einem im Gespräch
+    genannten Ort, sonst „In welchem Raum?“; die Antwort nennt immer den Ort.
+  - „Schalte um 22 Uhr das Licht aus“ ist ein **einmaliger** Auftrag (nächstes
+    22:00). Mit „jeden Tag“, „immer“, „täglich“, „werktags“ … entsteht eine
+    wiederkehrende Automation. Bei Sonnenauf-/-untergang und „wenn es dunkel
+    wird“ ohne solches Wort fragt HomeIntent: „Nur heute oder jeden Tag?“
+  - Ehrliche Begründungen aus den echten Fähigkeiten: „Flurlicht lässt sich nur
+    ein- und ausschalten.“ statt „unterstützt die Aktion nicht“. „Dreh da die
+    Heizung hoch“ nach einer Temperaturfrage erhöht den Sollwert.
+  - „Lass das Licht so, wie es ist“ ändert nichts und sagt das; ein „Ja“ ohne
+    offene Frage wird ehrlich beantwortet.
 
 ## Was ist in Version 7.3.2 neu?
 
@@ -1695,10 +1738,10 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.3.2:
+Geprüfter Release-Stand von Version 7.3.3:
 
 ```text
-6088 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6165 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
 tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
@@ -1743,7 +1786,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.3.2.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.3.3.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

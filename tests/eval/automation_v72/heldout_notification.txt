@@ -118,11 +118,11 @@ auto: arrive(person.philipp) => notify(julia) :: Sag Julia Bescheid, wenn ich na
 ## time_sun
 auto: time=07:00 => notify(me) :: Schick mir jeden Tag um 7 Uhr eine Benachrichtigung.
 auto: time=20:30 => notify(me) :: Benachrichtige mich täglich um 20:30 Uhr.
-auto: sun=sunset => notify(me) :: Sag mir bei Sonnenuntergang Bescheid.
-auto: sun=sunset => notify(me) :: Benachrichtige mich, wenn die Sonne untergeht.
-auto: sun=sunset => notify(me) :: Wenn es dunkel wird, schick mir eine Nachricht.
-auto: sun=sunrise => notify(me) :: Schick mir eine Nachricht bei Sonnenaufgang.
-auto: sun=sunset-30 => notify(me) :: Benachrichtige mich 30 Minuten vor Sonnenuntergang.
+auto: sun=sunset => notify(me) :: Sag mir bei Sonnenuntergang Bescheid. >> Jeden Tag.
+auto: sun=sunset => notify(me) :: Benachrichtige mich, wenn die Sonne untergeht. >> Jeden Tag.
+auto: sun=sunset => notify(me) :: Wenn es dunkel wird, schick mir eine Nachricht. >> Jeden Tag.
+auto: sun=sunrise => notify(me) :: Schick mir eine Nachricht bei Sonnenaufgang. >> Jeden Tag.
+auto: sun=sunset-30 => notify(me) :: Benachrichtige mich 30 Minuten vor Sonnenuntergang. >> Jeden Tag.
 ## duration
 auto: state(binary_sensor.buero_fenster)=open/for=600 => notify(me) :: Benachrichtige mich, wenn das Bürofenster seit zehn Minuten offen ist.
 auto: state(binary_sensor.buero_fenster)=open/for=600 => notify(me) :: Sag mir Bescheid, wenn das Bürofenster länger als 10 Minuten offen ist.

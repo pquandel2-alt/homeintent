@@ -101,6 +101,15 @@ def _maintain_in_clause(
     source: str, tokens: Sequence[_Token], start: int, end: int
 ) -> MaintainFrame | None:
     words = _words(tokens, start, end)
+    # "so, wie es ist" / "so wie sie sind": a manner comparison repeating
+    # "so", not a question and not a residue (7.3.3).
+    while (
+        len(words) >= 4
+        and tokens[words[-3]].canonical == "wie"
+        and tokens[words[-1]].canonical in _MANNER_COPULA
+        and tokens[words[-4]].canonical == "so"
+    ):
+        words = words[:-3]
     while words and tokens[words[0]].canonical in _LEADING_DISCOURSE:
         words.pop(0)
     while words and tokens[words[-1]].canonical in _TRAILING_DISCOURSE - {"so"}:
@@ -161,11 +170,32 @@ def _maintain_in_clause(
     )
 
 
+_MANNER_COPULA = frozenset({"ist", "sind", "war", "waren"})
+
+
+def _merge_manner_clauses(
+    tokens: Sequence[_Token], ranges: Sequence[tuple[int, int]]
+) -> tuple[tuple[int, int], ...]:
+    """Join "…, wie es ist" to the clause ending in "so"."""
+    merged: list[tuple[int, int]] = []
+    for start, end in ranges:
+        words = [tokens[index].canonical for index in _words(tokens, start, end)]
+        if (
+            merged and 2 <= len(words) <= 4 and words[0] == "wie" and words[-1] in _MANNER_COPULA
+        ):
+            previous = [tokens[index].canonical for index in _words(tokens, *merged[-1])]
+            if previous and previous[-1] == "so":
+                merged[-1] = (merged[-1][0], end)
+                continue
+        merged.append((start, end))
+    return tuple(merged)
+
+
 def maintain_frames(
     source: str, tokens: Sequence[_Token]
 ) -> tuple[tuple[MaintainFrame | None, ...], tuple[tuple[int, int], ...]]:
     """Return one optional maintenance frame per clause and the clause ranges."""
-    ranges = segment_clauses(tokens)
+    ranges = _merge_manner_clauses(tokens, segment_clauses(tokens))
     return (
         tuple(_maintain_in_clause(source, tokens, start, end) for start, end in ranges),
         ranges,

@@ -34,6 +34,8 @@ class DialogTaskKind(StrEnum):
     PROACTIVE_CLARIFICATION = "proactive_clarification"
     STANDING_PERMISSION_CONFIRMATION = "standing_permission_confirmation"
     PROACTIVE_MUTE_CONFIRMATION = "proactive_mute_confirmation"
+    ROUTINE_BINDING = "routine_binding"
+    RECURRENCE_CHOICE = "recurrence_choice"
 
 
 class DialogPriority(IntEnum):

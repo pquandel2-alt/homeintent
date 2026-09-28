@@ -235,6 +235,8 @@ from .notification_target import (
 )
 from .nlu.automation_model import (
     AutomationModel,
+    CalendarReference,
+    CalendarSchedule,
     TriggerModel,
     TriggerTarget,
     TriggerType,
@@ -320,6 +322,38 @@ from .execution_trace import (
     explain_change,
 )
 from .nlu.causal_question import interpret_cause_question
+from .nlu.recurrence import (
+    Recurrence,
+    answer_recurrence,
+    is_conditional,
+    recurrence_of,
+    trigger_kinds,
+)
+from .bindings import BindingKind, BindingScope
+from .nlu.need_semantics import ROUTINE_CONCEPTS, routine_concept_by_key
+from .routine_binding_intent import (
+    RoutineBindingOperation,
+    RoutineBindingRequest,
+    choose_candidate,
+    interpret_routine_binding,
+)
+
+
+@dataclass(frozen=True)
+class RoutineSelection:
+    """Open question "Welche Routine meinst du: A, B oder C?"."""
+
+    concept_key: str
+    candidate_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RoutineBindConfirmation:
+    """Open question "Soll ich für „…“ künftig X nehmen?"."""
+
+    concept_key: str
+    entity_id: str
+    personal: bool = False
 
 
 @dataclass(frozen=True)
@@ -742,6 +776,294 @@ class NluConversationEntity(
         self._apply_continue_conversation(user_input, result)
         return result
 
+    def _decide_recurrence(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        result: AutomationMatchResult,
+        entities: list[EntitySnapshot],
+        pending: ConversationContext | None,
+    ) -> AutomationMatchResult | conversation.ConversationResult:
+        """Once or recurring - never guessed (7.3.3, Q5)."""
+        model = result.model
+        if result.validation_error is not None or model.once or model.max_runs is not None:
+            return result
+        kinds = trigger_kinds(model.triggers)
+        recurrence = recurrence_of(user_input.text)
+        if recurrence is Recurrence.RECURRING or not kinds or not kinds <= {"TIME", "SUN"}:
+            return result
+        conditional = is_conditional(user_input.text)
+        time_triggers = [item for item in model.triggers if item.time_hour is not None]
+        if kinds == {"TIME"} and not conditional and len(time_triggers) == 1 == len(model.triggers):
+            # "Schalte um 22 Uhr das Licht aus": a one-time command at the
+            # next occurrence of that clock time, not a daily automation.
+            trigger = time_triggers[0]
+            hour, minute = trigger.time_hour or 0, trigger.time_minute or 0
+            once_model = replace(
+                model,
+                triggers=(TriggerModel(type=TriggerType.CALENDAR_TIME),),
+                once=True,
+                calendar_schedule=CalendarSchedule(
+                    CalendarReference.NEXT_OCCURRENCE, hour, minute,
+                    spoken=f"um {hour:02d}:{minute:02d} Uhr",
+                ),
+            )
+            validation = validate_automation(once_model)
+            if validation is None:
+                return replace(result, model=once_model, validation_error=None)
+        if recurrence is Recurrence.ONCE:
+            return replace(result, model=replace(model, max_runs=1))
+        self._runtime_data.dialog_manager.create(
+            user_input.conversation_id,
+            "recurrence-choice",
+            DialogTaskKind.RECURRENCE_CHOICE,
+            DialogPriority.SELECTION,
+            reason="Ob ein Auftrag einmalig oder wiederkehrend gilt, rate ich nicht.",
+            requested_by_user_id=conversation_user_id(user_input),
+            payload=result,
+        )
+        preview = render_automation_preview(model, entities)
+        understood = preview.removesuffix("Soll diese Automation erstellt werden?").strip()
+        response.async_set_speech(f"{understood} Nur heute oder jeden Tag?".strip())
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id
+        )
+
+    def _handle_recurrence_choice(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        manager = self._runtime_data.dialog_manager
+        if not isinstance(task.payload, AutomationMatchResult):
+            return None
+        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
+            response.async_set_speech("Diese Rückfrage gehört zu einem anderen Benutzer.")
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        answer = answer_recurrence(user_input.text)
+        if classify_confirmation_reply(user_input.text) is ConfirmationReply.NO:
+            manager.cancel(user_input.conversation_id, task.task_id)
+            response.async_set_speech("In Ordnung, ich lege nichts an.")
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        if answer is Recurrence.UNSPECIFIED:
+            if len(user_input.text.split()) > 4:
+                manager.cancel(user_input.conversation_id, task.task_id)
+                return None
+            response.async_set_speech("Bitte sag „nur heute“ oder „jeden Tag“.")
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        manager.cancel(user_input.conversation_id, task.task_id)
+        result = task.payload
+        if answer is Recurrence.ONCE:
+            result = replace(result, model=replace(result.model, max_runs=1))
+        return self._handle_automation_match_result(user_input, response, result, entities)
+
+    def _routine_bindings_for(self, user_id: str | None) -> dict[str, str]:
+        """Concept -> bound script/scene for this speaker (own before household)."""
+        store = self._runtime_data.bindings
+        found: dict[str, str] = {}
+        for concept in ROUTINE_CONCEPTS:
+            binding = store.find(BindingKind.ROUTINE, concept.key, user_id)
+            if binding is not None:
+                found[concept.key] = binding.target
+        return found
+
+    async def _async_store_routine_binding(
+        self, concept_key: str, entity_id: str, user_id: str | None, *, personal: bool = False
+    ) -> str:
+        """Store after an explicit "Ja"/choice; returns the spoken note."""
+        concept = routine_concept_by_key(concept_key)
+        await self._runtime_data.bindings.async_bind(
+            BindingKind.ROUTINE,
+            concept_key,
+            entity_id,
+            confirmed=True,
+            scope=BindingScope.USER if personal and user_id else BindingScope.HOUSEHOLD,
+            user_id=user_id if personal else None,
+            created_by=user_id,
+            now=dt_util.now(),
+        )
+        self._runtime_data.learning_center_revision.bump()
+        label = concept.label if concept is not None else concept_key
+        return f"Das merke ich mir für „{label}“."
+
+    async def _async_handle_routine_binding_request(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        request: RoutineBindingRequest,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        """"Vergiss die Schlafroutine" / "Schlafen ist ab jetzt das Skript X"."""
+        user_id = conversation_user_id(user_input)
+        store = self._runtime_data.bindings
+        label = request.concept.label
+        if request.operation is RoutineBindingOperation.SHOW:
+            binding = store.find(BindingKind.ROUTINE, request.concept.key, user_id)
+            name = (
+                next(
+                    (item.friendly_name for item in entities if item.entity_id == binding.target),
+                    binding.target,
+                )
+                if binding is not None else None
+            )
+            response.async_set_speech(
+                f"Für „{label}“ nehme ich {name}." if name
+                else f"Für „{label}“ ist noch keine Routine hinterlegt."
+            )
+        elif request.operation is RoutineBindingOperation.FORGET:
+            binding = store.find(BindingKind.ROUTINE, request.concept.key, user_id)
+            is_admin = await user_is_admin(self.hass, user_input)
+            if binding is None:
+                response.async_set_speech(f"Für „{label}“ war keine Routine hinterlegt.")
+            elif (
+                binding.scope is BindingScope.HOUSEHOLD
+                and not is_admin
+                and binding.created_by not in {None, user_id}
+            ):
+                response.async_set_speech(
+                    f"Die Routine für „{label}“ gilt für den ganzen Haushalt; "
+                    "ändern darf sie nur, wer sie angelegt hat, oder ein Administrator."
+                )
+            else:
+                await store.async_remove(binding.binding_id)
+                self._runtime_data.learning_center_revision.bump()
+                response.async_set_speech(
+                    f"Erledigt. Für „{label}“ ist keine Routine mehr hinterlegt; "
+                    "beim nächsten Mal frage ich wieder nach."
+                )
+        elif request.target is None:
+            names = ", ".join(entity.friendly_name for entity in request.candidates)
+            response.async_set_speech(
+                f"Welche Routine meinst du genau: {names}?" if request.candidates
+                else "Ein Skript oder eine Szene mit diesem Namen finde ich nicht."
+            )
+        else:
+            kind = "die Szene" if request.target.domain == "scene" else "das Skript"
+            self._runtime_data.dialog_manager.create(
+                user_input.conversation_id,
+                "routine-binding",
+                DialogTaskKind.ROUTINE_BINDING,
+                DialogPriority.CONFIRMATION,
+                reason="Eine Routine-Bindung muss ausdrücklich bestätigt werden.",
+                requested_by_user_id=user_id,
+                payload=RoutineBindConfirmation(
+                    request.concept.key, request.target.entity_id, request.personal
+                ),
+            )
+            response.async_set_speech(
+                f"Soll ich für „{label}“ künftig {kind} {request.target.friendly_name} nehmen?"
+            )
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id
+        )
+
+    async def _async_handle_routine_binding_task(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        """Answer to a routine choice or a spoken binding confirmation."""
+        manager = self._runtime_data.dialog_manager
+        conversation_id = user_input.conversation_id
+        actor_id = conversation_user_id(user_input)
+        if task.requested_by_user_id is not None and task.requested_by_user_id != actor_id:
+            response.async_set_speech("Diese Rückfrage gehört zu einem anderen Benutzer.")
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+        payload = task.payload
+        reply = classify_confirmation_reply(user_input.text)
+        if isinstance(payload, RoutineBindConfirmation):
+            manager.cancel(conversation_id, task.task_id)
+            if reply is ConfirmationReply.YES:
+                if not any(entity.entity_id == payload.entity_id for entity in entities):
+                    response.async_set_speech(
+                        "Diese Routine ist nicht mehr freigegeben. Ich habe nichts gespeichert."
+                    )
+                else:
+                    note = await self._async_store_routine_binding(
+                        payload.concept_key, payload.entity_id, actor_id, personal=payload.personal
+                    )
+                    response.async_set_speech(f"Gespeichert. {note}")
+            elif reply is ConfirmationReply.NO:
+                response.async_set_speech("In Ordnung, ich habe nichts gespeichert.")
+            else:
+                return None
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+        if not isinstance(payload, RoutineSelection):
+            return None
+        if reply is ConfirmationReply.NO:
+            manager.cancel(conversation_id, task.task_id)
+            response.async_set_speech("In Ordnung, ich habe nichts gestartet.")
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+        candidates = [
+            entity for candidate_id in payload.candidate_ids
+            for entity in entities if entity.entity_id == candidate_id
+        ]
+        chosen = choose_candidate(user_input.text, candidates)
+        if chosen is None:
+            if len(user_input.text.split()) > 4:
+                manager.cancel(conversation_id, task.task_id)
+                return None  # a new request, not an answer
+            names = ", ".join(entity.friendly_name for entity in candidates)
+            response.async_set_speech(f"Welche meinst du: {names}?")
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+        manager.cancel(conversation_id, task.task_id)
+        # The user named the routine: evaluated like the explicit command.
+        plan = ServiceCallPlan(chosen.domain, "turn_on", chosen.entity_id)
+        is_admin = await user_is_admin(self.hass, user_input)
+        policy = evaluate_service_plan(
+            plan, entities, self.entry.options, is_admin=is_admin, user_id=actor_id,
+            effects=build_plan_effects(self.hass, plan),
+        )
+        success = f"{chosen.friendly_name} ausgeführt."
+        if policy.outcome is PolicyOutcome.DENY:
+            response.async_set_speech(
+                (policy.reason or "Diese Routine darf ich nicht ausführen.")
+                + " Ich habe nichts gespeichert."
+            )
+        elif policy.outcome is PolicyOutcome.CONFIRM:
+            self._context_store.set(
+                conversation_id,
+                ConversationContext(
+                    last_command=None,
+                    last_entities=(),
+                    last_area=None,
+                    pending_clarification=None,
+                    pending_service_confirmation=PendingServiceConfirmation(
+                        plan, success, actor_id,
+                        binding_offer=(payload.concept_key, chosen.entity_id),
+                    ),
+                ),
+            )
+            question = _confirmation_question(success)
+            response.async_set_speech(f"{policy.note} {question}" if policy.note else question)
+        else:
+            execution = await async_execute_service_plan(
+                self.hass, plan, entities, self.entry.options,
+                is_admin=is_admin, user_id=actor_id, confirmed=False,
+                audit_trail=self._audit_trail, audit_actor_id=actor_id,
+                effect_monitor=self._runtime_data.effect_monitor,
+            )
+            if not execution.executed:
+                response.async_set_speech(
+                    f"{execution.error or 'Das hat nicht geklappt.'} Ich habe nichts gespeichert."
+                )
+            else:
+                note = await self._async_store_routine_binding(
+                    payload.concept_key, chosen.entity_id, actor_id
+                )
+                response.async_set_speech(f"{_with_effect_summary(success, execution)} {note}")
+        return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+
     async def _async_explain_cause(self, entity: EntitySnapshot) -> CauseExplanation:
         """Cause of a device's current state, strictly from evidence."""
         trace = self._runtime_data.trace
@@ -1076,6 +1398,28 @@ class NluConversationEntity(
 
         if (
             active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.RECURRENCE_CHOICE
+        ):
+            handled = self._handle_recurrence_choice(
+                user_input, response, active_task, entities
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.ROUTINE_BINDING
+        ):
+            handled = await self._async_handle_routine_binding_task(
+                user_input, response, active_task, entities
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is None
             and language_document.utterance.modality is Modality.MAINTAIN
             and language_document.maintained
         ):
@@ -1142,10 +1486,26 @@ class NluConversationEntity(
                     if pending is not None and pending.last_area is not None
                     else None
                 ),
+                routine_bindings=self._routine_bindings_for(conversation_user_id(user_input)),
             )
             if isinstance(need, CommandPlan):
                 return await self._async_handle_command_plan(
                     user_input, response, need, entities
+                )
+            if (
+                need is not None and need.plan is None and need.routine_key is not None
+                and len(need.routine_candidates) > 1
+            ):
+                # "Welche Routine meinst du: A, B oder C?" - the answer binds.
+                manager.create(
+                    user_input.conversation_id,
+                    "routine-binding",
+                    DialogTaskKind.ROUTINE_BINDING,
+                    DialogPriority.SELECTION,
+                    candidates=need.routine_candidates,
+                    reason="Die Routine für einen Anlass muss ausdrücklich gewählt werden.",
+                    requested_by_user_id=conversation_user_id(user_input),
+                    payload=RoutineSelection(need.routine_key, need.routine_candidates),
                 )
             if need is not None and need.plan is None:
                 response.async_set_speech(need.response_text)
@@ -1576,6 +1936,12 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response,
                 conversation_id=user_input.conversation_id,
+            )
+
+        routine_request = interpret_routine_binding(user_input.text, entities)
+        if routine_request is not None:
+            return await self._async_handle_routine_binding_request(
+                user_input, response, routine_request, entities
             )
 
         alias_draft = parse_alias_learning(user_input.text, entities)
@@ -2201,8 +2567,11 @@ class NluConversationEntity(
             )
 
         if isinstance(result, AutomationMatchResult):
+            decided = self._decide_recurrence(user_input, response, result, entities, pending)
+            if isinstance(decided, conversation.ConversationResult):
+                return decided
             return self._handle_automation_match_result(
-                user_input, response, result, entities
+                user_input, response, decided, entities
             )
 
         if isinstance(result, AutomationDraftMatchResult):
@@ -4945,6 +5314,7 @@ class NluConversationEntity(
                 user_id=conversation_user_id(user_input),
                 effects=build_plan_effects(self.hass, result.plan),
                 origin=result.origin,
+                binding_confirmed=result.binding_confirmed,
             )
             if policy.outcome is PolicyOutcome.DENY:
                 self._context_store.clear(user_input.conversation_id)
@@ -4972,12 +5342,13 @@ class NluConversationEntity(
                                 entities,
                                 requested_by_user_id=conversation_user_id(user_input),
                             ),
+                            origin=result.origin,
+                            binding_confirmed=result.binding_confirmed,
                         ),
                     ),
                 )
-                response.async_set_speech(
-                    _confirmation_question(result.response_text, policy.note)
-                )
+                question = result.proposal_text or _confirmation_question(result.response_text)
+                response.async_set_speech(f"{policy.note} {question}" if policy.note else question)
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
@@ -5079,6 +5450,7 @@ class NluConversationEntity(
                 audit_actor_id=conversation_user_id(user_input),
                 effect_monitor=self._runtime_data.effect_monitor,
                 origin=result.origin,
+                binding_confirmed=result.binding_confirmed,
             )
             if not execution.executed:
                 self._context_store.clear(user_input.conversation_id)
@@ -5526,9 +5898,21 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+        bare_reply = (
+            len(user_input.text.split()) <= 3
+            and classify_confirmation_reply(user_input.text)
+            in {ConfirmationReply.YES, ConfirmationReply.NO}
+        )
         response.async_set_error(
             intent.IntentResponseErrorCode.NO_INTENT_MATCH,
-            self._engine.failure_feedback(user_input.text, entities) or NOT_UNDERSTOOD_TEXT,
+            self._engine.failure_feedback(user_input.text, entities)
+            or (
+                # A bare "Ja"/"Nein" with nothing open (for example after a
+                # refusal) is answered honestly (7.3.3).
+                "Gerade ist keine Frage offen, auf die sich das beziehen könnte. "
+                "Ich habe nichts ausgeführt."
+                if bare_reply else NOT_UNDERSTOOD_TEXT
+            ),
         )
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -5570,6 +5954,7 @@ class NluConversationEntity(
                 user_id=actor_id,
                 effects=build_plan_effects(self.hass, sub_result.plan),
                 origin=result.origin,
+                binding_confirmed=result.binding_confirmed,
             )
             if policy.outcome is PolicyOutcome.DENY:
                 self._context_store.clear(user_input.conversation_id)
@@ -5581,6 +5966,13 @@ class NluConversationEntity(
                     response=response,
                     conversation_id=user_input.conversation_id,
                 )
+            if (
+                policy.outcome is PolicyOutcome.CONFIRM
+                and result.confirmation_text is None
+                and result.proposal_text is not None
+            ):
+                # An implicit need proposed as a whole (implicit_action_level).
+                result = replace(result, confirmation_text=result.proposal_text)
             if (
                 policy.outcome is PolicyOutcome.CONFIRM
                 and result.confirmation_text is None
@@ -5619,6 +6011,14 @@ class NluConversationEntity(
                             None,
                             tuple(plans[1:]),
                             origin=result.origin,
+                            binding_confirmed=result.binding_confirmed,
+                            binding_offer=(
+                                (result.routine_key, result.routine_candidates[0])
+                                if result.routine_key is not None
+                                and not result.binding_confirmed
+                                and len(result.routine_candidates) == 1
+                                else None
+                            ),
                         ),
                     ),
                 )
@@ -7445,6 +7845,7 @@ class NluConversationEntity(
                 audit_actor_id=current_user_id,
                 effect_monitor=self._runtime_data.effect_monitor,
                 origin=confirmation.origin,
+                binding_confirmed=confirmation.binding_confirmed,
             )
             for additional in confirmation.additional_plans:
                 if not execution.executed:
@@ -7475,9 +7876,12 @@ class NluConversationEntity(
                     f"Fehler beim Ausführen: {execution.error}",
                 )
             else:
-                response.async_set_speech(
-                    _with_effect_summary(confirmation.success_text, execution)
-                )
+                spoken = _with_effect_summary(confirmation.success_text, execution)
+                if confirmation.binding_offer is not None:
+                    spoken = f"{spoken} " + await self._async_store_routine_binding(
+                        *confirmation.binding_offer, current_user_id
+                    )
+                response.async_set_speech(spoken)
                 if undo is not None:
                     self._context_store.set(
                         user_input.conversation_id,

@@ -35,6 +35,7 @@ from .ontology_compiler import (
     _FILLER_WORDS,
     _compile_clauses,
     _operation_words,
+    directional_as_degree,
 )
 from .place_model import Place, PlaceKind, build_place_lexicon
 from .semantic_catalog import DEGREE_WORDS, PROPERTY_GENUS
@@ -254,6 +255,11 @@ def compile_discourse(
         ),)
     else:
         return None
+    genera = {key for item in descriptions for key in item.genera} | {
+        key for item in descriptions for entity in item.explicit
+        for key in entity_genera(entity) - {"device"}
+    }
+    actions, degree = directional_as_degree(frozenset(actions), degree, words, genera)
     clause = ClauseMeaning(
         text=text, actions=actions, degree=degree, percent=percent,
         temperature=temperature, descriptions=tuple(descriptions),

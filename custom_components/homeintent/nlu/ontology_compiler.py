@@ -274,18 +274,7 @@ def _clause_meanings(
             ))
             continue
         genera_here = {key for item in descriptions for key in item.genera}
-        if (
-            actions in (frozenset({"open"}), frozenset({"close"}))
-            and degree is None
-            and any(word.startswith("dreh") for word in words_here)
-            and genera_here and not genera_here & _MOVABLE_GENERA
-        ):
-            # "Dreh die Heizung hoch", "Dreh das Radio runter": turning a
-            # control up or down changes the device's scalar property.
-            properties = {_GENUS_PROPERTY.get(key) for key in genera_here}
-            if len(properties) == 1 and None not in properties:
-                degree = (next(iter(properties)) or "", 1 if actions == {"open"} else -1)
-                actions = frozenset()
+        actions, degree = directional_as_degree(actions, degree, words_here, genera_here)
         if (
             not actions and degree is None and percent is None and temperature is None
             and any(word.startswith("mach") for word in words_here)
@@ -345,6 +334,29 @@ _GENUS_PROPERTY = {
     "heating": "temperature", "light": "brightness", "media": "volume", "tv": "volume",
     "radio": "volume", "music": "volume", "fan": "speed",
 }
+
+
+def directional_as_degree(
+    actions: frozenset[str],
+    degree: tuple[str, int] | None,
+    words: Sequence[str],
+    genera: set[str] | frozenset[str],
+) -> tuple[frozenset[str], tuple[str, int] | None]:
+    """"Dreh die Heizung hoch", "Dreh das Radio runter": turning a control
+    up or down changes the device's scalar property, not its position.
+
+    Shared by the direct and the discourse compiler (one lexical rule).
+    """
+    if (
+        actions in (frozenset({"open"}), frozenset({"close"}))
+        and degree is None
+        and any(word.startswith("dreh") for word in words)
+        and genera and not set(genera) & _MOVABLE_GENERA
+    ):
+        properties = {_GENUS_PROPERTY.get(key) for key in genera}
+        if len(properties) == 1 and None not in properties:
+            return frozenset(), (next(iter(properties)) or "", 1 if actions == {"open"} else -1)
+    return actions, degree
 
 
 def _within_reported_range(entity: EntitySnapshot, temperature: float) -> bool:

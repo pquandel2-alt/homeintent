@@ -99,10 +99,10 @@ auto: time=07:00 ; if: weekday=mon => notify(me) :: Schick mir jeden Montag um 7
 auto: time=18:00 ; if: weekday=sat,sun => notify(me) :: Benachrichtige mich am Wochenende um 18 Uhr.
 auto: state(binary_sensor.haustuer)=open ; if: weekday=mon,tue,wed,thu,fri => notify(me) :: Sag mir an Werktagen Bescheid, wenn die Haustür aufgeht.
 ## sun_variants
-auto: sun=sunset => notify(me) :: Sobald die Sonne untergeht, schick mir eine Nachricht.
-auto: sun=sunrise => notify(me) :: Benachrichtige mich, wenn die Sonne aufgeht.
-auto: sun=sunrise => notify(me) :: Wenn es hell wird, sag mir Bescheid.
-auto: sun=sunset+10 => notify(me) :: Benachrichtige mich 10 Minuten nach Sonnenuntergang.
+auto: sun=sunset => notify(me) :: Sobald die Sonne untergeht, schick mir eine Nachricht. >> Jeden Tag.
+auto: sun=sunrise => notify(me) :: Benachrichtige mich, wenn die Sonne aufgeht. >> Jeden Tag.
+auto: sun=sunrise => notify(me) :: Wenn es hell wird, sag mir Bescheid. >> Jeden Tag.
+auto: sun=sunset+10 => notify(me) :: Benachrichtige mich 10 Minuten nach Sonnenuntergang. >> Jeden Tag.
 ## more_conditions
 auto: state(binary_sensor.terrassentuer)=open ; if: nobody_home => notify(me) :: Benachrichtige mich, wenn die Terrassentür aufgeht, während niemand zuhause ist.
 auto: state(binary_sensor.haustuer)=open ; if: time<06:00 => notify(me) :: Schick mir eine Nachricht, wenn die Haustür vor 6 Uhr geöffnet wird.

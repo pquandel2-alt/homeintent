@@ -274,7 +274,8 @@ unverändert bleiben; der Kontext selbst wird in den neuen Tests geprüft.
 
 ### Live-Prüfung
 
-Frisches Testhaus, eigenes Prüfskript: **8/8**.
+Frisches Testhaus, eigenes Prüfskript: **8/8**. Funktionsszenarien
+(`runner.py`, ohne Proaktiv) gegen genau diesen Stand: **155/155**.
 - „Aktiviere Nachtruhe.“ (Skript mit `vacuum.start`, Saugroboter absichtlich
   freigegeben) → der HA-Zustand des Saugroboters trägt den Kontext mit der
   Benutzer-ID; „Warum ist der Saugroboter angegangen?“ → „Du hast um 11:36
@@ -297,3 +298,124 @@ Frisches Testhaus, eigenes Prüfskript: **8/8**.
   angelegte Automation aus; deren spätere Wirkung erscheint im Trace als
   AUTOMATION_EFFECT dieser Automation, nicht als Glied der ursprünglichen
   Äußerung (HA verknüpft den Zeit-Auslöser nicht mit dem Anlegekontext).
+
+---
+
+## Phase 3 – Routine-Bindings, Implicit Action Policy, nie raten (7.3.3)
+
+### Umgesetzt
+
+- **`bindings.py`** (neu): der eine Speicher für alles Gelernte
+  (`ROUTINE`, `ALIAS`, `DEFAULT_CHOICE`, `PREFERENCE`, `MACRO`), Geltung
+  `USER`/`HOUSEHOLD`, `created_by`, `created_at`, `uses`, `last_used`.
+  JSON-Datei mit Schemaversion und Migration (`.storage/homeintent_bindings.json`,
+  gleiche Mechanik wie die übrigen HomeIntent-Speicher). `async_bind` verlangt
+  `confirmed=True`; unbestätigte Einträge werden beim Laden verworfen.
+  `binding_state` meldet `target_missing`/`not_exposed` – solche Bindungen
+  wirken nicht.
+- **Routine-Bindungen** (`need_compiler._routine`): Mit Bindung wird genau das
+  gebundene Ziel verwendet, ohne Namenssuche; ohne Bindung dient
+  `_routine_candidates` nur der Entdeckung: ein Kandidat → „Meinst du mit
+  schlafen gehen das Skript X? Soll ich das jetzt starten und mir die Zuordnung
+  merken?“, mehrere → „Welche Routine meinst du: …?“ (Dialogaufgabe
+  `ROUTINE_BINDING`; Antwort per Name oder Ordinalzahl). Gespeichert wird erst
+  nach „Ja“ bzw. Wahl **und** erfolgreicher Ausführung; lehnt die Richtlinie ab
+  (z. B. nicht freigegebener Saugroboter im Skript), wird nichts gespeichert.
+  Konzeptwörter wie „Schlafroutine“, „Nachtroutine“, „Filmroutine“ benennen das
+  Konzept (Lexikonregel über `RoutineConcept.names`).
+- Sprachbefehle (`routine_binding_intent.py`): „Vergiss die Schlafroutine“,
+  „Schlafen ist ab jetzt das Skript X“ (mit Rückfrage), „Welche Routine nutzt
+  du für …?“. Haushaltsbindungen löscht nur, wer sie angelegt hat, oder ein
+  Admin.
+- **Implicit Action Policy** in `evaluate_service_plan` (einzige Stelle, die
+  `origin` auswertet), Option `implicit_action_level` mit Standard `propose`,
+  im Options-Flow und im Learning Center (nur Admin) einstellbar. Regeln wie im
+  Auftrag; zusätzlich gilt: Risiko ≥ Bestätigungsschwelle → immer Bestätigung,
+  unabhängig von der Stufe. Die Bestätigungsfrage eines Bedürfnisses wird aus
+  der Begründung abgeleitet („Soll ich die Heizung im Büro um ein Grad auf 21,5
+  Grad erhöhen?“), nach „Ja“ folgt die Begründung als Erfolgstext.
+- **Nie raten:**
+  - `engine.understand_need`: „hier“/„da“ ohne Satellit und ohne Ort im
+    Gespräch → „In welchem Raum? …“, auch wenn nur ein Gerät in Frage käme.
+  - `nlu/recurrence.py` + `conversation._decide_recurrence`: Uhrzeit ohne
+    Wiederholungsmarker → einmaliger Auftrag zum nächsten Vorkommen (neue
+    `CalendarReference.NEXT_OCCURRENCE`); mit Marker → wiederkehrende
+    Automation; Sonne/Dunkelheit ohne Marker → „… Nur heute oder jeden Tag?“
+    (Dialogaufgabe `RECURRENCE_CHOICE`; „nur heute“ → `max_runs=1`). Zustands-
+    ereignisse mit „wenn“ („Wenn die Haustür aufgeht …“) bleiben Regeln.
+  - Ehrliche Fehlertexte: `nlu/capabilities.describe_abilities` nennt, was ein
+    Gerät wirklich kann („Flurlicht lässt sich nur ein- und ausschalten.“), in
+    der Zielauflösung und im Rückmeldepfad; „Dreh da die Heizung hoch“ im
+    Diskurs nutzt dieselbe Lexikonregel wie der direkte Pfad
+    (`directional_as_degree`) und erhöht den Sollwert.
+  - „Lass X so, wie es ist“ / „Lass alles so“ → nichts tun und bestätigen
+    (Vergleichssatz „wie es ist“ ist kein Rest mehr); ein bloßes „Ja“/„Nein“ ohne
+    offene Frage wird ehrlich beantwortet.
+- **Learning Center:** `bindings/list`, `bindings/remove`,
+  `settings/implicit_action_level`; Abschnitt „Gelernte Zuordnungen“ mit Stufe,
+  Geltung, Nutzungen, Zustand und „Vergessen“ im Tab Autonomie. Mobile-Prüfung
+  bestanden.
+
+### Bewusste Verhaltensänderungen (und angepasste Tests)
+
+- Implizite Bedürfnisse werden standardmäßig vorgeschlagen statt ausgeführt
+  (`propose`). `tests/test_sprache73_needs.py` prüft die Bedürfnissemantik
+  deshalb mit `low_risk_auto`; neue Tests sichern den Standard (`propose`) und
+  `understand_only`.
+- Automationskorpus 7.2.0 (`tests/eval/automation_v72`, Entwicklungs- und
+  Held-out-Teil): 53 Zeilen nach der neuen Bedeutung migriert – Uhrzeit ohne
+  Marker erwartet jetzt `at(next_occurrence HH:MM)`, Sonnenereignisse ohne
+  Marker bekommen „>> Jeden Tag.“ als zweiten Turn (die erwartete Automation
+  bleibt damit vollständig geprüft). Die Migration ist mechanisch aus der
+  Regel abgeleitet, nicht auf einzelne Sätze abgestimmt.
+- V12-OOD-Dialogfälle `dlg-au-01..03` entsprechend (Sonne → Rückfrage).
+- `test_inferred_routine_always_needs_confirmation_without_binding`: eine
+  bestätigte Bindung führt nur mit `bound_routines_auto` direkt aus.
+
+### Tests
+
+- `tests/test_bindings.py` (43): Speicher (Bestätigungspflicht, Lebenszyklus,
+  Geltung Nutzer vor Haushalt, Migration, Zustand), vollständige Matrix
+  `origin` × `implicit_action_level` × Risiko × Bindung („nie lockerer als
+  explizit“, HIGH nie ohne Bestätigung), Gespräch: Wahl bindet, gebundene
+  Routine ohne Namenssuche, `bound_routines_auto`, abgelehnte Wahl bindet nicht,
+  Einzelkandidat + „Ja“, Sprachverwaltung, entzogenes Ziel.
+- `tests/test_never_guess.py` (31): „hier“ ohne/mit Satellit/mit Diskursort,
+  Wiederholungsmarker und Antworten, einmalig vs. wiederkehrend, Rückfrage bei
+  Sonne, ehrliche Fähigkeitstexte, Heizung im Diskurs, „so wie es ist“, „Ja“
+  ohne Frage.
+- Learning Center: Sichtbarkeit/Löschrechte der Bindungen, Stufe nur für Admins.
+
+### Live-Prüfung
+
+- Eigenes Prüfskript: **15/15** – Routine-Wahl bei mehreren Kandidaten;
+  gewählte Routine „Nachtruhe“ mit nicht freigegebenem Saugroboter wird
+  abgelehnt und **nicht** gebunden; Wahl „Schlafen“ bindet und führt aus;
+  Learning Center zeigt die Bindung; danach Vorschlag ohne Namenssuche, „Ja“
+  führt aus; mit `bound_routines_auto` (über das Learning Center gesetzt) läuft
+  „Starte die Schlafroutine.“ direkt; „Vergiss die Schlafroutine.“; „hier“ ohne
+  Satellit; Bedürfnis als Vorschlag + „Ja“; Uhrzeit einmalig; Sonnenuntergang
+  mit Rückfrage; ehrliche Fähigkeitsbegründung; „Ja“ ohne offene Frage.
+- `runner.py` (ohne Proaktiv): **151/155**. Die vier Abweichungen sind die
+  gewollten Verhaltensänderungen dieser Phase:
+  `s73-2-freezing`, `s73-2-stale-air`, `s73-s6-too-bright` erwarten die
+  sofortige Ausführung eines impliziten Bedürfnisses (jetzt Vorschlag im
+  Standard `propose`), `auto-manage` baut auf der Automation aus `auto-sun` auf,
+  die jetzt erst nach „Nur heute oder jeden Tag?“ entsteht (das Szenario
+  antwortet mit „Ja“). Mit der neuen Dialogform (Vorschlag + „Ja“ bzw. „Jeden
+  Tag.“) bestehen alle fünf Szenarien in einer lokalen, nicht eingecheckten
+  Kopie des Testbetts. `sim/` bleibt unverändert; die Test-Session sollte diese
+  vier Szenarien an die Standardstufe `propose` anpassen oder mit
+  `implicit_action_level: low_risk_auto` laufen lassen.
+
+### Messwerte
+
+| Kennzahl | 7.3.2 | 7.3.3 |
+| --- | --- | --- |
+| Routinewahl über Namensähnlichkeit ohne Bestätigung | nie (seit 7.3.1) | nie; nach Bindung keine Namenssuche mehr |
+| Geraten statt gefragt: „hier“ ohne Satellit | Rückfrage nur bei mehreren Geräten | immer Rückfrage |
+| Uhrzeit ohne Wiederholungsmarker | tägliche Automation | einmaliger Auftrag |
+| Sonne/Dunkelheit ohne Marker | tägliche Automation | Rückfrage |
+| Unit-Tests (hassil 3.11 und 3.12) | 6088 | 6165 |
+| Sprach-Gate | 465 | 465 |
+| Automationskorpus 7.2.0 (dev/held-out) | Schwellen erfüllt | Schwellen erfüllt (nach Migration von 53 Erwartungen, s. o.) |

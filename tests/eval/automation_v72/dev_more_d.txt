@@ -26,8 +26,8 @@ auto: num(light.wohnzimmer).brightness==60 => notify(me) :: Sag mir Bescheid, we
 auto: num(fan.schlafzimmer).fan_percentage==30 => notify(me) :: Gib mir Bescheid, wenn der Ventilator im Schlafzimmer 30 Prozent erreicht.
 auto: arrive(person.julia) => notify(me) :: Informiere mich, sobald Julia nach Hause gekommen ist.
 auto: leave(person.julia) => notify(me) :: Sag mir Bescheid, wenn Julia das Haus verlassen hat.
-auto: sun=sunset => notify(me) :: Benachrichtige mich, sobald es dunkel wird.
-auto: sun=sunrise => notify(me) :: Sag mir Bescheid, wenn die Sonne aufgeht.
+auto: sun=sunset => notify(me) :: Benachrichtige mich, sobald es dunkel wird. >> Jeden Tag.
+auto: sun=sunrise => notify(me) :: Sag mir Bescheid, wenn die Sonne aufgeht. >> Jeden Tag.
 auto: time=18:30 => notify(me) :: Schick mir jeden Abend um 18:30 Uhr eine Nachricht.
 auto: state(binary_sensor.haustuer)=open/for=240 => notify(me) :: Gib mir Bescheid, wenn die Haustür seit vier Minuten offen ist.
 auto: state(binary_sensor.kuechenfenster)=open ; if: nobody_home => notify(me) :: Wenn das Küchenfenster aufgeht und niemand daheim ist, benachrichtige mich.
@@ -37,9 +37,9 @@ auto: state(binary_sensor.terrassentuer)=open => notify(julia) :: Benachrichtige
 auto: state(binary_sensor.haustuer)=open => notify(me,"Tür!") :: Wenn die Haustür aufgeht, schick mir die Nachricht „Tür!“
 auto: state(binary_sensor.kuechenfenster)=open => turn_off(light.kueche) :: Sobald das Küchenfenster geöffnet wird, schalte das Küchenlicht aus.
 auto: state(binary_sensor.flur_bewegung)=on => turn_on(light.flur) + notify(me) :: Wenn sich im Flur etwas bewegt, mach das Flurlicht an und benachrichtige mich.
-auto: sun=sunset => close(cover.buero_rollladen) + close(cover.bad_rollladen) :: Bei Sonnenuntergang schließe den Rollladen im Büro und den Rollladen im Bad.
+auto: sun=sunset => close(cover.buero_rollladen) + close(cover.bad_rollladen) :: Bei Sonnenuntergang schließe den Rollladen im Büro und den Rollladen im Bad. >> Jeden Tag.
 auto: num(sensor.wohnzimmer_temperatur).state<17 => turn_on(climate.wohnzimmer) :: Sobald es im Wohnzimmer unter 17 Grad hat, schalte die Heizung im Wohnzimmer ein.
-auto: time=05:45 => turn_on(switch.kaffeemaschine) :: Um 5:45 Uhr mach die Kaffeemaschine an.
+auto: at(next_occurrence 05:45) => turn_on(switch.kaffeemaschine) :: Um 5:45 Uhr mach die Kaffeemaschine an.
 unsupported :: Benachrichtige mich, wenn die Heizung 50 Prozent erreicht, oder so.
 clarify :: Sag mir Bescheid, sobald der Rollladen im Dachboden 30 Prozent erreicht.
 clarify :: Gib mir Bescheid, wenn es 90 Prozent hat.

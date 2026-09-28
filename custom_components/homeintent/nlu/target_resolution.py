@@ -29,6 +29,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Iterable, Mapping, Sequence
 
+from .capabilities import describe_abilities
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..name_similarity import edit_distance
 from .device_ontology import (
@@ -625,13 +626,20 @@ def resolve_description(
             names = sorted(entity.friendly_name for entity in present)
             listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
             sensors = all(entity.domain in {"binary_sensor", "sensor"} for entity in present)
-            reason = (
-                "kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht"
-                if sensors else "unterstützen diese Aktion nicht"
-            )
+            if sensors:
+                sentence = f"{listed} kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht."
+            elif len(present) == 1:
+                # The actual reason from the device's capabilities, never a
+                # blanket "unterstützt die Aktion nicht" (7.3.3).
+                sentence = describe_abilities(present[0].friendly_name, present[0].capabilities)
+            else:
+                sentence = " ".join(
+                    describe_abilities(entity.friendly_name, entity.capabilities)
+                    for entity in sorted(present, key=lambda item: item.friendly_name)[:3]
+                )
             return TargetResolution(
                 ResolutionOutcome.NONE, described,
-                message=f"{listed} {reason}. Ich habe nichts ausgeführt.",
+                message=f"{sentence} Ich habe nichts ausgeführt.",
             )
         return TargetResolution(
             ResolutionOutcome.NONE,

@@ -12,6 +12,9 @@ from .const import (
     CONF_CONFIRMATION_LEVEL,
     CONF_CONTROL_USER_IDS,
     CONF_EFFECT_GRAPH_UNKNOWN,
+    CONF_IMPLICIT_ACTION_LEVEL,
+    DEFAULT_IMPLICIT_ACTION_LEVEL,
+    IMPLICIT_ACTION_LEVELS,
     CONF_MAX_ACTION_TARGETS,
     CONF_READ_ONLY_ENTITIES,
 )
@@ -183,13 +186,32 @@ def evaluate_service_plan(
             "Diese sicherheitskritische Aktion ist nur für Administratoren erlaubt.",
             note,
         )
+    implicit = origin in {PlanOrigin.IMPLICIT_NEED, PlanOrigin.INFERRED_ROUTINE}
+    level = str(options.get(CONF_IMPLICIT_ACTION_LEVEL, DEFAULT_IMPLICIT_ACTION_LEVEL))
+    if level not in IMPLICIT_ACTION_LEVELS:
+        level = DEFAULT_IMPLICIT_ACTION_LEVEL
+    if implicit and level == "understand_only":
+        return decide(
+            PolicyOutcome.DENY,
+            "Ich habe dich verstanden. Bei indirekten Aussagen führe ich laut "
+            "Einstellung nichts aus; sag mir ausdrücklich, was ich tun soll.",
+            note,
+        )
     configured_level = options.get(CONF_CONFIRMATION_LEVEL, "high")
     confirmation_level = _RISK_BY_OPTION.get(str(configured_level), RiskLevel.HIGH)
     if risk >= confirmation_level or unknown_needs_confirmation:
         return decide(PolicyOutcome.CONFIRM, note=note)
-    if origin is PlanOrigin.INFERRED_ROUTINE and not binding_confirmed:
-        # A routine derived from "Ich gehe schlafen" is a proposal until the
-        # user has confirmed a binding: never looser than the explicit command.
+    # Implicit Action Policy (7.3.3): a non-explicit origin is never looser
+    # than the same explicit command; everything below only adds confirmations.
+    if origin is PlanOrigin.IMPLICIT_NEED and not (
+        level in {"low_risk_auto", "bound_routines_auto"} and risk is RiskLevel.LOW
+    ):
+        return decide(PolicyOutcome.CONFIRM, note=note)
+    if origin is PlanOrigin.INFERRED_ROUTINE and not (
+        level == "bound_routines_auto" and binding_confirmed
+    ):
+        # A routine derived from "Ich gehe schlafen" stays a proposal unless
+        # the user confirmed a binding and allowed bound routines to run.
         return decide(PolicyOutcome.CONFIRM, note=note)
     return decide(PolicyOutcome.ALLOW, note=note)
 

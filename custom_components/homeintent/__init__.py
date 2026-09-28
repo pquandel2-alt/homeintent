@@ -41,6 +41,7 @@ from .monitor_goal import MonitorGoalRuntime, MonitorGoalStore
 from .nlu.context import ConversationContextStore
 from .profiles import ProfileStore
 from .engine import NluEngine
+from .bindings import BindingStore
 from .execution_trace import DEFAULT_TRACE_DAYS, DEFAULT_TRACE_LIMIT, async_setup_trace
 from .runtime_data import HomeIntentRuntimeData
 from .storage_migration import resolve_storage_path
@@ -257,6 +258,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         days=configured_trace_days if isinstance(configured_trace_days, int) else DEFAULT_TRACE_DAYS,
         store_text=bool(entry.options.get(CONF_TRACE_STORE_TEXT, True)),
     )
+    entry.runtime_data.bindings = BindingStore(
+        _storage_path(hass, "homeintent_bindings.json", "ha_nlu_bindings.json")
+    )
+    await entry.runtime_data.bindings.async_load()
     await user_contexts.async_load()
     await profile_store.async_load()
     await learning_manager.async_restore_models()

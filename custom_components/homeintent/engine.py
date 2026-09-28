@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from hassil import Intents
 
@@ -71,7 +71,9 @@ from .nlu.normalize import normalize
 from .nlu.device_ontology import analyse_word
 from .nlu.ontology_compiler import compile_ontology_command, compile_release
 from .nlu.discourse_compiler import compile_discourse
-from .nlu.need_compiler import compile_need, routine_named_explicitly
+from .nlu.need_compiler import compile_need, proposal_from_reason, routine_named_explicitly
+from .nlu.need_semantics import routine_concept_of_compound
+from .nlu.capabilities import describe_abilities
 from .plan_origin import PlanOrigin
 from .nlu.need_semantics import interpret_need
 from .nlu.place_model import PlaceKind, build_place_lexicon
@@ -652,6 +654,14 @@ class MatchResult:
     # Where the plan came from (explicit command, need, inferred routine);
     # read only by the execution policy.
     origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+    # Question form of an implicit need's action ("Soll ich …?"), used when
+    # the policy turns it into a proposal (implicit_action_level).
+    proposal_text: str | None = None
+    # Routine binding (7.3.3): concept key, whether the target comes from a
+    # confirmed binding, and the candidates a choice or "Ja" would bind.
+    routine_key: str | None = None
+    binding_confirmed: bool = False
+    routine_candidates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -683,6 +693,10 @@ class CommandPlan:
     # previewed first; the plan runs only after an explicit "Ja".
     confirmation_text: str | None = None
     origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+    proposal_text: str | None = None
+    routine_key: str | None = None
+    binding_confirmed: bool = False
+    routine_candidates: tuple[str, ...] = ()
 
 
 def _mark_inferred_routines(
@@ -1457,6 +1471,7 @@ class NluEngine:
         *,
         source_area_id: str | None = None,
         context_area_id: str | None = None,
+        routine_bindings: Mapping[str, str] | None = None,
     ) -> MatchResult | CommandPlan | None:
         """Ground a need statement ("Mir ist kalt") in operations.
 
@@ -1470,9 +1485,10 @@ class NluEngine:
         } or utterance.modality is Modality.HYPOTHETICAL:
             return None
         actions = document.semantics.values(SemanticKind.ACTION) - {"close"}
-        if utterance.speech_act is SpeechAct.COMMAND and actions:
-            return None
         words = [token.canonical for token in document.tokens if token.is_word]
+        names_routine = any(routine_concept_of_compound(word) for word in words)
+        if utterance.speech_act is SpeechAct.COMMAND and actions and not names_routine:
+            return None
         meaning = interpret_need(
             words, question=document.source_text.rstrip().endswith("?")
         )
@@ -1490,9 +1506,23 @@ class NluEngine:
                     place = lexicon.place_for_area(area_id)
                     if place is not None:
                         break
-        outcome = compile_need(meaning, entities, place, document.source_text)
+        if place is None and any(mention.place.kind is PlaceKind.HERE for mention in mentions):
+            # "hier"/"da" only from the satellite's area or a place named in
+            # the conversation; never guessed from the house (7.3.3, S6).
+            return MatchResult(
+                plan=None,
+                response_text="In welchem Raum? Ohne Sprachsatellit weiß ich nicht, wo „hier“ ist.",
+            )
+        outcome = compile_need(
+            meaning, entities, place, document.source_text, routine_bindings=routine_bindings
+        )
+        routine = {
+            "routine_key": outcome.routine_key,
+            "binding_confirmed": outcome.bound,
+            "routine_candidates": tuple(item.entity_id for item in outcome.candidates),
+        }
         if outcome.message is not None and not outcome.results:
-            return MatchResult(plan=None, response_text=outcome.message)
+            return MatchResult(plan=None, response_text=outcome.message, **routine)
         rendered: list[MatchResult] = []
         for parsed in outcome.results:
             item = self._build_match_result(parsed, entities)
@@ -1501,18 +1531,26 @@ class NluEngine:
             rendered.append(item)
         if not rendered:
             return None
-        rendered = [replace(item, origin=outcome.origin) for item in rendered]
+        proposal = proposal_from_reason(outcome.reason)
+        rendered = [replace(item, origin=outcome.origin, **routine) for item in rendered]
         if outcome.confirm is not None:
             return CommandPlan(
-                tuple(rendered), confirmation_text=outcome.confirm, origin=outcome.origin
+                tuple(rendered), confirmation_text=outcome.confirm, origin=outcome.origin,
+                **routine,
             )
         if len(rendered) == 1:
-            return replace(rendered[0], response_text=outcome.reason or rendered[0].response_text)
+            return replace(
+                rendered[0],
+                response_text=outcome.reason or rendered[0].response_text,
+                proposal_text=proposal,
+            )
         first, *rest = rendered
         return CommandPlan(
             (replace(first, response_text=outcome.reason or first.response_text),
              *(replace(item, response_text="") for item in rest)),
             origin=outcome.origin,
+            proposal_text=proposal,
+            **routine,
         )
 
     def understand_release(
@@ -2323,7 +2361,7 @@ class NluEngine:
                 "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
             )
         if re.search(
-            r"\b(schalte|mach|fahre|öffne|schließe|stelle|setze|starte|aktiviere|drehe)\b",
+            r"\b(schalte|mach|fahre?|öffne|schließe|stelle?|setze|starte|aktiviere|drehe?|dimme?)\b",
             text,
             re.IGNORECASE,
         ):
@@ -2370,11 +2408,12 @@ class NluEngine:
                         {"entity_ids": tuple(entity.entity_id for entity in candidates)},
                     )
             if mentioned:
-                names = ", ".join(entity.friendly_name for entity in mentioned)
                 return UnderstandingFeedback(
                     ParseFailureReason.UNSUPPORTED_CAPABILITY,
-                    f"Ich habe {names} gefunden, aber die gewünschte Funktion "
-                    "ist für diese Geräte nicht eindeutig unterstützt.",
+                    " ".join(
+                        describe_abilities(entity.friendly_name, entity.capabilities)
+                        for entity in mentioned[:3]
+                    ),
                     {"entity_ids": tuple(entity.entity_id for entity in mentioned)},
                 )
             return UnderstandingFeedback(

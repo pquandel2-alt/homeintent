@@ -11,9 +11,21 @@ from __future__ import annotations
 
 import pytest
 
-from _testhaus import HouseConversation, house_entities, with_states
+from _testhaus import HouseConversation as _HouseConversation, house_entities, with_states
 from custom_components.homeintent.nlu.german_morphology import dative_location_phrase
 from custom_components.homeintent.nlu.target_resolution import genus_members
+
+
+
+def HouseConversation(monkeypatch, *args, options=None, **kwargs):
+    """The need semantics below are checked with ``low_risk_auto`` (LOW needs
+    act directly). The default ``propose`` asks first; see
+    ``test_needs_are_proposed_by_default`` and ``tests/test_bindings.py``."""
+    return _HouseConversation(
+        monkeypatch, *args, options={"implicit_action_level": "low_risk_auto", **(options or {})},
+        **kwargs,
+    )
+
 
 _COLD = ["kalt", "zu kalt", "ziemlich frisch", "eisig"]
 _WARM = ["warm", "zu warm", "heiß", "schwül"]
@@ -129,3 +141,19 @@ def test_movie_need_proposes_the_movie_scene(monkeypatch, sentence):
 @pytest.mark.parametrize("sentence", ["Ich hätte gern etwas mehr Wärme im Büro.", "Ich hätte gerne mehr Wärme im Büro."])
 def test_wish_for_more_warmth_is_a_need(monkeypatch, sentence):
     assert HouseConversation(monkeypatch).say(sentence).targets == {"climate.heizung_buero"}
+
+
+def test_needs_are_proposed_by_default(monkeypatch):
+    # 7.3.3: implicit_action_level defaults to "propose": understood, asked,
+    # executed only after "Ja".
+    house = _HouseConversation(monkeypatch, area="buro")
+    turn = house.say("Mir ist kalt.")
+    assert turn.calls == [], turn.speech
+    assert turn.speech.startswith("Soll ich") and "Büro" in turn.speech and turn.speech.endswith("?"), turn.speech
+    assert house.say("Ja.").targets == {"climate.heizung_buero"}
+
+
+def test_understand_only_never_acts(monkeypatch):
+    house = _HouseConversation(monkeypatch, area="buro", options={"implicit_action_level": "understand_only"})
+    turn = house.say("Mir ist kalt.")
+    assert turn.calls == [] and "verstanden" in turn.speech, turn.speech

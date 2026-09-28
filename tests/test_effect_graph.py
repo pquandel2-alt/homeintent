@@ -468,9 +468,15 @@ def test_inferred_routine_always_needs_confirmation_without_binding():
     explicit = decide(plan, entities, sources)
     inferred = decide(plan, entities, sources, origin=PlanOrigin.INFERRED_ROUTINE)
     bound = decide(plan, entities, sources, origin=PlanOrigin.INFERRED_ROUTINE, binding_confirmed=True)
+    bound_auto = decide(
+        plan, entities, sources, origin=PlanOrigin.INFERRED_ROUTINE, binding_confirmed=True,
+        options={"implicit_action_level": "bound_routines_auto"},
+    )
     assert explicit.outcome is PolicyOutcome.ALLOW
     assert inferred.outcome is PolicyOutcome.CONFIRM
-    assert bound.outcome is PolicyOutcome.ALLOW
+    # 7.3.3: a confirmed binding runs directly only with bound_routines_auto.
+    assert bound.outcome is PolicyOutcome.CONFIRM
+    assert bound_auto.outcome is PolicyOutcome.ALLOW
 
 
 def test_unchecked_placeholder_is_incomplete():

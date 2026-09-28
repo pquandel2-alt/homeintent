@@ -133,10 +133,10 @@ auto: num(sensor.handy_akku).state==20 => notify(me) :: Wenn der Akkustand vom H
 auto: num(sensor.wohnzimmer_temperatur).state>22.5 => notify(me) :: Benachrichtige mich, wenn die Temperatur im Wohnzimmer über 22,5 Grad steigt.
 auto: num(sensor.wohnzimmer_temperatur).state>25 => notify(me) :: Wenn die Temperatur im Wohnzimmer auf über 25 Grad steigt, benachrichtige mich.
 ## presence_time_sun
-auto: sun=sunset => notify(me) :: Sag mir Bescheid, wenn die Sonne untergeht.
-auto: sun=sunset => notify(me) :: Schick mir eine Nachricht, sobald es dunkel wird.
-auto: sun=sunrise => notify(me) :: Benachrichtige mich bei Sonnenaufgang.
-auto: sun=sunset => notify(me) :: Bei Sonnenuntergang benachrichtige mich.
+auto: sun=sunset => notify(me) :: Sag mir Bescheid, wenn die Sonne untergeht. >> Jeden Tag.
+auto: sun=sunset => notify(me) :: Schick mir eine Nachricht, sobald es dunkel wird. >> Jeden Tag.
+auto: sun=sunrise => notify(me) :: Benachrichtige mich bei Sonnenaufgang. >> Jeden Tag.
+auto: sun=sunset => notify(me) :: Bei Sonnenuntergang benachrichtige mich. >> Jeden Tag.
 auto: arrive(person.julia) => notify(me) :: Schick mir eine Nachricht, wenn Julia nach Hause kommt.
 auto: leave(person.julia) => notify(me) :: Benachrichtige mich, wenn Julia das Haus verlässt.
 auto: arrive(person.philipp) => notify(me) :: Benachrichtige mich, sobald ich nach Hause komme.

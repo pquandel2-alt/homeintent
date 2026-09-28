@@ -16,6 +16,7 @@ from .situation import RoutineStatistics, SituationEvaluator
 from .dialog_manager import DialogManager
 from .effect_monitor import EffectMonitor
 from .execution_trace import TraceRuntime
+from .bindings import BindingStore
 from .adapters import AdapterEvidence
 from .goal_run import GoalRunStore
 from .monitor_goal import MonitorGoalRuntime, MonitorGoalStore
@@ -73,6 +74,8 @@ class HomeIntentRuntimeData:
     remove_proactive_listener: Callable[[], None] | None = None
     # 7.3.2: ring buffer of executions and HA automation/script runs.
     trace: TraceRuntime | None = None
+    # 7.3.3: confirmed bindings (routines; aliases etc. from 7.4.1).
+    bindings: BindingStore = field(default_factory=lambda: BindingStore(None))
     stop_trace: Callable[[], Any] | None = None
     # 7.1 Learning Center: runtime-only change counter and bounded audit.
     learning_center_revision: LearningCenterRevision = field(

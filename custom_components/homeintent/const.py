@@ -16,6 +16,12 @@ EFFECT_GRAPH_UNKNOWN_OPTIONS = ("deny", "confirm")
 CONF_TRACE_LIMIT = "trace_limit"
 CONF_TRACE_DAYS = "trace_days"
 CONF_TRACE_STORE_TEXT = "trace_store_text"
+# 7.3.3 what HomeIntent may do with implicit needs and inferred routines.
+CONF_IMPLICIT_ACTION_LEVEL = "implicit_action_level"
+IMPLICIT_ACTION_LEVELS = (
+    "understand_only", "propose", "low_risk_auto", "bound_routines_auto",
+)
+DEFAULT_IMPLICIT_ACTION_LEVEL = "propose"
 CONF_ALLOW_NON_ADMIN_CRITICAL = "allow_non_admin_critical"
 CONF_ALLOW_NON_ADMIN_AUTOMATIONS = "allow_non_admin_automations"
 CONF_CONTEXT_TTL_SECONDS = "context_ttl_seconds"

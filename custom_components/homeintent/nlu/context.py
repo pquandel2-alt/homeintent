@@ -170,6 +170,9 @@ class PendingServiceConfirmation:
     # these plans after ``plan`` once the user confirms.
     additional_plans: tuple[ServiceCallPlan, ...] = ()
     origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+    binding_confirmed: bool = False
+    # (routine concept, entity id): "Ja" also stores this routine binding.
+    binding_offer: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)

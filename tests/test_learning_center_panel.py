@@ -37,7 +37,8 @@ DOC_COMMANDS = (
     "entries", "summary", "models/list", "models/get", "models/evidence", "models/forget",
     "models/reset", "preferences/confirm", "preferences/reject", "habits/preview",
     "habits/accept", "habits/reject", "permissions/list", "permissions/revoke",
-    "mutes/list", "mutes/remove", "history/list", "tombstones/list", "traces/list", "subscribe",
+    "mutes/list", "mutes/remove", "history/list", "tombstones/list", "traces/list", "bindings/list", "bindings/remove",
+    "settings/implicit_action_level", "subscribe",
 )
 
 
@@ -337,4 +338,40 @@ def test_traces_list_shows_admins_everything_and_users_their_own(tmp_path):
         assert own["traces"][0]["targets"] == ["Schlafen"]
         everything, error = await env.call(ADMIN, "traces/list")
         assert error is None and len(everything["traces"]) == 2
+    run(_go())
+
+
+def test_bindings_are_listed_removable_and_level_is_admin_only(tmp_path):
+    from datetime import datetime
+
+    from homeintent.bindings import BindingKind, BindingScope
+
+    async def _go():
+        env = await make_env(tmp_path)
+        store = env.entry.runtime_data.bindings
+        now = datetime(2026, 9, 28, 22, 0)
+        household = await store.async_bind(
+            BindingKind.ROUTINE, "sleep", "script.gute_nacht", confirmed=True, now=now, created_by=ADMIN,
+        )
+        own = await store.async_bind(
+            BindingKind.ROUTINE, "movie", "scene.film", confirmed=True, now=now,
+            scope=BindingScope.USER, user_id=USER_A, created_by=USER_A,
+        )
+        await store.async_bind(
+            BindingKind.ROUTINE, "read", "scene.lesen", confirmed=True, now=now,
+            scope=BindingScope.USER, user_id=USER_B, created_by=USER_B,
+        )
+        listed, error = await env.call(USER_A, "bindings/list")
+        assert error is None
+        ids = {item["binding_id"] for item in listed["bindings"]}
+        assert ids == {household.binding_id, own.binding_id}
+        assert listed["implicit_action_level"] == "propose" and listed["can_change_level"] is False
+        labels = {item["key_label"] for item in listed["bindings"]}
+        assert "schlafen gehen" in labels
+        _result, error = await env.call(USER_A, "bindings/remove", binding_id=household.binding_id)
+        assert error is not None and error[0] == "not_authorized"
+        removed, error = await env.call(USER_A, "bindings/remove", binding_id=own.binding_id)
+        assert error is None and removed == {"removed": True}
+        _result, error = await env.call(USER_A, "settings/implicit_action_level", level="low_risk_auto")
+        assert error is not None and error[0] == "not_authorized"
     run(_go())

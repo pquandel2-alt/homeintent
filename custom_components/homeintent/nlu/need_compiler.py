@@ -13,7 +13,7 @@ nothing is executed here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from ..entities import EntitySnapshot, format_spoken_number, normalize_for_compare
 from .device_ontology import entity_genera
@@ -48,6 +48,11 @@ class NeedOutcome:
     confirm: str | None = None
     message: str | None = None
     origin: PlanOrigin = PlanOrigin.IMPLICIT_NEED
+    # Routine binding (7.3.3): the concept, whether the target comes from a
+    # confirmed binding, and candidates the user can bind by choosing one.
+    routine_key: str | None = None
+    bound: bool = False
+    candidates: tuple[EntitySnapshot, ...] = ()
 
 
 def _frame(
@@ -119,10 +124,17 @@ def compile_need(
     entities: Sequence[EntitySnapshot],
     place: Place | None,
     source_text: str,
+    *,
+    routine_bindings: Mapping[str, str] | None = None,
 ) -> NeedOutcome:
-    """Choose operations serving ``meaning`` at ``place``."""
+    """Choose operations serving ``meaning`` at ``place``.
+
+    ``routine_bindings`` maps a routine concept to the script/scene the user
+    confirmed for it (bindings store); a bound concept is never searched by
+    name similarity again.
+    """
     if meaning.kind is NeedKind.ROUTINE and meaning.routine is not None:
-        return _routine(meaning.routine, entities, source_text)
+        return _routine(meaning.routine, entities, source_text, routine_bindings or {})
     local = _at(place, entities)
     kind = meaning.kind
     if kind in {NeedKind.WARMER, NeedKind.COOLER}:
@@ -277,6 +289,38 @@ def _routine_candidates(
     return found
 
 
+_PARTICIPLE_INFINITIVE = (
+    ("heller gestellt", "heller stellen"),
+    ("leiser gestellt", "leiser stellen"),
+    ("lauter gestellt", "lauter stellen"),
+    ("heruntergefahren", "herunterfahren"),
+    ("eingeschaltet", "einschalten"),
+    ("ausgeschaltet", "ausschalten"),
+    ("erhöht", "erhöhen"),
+    ("gesenkt", "senken"),
+    ("gedimmt", "dimmen"),
+    ("gestartet", "starten"),
+)
+
+
+def proposal_from_reason(reason: str | None) -> str | None:
+    """„Ich habe die Heizung im Büro um ein Grad erhöht.“ →
+    „Soll ich die Heizung im Büro um ein Grad erhöhen?“ (7.3.3 propose)."""
+    if not reason or not reason.startswith("Ich habe "):
+        return None
+    body = reason[len("Ich habe "):]
+    main, dot, rest = body.partition(". ")
+    if not dot:
+        main, rest = body.rstrip("."), ""
+    for participle, infinitive in _PARTICIPLE_INFINITIVE:
+        index = main.rfind(participle)
+        if index >= 0:
+            main = main[:index] + infinitive + main[index + len(participle):]
+            question = f"Soll ich {main.rstrip('.')}?"
+            return f"{question} {rest.strip()}".strip() if rest else question
+    return None
+
+
 def routine_named_explicitly(source_text: str, entity: EntitySnapshot) -> bool:
     """Whether the turn says the script/scene name (or an alias) verbatim.
 
@@ -295,27 +339,63 @@ def routine_named_explicitly(source_text: str, entity: EntitySnapshot) -> bool:
     return False
 
 
+def _kind_word(entity: EntitySnapshot) -> str:
+    return "die Szene" if entity.domain == "scene" else "das Skript"
+
+
 def _routine(
-    concept: RoutineConcept, entities: Sequence[EntitySnapshot], source_text: str
+    concept: RoutineConcept,
+    entities: Sequence[EntitySnapshot],
+    source_text: str,
+    routine_bindings: Mapping[str, str],
 ) -> NeedOutcome:
+    bound_id = routine_bindings.get(concept.key)
+    if bound_id is not None:
+        entity = next((item for item in entities if item.entity_id == bound_id), None)
+        if entity is None:
+            # The binding is inert: its target is gone or no longer exposed.
+            return NeedOutcome(
+                message=(
+                    f"Für „{concept.label}“ ist eine Routine hinterlegt, die es nicht mehr gibt "
+                    f"oder die nicht mehr freigegeben ist. Ich habe nichts ausgeführt. Sag zum "
+                    f"Beispiel: „{concept.label.split()[0].capitalize()} ist ab jetzt das Skript …“."
+                ),
+                routine_key=concept.key,
+            )
+        intent = "HassActivateScene" if entity.domain == "scene" else "HassRunScript"
+        return NeedOutcome(
+            results=(_frame(intent, (entity,), source_text, action=SemanticAction.TURN_ON),),
+            reason=f"Ich habe {_kind_word(entity)} {entity.friendly_name} gestartet.",
+            origin=PlanOrigin.INFERRED_ROUTINE,
+            routine_key=concept.key,
+            bound=True,
+        )
+    # Discovery only: the name search proposes, it never decides.
     candidates = _routine_candidates(concept, entities)
     if not candidates:
         return NeedOutcome(
             message=f"Für „{concept.label}“ finde ich keine passende Szene oder Routine."
         )
     if len(candidates) > 1:
-        return NeedOutcome(message=f"Welche Routine meinst du: {_names(candidates)}?")
+        return NeedOutcome(
+            message=f"Welche Routine meinst du: {_names(candidates)}?",
+            routine_key=concept.key,
+            candidates=tuple(candidates),
+        )
     entity = candidates[0]
-    kind_word = "die Szene" if entity.domain == "scene" else "das Skript"
     intent = "HassActivateScene" if entity.domain == "scene" else "HassRunScript"
     result = _frame(intent, (entity,), source_text, action=SemanticAction.TURN_ON)
-    # A routine derived from a statement ("Ich gehe schlafen") was found by
-    # name similarity only: it is always a proposal, scenes included, until
-    # the user has confirmed a binding (7.3.1, S5).
+    # A routine found by name similarity is always a proposal, scenes
+    # included; "Ja" runs it and binds it to the concept (7.3.1, 7.3.3).
     return NeedOutcome(
         results=(result,),
-        confirm=f"Soll ich {kind_word} {entity.friendly_name} starten?",
+        confirm=(
+            f"Meinst du mit {concept.label} {_kind_word(entity)} {entity.friendly_name}? "
+            f"Soll ich das jetzt starten und mir die Zuordnung merken?"
+        ),
         origin=PlanOrigin.INFERRED_ROUTINE,
+        routine_key=concept.key,
+        candidates=(entity,),
     )
 
 

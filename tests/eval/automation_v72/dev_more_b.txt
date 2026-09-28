@@ -15,11 +15,11 @@ auto: num(sensor.wohnzimmer_temperatur).state>25 => turn_on(fan.schlafzimmer) ::
 auto: num(sensor.aussentemperatur).state<5 => turn_on(climate.wohnzimmer) :: Wenn die Außentemperatur unter 5 Grad fällt, schalte die Heizung im Wohnzimmer ein.
 auto: num(sensor.buero_luftfeuchtigkeit).state<40 => turn_off(fan.schlafzimmer) :: Wenn die Luftfeuchtigkeit im Büro unter 40 Prozent fällt, mach den Ventilator im Schlafzimmer aus.
 ## device_time_sun
-auto: time=06:00 => open(cover.schlafzimmer_rollladen) :: Um 6 Uhr öffne den Rollladen im Schlafzimmer.
-auto: time=23:15 => turn_off(light.wohnzimmer) :: Um 23:15 Uhr mach das Wohnzimmerlicht aus.
-auto: sun=sunset => close(cover.kueche_rollladen) :: Schließe bei Sonnenuntergang den Rollladen in der Küche.
-auto: sun=sunrise => open(cover.bad_rollladen) :: Bei Sonnenaufgang fahre den Rollladen im Bad hoch.
-auto: sun=sunset+10 => turn_on(light.flur) :: 10 Minuten nach Sonnenuntergang mach das Flurlicht an.
+auto: at(next_occurrence 06:00) => open(cover.schlafzimmer_rollladen) :: Um 6 Uhr öffne den Rollladen im Schlafzimmer.
+auto: at(next_occurrence 23:15) => turn_off(light.wohnzimmer) :: Um 23:15 Uhr mach das Wohnzimmerlicht aus.
+auto: sun=sunset => close(cover.kueche_rollladen) :: Schließe bei Sonnenuntergang den Rollladen in der Küche. >> Jeden Tag.
+auto: sun=sunrise => open(cover.bad_rollladen) :: Bei Sonnenaufgang fahre den Rollladen im Bad hoch. >> Jeden Tag.
+auto: sun=sunset+10 => turn_on(light.flur) :: 10 Minuten nach Sonnenuntergang mach das Flurlicht an. >> Jeden Tag.
 ## device_presence
 auto: arrive(person.julia) => turn_on(light.flur) :: Sobald Julia heimkommt, schalte das Flurlicht ein.
 auto: leave(person.philipp) => turn_off(switch.kaffeemaschine) :: Wenn ich das Haus verlasse, schalte die Kaffeemaschine aus.
@@ -31,7 +31,7 @@ auto: state(binary_sensor.kuechenfenster)=open ; if: state(climate.wohnzimmer)=o
 ## device_multi
 auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + turn_on(light.kueche) :: Wenn die Haustür aufgeht, schalte das Flurlicht ein und mach das Küchenlicht an.
 auto: state(binary_sensor.kuechenfenster)=open => turn_off(light.kueche) + notify(me) :: Sobald das Küchenfenster aufgeht, mach das Küchenlicht aus und schick mir eine Nachricht.
-auto: sun=sunset => turn_on(light.wohnzimmer) + turn_on(light.flur) :: Bei Sonnenuntergang schalte das Wohnzimmerlicht ein und dann das Flurlicht.
+auto: sun=sunset => turn_on(light.wohnzimmer) + turn_on(light.flur) :: Bei Sonnenuntergang schalte das Wohnzimmerlicht ein und dann das Flurlicht. >> Jeden Tag.
 ## device_delay
 auto: state(binary_sensor.haustuer)=open => turn_on(light.flur) + delay=600 + turn_off(light.flur) :: Sobald die Haustür aufgeht, schalte das Flurlicht an und nach 10 Minuten wieder aus.
 ## presence_notify
