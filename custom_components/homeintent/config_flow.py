@@ -45,6 +45,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 
+from .shadow_runtime import CONF_SHADOW_MODE, SHADOW_MODES
 from .const import (
     CONF_ATTENTION_BUDGET_ENABLED,
     CONF_CRITICAL_MULTI_CHANNEL_ENABLED,
@@ -295,6 +296,10 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_IMPLICIT_ACTION_LEVEL,
                         default=defaults.get(CONF_IMPLICIT_ACTION_LEVEL, "propose"),
                     ): vol.In(IMPLICIT_ACTION_LEVELS),
+                    vol.Optional(
+                        CONF_SHADOW_MODE,
+                        default=defaults.get(CONF_SHADOW_MODE, "off"),
+                    ): vol.In(SHADOW_MODES),
                     vol.Optional(
                         CONF_TRACE_LIMIT,
                         default=defaults.get(CONF_TRACE_LIMIT, 500),

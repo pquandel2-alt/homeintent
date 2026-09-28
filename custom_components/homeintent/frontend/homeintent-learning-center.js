@@ -280,6 +280,9 @@ const STRINGS = {
       low_risk_auto: "Harmloses direkt ausführen, sonst nachfragen",
       bound_routines_auto: "Zusätzlich bestätigte Routinen direkt ausführen",
     },
+    shadowTitle: "Shadow-Vergleich neuer Sprachpfade",
+    shadowOff: "Shadow-Modus ist aus.",
+    shadowRow: (name, total, safety) => `${name}: ${total} Vergleiche, ${safety} Sicherheitsabweichungen`,
     tracesTitle: "Was hat HomeIntent ausgelöst?",
     tracesEmpty: "HomeIntent hat noch nichts ausgelöst.",
     tracesUnattended: "ohne Rückfrage (Daueranweisung oder proaktiv)",
@@ -527,6 +530,9 @@ const STRINGS = {
       low_risk_auto: "Run harmless actions directly, otherwise ask",
       bound_routines_auto: "Also run confirmed routines directly",
     },
+    shadowTitle: "Shadow comparison of new language paths",
+    shadowOff: "Shadow mode is off.",
+    shadowRow: (name, total, safety) => `${name}: ${total} comparisons, ${safety} safety drifts`,
     tracesTitle: "What did HomeIntent trigger?",
     tracesEmpty: "HomeIntent has not triggered anything yet.",
     tracesUnattended: "without asking (standing permission or proactive)",
@@ -611,6 +617,7 @@ class HomeIntentLearningCenter extends HTMLElement {
     this._historyCursor = null;
     this._traces = null;
     this._bindings = null;
+    this._shadow = null;
     this._tombstones = null;
     this._error = null;
     this._toast = null;
@@ -836,6 +843,7 @@ class HomeIntentLearningCenter extends HTMLElement {
           this._call("history/list", { limit: 40 }),
           this._call("traces/list", { limit: 40 }).catch(() => ({ traces: [] })),
         ]);
+        this._shadow = await this._call("shadow/report").catch(() => null);
         this._history = history.records;
         this._historyCursor = history.next_cursor;
         this._traces = traces.traces || [];
@@ -1384,6 +1392,15 @@ class HomeIntentLearningCenter extends HTMLElement {
     const t = this.t;
     const wrap = h("div", { class: "stack" });
     if (this._traces !== null) wrap.appendChild(this._traceSection());
+    if (this._shadow) {
+      const shadow = h("section", { class: "card" }, h("h2", null, t.shadowTitle));
+      const reports = Object.values(this._shadow.reports || {});
+      if (this._shadow.shadow_mode !== "log" && !reports.length) shadow.appendChild(h("p", { class: "muted" }, t.shadowOff));
+      for (const report of reports) {
+        shadow.appendChild(h("div", { class: "small wrap" }, t.shadowRow(report.name, report.total, report.counts.SAFETY_DRIFT)));
+      }
+      wrap.appendChild(shadow);
+    }
     const records = this._history;
     if (records === null) { wrap.appendChild(h("p", { class: "muted" }, t.loading)); return wrap; }
     if (!records.length) { wrap.appendChild(h("section", { class: "card" }, h("p", { class: "muted" }, t.activityEmpty))); return wrap; }

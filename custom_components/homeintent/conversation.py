@@ -5293,6 +5293,7 @@ class NluConversationEntity(
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         """Authorize, execute and remember one regular engine match."""
+        self._runtime_data.shadow.observe(self.entry.options, user_input.text, entities, result)
         if (
             result.plan is not None
             and analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
@@ -5926,6 +5927,7 @@ class NluConversationEntity(
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         """Authorize and execute an already validated multi-command plan."""
+        self._runtime_data.shadow.observe(self.entry.options, user_input.text, entities, result)
         if (
             analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
             and any(command.plan is not None for command in result.commands)

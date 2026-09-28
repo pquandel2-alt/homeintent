@@ -25,6 +25,7 @@
           "confirmation_level": "Ab welcher Risikostufe bestätigen",
           "max_action_targets": "Maximale Ziele pro Aktion",
           "effect_graph_unknown": "Skript-/Szenenschritt, dessen Wirkung nicht prüfbar ist (deny: ablehnen, confirm: nur mit Bestätigung)",
+          "shadow_mode": "Shadow-Vergleich neuer Sprachpfade (off: aus, log: nur protokollieren, nie ausführen)",
           "implicit_action_level": "Indirekte Aussagen und abgeleitete Routinen (understand_only: nur verstehen, propose: vorschlagen, low_risk_auto: harmlose direkt, bound_routines_auto: auch gebundene Routinen direkt)",
           "trace_limit": "Ausführungsprotokoll: gespeicherte Ausführungen",
           "trace_days": "Ausführungsprotokoll: Aufbewahrung in Tagen",

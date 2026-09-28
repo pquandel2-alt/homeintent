@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.3.3** (Routine-Bindungen, Implicit Action Policy, nie raten)
+- Aktuelle Version: **7.3.4** (Sicherheitsinvarianten und Shadow-Vergleich)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,35 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.3.4 neu?
+
+**Sicherheitsnetz für die großen Umbauten.**
+
+- **Generative Sicherheitsinvarianten** (`tests/test_safety_properties.py`,
+  `hypothesis` nur als Testabhängigkeit): Sätze werden aus den Bausteinen des
+  Lexikons zusammengesetzt (Gattungen mit Genus, Plural und Synonymen, Orte des
+  Testhauses, Artikel, Höflichkeit, Negation, Zeit, Nebensätze, Ausnahmen) –
+  keine festen Sätze. 17 Invarianten, jede als eigener Test: Negation, Frage,
+  Vergangenheit und Kontrafaktisches schreiben nie; ein unbekanntes Wort
+  vergrößert nie die Zielmenge; Ziele bleiben in der genannten Gattung;
+  unbekannte Ausnahmen und halb verstandene Mehrfachsätze führen nichts aus;
+  Zeitaufträge laufen nie sofort; Einzahl bei mehreren Treffern fragt nach;
+  indirekte Herkunft ist nie lockerer; das Risiko eines Skripts ist mindestens
+  das seiner stärksten Wirkung; ein unvollständiger EffectGraph ist nie LOW;
+  mehrdeutige Bedeutung, nicht freigegebene Wirkziele und gelernte Bindungen
+  auf solche Ziele schreiben nie. In CI mit festen Seeds, nächtlich mit
+  wechselnden Seeds; Gegenbeispiele werden als feste Regressionen übernommen.
+- **Allgemeiner Shadow-Vergleich** (Erweiterung von
+  `nlu/understanding.py`): Verhaltenssignaturen (Sprechakt, Operation,
+  Gattung/Domäne, Ziele, Ort, Menge, Herkunft, Risiko, Bestätigungspflicht,
+  Plan) und Drift-Klassen `EQUIVALENT`, `REFINEMENT`, `BEHAVIOR_CHANGE`,
+  `SAFETY_DRIFT`. Offline über alle veröffentlichten Korpora
+  (`scripts/shadow_compare.py`, 2022 Sätze; `--check` scheitert bei
+  SAFETY_DRIFT) und optional live (`shadow_mode: log`): ausgeführt wird immer
+  nur die aktive Pipeline, Kandidaten werden nur protokolliert (Satz-Hash,
+  beide Ergebnisse, Drift-Klasse) – sichtbar in den Diagnosedaten und im
+  Learning Center. SAFETY_DRIFT blockiert jedes Umschalten.
 
 ## Was ist in Version 7.3.3 neu?
 
@@ -1738,10 +1767,10 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.3.3:
+Geprüfter Release-Stand von Version 7.3.4:
 
 ```text
-6165 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6189 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
 tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
@@ -1786,7 +1815,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.3.3.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.3.4.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

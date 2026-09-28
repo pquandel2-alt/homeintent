@@ -189,6 +189,7 @@ Alle Befehle: `homeintent/learning_center/<name>`, optional `entry_id`
 | `bindings/list` | – | `{bindings: BindingView[], implicit_action_level, implicit_action_levels, can_change_level}` – bestätigte Zuordnungen (Routinen, ab 7.4.1 auch Namen, Standardauswahlen, Vorlieben, Makros); seit 7.3.3 |
 | `bindings/remove` | `binding_id` | `{removed}` – eigene, selbst angelegte oder (Admin) alle |
 | `settings/implicit_action_level` | `level` | `{implicit_action_level}` (nur Admin) |
+| `shadow/report` | – | `{shadow_mode, reports}` – Shadow-Vergleich der Kandidaten-Pipelines, Drift-Klassen (nur Admin; seit 7.3.4) |
 | `traces/list` | `limit` (1–200, Standard 40) | `{traces: TraceView[]}` – „Was hat HomeIntent ausgelöst?“ (Admins: Haushalt, sonst nur eigene Ausführungen; seit 7.3.2) |
 | `subscribe` | – | Ergebnis `{entry_id, revision}`, danach Ereignisse `{entry_id, revision}` |
 

@@ -419,3 +419,59 @@ Frisches Testhaus, eigenes Prüfskript: **8/8**. Funktionsszenarien
 | Unit-Tests (hassil 3.11 und 3.12) | 6088 | 6165 |
 | Sprach-Gate | 465 | 465 |
 | Automationskorpus 7.2.0 (dev/held-out) | Schwellen erfüllt | Schwellen erfüllt (nach Migration von 53 Erwartungen, s. o.) |
+
+---
+
+## Phase 4 – Property-Based Safety Suite und Shadow-Infrastruktur (7.3.4)
+
+### Umgesetzt
+
+- **`tests/test_safety_properties.py`**: generative Suite mit `hypothesis`
+  (neu in `requirements-dev.txt`, keine Laufzeitabhängigkeit). Satzbausteine
+  kommen aus dem Lexikon (`device_ontology.GENERA`: Lemmata, Plural, Genus;
+  Orte und Gattungsmitglieder des synthetischen Testhauses;
+  `dative_location_phrase`), kombiniert mit Artikeln, Höflichkeit, Negation,
+  Frage-, Vergangenheits- und Konjunktivrahmen, Zeitangaben, Ausnahmen und
+  Nebensätzen. 17 Tests, je Invariante einer: Negation, Frage, Vergangenheit,
+  Kontrafaktisches → nie Write; unbekanntes Zielwort vergrößert nie die
+  Zielmenge; Ziele bleiben in der gesprochenen Gattung; unbekannte Ausnahme
+  und teilweise verstandener Mehrfachsatz → keine Teilausführung;
+  Zeitauftrag → nie sofort; Einzahl bei mehreren Treffern → Rückfrage;
+  IMPLICIT_NEED/INFERRED_ROUTINE nie lockerer als EXPLICIT (über Stufe,
+  Bestätigungsschwelle, Bindung, Risiko); CompositeRisk ≥ stärkste transitive
+  Wirkung (zufällige Skripte über alle Verschachtelungsarten); unvollständiger
+  EffectGraph nie LOW/ALLOW; mehrdeutige ausführbare Bedeutung → keine
+  Ausführung; nicht freigegebenes wirksames Ziel → nie Write (Executor);
+  gelerntes Binding → nie auf nicht freigegebene Ziele. Profile: `ci`
+  (derandomisiert, 25 Beispiele) und `nightly` (zufällig, 300 Beispiele,
+  eigener Job in `nightly-live.yml`); Gegenbeispiele werden in `REGRESSIONS`
+  fest übernommen.
+- **Shadow-Infrastruktur** als Erweiterung von `nlu/understanding.py`
+  (`compare_outcomes` bleibt): `BehaviorSignature`, `behavior_signature`,
+  `classify_drift` mit den Klassen `EQUIVALENT`, `REFINEMENT`,
+  `BEHAVIOR_CHANGE`, `SAFETY_DRIFT` (Write statt Non-Write, andere/zusätzliche
+  Ziele, Domänen- oder Gattungswechsel, niedrigeres Risiko, weggefallene
+  Bestätigung), `ShadowReport` (Zählung, Beispiele, `switch_allowed`).
+  - Offline: `scripts/shadow_compare.py --candidate … --check` über alle
+    veröffentlichten Korpora (Testbett-Szenarien, NLU-Probe, Dialogfälle,
+    Golden-Dateien, Automationskorpus; 2022 eindeutige Sätze) gegen das
+    Testhaus; CI-Schritt „Shadow-Vergleich (SAFETY_DRIFT blockiert)“.
+    Kandidaten liegen in `shadow_candidates.py`.
+  - Live: Option `shadow_mode` (`off` Standard, `log`). `shadow_runtime.py`
+    ruft registrierte Kandidaten erst nach der aktiven Pipeline auf und
+    protokolliert nur (Satz-Hash, beide Signaturen, Drift-Klasse, begrenzt auf
+    500). Ausgeführt wird ausschließlich das aktive Ergebnis. Sichtbar in den
+    Diagnosedaten und im Learning Center (`shadow/report`, nur Admin).
+
+### Ergebnisse
+
+- CI-Profil: 17/17 Invarianten; Nightly-Profil lokal (300 Beispiele je
+  Invariante, zufällige Seeds): 17/17, **0 verletzte Invarianten**, daher keine
+  Regressionseinträge.
+- Offline-Shadow „identity“: 2022/2022 EQUIVALENT (Selbsttest der Werkzeugkette).
+- `tests/test_shadow.py` (7): alle Drift-Gründe; ein absichtlich fehlerhafter
+  Kandidat (Küchenlicht → Saugroboter) wird als SAFETY_DRIFT erkannt
+  (`domain_change`, `more_or_other_targets`) und blockiert das Umschalten; im
+  Live-Shadow-Modus wird der Kandidat aufgerufen, schreibt aber nachweislich
+  nichts (nur das Küchenlicht wird geschaltet); das Protokoll enthält keinen
+  Satztext; im Modus `off` werden Kandidaten nicht aufgerufen.

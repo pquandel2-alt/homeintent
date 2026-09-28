@@ -793,6 +793,24 @@ async def _h_set_implicit_level(hass: HomeAssistant, entry: Any, viewer: Viewer,
     return {"implicit_action_level": level}
 
 
+async def _h_shadow_report(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: dict[str, Any]) -> Any:
+    """Shadow comparison of candidate pipelines (7.3.4), administrators only."""
+    if not viewer.is_admin:
+        raise LearningCenterError("not_authorized")
+    shadow = getattr(entry.runtime_data, "shadow", None)
+    return {
+        "api_version": API_VERSION,
+        "shadow_mode": str(entry.options.get("shadow_mode", "off")),
+        "reports": shadow.summary() if shadow is not None else {},
+    }
+
+
+@websocket_api.websocket_command(_cmd("shadow/report"))
+@websocket_api.async_response
+async def ws_shadow_report(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
+    await _run(hass, connection, msg, _h_shadow_report)
+
+
 @websocket_api.websocket_command(_cmd("bindings/list"))
 @websocket_api.async_response
 async def ws_bindings_list(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
@@ -856,7 +874,7 @@ _COMMANDS = (
     ws_habits_preview, ws_habits_accept, ws_habits_reject, ws_permissions_list,
     ws_permissions_revoke, ws_mutes_list, ws_mutes_remove, ws_history_list,
     ws_tombstones_list, ws_traces_list, ws_bindings_list, ws_bindings_remove,
-    ws_set_implicit_level, ws_subscribe,
+    ws_set_implicit_level, ws_shadow_report, ws_subscribe,
 )
 
 

@@ -38,7 +38,7 @@ DOC_COMMANDS = (
     "models/reset", "preferences/confirm", "preferences/reject", "habits/preview",
     "habits/accept", "habits/reject", "permissions/list", "permissions/revoke",
     "mutes/list", "mutes/remove", "history/list", "tombstones/list", "traces/list", "bindings/list", "bindings/remove",
-    "settings/implicit_action_level", "subscribe",
+    "settings/implicit_action_level", "shadow/report", "subscribe",
 )
 
 
