@@ -29,7 +29,7 @@ from .semantic_utterance import (
     SpeechAct,
     analyse_utterance,
 )
-from .temporal_semantics import TemporalExpression, analyse_temporal_semantics
+from .temporal_semantics import TemporalKind, TemporalExpression, analyse_temporal_semantics
 from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
 from .word_cues import has_word
 
@@ -500,7 +500,12 @@ def analyse_language(
         utterance=utterance,
         semantics=semantics,
         structure=structure,
-        temporal=analyse_temporal_semantics(tokens),
+        # "jetzt"/"sofort" say what every plain command means; they are no
+        # scheduling and must not block the direct path (7.5.0).
+        temporal=tuple(
+            item for item in analyse_temporal_semantics(tokens)
+            if item.kind is not TemporalKind.NOW
+        ),
         maintain=maintain,
         release=(
             release_frame(text, tokens)

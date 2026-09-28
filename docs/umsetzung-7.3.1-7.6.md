@@ -716,3 +716,99 @@ Frisches Testhaus, eigenes Prüfskript: **8/8**. Funktionsszenarien
 - Korpusvergleich 7.4.0 gegen 7.4.1 auf Engine-Ebene: 2022/2022 EQUIVALENT.
   Die Konversationsschicht ist durch die Testsuite abgedeckt.
   Resolver-Shadow unverändert (0 SAFETY_DRIFT, 0 „alt besser“).
+
+---
+
+## Phase 7 – Gemeinsame Bedeutungsebene und Arbitration (7.5.0)
+
+### Umgesetzt
+
+- **IR-Erweiterung** (`nlu/semantic_utterance.py`): `MeaningClause` hat neu
+  die Felder `operation`, `targets` (`TargetMeaning`: Gattungen, Ort, Menge,
+  Merkmale, Referenz, ausdrücklich genannte Entitäten), `value`, `time`
+  (`TimeKind`: NOW/ONCE/RECURRING/UNSPECIFIED), `conditions`, `exceptions`,
+  `origin`, `residue` und `evidence`. Alle Felder haben Standardwerte, bestehende
+  Aufrufer sind unverändert. Einen zusätzlichen Typ `SemanticIntent` gibt es
+  nicht.
+- **`nlu/meaning_ir.ground_meaning`** füllt die Felder aus vorhandenen
+  Analysen:
+  - Klauselleser des Gattungscompilers
+  - Zielbeschreibung der einen Zielauflösung
+  - Zeitangaben und Wiederholungsmarker
+  - Strukturanalyse für Bedingungen, Ausschlussanalyse für Ausnahmen
+  - Bedürfniserkennung für die Herkunft
+
+  Es gibt keinen neuen Parser und keinen Dienstaufruf (Test).
+- **`arbitration.py`**: `Candidate` (Quelle, Sprechakt, Autorität
+  PARSER > BINDING > NEED > DISCOURSE, Wirkung WRITE/DEFER/READ/NONE, Ziele,
+  Operationen, Risiko, Rest, Evidenz) und `arbitrate` mit den Regeln aus dem
+  Auftrag. Der Arbiter führt nichts aus; der gewählte Payload läuft
+  weiterhin durch Validator, EffectGraph, Richtlinie und NEVER_AUTO.
+- **`arbitration_candidates.py`**: Kandidaten von Parser (`understand`),
+  Alarmanlage, Freigabe („kann aus“), Bedürfnis und Situationsfrage.
+  Zeitgebundene oder bedingte Bedeutung macht aus jeder Schreibwirkung
+  DEFER.
+- **Shadow gegen die Kaskade** (`scripts/arbiter_shadow.py`):
+  - Die echte Konversation antwortet auf dem Stub-Testhaus, aufgezeichnet
+    wird, was sie an die Ausführungsrichtlinie übergibt.
+  - Daneben entscheidet der Arbiter, und seine Wahl läuft durch dieselbe
+    Richtlinie.
+  - Verglichen werden die Verhaltenssignaturen; CI-Schritt mit `--check`.
+- **Kollisionskorpus** `tests/eval/collisions_v75.json` (30 Sätze):
+  Bedürfnis ↔ Frage, Automation ↔ zeitversetzter Befehl, Routine ↔
+  Szenenname, jeweils mit Erwartung. Test: keine Schreibwirkung ohne „Ja“,
+  wo erwartet.
+- **Umgeschaltet: Bedürfnis ↔ Frage.** In `conversation.py` liefern
+  Situationsfrage und Bedürfnis Kandidaten, der Arbiter entscheidet. Die
+  bisherige Reihenfolge „Situationsfrage zuerst, dann Bedürfnis“ ist
+  entfallen.
+
+### Shadow-Verlauf
+
+| Lauf | gleich | Verhaltensänderung | SAFETY_DRIFT | nicht messbar |
+|---|---|---|---|---|
+| 1: nur Parser/Bedürfnis/Situation | 2029 | 15 | 1 | 7 |
+| 2: + Alarm, „kann aus“, Zeit → DEFER | 2035 | 10 | 0 | 7 |
+| 3: „jetzt“/Dauer sind „jetzt“ | 2036 | 9 | 0 | 7 |
+| 4: Richtlinie auf beiden Seiten gleich | 2045 | 0 | 0 | 7 |
+| 5 (nach Umschalten und „jetzt“-Behebung): Bedürfnis ist keine Frage, „drei Viertel“ ist keine Uhrzeit | 2045 | 0 | 0 | 7 |
+
+Einzelheiten zu den Läufen:
+- **Lauf 1**, der SAFETY_DRIFT: Der Bedingungssatz „Wenn die Haustür aufgeht,
+  schalte das Flurlicht ein und mach das Küchenlicht an“ wäre sofort
+  ausgeführt worden. Behoben durch die Regel: bedingt oder zeitgebunden →
+  DEFER.
+- **Läufe 1–3**, die Verhaltensänderungen waren
+  - fehlende Interpreten (Alarm, „kann aus“),
+  - „jetzt“ als Zeitplanung,
+  - ein Messartefakt: Die Bestätigung durch die Richtlinie war nur auf einer
+    Seite modelliert.
+- **Nicht messbar** sind 7 Kalenderlesefragen, die der Test-Stub nicht
+  beantworten kann.
+
+### Weitere Befunde und Behebungen
+
+- „Mach jetzt das Flurlicht an“ und „Schalte sofort … aus“ wurden nicht
+  ausgeführt („Flurlicht lässt sich nur ein- und ausschalten“), weil „jetzt“
+  als Zeitangabe den direkten Pfad sperrte. Jetzt sind „jetzt“/„sofort“ im
+  Frontend keine Zeitangabe und in der Normalisierung Füllwörter („ab
+  jetzt“, „bis jetzt“ bleiben).
+- Korpusvergleich 7.4.1 gegen 7.5.0 auf Engine-Ebene: 2022/2022 EQUIVALENT.
+  V8-Baseline unverändert.
+
+### Bewusst im Shadow-Modus
+
+- Automation ↔ zeitversetzter Befehl und Routine ↔ Szenenname: Der Arbiter
+  entscheidet im Shadow gleich wie die Kaskade, umgeschaltet wird aber noch
+  nicht. Diese Kaskadenzweige hängen an Dialogzustand (Rückfragen zur
+  Wiederholung, Routinenbindung), den der Arbiter noch nicht als Kandidat
+  kennt. Der Arbiter bekommt Diskurs- und Bindungskandidaten erst mit den
+  Sprachinseln (Phase 8).
+- Die first-match-Kaskade bleibt für alle übrigen Zweige die Reihenfolge.
+
+### Tests
+
+- `tests/test_arbitration.py` (49): Regeln einzeln, IR-Felder und Zeitarten,
+  keine Dienstaufrufe in IR und Arbiter, Kollisionskorpus mit Erwartungen
+  (Arbiter-Entscheidung und Konversation).
+- Die Phase-4-Invarianten laufen unverändert grün.

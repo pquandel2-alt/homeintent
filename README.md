@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.4.1** (Lernen aus dem Dialog)
+- Aktuelle Version: **7.5.0** (gemeinsame Bedeutungsebene und Arbitration)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,42 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.5.0 neu?
+
+**Eine gemeinsame Bedeutungsebene und ein Schiedsrichter statt „wer zuerst passt“.**
+
+- **Bedeutungsebene erweitert, nicht neu gebaut.** `MeaningClause` trägt jetzt
+  neben Sprechakt, Modalität und Polarität auch diese Felder:
+  - Operation, Ziel (Gattung, Ort, Menge, Merkmal, Referenz, ausdrücklich
+    genannte Geräte), Wert
+  - Zeit (jetzt / einmalig / wiederkehrend / später ohne Angabe)
+  - Bedingungen, Ausnahmen
+  - Herkunft (ausdrücklicher Befehl / Bedürfnis)
+  - unerklärter Rest, Evidenz
+
+  `nlu/meaning_ir.ground_meaning` füllt sie aus den vorhandenen Analysen.
+  Es gibt keinen neuen Bedeutungstyp, und die Ebene ruft nie einen Dienst
+  auf.
+- **Arbitration** (`arbitration.py`): Parser, Bedürfnis, Alarmanlage,
+  „kann aus“ und Situationsfragen liefern Kandidaten mit Wirkung, Zielen,
+  Autorität und Rest. Die Regeln:
+  - Ein ausführbarer Kandidat ohne Rest wird ausgeführt.
+  - Kandidaten mit gleicher Wirkung werden zusammengeführt.
+  - Bei Widerspruch entscheidet eindeutige Evidenz: Eine ausdrückliche Frage
+    schlägt einen Befehl, ein ausdrücklich genanntes Gerät schlägt ein
+    Bedürfnis. Sonst wird nachgefragt oder nichts getan.
+  - Mit Rest wird nie ausgeführt.
+  - Zeitgebundenes und Bedingtes wird nie sofort ausgeführt.
+- **Erst Shadow, dann umgeschaltet:** Der Arbiter lief gegen die Kaskade der
+  Konversation über 2052 Sätze (alle Korpora plus neuer Kollisionskorpus
+  mit 30 Sätzen). Ergebnis: 2045/2045 messbare Sätze gleichwertig, 0
+  SAFETY_DRIFT. Umgeschaltet ist die Entscheidung Bedürfnis ↔ Frage. Die
+  übrigen Paare (Automation ↔ zeitversetzter Befehl, Routine ↔ Szenenname)
+  entscheiden im Shadow gleich und werden in 7.5.x Handler für Handler
+  umgestellt. `scripts/arbiter_shadow.py --check` ist ein CI-Schritt.
+- **Nebenbei behoben:** „Mach jetzt das Flurlicht an“ und „Schalte sofort …“
+  wurden bisher nicht ausgeführt („jetzt“ galt als Zeitplanung).
 
 ## Was ist in Version 7.4.1 neu?
 
@@ -1850,13 +1886,13 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.4.1:
+Geprüfter Release-Stand von Version 7.5.0:
 
 ```text
-6251 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6300 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
-Shadow-Vergleich 2022 Sätze EQUIVALENT; Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“
+Shadow-Vergleich 2022 Sätze EQUIVALENT; Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gleichwertig
 tests_ha gegen echtes Home Assistant 2026.9.2: 15 passed; der Recorder-Test
 scheitert lokal wie schon auf 7.3.0 an der Fixture der HA-Testumgebung
 ```
@@ -1899,7 +1935,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.4.1.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.5.0.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

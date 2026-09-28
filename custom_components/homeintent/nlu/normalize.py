@@ -49,6 +49,13 @@ _DEGREE_SYMBOL_RE = re.compile(r"(\d)\s*°")
 # other words are prefixes of each other's tokens. "bitte" excluded, see
 # module docstring.
 _FILLER_RE = re.compile(r"\b(mal|ma|doch|kurz)\b", re.IGNORECASE)
+# "Mach jetzt das Licht an": "jetzt"/"sofort" only say "now", which every
+# plain command means anyway (7.5.0). "ab jetzt", "bis jetzt", "von jetzt
+# an" carry meaning and stay.
+_NOW_FILLER_RE = re.compile(
+    r"(?<!\bab\s)(?<!\bbis\s)(?<!\bvon\s)\b(?:jetzt|sofort)\b(?!\s+an\b(?=.*\bvon\b))",
+    re.IGNORECASE,
+)
 _HESITATION_RE = re.compile(r"(?<!\w)(?:äh+m*|eh+m+)(?!\w)[,;:]?", re.I)
 _LEADING_DISCOURSE_FILLER_RE = re.compile(
     r"^\s*(?:(?:also|okay|ok|gut|nun|na\s+gut)\s*[,;:]?\s+)+", re.I
@@ -297,6 +304,7 @@ def normalize(text: str) -> str:
     for pattern, replacement in _STT_REWRITES:
         text = pattern.sub(replacement, text)
     text = _FILLER_RE.sub(" ", text)
+    text = _NOW_FILLER_RE.sub(" ", text)
     text = _NON_DEGREE_FILLER_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text)
     return text.strip()

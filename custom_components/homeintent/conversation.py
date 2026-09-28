@@ -330,6 +330,8 @@ from .nlu.recurrence import (
 )
 from .bindings import BindingKind, BindingScope
 from .conversation_learning import DialogLearningMixin, is_known_device_word
+from .arbitration import DecisionKind, arbitrate
+from .arbitration_candidates import need_query_candidates
 from .dialog_learning import MEMORY_DISABLED_TEXT, alias_rejection, unknown_device_noun
 from .nlu.need_semantics import ROUTINE_CONCEPTS, routine_concept_by_key
 from .routine_binding_intent import (
@@ -1483,12 +1485,15 @@ class NluConversationEntity(
                     response=response, conversation_id=user_input.conversation_id
                 )
 
-        if active_dialog is None and (
-            language_document.utterance.speech_act is SpeechAct.QUERY
-            or user_input.text.rstrip().endswith("?")
-        ):
-            # Situation views ("Ist unten noch was an?", "Ist alles zu?")
-            # aggregate observed states; they never execute anything.
+        if active_dialog is None:
+            # Need ↔ question (7.5.0): both interpreters propose, the arbiter
+            # decides. An explicit question is answered from observed states
+            # ("Ist unten noch was an?"); a need statement ("Mir ist kalt")
+            # is grounded before read-only routers could answer it with values.
+            question_shaped = (
+                language_document.utterance.speech_act is SpeechAct.QUERY
+                or user_input.text.rstrip().endswith("?")
+            )
             view = answer_situation_view(
                 user_input.text,
                 entities,
@@ -1496,20 +1501,7 @@ class NluConversationEntity(
                     conversation_area.area_id if conversation_area is not None else None
                 ),
                 routine_steps=self._script_steps,
-            )
-            if view is not None:
-                return await self._async_handle_match_result(
-                    user_input,
-                    response,
-                    MatchResult(
-                        plan=None, response_text=view.text, context_entities=view.entities
-                    ),
-                    entities,
-                )
-
-        if active_dialog is None:
-            # Need statements ("Mir ist kalt", "Hier ist es zu hell") are
-            # grounded before read-only routers could answer them with values.
+            ) if question_shaped else None
             need = self._engine.understand_need(
                 language_document,
                 entities,
@@ -1523,6 +1515,19 @@ class NluConversationEntity(
                 ),
                 routine_bindings=self._routine_bindings_for(conversation_user_id(user_input)),
             )
+            decision = arbitrate(
+                need_query_candidates(view, need, language_document.utterance.speech_act.name),
+                explicit_question=question_shaped,
+            )
+            if decision.kind is DecisionKind.ANSWER and view is not None:
+                return await self._async_handle_match_result(
+                    user_input,
+                    response,
+                    MatchResult(
+                        plan=None, response_text=view.text, context_entities=view.entities
+                    ),
+                    entities,
+                )
             if isinstance(need, CommandPlan):
                 return await self._async_handle_command_plan(
                     user_input, response, need, entities

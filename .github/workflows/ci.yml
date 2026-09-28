@@ -37,7 +37,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/v7_shadow_report.py
-          --check docs/perf/v7-shadow-baseline-7.4.1.json
+          --check docs/perf/v7-shadow-baseline-7.5.0.json
           --quiet
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
@@ -45,6 +45,9 @@ jobs:
       - name: Zielauflösung gegen historischen Resolver (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/resolver_shadow.py --check
+      - name: Arbiter gegen Kaskade (SAFETY_DRIFT blockiert)
+        if: matrix.python-version == '3.12'
+        run: python scripts/arbiter_shadow.py --check
       - name: V9-Latenzbudget bei großer Registry prüfen
         if: matrix.python-version == '3.12'
         run: >-
