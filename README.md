@@ -104,7 +104,7 @@ richtig, die Erwartung war falsch).
 | `SEMANTIC_SENTENCE_PATTERN`-Regex | nicht gezählt | sinkend | 272 → 258 → **212** (7.6.0: keine neuen) |
 | Gelerntes Wort wirkt in verschiedenen Satzformen | 3 von 4 | ≥ 10 | **10** Befehlsformen + Frage, Zeitauftrag, Verneinung |
 | Unveröffentlichter Korpus | 38 % | ≥ 65 % | hier nicht messbar; eigene ungesehene Paraphrasen 44 % → **94 %** |
-| Funktionsszenarien live | 162/162 | nicht schlechter | 158/162; die 4 Abweichungen sind die gewollten `propose`-Vorschläge aus 7.3.3 |
+| Funktionsszenarien live | 162/162 | nicht schlechter | 155/155 im CI-Lauf; 4 Szenarien auf Vorschlag + „Ja“ umgestellt |
 | Latenz p95 | < 100 ms | < 100 ms | **< 100 ms** (Benchmarks mit 5000 Entitäten) |
 
 ## Was ist in Version 7.5.2 neu?
@@ -2020,10 +2020,11 @@ Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gle
 Pyright 0 Fehler (voll und alle Strict-Profile); Ruff-Baseline 57 (unverändert seit 7.3.0)
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 158 / 162
-Funktionsszenarien. Die vier Abweichungen sind seit 7.3.3 gewollt:
-Bedürfnisse werden im Standard `propose` vorgeschlagen statt ausgeführt,
-und die Sonnenuntergangs-Automation fragt nach. Dazu 15 / 15
+Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 155 / 155
+Funktionsszenarien im CI-Lauf (`--strict`, ohne Proaktiv). Vier Szenarien
+prüfen seit 7.6.0 das Verhalten aus 7.3.3: Bedürfnisse werden im Standard
+`propose` vorgeschlagen und erst nach „Ja“ ausgeführt, und die
+Sonnenuntergangs-Automation fragt „nur heute oder jeden Tag?“. Dazu 15 / 15
 Schlafen-Regressionen und 8 / 8 Live-Prüfungen der Zielauflösung.
 Details: `docs/umsetzung-7.3.1-7.6.md`.
 

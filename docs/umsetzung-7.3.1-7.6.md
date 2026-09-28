@@ -1038,7 +1038,13 @@ Zu den Zahlen:
   `auto-manage` fragt die Sonnenuntergangs-Automation nach. Neue
   Abweichungen gibt es nicht.
 - Schlafen-Regressionen: **15/15**. Zielauflösung: **8/8**.
-- Danach `sim/config` zurückgesetzt; in `sim/` ist nichts eingecheckt.
+- Danach `sim/config` zurückgesetzt.
+- Nachtrag (PR #14, auf Wunsch des Auftraggebers): Die vier Szenarien
+  (`s73-s6-too-bright`, `s73-2-freezing`, `s73-2-stale-air`, `auto-sun`)
+  prüfen jetzt das Verhalten aus 7.3.3: Vorschlag ohne Ausführung, nach „Ja“
+  die Ausführung, bei `auto-sun` die Antwort „jeden Tag“. CI-Lauf
+  (`--strict`, ohne Proaktiv) im frischen Testhaus: **155/155**. Das ist die
+  einzige Änderung an `sim/` außer dem Entfernen der Test-Automationen.
 
 ### Bewusst offen
 
@@ -1097,7 +1103,7 @@ Zu den Zahlen:
 | Gelerntes Wort in Satzformen | 3 von 4 | 10 Befehlsformen + Frage, Zeitauftrag, Verneinung |
 | Eigene ungesehene Paraphrasen (Phase 9, zurückgehalten) | 44 % (7.5.2) | 94 % |
 | Unit-Tests | 6035 | 6407 |
-| Funktionsszenarien live | 155/155 (ohne Proaktiv) | 158/162 (mit Proaktiv; 4 gewollte `propose`-Abweichungen) |
+| Funktionsszenarien live (CI, ohne Proaktiv) | 155/155 | 155/155 (4 Szenarien auf Vorschlag + „Ja“ umgestellt) |
 | Latenz p95 (5000 Entitäten) | < 100 ms | < 100 ms |
 
 Den unveröffentlichten Korpus (7.3.0: 38 %) kann dieses Repository nicht
