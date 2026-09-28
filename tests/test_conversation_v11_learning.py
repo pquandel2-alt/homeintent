@@ -380,3 +380,47 @@ def test_remaining_time_question_is_not_hijacked_by_the_no_model_answer(tmp_path
     assert "Verbleibende Zeit: 4 Minuten und 15 Sekunden" in remaining.response.speech
     assert "kein belastbares Dauermodell" in predictive.response.speech
     agent.hass.services.async_call.assert_not_awaited()
+
+
+def _morning_run(index: int, stamp: datetime) -> GoalRun:
+    steps = tuple(
+        StepExecutionRecord(
+            f"s{step_index}", operator, (target,), (), True,
+            (VerificationRecord(target, expected, expected, True, observed_at=stamp.isoformat()),),
+        )
+        for step_index, (operator, target, expected) in enumerate((
+            ("LIGHT_TURN_ON", "light.kitchen", "on"),
+            ("COVER_OPEN_COVER", "cover.kitchen", "open"),
+            ("SWITCH_TURN_ON", "switch.coffee", "on"),
+        ))
+    )
+    return GoalRun(
+        f"lapse-{index}", "morning", stamp.isoformat(), stamp.isoformat(),
+        "", "philipp", None, GoalModel(GoalKind.ACHIEVE_STATE, goal_id="morning"),
+        "plan", (), (), True, steps, (), GoalRunStatus.SUCCESS,
+    )
+
+
+def test_two_weeks_time_lapse_habits_are_only_proposed_and_rejection_sticks(tmp_path, monkeypatch):
+    """7.4.1: fourteen simulated days of use (the runs carry their own time).
+
+    Habits are only ever proposed, no automation or routine is created
+    without a "Ja", and a rejected proposal does not come back - neither on
+    the next question nor after another week of the same behaviour.
+    """
+    agent, learning, registry = _agent(tmp_path, monkeypatch)
+    for day in range(10):  # the proposal threshold is ten occurrences
+        asyncio.run(learning.async_observe_goal_run(_morning_run(day, NOW + timedelta(days=day))))
+    agent.hass.services.async_call.assert_not_awaited()
+    first = _turn(agent, "Welche Gewohnheiten hast du erkannt?", "lapse")
+    assert "Soll ich daraus eine Routine" in first.response.speech
+    rejected = _turn(agent, "Nein", "lapse")
+    assert "Routine" not in rejected.response.speech or "nicht" in rejected.response.speech
+    for day in range(10, 14):
+        asyncio.run(learning.async_observe_goal_run(_morning_run(day, NOW + timedelta(days=day))))
+    again = _turn(agent, "Welche Gewohnheiten hast du erkannt?", "lapse-2")
+    assert "Soll ich daraus eine Routine" not in again.response.speech
+    assert agent._runtime_data.profiles.routine("Morgenroutine", user_id="philipp") is None
+    for habit in asyncio.run(registry.async_list(kind=LearnedKind.HABIT)):
+        assert habit.parameters.get("creates_automation") is False
+    agent.hass.services.async_call.assert_not_awaited()

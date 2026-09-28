@@ -600,3 +600,119 @@ Frisches Testhaus, eigenes Prüfskript: **8/8**. Funktionsszenarien
 - Hinweis zum Ablauf: Ein erster Runner-Lauf wurde durch ein Zeitlimit
   abgebrochen und hinterließ geänderte Optionen. Das Testbett wurde neu
   aufgesetzt; gezählt wird nur der saubere Lauf.
+
+---
+
+## Phase 6 – Selbstlernen aus dem Dialog (7.4.1)
+
+### Umgesetzt
+
+- **`dialog_learning.py`** (reine, deterministische Regeln) und
+  **`conversation_learning.py`** (Mixin der Konversation, verbindet Regeln,
+  Dialog und `BindingStore`). Gelernte Sätze (Makro, Vorliebe, Befehl nach
+  einem unbekannten Wort) laufen durch `_async_handle_message_inner`, also
+  durch dieselbe Pipeline wie ein gesprochener Befehl. Es gibt keine zweite
+  Ausführungs- oder Bedeutungsschicht.
+- **Ein Speicher:** Neue Aliasse, Standardauswahlen, Vorlieben und Makros sind
+  Bindungen (`bindings.py`, Schema 2). Neu in Schema 2 sind die beobachteten
+  Antworten auf Rückfragen (`choices`); sie sind Beobachtungen und berechtigen
+  zu nichts. Das Alias-Lernen („Mit X meine ich Y“) schreibt nicht mehr in die
+  Optionen und nicht mehr in das V11-Modellregister. Alte Einträge dort
+  wirken weiter; `custom_aliases` bleibt Konfiguration.
+- **Anwendung nur in der Zielauflösung:** `target_resolution` besitzt beide
+  Stellen, an denen Bindungen angewandt werden.
+  - `apply_alias_bindings` hängt Namen als Aliasse an die freigegebenen
+    Snapshots. Damit sind sie Lexikon, kein Satz, und wirken in allen
+    Satzformen.
+  - `default_choice_for` wählt nur unter den Kandidaten, die die Rückfrage
+    selbst anbietet (Schlüssel: Kandidatenmenge × Ort, Sprecher =
+    Geltungsbereich).
+- **Unbekanntes Geräte-Nomen:**
+  - Erkennung durch `unknown_device_noun`: Ein Befehlsverb am Anfang, genau
+    ein großgeschriebenes Wort, das weder Gerät, Raum, Gattung noch
+    Funktionswort ist, und nur ein Teilsatz.
+  - Rückfrage mit nummerierten Optionen aus Aktion (Domänen) und Ort
+    (gesprochener Ort, sonst Satellit).
+  - Nach der Wahl wird der Satz mit dem Gerätenamen ausgeführt, danach kommt
+    das Alias-Angebot.
+  - Spezifische Erklärungen (unbekannte Etage, Fähigkeit) haben Vorrang.
+  - Neu: Ein Befehl mit unbekanntem Wort wird nie über Kontext-Anschlüsse
+    (`match_followup`, `match_reference`, `match_query_followup` u. a.)
+    ergänzt. Vorher beantwortete „Mach den Zauberkasten an“ nach einer Frage
+    zur Stehlampe die Stehlampen-Frage erneut.
+- **Rückfragen und Korrekturen:**
+  - Zweimal dieselbe Wahl führt einmal zum Angebot einer Standardauswahl.
+  - Korrekturen („Nein, ich meinte X“, „Nein, X“) zählen als Wahl zwischen
+    dem vorigen und dem gemeinten Gerät. Nach einer Standardauswahl zählen
+    sie zu deren Kandidaten.
+  - Neu versteht die Korrektur die bloße Seitenangabe („die rechte“ nach
+    „Nachttischlampe links“) als Geschwistergerät, und zwar nur, wenn der
+    Name selbst eine Seite trägt.
+- **Vorlieben und Makros:**
+  - Vorlieben werden gemerkt, beantwortet, beim ersten Mal mit Vorschau
+    angewandt und gezielt vergessen.
+  - Makros sind bestätigte Sätze und keine HA-Automationen.
+  - Der Makroname darf kein Geräte-, Raum- oder Gattungsname sein.
+  - Der Makrotext muss als schreibender Befehl verstanden werden, sonst wird
+    nichts gespeichert.
+- **Sicherheit beim Lernen:**
+  - Gespeichert wird nur nach „Ja“. Ein neuer Befehl statt einer Antwort
+    lässt das Angebot verfallen.
+  - Es gibt nur freigegebene Ziele; ein entzogenes Ziel ist wirkungslos und
+    wird in „Was weißt du über mich?“ und im Learning Center markiert.
+  - Geräte-, Raum- und Gattungsnamen (exakte Gattungswörter) werden nie
+    überschrieben.
+  - Kritische Ziele (Schloss, Alarm, Sirene, Ventil, Tor, Tür) dürfen nur
+    Administratoren benennen.
+  - Löschen fremder Haushaltseinträge per Sprache ist nur für Administratoren
+    möglich.
+- **Kleinigkeiten:**
+  - Deutsche Bezeichnungen für V11-Modelle (Art, Status, Tageszeit,
+    Dezimalkomma).
+  - Das Learning Center zeigt Vorlieben und Makros mit Tätigkeit bzw. Satz.
+  - Der Text bei ausgeschaltetem Gedächtnis erklärt, wo man es einschaltet.
+  - „Was hast du gelernt?“ bleibt die V11-Übersicht; ohne V11 antworten die
+    Bindungen.
+
+### Bewusst so belassen
+
+- `alias_learning.py` behält seine drei Lehr-Satzrahmen („Mit X meine ich Y“,
+  „Nenne X künftig Y“, „X bedeutet Y“). Sie erkennen die Sprechhandlung
+  „Lehren“. Die Wirkung eines Namens ist nicht mehr an Satzmuster gebunden,
+  sondern ein Lexikoneintrag der Zielauflösung (10+ Satzformen ohne eigene
+  Programmierung, s. Tests).
+- Der Zeitraffer läuft in der Testsuite und nicht im Live-Testbett. Die
+  Gewohnheitserkennung nimmt ihre Zeit aus den Zeitstempeln der
+  Ausführungsläufe; das ist bereits eine testbare Zeitquelle, eine
+  zusätzliche war nicht nötig.
+- „Nein, nur X“ nach einem Befehl an mehrere Geräte wird korrigiert, aber
+  nicht als Standardauswahl gezählt. Es gab keine Rückfrage, deren Antwort
+  künftig ersetzt werden könnte.
+
+### Tests und Messwerte
+
+- `tests/test_dialog_learning.py` (45):
+  - ein gelerntes Wort in 10 Befehlsformen plus Frage, Zeitauftrag, „lass
+    an“ und Verneinung; das Wort ist nirgends eigens programmiert
+  - Lehrdialog, unbekanntes Wort (Ja/Nein, kein Kontextersatz, kein Einsatz
+    in Mehrfachsätzen)
+  - Sicherheitsregeln (Namen, Räume, Gattung, kritische Ziele, entzogene
+    Ziele, nur nach Ja)
+  - Standardauswahl (persönlich, explizit gewinnt, andere Person wird
+    gefragt)
+  - Vorlieben, Makros (auch: kritischer Schritt fragt bei jedem Aufruf),
+    deutsche Ausgaben, Parser
+- `tests/test_safety_properties.py` (+2 Invarianten):
+  - Ein gelernter Name erreicht nie mehr als sein freigegebenes Ziel;
+    Verneinung, Frage und Zeitauftrag schreiben nie.
+  - Ein Makro umgeht nie die Bestätigung kritischer Schritte.
+  - Nightly-Profil (300 Beispiele): grün. Ein zunächst gefundenes
+    „Gegenbeispiel“ war eine falsche Testannahme („Kannst du … einschalten?“
+    ist eine Bitte).
+- Zeitraffer-Test (`test_conversation_v11_learning.py`), 14 simulierte Tage:
+  - Gewohnheit ab 10 Belegen nur als Vorschlag
+  - „Nein“ ist dauerhaft; nach weiteren Tagen kein erneuter Vorschlag
+  - keine Routine, keine Automation, kein Dienstaufruf
+- Korpusvergleich 7.4.0 gegen 7.4.1 auf Engine-Ebene: 2022/2022 EQUIVALENT.
+  Die Konversationsschicht ist durch die Testsuite abgedeckt.
+  Resolver-Shadow unverändert (0 SAFETY_DRIFT, 0 „alt besser“).

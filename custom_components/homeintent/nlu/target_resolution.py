@@ -915,3 +915,63 @@ def compare_resolutions(
         return "OLD_BETTER", f"resolved_to_{new.status.name.lower()}"
     return "REFINEMENT", f"{old.status.name.lower()}_to_{new.status.name.lower()}"
 
+
+# ---------------------------------------------------------------------------
+# Learned bindings (7.4.1) - applied here and only here.
+
+
+def apply_alias_bindings(
+    entities: Sequence[EntitySnapshot], bindings: Iterable[object]
+) -> list[EntitySnapshot]:
+    """Add confirmed household/personal aliases to the exposed snapshots.
+
+    An alias is a lexicon entry of the one target resolution: once attached
+    to the snapshot it works in every sentence form, question, time command,
+    push sentence and multi-command. A binding whose target is not among
+    ``entities`` (removed or no longer exposed) is simply inert.
+    """
+    from ..bindings import BindingKind
+
+    extra: dict[str, list[str]] = {}
+    for binding in bindings:
+        if getattr(binding, "kind", None) is not BindingKind.ALIAS:
+            continue
+        spoken = str(getattr(binding, "data", {}).get("spoken") or getattr(binding, "key"))
+        extra.setdefault(str(getattr(binding, "target")), []).append(spoken)
+    if not extra:
+        return list(entities)
+    return [
+        replace(entity, aliases=tuple(dict.fromkeys((*entity.aliases, *extra[entity.entity_id]))))
+        if entity.entity_id in extra else entity
+        for entity in entities
+    ]
+
+
+def default_choice_for(
+    candidates: Sequence[EntitySnapshot],
+    area_id: str | None,
+    bindings: Iterable[object],
+) -> EntitySnapshot | None:
+    """The confirmed default choice for exactly this question, if any.
+
+    The key is the offered candidate set × place, so only a candidate the
+    clarification itself offered can be chosen: a default choice never adds
+    a target, and the resulting command still runs through validator,
+    EffectGraph and policy.
+    """
+    from ..bindings import BindingKind, normalize_key
+
+    ids = sorted(entity.entity_id for entity in candidates)
+    keys = {
+        normalize_key(f"{'|'.join(ids)} @ {area_id or 'ueberall'}"),
+        normalize_key(f"{'|'.join(ids)} @ ueberall"),
+    }
+    by_id = {entity.entity_id: entity for entity in candidates}
+    for binding in bindings:
+        if (
+            getattr(binding, "kind", None) is BindingKind.DEFAULT_CHOICE
+            and getattr(binding, "key") in keys
+            and getattr(binding, "target") in by_id
+        ):
+            return by_id[str(getattr(binding, "target"))]
+    return None

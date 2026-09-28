@@ -37,7 +37,6 @@ from .automation_grounding import looks_like_selection_reply
 from .automation_executor import AutomationExecutor
 from .alias_learning import (
     AliasLearningDraft,
-    append_alias_rule,
     parse_alias_learning,
 )
 from .agent_action_policy import validate_agent_service_plan
@@ -205,7 +204,7 @@ from .nlu.semantic_exclusion import canonical_exception_words
 from .nlu.normalize import expand_clitics
 from .nlu.german_morphology import dative_location_phrase
 from .nlu.place_model import build_place_lexicon
-from .nlu.device_ontology import analyse_word
+from .nlu.device_ontology import analyse_word, lookup_genus_word
 from .nlu.target_resolution import genus_members
 from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain
@@ -330,6 +329,8 @@ from .nlu.recurrence import (
     trigger_kinds,
 )
 from .bindings import BindingKind, BindingScope
+from .conversation_learning import DialogLearningMixin, is_known_device_word
+from .dialog_learning import MEMORY_DISABLED_TEXT, alias_rejection, unknown_device_noun
 from .nlu.need_semantics import ROUTINE_CONCEPTS, routine_concept_by_key
 from .routine_binding_intent import (
     RoutineBindingOperation,
@@ -674,8 +675,11 @@ async def async_setup_entry(
     async_add_entities([NluConversationEntity(config_entry)])
 
 
+_GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
+
+
 class NluConversationEntity(
-    conversation.ConversationEntity, conversation.AbstractConversationAgent
+    DialogLearningMixin, conversation.ConversationEntity, conversation.AbstractConversationAgent
 ):
     """Deterministic, rule-based Assist conversation agent (German, v1)."""
 
@@ -769,10 +773,20 @@ class NluConversationEntity(
         # One Home Assistant context per turn: every execution in this turn
         # shares one execution id (7.3.2).
         turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
+        self._current_chat_log = chat_log
         try:
             result = await self._async_handle_message_inner(user_input, chat_log)
         finally:
             end_turn(turn)
+        suffix = self._take_turn_suffix(user_input.conversation_id)
+        if suffix:
+            # "Soll ich mir … merken?" after an executed command (7.4.1).
+            speech = result.response.speech
+            spoken = (
+                speech.get("plain", {}).get("speech", "")
+                if isinstance(speech, dict) else str(speech or "")
+            )
+            result.response.async_set_speech(f"{spoken} {suffix}".strip())
         self._apply_continue_conversation(user_input, result)
         return result
 
@@ -1410,6 +1424,27 @@ class NluConversationEntity(
         if (
             active_dialog is None
             and active_task is not None
+            and active_task.kind in {DialogTaskKind.LEARNING_OFFER, DialogTaskKind.UNKNOWN_WORD}
+        ):
+            handled = await self._async_handle_learning_task(
+                user_input, response, active_task, entities
+            )
+            if handled is not None:
+                return handled
+
+        if active_dialog is None:
+            # Learned language (7.4.1): macros, activity preferences,
+            # "Was weißt du über mich?", "Vergiss …" - before any router
+            # could read "Ich will lesen" as a routine or need.
+            learned_turn = await self._async_handle_dialog_learning(
+                user_input, response, entities
+            )
+            if learned_turn is not None:
+                return learned_turn
+
+        if (
+            active_dialog is None
+            and active_task is not None
             and active_task.kind is DialogTaskKind.ROUTINE_BINDING
         ):
             handled = await self._async_handle_routine_binding_task(
@@ -1539,7 +1574,7 @@ class NluConversationEntity(
                     response=response, conversation_id=user_input.conversation_id
                 )
             if released is not None and released.clarification is not None:
-                return self._handle_clarification_result(user_input, response, released)
+                return await self._async_clarify(user_input, response, released, entities)
             if released is not None:
                 return await self._async_handle_match_result(
                     user_input, response, released, entities
@@ -1946,6 +1981,22 @@ class NluConversationEntity(
 
         alias_draft = parse_alias_learning(user_input.text, entities)
         if alias_draft is not None:
+            target = next(
+                (item for item in entities if item.entity_id == alias_draft.entity_id), None
+            )
+            rejection = (
+                alias_rejection(
+                    alias_draft.alias, target, entities,
+                    is_admin=await user_is_admin(self.hass, user_input),
+                    genus_word=lambda word: bool(lookup_genus_word(word)),
+                )
+                if target is not None else None
+            )
+            if rejection is not None:
+                response.async_set_speech(rejection + " Ich habe nichts gespeichert.")
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
             self._context_store.clear(user_input.conversation_id)
             manager.create(
                 user_input.conversation_id,
@@ -2212,6 +2263,11 @@ class NluConversationEntity(
                         )
                     else:
                         result = None
+                    if result is not None and current is not None:
+                        await self._async_observe_clarification_choice(
+                            user_input, refreshed_candidates, current,
+                            conversation_area.area_id if conversation_area is not None else None,
+                        )
                     if result is not None:
                         learning_manager = self._runtime_data.learning_manager
                         actor_id = conversation_user_id(user_input)
@@ -2339,6 +2395,12 @@ class NluConversationEntity(
                 # The correction is a new action after compensation, so it
                 # must receive another fresh snapshot and policy evaluation.
                 entities = build_entity_snapshots(self.hass, self.entry)
+                # "Nein, ich meinte X" counts like an answer to the same
+                # choice (7.4.1): twice the same correction offers a default.
+                await self._async_observe_correction(
+                    user_input, undo.plans, correction.plan, entities,
+                    conversation_area.area_id if conversation_area is not None else None,
+                )
                 result = correction
             else:
                 result = correction
@@ -2351,21 +2413,28 @@ class NluConversationEntity(
                         user_input, response, NotificationRequest.from_clause(notification_clause),
                         entities,
                     )
-            if result is None:
+            # A command naming its own, unknown device ("Mach den
+            # Zauberkasten an") is never completed from the context: that
+            # would silently substitute the previous device (7.4.1).
+            names_unknown = (
+                unknown_device_noun(user_input.text, entities, is_known_device_word)
+                is not None
+            )
+            if result is None and not names_unknown:
                 result = self._engine.match_followup(user_input.text, pending)
-            if result is None:
+            if result is None and not names_unknown:
                 result = self._engine.match_contextual_property_followup(
                     user_input.text, entities, pending
                 )
-            if result is None:
+            if result is None and not names_unknown:
                 result = self._engine.match_reference(
                     user_input.text, entities, pending, self._world_model
                 )
-            if result is None:
+            if result is None and not names_unknown:
                 result = self._engine.match_query_followup(
                     user_input.text, entities, pending, self._world_model
                 )
-            if result is None:
+            if result is None and not names_unknown:
                 result = self._engine.match_command_followup(user_input.text, entities, pending)
             if result is None and _AUTOMATION_DELETE_RE.search(user_input.text):
                 # V5.28 "Automation Deletion": checked before the query gate
@@ -2595,7 +2664,7 @@ class NluConversationEntity(
             )
 
         if result.clarification is not None:
-            return self._handle_clarification_result(user_input, response, result)
+            return await self._async_clarify(user_input, response, result, entities)
 
         return await self._async_handle_match_result(
             user_input, response, result, entities
@@ -2623,7 +2692,7 @@ class NluConversationEntity(
                 response=response, conversation_id=user_input.conversation_id
             )
         if result.clarification is not None:
-            return self._handle_clarification_result(user_input, response, result)
+            return await self._async_clarify(user_input, response, result, entities)
         return await self._async_handle_match_result(user_input, response, result, entities)
 
     async def _async_handle_procedure_turn(
@@ -2642,7 +2711,7 @@ class NluConversationEntity(
         conversation_id = user_input.conversation_id
         actor_id = conversation_user_id(user_input)
         if store is None or not store.enabled:
-            response.async_set_speech("Das lokale dauerhafte Gedächtnis ist deaktiviert.")
+            response.async_set_speech(MEMORY_DISABLED_TEXT)
             return conversation.ConversationResult(
                 response=response, conversation_id=conversation_id
             )
@@ -4383,7 +4452,7 @@ class NluConversationEntity(
                         ),
                     )
                     response.async_set_speech(
-                        f"Du führst {habit.parameters.get('time_band', habit.context.get('time_band', 'regelmäßig'))} "
+                        f"Du führst {_TIME_BAND_DE.get(str(habit.parameters.get('time_band', habit.context.get('time_band', ''))), 'regelmäßig')} "
                         f"häufig dieselbe Folge aus ({habit.sample_count} Belege). "
                         "Soll ich daraus eine Routine vorschlagen?"
                     )
@@ -4437,46 +4506,28 @@ class NluConversationEntity(
     async def _async_confirm_alias_learning(
         self, draft: AliasLearningDraft, actor_id: str | None
     ) -> None:
-        """Commit an explicit teaching turn to its existing authority path."""
-        if draft.area_id is None:
-            aliases = append_alias_rule(
-                self.entry.options.get(CONF_CUSTOM_ALIASES), draft
-            )
-            self.hass.config_entries.async_update_entry(
-                self.entry,
-                options={**self.entry.options, CONF_CUSTOM_ALIASES: aliases},
-            )
-        registry = self._runtime_data.learned_models
-        if registry is None or actor_id is None:
-            return
-        now = dt_util.utcnow()
-        signature = hashlib.sha256(
-            f"{actor_id}\0{draft.area_id or '*'}\0{draft.alias.casefold()}".encode()
-        ).hexdigest()[:24]
-        model_id = f"preference:{signature}"
-        existing = await registry.async_get(model_id)
-        await registry.async_upsert(LearnedModel(
-            model_id, LearnedKind.PREFERENCE, draft.alias,
-            {
-                "user_id": actor_id,
+        """Store a confirmed alias as a binding (7.4.1).
+
+        A plain alias belongs to the household; an alias taught for one room
+        ("Mit Lampe meine ich im Wohnzimmer die Stehlampe") is the speaker's
+        own and only applies in that room.
+        """
+        personal = draft.area_id is not None and actor_id is not None
+        await self._runtime_data.bindings.async_bind(
+            BindingKind.ALIAS,
+            draft.alias,
+            draft.entity_id,
+            confirmed=True,
+            scope=BindingScope.USER if personal else BindingScope.HOUSEHOLD,
+            user_id=actor_id if personal else None,
+            created_by=actor_id,
+            now=dt_util.now(),
+            data={
+                "spoken": draft.alias,
                 **({"area_id": draft.area_id} if draft.area_id is not None else {}),
             },
-            {
-                **(dict(existing.parameters) if existing is not None else {}),
-                "entity_id": draft.entity_id,
-                "entity_name": draft.entity_name,
-                "suggestion_status": "accepted",
-            },
-            KnowledgeState.CONFIRMED,
-            existing.confidence if existing is not None else 1.0,
-            existing.sample_count if existing is not None else 1,
-            existing.first_observed if existing is not None else now, now,
-            (*existing.provenance, "explicit_user_feedback")
-            if existing is not None else ("explicit_user_feedback",),
-            existing.model_version + 1 if existing is not None else 1,
-            health=ModelHealth.VALID,
-            confirmed_by=actor_id,
-        ))
+        )
+        self._runtime_data.learning_center_revision.bump()
 
     async def _async_apply_confirmed_preferences(
         self,
@@ -4486,6 +4537,7 @@ class NluConversationEntity(
         user_id: str | None,
     ) -> list[EntitySnapshot]:
         """Expose confirmed preferences as aliases only in their exact context."""
+        entities = self.learned_alias_view(entities, area_id=area_id, user_id=user_id)
         registry = self._runtime_data.learned_models
         if registry is None or user_id is None:
             return entities
@@ -4608,7 +4660,7 @@ class NluConversationEntity(
                             else "Die Präferenz war nicht mehr vorhanden."
                         )
                     elif store is None or not store.enabled:
-                        response.async_set_speech("Das lokale dauerhafte Gedächtnis ist deaktiviert.")
+                        response.async_set_speech(MEMORY_DISABLED_TEXT)
                     else:
                         content = active.slots.get("content")
                         person_id = active.slots.get("person_id")
@@ -4654,7 +4706,7 @@ class NluConversationEntity(
         if request is None:
             return None
         if store is None or not store.enabled:
-            response.async_set_speech("Das lokale dauerhafte Gedächtnis ist deaktiviert.")
+            response.async_set_speech(MEMORY_DISABLED_TEXT)
         elif request.operation is MemoryOperation.LIST:
             records = await store.async_list(person_id=conversation_user_id(user_input))
             # Say what is remembered, in German - not internal kind names
@@ -5190,8 +5242,8 @@ class NluConversationEntity(
         ):
             self._context_store.clear(user_input.conversation_id)
             if fresh.clarification is not None:
-                return self._handle_clarification_result(
-                    user_input, response, fresh
+                return await self._async_clarify(
+                    user_input, response, fresh, entities
                 )
             return await self._async_handle_match_result(
                 user_input, response, fresh, entities
@@ -5796,6 +5848,33 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
+    async def _async_clarify(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        result: MatchResult,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        """Ask - unless the speaker confirmed a default choice for exactly
+        this question (7.4.1); the chosen candidate is one the question
+        itself offered and runs through the ordinary handlers."""
+        clarification = result.clarification
+        if clarification is not None:
+            area = resolve_conversation_area(self.hass, user_input)
+            chosen = self._default_choice(
+                user_input, clarification.candidates,
+                area.area_id if area is not None else None,
+            )
+            if chosen is not None:
+                resolved = self._engine.resolve_clarification(
+                    chosen.entity_id, clarification, entities
+                )
+                if resolved is not None:
+                    return await self._async_handle_match_result(
+                        user_input, response, resolved, entities
+                    )
+        return self._handle_clarification_result(user_input, response, result)
+
     def _handle_clarification_result(
         self,
         user_input: conversation.ConversationInput,
@@ -5899,6 +5978,16 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+        feedback = self._engine.failure_feedback(user_input.text, entities)
+        if not is_query and (feedback is None or feedback.startswith(_GENERIC_UNKNOWN_TARGET)):
+            # An unknown device word is asked about, never guessed (7.4.1);
+            # specific explanations (unknown floor, capabilities) still win.
+            area = resolve_conversation_area(self.hass, user_input)
+            asked = await self._async_ask_unknown_word(
+                user_input, response, entities, area.area_id if area is not None else None
+            )
+            if asked is not None:
+                return asked
         bare_reply = (
             len(user_input.text.split()) <= 3
             and classify_confirmation_reply(user_input.text)
@@ -5906,7 +5995,7 @@ class NluConversationEntity(
         )
         response.async_set_error(
             intent.IntentResponseErrorCode.NO_INTENT_MATCH,
-            self._engine.failure_feedback(user_input.text, entities)
+            feedback
             or (
                 # A bare "Ja"/"Nein" with nothing open (for example after a
                 # refusal) is answered honestly (7.3.3).
@@ -8250,16 +8339,41 @@ def _learning_control_speech(error: LearningControlError) -> str:
     }.get(error.code.value, "Diese Änderung ist für dieses Modell nicht möglich.")
 
 
+_LEARNED_KIND_DE = {
+    "fact": "Fakt",
+    "preference": "Vorliebe",
+    "thermal_model": "Wärmemodell",
+    "effect_timing": "Wirkungsdauer",
+    "reliability": "Zuverlässigkeit",
+    "habit": "Gewohnheit",
+    "duration": "Laufzeit",
+    "energy": "Energieverbrauch",
+    "battery_trend": "Batterieverlauf",
+}
+_TIME_BAND_DE = {"morning": "morgens", "day": "tagsüber", "evening": "abends", "night": "nachts"}
+_MODEL_HEALTH_DE = {
+    "valid": "gültig",
+    "low_confidence": "noch unsicher",
+    "unreliable": "unzuverlässig",
+    "stale": "veraltet",
+    "drift_detected": "Abweichung erkannt",
+    "invalid": "ungültig",
+}
+
+
 def _learned_model_summary(model: LearnedModel) -> str:
+    """German summary; no English enum values reach the speech (7.4.1)."""
     state = {
         "observed": "beobachtet",
         "inferred": "vermutet",
         "confirmed": "bestätigt",
     }[model.knowledge_state.value]
+    kind = _LEARNED_KIND_DE.get(model.kind.value, model.kind.value)
+    health = _MODEL_HEALTH_DE.get(model.health.value, model.health.value)
+    confidence = f"{model.confidence:.2f}".replace(".", ",")
     return (
-        f"{model.kind.value} für {model.subject}: {state}, "
-        f"{model.sample_count} Belege, Konfidenz {model.confidence:.2f}, "
-        f"Status {model.health.value}"
+        f"{kind} für {model.subject}: {state}, "
+        f"{model.sample_count} Belege, Konfidenz {confidence}, Status {health}"
     )
 
 

@@ -39,6 +39,7 @@ from homeintent.automation_management import (  # noqa: E402
     AutomationManagementRequest,
 )
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.bindings import BindingKind  # noqa: E402
 from homeintent.dialog_manager import DialogTaskKind  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.nlu.context import (  # noqa: E402
@@ -1186,7 +1187,12 @@ def test_alias_confirmation_payload_is_owned_by_central_dialog_manager(monkeypat
     assert "ausdrücklich bestätigt" in explanation.response.speech
     assert "Gespeichert" in result.response.speech
     assert entity._runtime_data.dialog_manager.active("native-alias") is None
-    updater.assert_called_once()
+    # 7.4.1: learned aliases live in the one bindings store, not in options.
+    updater.assert_not_called()
+    aliases = entity._runtime_data.bindings.all(BindingKind.ALIAS)
+    assert [(item.data["spoken"], item.target) for item in aliases] == [
+        ("Orientierungslicht", FLUR_LICHT_OFF.entity_id)
+    ]
     entity.hass.services.async_call.assert_not_awaited()
 
 

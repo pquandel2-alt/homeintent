@@ -716,22 +716,38 @@ async def _h_traces_list(hass: HomeAssistant, entry: Any, viewer: Viewer, msg: d
     }
 
 
+def _binding_labels(binding: Any, concept: Any, state: Any) -> tuple[str, str]:
+    """German, readable labels for every binding kind (7.4.1)."""
+    from .dialog_learning import activity_label
+
+    target = (
+        str(state.attributes.get("friendly_name") or binding.target)
+        if state is not None else binding.target
+    )
+    data = binding.data
+    if binding.kind is BindingKind.PREFERENCE:
+        return activity_label(binding.key), str(data.get("command", target))
+    if binding.kind is BindingKind.MACRO:
+        return str(data.get("spoken", binding.key)), str(data.get("body", ""))
+    if binding.kind in {BindingKind.ALIAS, BindingKind.DEFAULT_CHOICE}:
+        return str(data.get("spoken", binding.key)), target
+    return (concept.label if concept is not None else binding.key), target
+
+
 def _binding_view(hass: HomeAssistant, entry: Any, binding: Any, viewer: Viewer) -> dict[str, Any]:
     exposed = {item.entity_id for item in _exposed_snapshots(hass, entry)}
     existing = {item for item in binding.targets() if hass.states.get(item) is not None}
     concept = routine_concept_by_key(binding.key) if binding.kind is BindingKind.ROUTINE else None
     state = hass.states.get(binding.target)
+    key_label, target_label = _binding_labels(binding, concept, state)
     return {
         "binding_id": binding.binding_id,
         "kind": binding.kind.value,
         "kind_label": KIND_LABELS_DE.get(binding.kind, binding.kind.value),
         "key": binding.key,
-        "key_label": concept.label if concept is not None else binding.key,
+        "key_label": key_label,
         "target": binding.target,
-        "target_label": (
-            str(state.attributes.get("friendly_name") or binding.target)
-            if state is not None else binding.target
-        ),
+        "target_label": target_label,
         "scope": binding.scope.value,
         "uses": binding.uses,
         "last_used": binding.last_used,

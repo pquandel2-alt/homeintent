@@ -445,6 +445,70 @@ def test_learned_binding_never_reaches_unexposed_targets(sentence, level):
     assert writes(first) == [] and writes(second) == [], (first.speech, second.speech)
 
 
+_ALIAS_WORDS = st.sampled_from(["Kuschelecke", "Zauberkasten", "Omalicht", "Bluna", "Knuffel"])
+_ALIAS_FRAMES = st.sampled_from([
+    "Mach die {w} an.", "Schalte die {w} aus.", "{w} an.", "Kannst du die {w} einschalten?",
+    "Mach die {w} und das Küchenlicht an.", "Mach die {w} nicht an.", "Ist die {w} an?",
+    "Schalte in 5 Minuten die {w} aus.",
+])
+
+
+@given(_ALIAS_WORDS, _ALIAS_FRAMES, st.sampled_from([e.entity_id for e in _ENTITIES]), st.booleans())
+def test_learned_alias_never_reaches_beyond_its_exposed_target(word, frame, target, exposed):
+    """7.4.1: a learned word adds no target but its own, and none that is
+    not exposed; negation, questions and time commands stay non-writing."""
+    import asyncio
+    from datetime import datetime
+
+    from homeintent.bindings import BindingKind
+
+    entities = [e for e in _ENTITIES if exposed or e.entity_id != target]
+    house = HouseConversation(pytest.MonkeyPatch(), entities=entities, options=AUTO)
+    asyncio.run(house.entity._runtime_data.bindings.async_bind(
+        BindingKind.ALIAS, word, target, confirmed=True, now=datetime(2026, 9, 28), data={"spoken": word},
+    ))
+    sentence = frame.format(w=word)
+    turn = house.say(sentence)
+    written = {
+        entity for domain, service, data in turn.calls
+        if (domain, service) not in READ_SERVICES for entity in _ids(data)
+    }
+    allowed = ({target} if exposed else set()) | ({"light.kuechenlicht"} if "Küchenlicht" in sentence else set())
+    assert written <= allowed, (sentence, written, turn.speech)
+    # "Kannst du … einschalten?" is a polite request, not a question.
+    if " nicht " in sentence or sentence.startswith("Ist ") or "Minuten" in sentence:
+        assert written == set(), (sentence, turn.speech)
+
+
+@given(st.sampled_from(["Kinoabend", "Feierabend"]), st.sampled_from([e.entity_id for e in _ENTITIES if e.domain in {"lock", "cover", "alarm_control_panel"}]))
+def test_macro_never_bypasses_confirmation_of_critical_steps(name, target):
+    """A confirmed speech macro is a sentence: its critical steps still ask."""
+    import asyncio
+    from datetime import datetime
+
+    from homeintent.bindings import BindingKind, BindingScope
+
+    entity = next(e for e in _ENTITIES if e.entity_id == target)
+    body = {
+        "lock": f"Schließe {entity.friendly_name} auf.",
+        "cover": f"Öffne {entity.friendly_name}.",
+        "alarm_control_panel": f"Schalte {entity.friendly_name} aus.",
+    }[entity.domain]
+    house = HouseConversation(pytest.MonkeyPatch(), options=AUTO)
+    asyncio.run(house.entity._runtime_data.bindings.async_bind(
+        BindingKind.MACRO, name, "macro", confirmed=True, scope=BindingScope.HOUSEHOLD,
+        now=datetime(2026, 9, 28), data={"spoken": name, "body": body, "entity_ids": [target]},
+    ))
+    direct = HouseConversation(pytest.MonkeyPatch(), options=AUTO).say(body)
+    via_macro = house.say(f"{name}.")
+    assert bool(writes(via_macro)) <= bool(writes(direct)), (body, via_macro.speech)
+
+
+def _ids(data: dict) -> list[str]:
+    raw = data.get("entity_id", [])
+    return [raw] if isinstance(raw, str) else list(raw)
+
+
 # ------------------------------------------------------------ fixed regressions
 # Counterexamples from nightly runs are pinned here (sentence, forbidden writes).
 REGRESSIONS: list[str] = []

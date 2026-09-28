@@ -18,7 +18,10 @@ Rules that hold for every kind:
   and reported as such (``binding_state``).
 
 Persistence follows the other HomeIntent stores: one JSON file with a schema
-version, atomic writes off the event loop, migration on load.
+version, atomic writes off the event loop, migration on load. Since schema 2
+the file also keeps the answers given to clarifications (``choices``), so
+that the same answer given twice can be offered as a default choice (7.4.1).
+Choices are observations, never bindings: they authorise nothing.
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class BindingKind(StrEnum):
@@ -179,6 +182,8 @@ class BindingStore:
     def __init__(self, path: Path | str | None) -> None:
         self._path = Path(path) if path is not None else None
         self._bindings: list[Binding] = []
+        # "<user>|<choice key>" -> {"counts": {entity_id: n}, "offered": bool}
+        self._choices: dict[str, dict[str, object]] = {}
         self._lock = asyncio.Lock()
 
     # -- persistence -------------------------------------------------------
@@ -187,6 +192,13 @@ class BindingStore:
             return
         raw = await asyncio.to_thread(self._read)
         self._bindings = [binding for item in migrate(raw) if (binding := _parse(item)) is not None]
+        choices = raw.get("choices")
+        if isinstance(choices, Mapping):
+            self._choices = {
+                str(key): dict(cast(Mapping[str, object], value))
+                for key, value in cast(Mapping[object, object], choices).items()
+                if isinstance(value, Mapping)
+            }
 
     def _read(self) -> Mapping[str, object]:
         assert self._path is not None
@@ -201,7 +213,11 @@ class BindingStore:
     def _write(self) -> None:
         if self._path is None:
             return
-        payload = {"version": SCHEMA_VERSION, "bindings": [item.to_dict() for item in self._bindings]}
+        payload = {
+            "version": SCHEMA_VERSION,
+            "bindings": [item.to_dict() for item in self._bindings],
+            "choices": self._choices,
+        }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         handle, temp = tempfile.mkstemp(dir=str(self._path.parent), prefix=".homeintent_bindings")
         try:
@@ -323,4 +339,25 @@ class BindingStore:
     async def async_clear(self) -> None:
         async with self._lock:
             self._bindings = []
+            self._choices = {}
             await self._async_save()
+
+    # -- clarification answers (observations, 7.4.1) -----------------------
+    async def async_observe_choice(self, user_id: str, key: str, entity_id: str) -> bool:
+        """Count one answer; ``True`` once the same answer was given twice
+        and no default choice was offered for this key yet."""
+        slot = f"{user_id}|{key}"
+        async with self._lock:
+            entry = self._choices.setdefault(slot, {"counts": {}, "offered": False})
+            counts = cast(dict[str, int], entry.setdefault("counts", {}))
+            counts[entity_id] = int(counts.get(entity_id, 0)) + 1
+            offer = counts[entity_id] >= 2 and not entry.get("offered")
+            if offer:
+                entry["offered"] = True
+            await self._async_save()
+        return bool(offer)
+
+    def choice_counts(self, user_id: str, key: str) -> Mapping[str, int]:
+        entry = self._choices.get(f"{user_id}|{key}", {})
+        counts = entry.get("counts", {})
+        return dict(cast(Mapping[str, int], counts)) if isinstance(counts, Mapping) else {}

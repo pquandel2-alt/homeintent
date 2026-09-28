@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.4.0** (eine Zielauflösung)
+- Aktuelle Version: **7.4.1** (Lernen aus dem Dialog)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,62 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.4.1 neu?
+
+**HomeIntent lernt die Sprache deines Haushalts – nur nach deinem „Ja“.**
+
+Alles Gelernte liegt im Bindungsspeicher. Es ist ein Baustein der Bedeutung,
+kein fester Satz, und berechtigt zu nichts: Jede Nutzung läuft weiter durch
+Zielauflösung, Validator, EffectGraph und Ausführungsrichtlinie.
+
+- **Unbekannte Wörter werden erfragt.** „Schalte den Zauberkasten aus“ →
+  „Was meinst du mit ‚Zauberkasten‘? 1. … 2. …“. Die Optionen ergeben sich aus
+  Ort und Aktion. Nach der Antwort wird der Befehl ausgeführt, danach fragt
+  HomeIntent: „Soll ich mir ‚Zauberkasten‘ als Namen für die Stehlampe
+  merken?“ Ein Befehl mit unbekanntem Wort wird nie mehr stillschweigend mit
+  dem Gerät der vorigen Frage ergänzt.
+- **Gelernte Namen wirken überall.** Ein gelernter Name wirkt in Befehl,
+  Kurzform, Frage, Mehrfachbefehl, Dimmen, Zeitauftrag, Verneinung,
+  Ausnahme und „lass an“, auch für andere Personen im Haushalt. Er wird als
+  Alias an die Geräte der einen Zielauflösung gehängt.
+- **Standardauswahl aus Rückfragen und Korrekturen.** Beantwortest du dieselbe
+  Rückfrage (dieselben Kandidaten, derselbe Ort) zweimal gleich, fragt
+  HomeIntent einmal, ob das künftig ohne Rückfrage gelten soll. Dasselbe gilt
+  für Korrekturen wie „Nein, ich meinte die rechte“ oder „Nein, die
+  Nachttischlampe rechts“. „Die rechte“ nach „Nachttischlampe links“
+  versteht HomeIntent neu als das Geschwistergerät. Ein ausdrücklich
+  genanntes anderes Gerät hat immer Vorrang. Standardauswahlen gelten pro
+  Person.
+- **Vorlieben werden benutzt.**
+  - Merken: „Wenn ich lese, möchte ich die Stehlampe auf 60 Prozent.“
+  - Abfragen: „Wie hell möchte ich lesen?“
+  - Anwenden: „Ich lese jetzt“ bzw. „Ich will lesen“. Beim ersten Mal kommt
+    eine Vorschau, danach wird direkt ausgeführt.
+  - Löschen: „Vergiss, wie hell ich lesen möchte.“
+- **Sprachmakros.** „Wenn ich ‚Kinoabend‘ sage, dann mach das Wohnzimmer
+  Deckenlicht aus und fahre die Rollläden runter.“ Das wird nach „Ja“ als
+  Satz gespeichert, nicht als Automation. Jeder Aufruf läuft wie ein
+  gesprochener Befehl durch alle Prüfungen; kritische Schritte fragen
+  weiterhin nach.
+- **„Was weißt du über mich?“** zählt Namen, Standardauswahlen, Vorlieben und
+  Makros auf Deutsch auf. Wirkungslose Einträge (Gerät nicht mehr
+  freigegeben) sind markiert. „Vergiss …“ löscht gezielt.
+- **Sicherheit beim Lernen:**
+  - Gespeichert wird nur nach „Ja“.
+  - Es gibt nur freigegebene Ziele; ein entzogenes Ziel macht die Bindung
+    wirkungslos.
+  - Geräte-, Raum- und Gattungsnamen werden nie überschrieben.
+  - Namen für Schlösser, Alarmanlagen, Sirenen, Ventile, Tore und Türen
+    vergeben nur Administratoren.
+  - Namen gelten für den Haushalt, raumbezogene Namen, Standardauswahlen und
+    Vorlieben pro Person.
+- **Deutsche Bezeichnungen.** Gewohnheiten, Modelle und Status erscheinen
+  auf Deutsch („Zuverlässigkeit“, „morgens“, „noch unsicher“). Ist das
+  Gedächtnis ausgeschaltet, sagt HomeIntent, wo man es einschaltet.
+- **Zeitraffer-Test:** Zwei simulierte Wochen Nutzung. Gewohnheiten werden
+  nur vorgeschlagen, es entsteht nie eine Automation, und ein abgelehnter
+  Vorschlag kommt nicht wieder.
 
 ## Was ist in Version 7.4.0 neu?
 
@@ -1794,10 +1850,10 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.4.0:
+Geprüfter Release-Stand von Version 7.4.1:
 
 ```text
-6203 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
+6251 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
 V8-Shadow-Report unverändert gegenüber 7.3.0
 Shadow-Vergleich 2022 Sätze EQUIVALENT; Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“
@@ -1843,7 +1899,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.4.0.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.4.1.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
