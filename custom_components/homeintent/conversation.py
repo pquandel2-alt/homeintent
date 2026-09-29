@@ -52,15 +52,9 @@ from .conversation_location import (
     materialize_local_reference,
     resolve_conversation_area,
 )
-from .const import (
-    CONF_CUSTOM_ALIASES,
-    CONF_HOUSE_RELATIONS,
-    DOMAIN,
-    NOT_UNDERSTOOD_TEXT,
-)
+from .const import CONF_CUSTOM_ALIASES, CONF_HOUSE_RELATIONS, DOMAIN
 from .dialog_manager import DialogPriority, DialogTaskKind
 from .document_intent import interpret_document_search
-from .device_result import DeviceControlResult
 from .engine import (
     AutomationClarificationResult,
     AutomationDraftMatchResult,
@@ -149,7 +143,6 @@ from .nlu.automation_preview import render_automation_preview
 from .nlu.context import (
     active_pending_dialog,
     ConversationContext,
-    DialogTurnMemory,
     PendingAutomationConfirmation,
     PendingAutomationDeletion,
     PendingAutomationDraft,
@@ -166,9 +159,6 @@ from .nlu.context import (
     PendingProductivityCommand,
     PendingDialogKind,
 )
-from .nlu.dialog_focus import DialogFocus, derive_dialog_focus
-from .nlu.discourse import DiscourseRole, remember_entities, remember_query_group
-from .nlu.query_command import QueryResult
 from .nlu.entity_clarification import (
     CandidateReplyKind,
     render_candidate_question,
@@ -184,14 +174,9 @@ from .nlu.semantic_utterance import (
 )
 from .nlu.understanding import UnderstandingAuthority
 from .nlu.understanding_context import UnderstandingContext
-from .service_call import QUERY_INTENTS, ServiceCallPlan
-from .service_executor import (
-    CHANGED_SINCE_CONFIRMATION,
-    async_execute_service_plan,
-    confirmed_scope,
-)
-from .effect_graph import build_plan_effects, summarize_effects
-from .semantic_dialog import continue_semantic_dialog, start_semantic_dialog
+from .service_call import ServiceCallPlan
+from .service_executor import async_execute_service_plan
+from .effect_graph import build_plan_effects
 from .reminder import (
     reminder_automation_text,
     reminder_quiet_hours,
@@ -207,9 +192,9 @@ from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
 from .execution_policy import PolicyOutcome, evaluate_service_plan
 from .world_model import WorldModel, build_world_model as assemble_world_model
-from .undo import UndoPlan, build_undo_plan, is_undo_request
+from .undo import is_undo_request
 from .runtime_data import HomeIntentRuntimeData
-from .execution_context import begin_turn, end_turn, user_facing_error
+from .execution_context import begin_turn, end_turn
 from .execution_trace import (
     CauseExplanation,
     ContextIndex,
@@ -221,11 +206,13 @@ from .nlu.causal_question import interpret_cause_question
 from .bindings import BindingKind, BindingScope
 from .conversation_learning import DialogLearningMixin, is_known_device_word
 from .nlu.meaning_ir import is_deferred
+from .controllers.devices import DeviceController
 from .controllers.goals import GoalController
 from .controllers.automation_management import AutomationManagementController
 from .controllers.automations import AutomationController
 from .controllers.notifications import NotificationController
 from .controllers.productivity import ProductivityController
+from .controllers.replies import ambiguous_reading_text, confirmation_question, with_effect_summary
 from .arbitration import (
     DecisionKind,
     DialogReply,
@@ -267,7 +254,6 @@ class RoutineBindConfirmation:
 
 
 from .productivity import TimerRequest, TodoRequest
-from .phonetic_correction import PhoneticSuggestion, phonetic_suggestions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -346,61 +332,11 @@ _COMMAND_ANSWER_TASK_KINDS = frozenset({
 })
 
 
-# Single source of truth for "which intents are queries" (V4.2) - read state
-# and speak, never call a service - so Assist shows them as a QUERY_ANSWER
-# rather than the default ACTION_DONE.
-QUERY_INTENT_NAMES = frozenset(QUERY_INTENTS)
-
-
 # HomeIntent V5 Teil 8/10 (Wave 11, "Automation Disable/Enable") - no
 # confirmation-round-trip vocabulary here (see ``AutomationToggleMatchResult``'s
 # own docstring for why): a single-match toggle executes immediately, so
 # only an error text is needed here, mirroring the ordinary command path's
 # own ``FAILED_TO_HANDLE`` wording.
-
-
-# Past-tense or passive endings of service_call.py's response texts and the
-# infinitive a confirmation question needs ("Burgtor wird geöffnet" ->
-# "Soll ich wirklich Burgtor öffnen?"). Longer endings come first.
-_CONFIRMATION_INFINITIVES: tuple[tuple[str, str], ...] = (
-    ("wird geöffnet", "öffnen"),
-    ("wird geschlossen", "schließen"),
-    ("aufgeschlossen", "aufschließen"),
-    ("abgeschlossen", "abschließen"),
-    ("eingeschaltet", "einschalten"),
-    ("ausgeschaltet", "ausschalten"),
-    ("geschlossen", "schließen"),
-    ("ausgeführt", "ausführen"),
-    ("geöffnet", "öffnen"),
-    ("gedrückt", "drücken"),
-    ("aktiviert", "aktivieren"),
-    ("gestartet", "starten"),
-    ("gestoppt", "stoppen"),
-)
-
-
-def _with_effect_summary(text: str, execution: Any) -> str:
-    """„Gute Nacht ausgeführt: 9 Rollläden.“ after a script/scene/group."""
-    effects = getattr(getattr(execution, "decision", None), "effects", None)
-    summary = summarize_effects(effects) if effects is not None else None
-    if not summary or not text:
-        return text
-    return f"{text.rstrip().rstrip('.')}: {summary}."
-
-
-def _confirmation_question(response_text: str, note: str | None = None) -> str:
-    """Turn a device response text into a grammatical safety question.
-
-    ``note`` is the policy's hint (an unverifiable script step, possible
-    follow-up automations); it is said before the question.
-    """
-    text = response_text.rstrip(".")
-    for ending, infinitive in _CONFIRMATION_INFINITIVES:
-        if text.endswith(f" {ending}"):
-            text = f"{text[: -len(ending)]}{infinitive}"
-            break
-    question = f"Soll ich wirklich {text}?"
-    return f"{note} {question}" if note else question
 
 
 def _with_session_conversation_id(
@@ -420,29 +356,6 @@ def _with_session_conversation_id(
     if not isinstance(session_id, str) or not session_id:
         return user_input
     return replace(user_input, conversation_id=session_id)
-
-
-def _ambiguous_reading_text(decision: Any) -> str:
-    """Two readings with different effects and no evidence: ask, run nothing."""
-    names = sorted({
-        entity_id for candidate in decision.chosen for entity_id in candidate.targets
-    })
-    listed = ", ".join(names[:5])
-    return (
-        f"Das kann ich unterschiedlich verstehen ({listed}). "
-        "Bitte sag genauer, was ich tun soll. Ich habe nichts ausgeführt."
-    )
-
-
-def _execution_failure_text(execution: Any) -> str:
-    """A refusal of the policy is said as it is; a technical error gets a prefix."""
-    error = str(execution.error or "")
-    decision = getattr(execution, "decision", None)
-    if error == CHANGED_SINCE_CONFIRMATION or (
-        decision is not None and decision.outcome is PolicyOutcome.DENY
-    ):
-        return error
-    return f"Fehler beim Ausführen: {error}"
 
 
 def _dialog_manager_kind(
@@ -515,9 +428,6 @@ async def async_setup_entry(
     async_add_entities([NluConversationEntity(config_entry)])
 
 
-_GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
-
-
 class NluConversationEntity(
     DialogLearningMixin, conversation.ConversationEntity, conversation.AbstractConversationAgent
 ):
@@ -564,6 +474,20 @@ class NluConversationEntity(
             entry=entry,
             context_store=self._context_store,
             runtime=runtime,
+        )
+        self._devices = DeviceController(
+            hass=lambda: self.hass,
+            entry=entry,
+            context_store=self._context_store,
+            engine=self._engine,
+            world_model=lambda: self._world_model,
+            audit_trail=self._audit_trail,
+            runtime=runtime,
+            entities=lambda: build_entity_snapshots(self.hass, self.entry),
+            conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
+            ask_unknown_word=self._async_ask_unknown_word,
+            default_choice=self._default_choice,
+            store_routine_binding=self._async_store_routine_binding,
         )
         self._goals = GoalController(
             hass=lambda: self.hass,
@@ -844,13 +768,13 @@ class NluConversationEntity(
                     last_entities=(),
                     last_area=None,
                     pending_clarification=None,
-                    pending_service_confirmation=self._confirmation(
+                    pending_service_confirmation=self._devices.pending_confirmation(
                         entities, plan, success, actor_id,
                         binding_offer=(payload.concept_key, chosen.entity_id),
                     ),
                 ),
             )
-            question = _confirmation_question(success)
+            question = confirmation_question(success)
             response.async_set_speech(f"{policy.note} {question}" if policy.note else question)
         else:
             execution = await async_execute_service_plan(
@@ -867,7 +791,7 @@ class NluConversationEntity(
                 note = await self._async_store_routine_binding(
                     payload.concept_key, chosen.entity_id, actor_id
                 )
-                response.async_set_speech(f"{_with_effect_summary(success, execution)} {note}")
+                response.async_set_speech(f"{with_effect_summary(success, execution)} {note}")
         return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
     async def _async_explain_cause(self, entity: EntitySnapshot) -> CauseExplanation:
@@ -1357,12 +1281,12 @@ class NluConversationEntity(
                 released = released if source == "release" else None
             elif decision.kind is DecisionKind.ASK:
                 self._context_store.clear(user_input.conversation_id)
-                response.async_set_speech(_ambiguous_reading_text(decision))
+                response.async_set_speech(ambiguous_reading_text(decision))
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
             if decision.kind is DecisionKind.ANSWER and view is not None:
-                return await self._async_handle_match_result(
+                return await self._devices.async_handle_match_result(
                     user_input,
                     response,
                     MatchResult(
@@ -1371,7 +1295,7 @@ class NluConversationEntity(
                     entities,
                 )
             if isinstance(need, CommandPlan):
-                return await self._async_handle_command_plan(
+                return await self._devices.async_handle_command_plan(
                     user_input, response, need, entities
                 )
             if (
@@ -1395,15 +1319,15 @@ class NluConversationEntity(
                     response=response, conversation_id=user_input.conversation_id
                 )
             if need is not None:
-                return await self._async_handle_match_result(
+                return await self._devices.async_handle_match_result(
                     user_input, response, need, entities
                 )
             if bound is not None:
-                return await self._async_handle_bound_result(
+                return await self._devices.async_handle_bound_result(
                     user_input, response, bound, entities
                 )
             if isinstance(released, CommandPlan):
-                return await self._async_handle_command_plan(
+                return await self._devices.async_handle_command_plan(
                     user_input, response, released, entities
                 )
             if released is not None and released.failure_text is not None:
@@ -1414,9 +1338,9 @@ class NluConversationEntity(
                     response=response, conversation_id=user_input.conversation_id
                 )
             if released is not None and released.clarification is not None:
-                return await self._async_clarify(user_input, response, released, entities)
+                return await self._devices.async_clarify(user_input, response, released, entities)
             if released is not None:
-                return await self._async_handle_match_result(
+                return await self._devices.async_handle_match_result(
                     user_input, response, released, entities
                 )
 
@@ -1641,7 +1565,7 @@ class NluConversationEntity(
             )
 
         if is_undo_request(user_input.text):
-            return await self._async_handle_undo_request(
+            return await self._devices.async_handle_undo_request(
                 user_input, response, pending, entities
             )
 
@@ -1767,7 +1691,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingServiceConfirmation)
         ):
-            return await self._async_handle_service_confirmation_reply(
+            return await self._devices.async_handle_service_confirmation_reply(
                 user_input,
                 response,
                 active_task.payload,
@@ -1780,7 +1704,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingSemanticCommand)
         ):
-            return await self._async_handle_pending_semantic_command(
+            return await self._devices.async_handle_pending_semantic_command(
                 user_input, response, active_task.payload, entities
             )
 
@@ -1929,7 +1853,7 @@ class NluConversationEntity(
                 allow_disarm=await user_is_admin(self.hass, user_input),
             )
             if alarm is not None:
-                return await self._async_handle_device_control_result(
+                return await self._devices.async_handle_device_control_result(
                     user_input, response, alarm
                 )
 
@@ -2075,7 +1999,7 @@ class NluConversationEntity(
                     user_input.text, entities, language_document
                 )
             if device_control is not None:
-                return await self._async_handle_device_control_result(
+                return await self._devices.async_handle_device_control_result(
                     user_input, response, device_control
                 )
 
@@ -2468,7 +2392,7 @@ class NluConversationEntity(
                 result = direct_understanding.payload
 
         if result is None:
-            return await self._async_handle_no_match(user_input, response, entities)
+            return await self._devices.async_handle_no_match(user_input, response, entities)
 
         if isinstance(result, MatchResult) and result.failure_text is not None:
             # Understood, but honestly not groundable ("Im Büro gibt es
@@ -2492,12 +2416,12 @@ class NluConversationEntity(
             # Diagnostic feedback such as "unknown location" is still a
             # structural no-match.  Give the bounded, confirm-before-action
             # ASR correction a chance before returning that feedback.
-            return await self._async_handle_no_match(
+            return await self._devices.async_handle_no_match(
                 user_input, response, entities
             )
 
         if isinstance(result, CommandPlan):
-            return await self._async_handle_command_plan(
+            return await self._devices.async_handle_command_plan(
                 user_input, response, result, entities
             )
 
@@ -2530,36 +2454,12 @@ class NluConversationEntity(
             )
 
         if result.clarification is not None:
-            return await self._async_clarify(user_input, response, result, entities)
+            return await self._devices.async_clarify(user_input, response, result, entities)
 
-        return await self._async_handle_match_result(
+        return await self._devices.async_handle_match_result(
             user_input, response, result, entities
         )
 
-    async def _async_handle_bound_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: MatchResult | CommandPlan,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Run one meaning-model result through the ordinary handlers."""
-        if user_input.text.strip().casefold().startswith("und ") and user_input.text.rstrip().endswith("?"):
-            # An elliptical "Und im Bad?" after an action repeats it; the
-            # question mark is not a request for information here.
-            user_input = replace(user_input, text=user_input.text.rstrip(" ?") + ".")
-        if isinstance(result, CommandPlan):
-            return await self._async_handle_command_plan(user_input, response, result, entities)
-        if result.failure_text is not None:
-            response.async_set_error(
-                intent.IntentResponseErrorCode.NO_VALID_TARGETS, result.failure_text
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        if result.clarification is not None:
-            return await self._async_clarify(user_input, response, result, entities)
-        return await self._async_handle_match_result(user_input, response, result, entities)
 
     async def _async_handle_procedure_turn(
         self,
@@ -3712,85 +3612,6 @@ class NluConversationEntity(
             response=response, conversation_id=conversation_id
         )
 
-    async def _async_handle_undo_request(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        pending: ConversationContext | None,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Undo the most recent safely reversible action for this user."""
-        undo = pending.pending_undo if pending is not None else None
-        current_user_id = conversation_user_id(user_input)
-        if undo is None:
-            response.async_set_speech(
-                "Es gibt keine kürzlich ausgeführte, sicher rückgängig machbare Aktion."
-            )
-        elif (
-            undo.requested_by_user_id is not None
-            and undo.requested_by_user_id != current_user_id
-        ):
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                "Diese Rücknahme gehört zu einem anderen Benutzer.",
-            )
-        else:
-            is_admin = await user_is_admin(self.hass, user_input)
-            denial = next(
-                (
-                    decision.reason
-                    for plan in undo.plans
-                    if (
-                        decision := evaluate_service_plan(
-                            plan,
-                            entities,
-                            self.entry.options,
-                            is_admin=is_admin,
-                            user_id=current_user_id,
-                            effects=build_plan_effects(self.hass, plan),
-                        )
-                    ).outcome
-                    is PolicyOutcome.DENY
-                ),
-                None,
-            )
-            if denial is not None:
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    denial,
-                )
-                return conversation.ConversationResult(
-                    response=response,
-                    conversation_id=user_input.conversation_id,
-                )
-            self._context_store.clear(user_input.conversation_id)
-            try:
-                for plan in undo.plans:
-                    execution = await async_execute_service_plan(
-                        self.hass,
-                        plan,
-                        entities,
-                        self.entry.options,
-                        is_admin=is_admin,
-                        user_id=current_user_id,
-                        confirmed=True,
-                        audit_trail=self._audit_trail,
-                        audit_actor_id=current_user_id,
-                        effect_monitor=self._runtime_data.effect_monitor,
-                    )
-                    if not execution.executed:
-                        raise RuntimeError(execution.error or "Rücknahme nicht erlaubt")
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.error("Undo service call failed: %s", err, exc_info=True)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Rückgängigmachen: {user_facing_error(err)}",
-                )
-            else:
-                response.async_set_speech("Die letzte Aktion wurde rückgängig gemacht.")
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     def _handle_explanation_request(
         self,
@@ -3870,72 +3691,6 @@ class NluConversationEntity(
         )
 
 
-    async def _async_handle_pending_semantic_command(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        pending: PendingSemanticCommand,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Continue a deterministic slot-filling device dialog."""
-        # A complete new turn supersedes the open slot dialog.  Otherwise a
-        # command such as "Fahre die Rollläden ..." is interpreted as an
-        # attempted thermostat name merely because the preceding turn asked
-        # "Welche Heizung?".  Only a fully parsed fresh command/query (or a
-        # clearly command-shaped no-match that may enter bounded ASR
-        # correction) escapes; short answers such as "Küche" continue below.
-        fresh = self._engine.understand(
-            user_input.text,
-            entities,
-            self._world_model,
-            context=UnderstandingContext(
-                source_area=resolve_conversation_area(self.hass, user_input)
-            ),
-        ).payload
-        if isinstance(fresh, CommandPlan):
-            self._context_store.clear(user_input.conversation_id)
-            return await self._async_handle_command_plan(
-                user_input, response, fresh, entities
-            )
-        if isinstance(fresh, MatchResult) and (
-            fresh.command is not None or fresh.clarification is not None
-        ):
-            self._context_store.clear(user_input.conversation_id)
-            if fresh.clarification is not None:
-                return await self._async_clarify(
-                    user_input, response, fresh, entities
-                )
-            return await self._async_handle_match_result(
-                user_input, response, fresh, entities
-            )
-        if analyse_utterance(user_input.text).speech_act is SpeechAct.COMMAND:
-            self._context_store.clear(user_input.conversation_id)
-            return await self._async_handle_no_match(
-                user_input, response, entities
-            )
-
-        dialog = continue_semantic_dialog(user_input.text, pending)
-        if dialog.result is not None:
-            self._context_store.clear(user_input.conversation_id)
-            return await self._async_handle_device_control_result(
-                user_input, response, dialog.result
-            )
-        self._context_store.set(
-            user_input.conversation_id,
-            ConversationContext(
-                last_command=None,
-                last_entities=(),
-                last_area=None,
-                pending_clarification=None,
-                pending_semantic_command=dialog.pending,
-            ),
-        )
-        response.async_set_speech(dialog.question)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
     def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
         """The configured action sequence of one script entity, if readable."""
         component = self.hass.data.get("script")
@@ -3949,682 +3704,6 @@ class NluConversationEntity(
             return None
         return [step for step in sequence if isinstance(step, dict)]
 
-    async def _async_handle_match_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: MatchResult,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Authorize, execute and remember one regular engine match."""
-        self._runtime_data.shadow.observe(self.entry.options, user_input.text, entities, result)
-        if (
-            result.plan is not None
-            and analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
-        ):
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_error(
-                intent.IntentResponseErrorCode.NO_INTENT_MATCH,
-                "Ich habe eine Frage erkannt und führe deshalb keine Aktion aus.",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        if result.plan is not None:
-            policy = evaluate_service_plan(
-                result.plan,
-                entities,
-                self.entry.options,
-                is_admin=await user_is_admin(self.hass, user_input),
-                user_id=conversation_user_id(user_input),
-                effects=build_plan_effects(self.hass, result.plan),
-                origin=result.origin,
-                binding_confirmed=result.binding_confirmed,
-            )
-            if policy.outcome is PolicyOutcome.DENY:
-                self._context_store.clear(user_input.conversation_id)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    policy.reason or "Diese Aktion ist nicht erlaubt.",
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            if policy.outcome is PolicyOutcome.CONFIRM:
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None,
-                        last_entities=(),
-                        last_area=None,
-                        pending_clarification=None,
-                        pending_service_confirmation=self._confirmation(
-                            entities,
-                            result.plan,
-                            result.response_text,
-                            conversation_user_id(user_input),
-                            build_undo_plan(
-                                result.plan,
-                                entities,
-                                requested_by_user_id=conversation_user_id(user_input),
-                            ),
-                            origin=result.origin,
-                            binding_confirmed=result.binding_confirmed,
-                        ),
-                    ),
-                )
-                question = result.proposal_text or _confirmation_question(result.response_text)
-                response.async_set_speech(f"{policy.note} {question}" if policy.note else question)
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-
-        previous_context = self._context_store.get(user_input.conversation_id)
-        undo_plan = (
-            build_undo_plan(
-                result.plan,
-                entities,
-                requested_by_user_id=conversation_user_id(user_input),
-            )
-            if result.plan is not None
-            else None
-        )
-        if result.command is not None:
-            focus = derive_dialog_focus(result.command)
-            discourse = remember_entities(
-                previous_context.discourse if previous_context else None,
-                result.command.entities,
-                role=(
-                    DiscourseRole.ACTION_TARGET
-                    if result.plan is not None
-                    else DiscourseRole.QUERY_RESULT
-                ),
-                active_property=focus.property,
-                active_action=(
-                    result.command.intent if result.plan is not None else None
-                ),
-                semantic_graph=result.command.source_frame.semantic_graph,
-            )
-            query_result = result.command.parameters.get("query_result")
-            if isinstance(query_result, QueryResult) and (
-                query_result.member_ids
-                or query_result.entities
-                or query_result.devices
-                or query_result.areas
-                or query_result.floors
-            ):
-                discourse = remember_query_group(
-                    discourse,
-                    query_result,
-                    semantic_graph=result.command.source_frame.semantic_graph,
-                )
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=result.command,
-                    last_entities=tuple(result.command.entities),
-                    last_area=result.command.area,
-                    pending_clarification=None,
-                    focus=focus,
-                    discourse=discourse,
-                    pending_undo=undo_plan,
-                    last_explanation=result.explanation_text,
-                    memory=DialogTurnMemory(
-                        source_text=user_input.text,
-                        entities=tuple(result.command.entities),
-                        explanation=result.explanation_text,
-                        command=result.command,
-                    ),
-                ),
-            )
-        elif result.context_entities:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=result.context_entities,
-                    last_area=None,
-                    pending_clarification=None,
-                    last_query_predicate=result.context_predicate,
-                    last_explanation=result.explanation_text,
-                    discourse=remember_entities(
-                        previous_context.discourse if previous_context else None,
-                        result.context_entities,
-                        role=DiscourseRole.QUERY_RESULT,
-                    ),
-                    memory=DialogTurnMemory(
-                        source_text=user_input.text,
-                        entities=result.context_entities,
-                        predicate=result.context_predicate,
-                        explanation=result.explanation_text,
-                    ),
-                ),
-            )
-        else:
-            self._context_store.clear(user_input.conversation_id)
-
-        if result.plan is not None:
-            execution = await async_execute_service_plan(
-                self.hass,
-                result.plan,
-                entities,
-                self.entry.options,
-                is_admin=await user_is_admin(self.hass, user_input),
-                user_id=conversation_user_id(user_input),
-                confirmed=False,
-                audit_trail=self._audit_trail,
-                audit_actor_id=conversation_user_id(user_input),
-                effect_monitor=self._runtime_data.effect_monitor,
-                origin=result.origin,
-                binding_confirmed=result.binding_confirmed,
-            )
-            if not execution.executed:
-                self._context_store.clear(user_input.conversation_id)
-                _LOGGER.error(
-                    "Service call %s.%s on %s failed: %s",
-                    result.plan.domain,
-                    result.plan.service,
-                    result.plan.entity_id,
-                    execution.error,
-                )
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    _execution_failure_text(execution),
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            result = replace(
-                result, response_text=_with_effect_summary(result.response_text, execution)
-            )
-
-        if (
-            result.command is not None and result.command.intent in QUERY_INTENT_NAMES
-        ) or (
-            analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
-            or result.context_predicate is not None
-        ):
-            response.response_type = intent.IntentResponseType.QUERY_ANSWER
-        response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
-    async def _async_clarify(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: MatchResult,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Ask - unless the speaker confirmed a default choice for exactly
-        this question (7.4.1); the chosen candidate is one the question
-        itself offered and runs through the ordinary handlers."""
-        clarification = result.clarification
-        if clarification is not None:
-            area = resolve_conversation_area(self.hass, user_input)
-            chosen = self._default_choice(
-                user_input, clarification.candidates,
-                area.area_id if area is not None else None,
-            )
-            if chosen is not None:
-                resolved = self._engine.resolve_clarification(
-                    chosen.entity_id, clarification, entities
-                )
-                if resolved is not None:
-                    return await self._async_handle_match_result(
-                        user_input, response, resolved, entities
-                    )
-        return self._handle_clarification_result(user_input, response, result)
-
-    def _handle_clarification_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: MatchResult,
-    ) -> conversation.ConversationResult:
-        """Store an ambiguous match until the user selects a candidate."""
-        self._context_store.set(
-            user_input.conversation_id,
-            ConversationContext(
-                last_command=None,
-                last_entities=(),
-                last_area=None,
-                pending_clarification=result.clarification,
-            ),
-        )
-        response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_no_match(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Try bounded correction/dialog fallbacks for an unmatched turn."""
-        is_query = analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
-        corrected_plans: dict[
-            tuple, tuple[ServiceCallPlan, str, PhoneticSuggestion]
-        ] = {}
-        for suggestion in (
-            () if is_query else phonetic_suggestions(user_input.text, entities)
-        ):
-            corrected = self._engine.understand(
-                suggestion.corrected_text,
-                entities,
-                self._world_model,
-                context=UnderstandingContext(
-                    source_area=resolve_conversation_area(self.hass, user_input)
-                ),
-            ).payload
-            plan = getattr(corrected, "plan", None)
-            success = getattr(corrected, "response_text", None)
-            if plan is None or not success:
-                continue
-            entity_ids = (
-                tuple(plan.entity_id)
-                if isinstance(plan.entity_id, list)
-                else (plan.entity_id,)
-            )
-            key = (plan.domain, plan.service, entity_ids, repr(sorted(plan.data.items())))
-            corrected_plans[key] = (plan, success, suggestion)
-        if len(corrected_plans) == 1:
-            plan, success, correction = next(iter(corrected_plans.values()))
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_service_confirmation=self._confirmation(
-                        entities,
-                        plan,
-                        success,
-                        conversation_user_id(user_input),
-                        build_undo_plan(
-                            plan,
-                            entities,
-                            requested_by_user_id=conversation_user_id(user_input),
-                        ),
-                    ),
-                ),
-            )
-            response.async_set_speech(
-                f"Meintest du „{correction.corrected_term}“? "
-                f"Soll ich {success.rstrip('.')}?"
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        dialog = None if is_query else start_semantic_dialog(user_input.text, entities)
-        if dialog is not None and dialog.result is not None:
-            return await self._async_handle_device_control_result(
-                user_input, response, dialog.result
-            )
-        if dialog is not None and dialog.pending is not None:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_semantic_command=dialog.pending,
-                ),
-            )
-            response.async_set_speech(dialog.question)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        feedback = self._engine.failure_feedback(user_input.text, entities)
-        if not is_query and (feedback is None or feedback.startswith(_GENERIC_UNKNOWN_TARGET)):
-            # An unknown device word is asked about, never guessed (7.4.1);
-            # specific explanations (unknown floor, capabilities) still win.
-            area = resolve_conversation_area(self.hass, user_input)
-            asked = await self._async_ask_unknown_word(
-                user_input, response, entities, area.area_id if area is not None else None
-            )
-            if asked is not None:
-                return asked
-        bare_reply = (
-            len(user_input.text.split()) <= 3
-            and classify_confirmation_reply(user_input.text)
-            in {ConfirmationReply.YES, ConfirmationReply.NO}
-        )
-        response.async_set_error(
-            intent.IntentResponseErrorCode.NO_INTENT_MATCH,
-            feedback
-            or (
-                # A bare "Ja"/"Nein" with nothing open (for example after a
-                # refusal) is answered honestly (7.3.3).
-                "Gerade ist keine Frage offen, auf die sich das beziehen könnte. "
-                "Ich habe nichts ausgeführt."
-                if bare_reply else NOT_UNDERSTOOD_TEXT
-            ),
-        )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_command_plan(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: CommandPlan,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Authorize and execute an already validated multi-command plan."""
-        self._runtime_data.shadow.observe(self.entry.options, user_input.text, entities, result)
-        if (
-            analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
-            and any(command.plan is not None for command in result.commands)
-        ):
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_error(
-                intent.IntentResponseErrorCode.NO_INTENT_MATCH,
-                "Ich habe eine Frage erkannt und führe deshalb keine Aktion aus.",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        # Every sub-command was validated together before this point. A HA-side
-        # runtime failure remains fail-fast because service calls are not
-        # transactional and already executed calls cannot be rolled back safely.
-        is_admin = await user_is_admin(self.hass, user_input)
-        actor_id = conversation_user_id(user_input)
-        for sub_result in result.commands:
-            if sub_result.plan is None:
-                continue
-            policy = evaluate_service_plan(
-                sub_result.plan,
-                entities,
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=actor_id,
-                effects=build_plan_effects(self.hass, sub_result.plan),
-                origin=result.origin,
-                binding_confirmed=result.binding_confirmed,
-            )
-            if policy.outcome is PolicyOutcome.DENY:
-                self._context_store.clear(user_input.conversation_id)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    policy.reason or "Mindestens eine Aktion ist nicht erlaubt.",
-                )
-                return conversation.ConversationResult(
-                    response=response,
-                    conversation_id=user_input.conversation_id,
-                )
-            if (
-                policy.outcome is PolicyOutcome.CONFIRM
-                and result.confirmation_text is None
-                and result.proposal_text is not None
-            ):
-                # An implicit need proposed as a whole (implicit_action_level).
-                result = replace(result, confirmation_text=result.proposal_text)
-            if (
-                policy.outcome is PolicyOutcome.CONFIRM
-                and result.confirmation_text is None
-            ):
-                # A previewed group plan is confirmed as a whole below; every
-                # other multi-command plan needs one confirmation per action.
-                self._context_store.clear(user_input.conversation_id)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    "Sicherheitskritische Aktionen müssen einzeln bestätigt werden.",
-                )
-                return conversation.ConversationResult(
-                    response=response,
-                    conversation_id=user_input.conversation_id,
-                )
-        if result.confirmation_text is not None:
-            plans = [
-                sub_result.plan for sub_result in result.commands
-                if sub_result.plan is not None
-            ]
-            if plans:
-                success = " ".join(
-                    sub_result.response_text for sub_result in result.commands
-                )
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None,
-                        last_entities=(),
-                        last_area=None,
-                        pending_clarification=None,
-                        pending_service_confirmation=self._confirmation(
-                            entities,
-                            plans[0],
-                            success,
-                            actor_id,
-                            None,
-                            tuple(plans[1:]),
-                            origin=result.origin,
-                            binding_confirmed=result.binding_confirmed,
-                            binding_offer=(
-                                (result.routine_key, result.routine_candidates[0])
-                                if result.routine_key is not None
-                                and not result.binding_confirmed
-                                and len(result.routine_candidates) == 1
-                                else None
-                            ),
-                        ),
-                    ),
-                )
-                response.async_set_speech(result.confirmation_text)
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-        self._context_store.clear(user_input.conversation_id)
-        response_parts: list[str] = []
-        multi_undo_parts: list[UndoPlan] = []
-        multi_undo_supported = True
-        for sub_result in result.commands:
-            if sub_result.plan is None:
-                response_parts.append(sub_result.response_text)
-                continue
-            inverse = build_undo_plan(
-                sub_result.plan,
-                entities,
-                requested_by_user_id=actor_id,
-            )
-            if inverse is None:
-                multi_undo_supported = False
-            else:
-                multi_undo_parts.append(inverse)
-            execution = await async_execute_service_plan(
-                self.hass,
-                sub_result.plan,
-                entities,
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=actor_id,
-                confirmed=False,
-                audit_trail=self._audit_trail,
-                audit_actor_id=actor_id,
-                effect_monitor=self._runtime_data.effect_monitor,
-                origin=result.origin,
-            )
-            if not execution.executed:
-                error = execution.error or "Die Aktion konnte nicht ausgeführt werden."
-                _LOGGER.error(
-                    "Service call %s.%s on %s failed: %s",
-                    sub_result.plan.domain,
-                    sub_result.plan.service,
-                    sub_result.plan.entity_id,
-                    error,
-                )
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {error}",
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            response_parts.append(sub_result.response_text)
-        if multi_undo_supported and multi_undo_parts:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_undo=UndoPlan(
-                        tuple(
-                            plan
-                            for undo in reversed(multi_undo_parts)
-                            for plan in undo.plans
-                        ),
-                        actor_id,
-                    ),
-                ),
-            )
-        response.async_set_speech(" ".join(response_parts))
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
-    async def _async_handle_device_control_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        device_control: DeviceControlResult,
-    ) -> conversation.ConversationResult:
-        """Apply the common safety, execution and context policy once."""
-        if (
-            device_control.plan is not None
-            and analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY
-        ):
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_error(
-                intent.IntentResponseErrorCode.NO_INTENT_MATCH,
-                "Ich habe eine Frage erkannt und führe deshalb keine Aktion aus.",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        if device_control.plan is None:
-            self._context_store.clear(user_input.conversation_id)
-            if device_control.is_query:
-                response.response_type = intent.IntentResponseType.QUERY_ANSWER
-            response.async_set_speech(device_control.response_text)
-        else:
-            resolved_entities = list(device_control.resolved_entities)
-            actor_id = conversation_user_id(user_input)
-            is_admin = await user_is_admin(self.hass, user_input)
-            policy = evaluate_service_plan(
-                device_control.plan,
-                build_entity_snapshots(self.hass, self.entry),
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=actor_id,
-                effects=build_plan_effects(self.hass, device_control.plan),
-            )
-            if policy.outcome is PolicyOutcome.DENY:
-                self._context_store.clear(user_input.conversation_id)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    policy.reason or "Diese Aktion ist nicht erlaubt.",
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            needs_confirmation = (
-                device_control.requires_confirmation
-                or policy.outcome is PolicyOutcome.CONFIRM
-            )
-            if needs_confirmation:
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None,
-                        last_entities=(),
-                        last_area=None,
-                        pending_clarification=None,
-                        pending_service_confirmation=self._confirmation(
-                            resolved_entities,
-                            device_control.plan,
-                            device_control.response_text,
-                            actor_id,
-                            build_undo_plan(
-                                device_control.plan,
-                                resolved_entities,
-                                requested_by_user_id=actor_id,
-                            ),
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    _confirmation_question(device_control.response_text, policy.note)
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            execution = await async_execute_service_plan(
-                self.hass,
-                device_control.plan,
-                build_entity_snapshots(self.hass, self.entry),
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=actor_id,
-                confirmed=False,
-                audit_trail=self._audit_trail,
-                audit_actor_id=actor_id,
-                effect_monitor=self._runtime_data.effect_monitor,
-            )
-            if not execution.executed:
-                self._context_store.clear(user_input.conversation_id)
-                error = execution.error or "Die Aktion konnte nicht ausgeführt werden."
-                _LOGGER.error(
-                    "Device-control service call %s.%s on %s failed: %s",
-                    device_control.plan.domain,
-                    device_control.plan.service,
-                    device_control.plan.entity_id,
-                    error,
-                )
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {error}",
-                )
-            else:
-                response.async_set_speech(device_control.response_text)
-                if resolved_entities:
-                    controlled = resolved_entities[0]
-                    self._context_store.set(
-                        user_input.conversation_id,
-                        ConversationContext(
-                            last_command=None,
-                            last_entities=tuple(resolved_entities),
-                            last_area=None,
-                            pending_clarification=None,
-                            focus=DialogFocus(
-                                property=None,
-                                scope_kind=("entity" if len(resolved_entities) == 1 else None),
-                                scope_id=(controlled.entity_id if len(resolved_entities) == 1 else None),
-                                candidate_entity_ids=tuple(
-                                    entity.entity_id for entity in resolved_entities
-                                ),
-                                source_intent="DeviceControl:" + device_control.plan.service,
-                            ),
-                            pending_undo=build_undo_plan(
-                                device_control.plan,
-                                resolved_entities,
-                                requested_by_user_id=actor_id,
-                            ),
-                        ),
-                    )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     def _arbitrate_context_readings(self, readings: Sequence[tuple[str, Any]]) -> Any:
         """Discourse connections as arbiter candidates (7.7, B3)."""
@@ -4634,18 +3713,9 @@ class NluConversationEntity(
         if decision.writes:
             return decision.chosen[0].payload
         if decision.kind is DecisionKind.ASK:
-            return MatchResult(plan=None, response_text=_ambiguous_reading_text(decision))
+            return MatchResult(plan=None, response_text=ambiguous_reading_text(decision))
         return next((payload for _source, payload in payloads if payload is not None), None)
 
-    def _confirmation(
-        self, entities: Sequence[EntitySnapshot], plan: ServiceCallPlan, *args: Any, **kwargs: Any
-    ) -> PendingServiceConfirmation:
-        """A pending "Ja" bound to the risk and effects it was asked for (7.7)."""
-        pending = PendingServiceConfirmation(plan, *args, **kwargs)
-        return replace(pending, scope=confirmed_scope(
-            self.hass, (plan, *pending.additional_plans), entities, self.entry.options,
-            origin=pending.origin, binding_confirmed=pending.binding_confirmed,
-        ))
 
     def _automation_store(self) -> AutomationExecutor:
         """The one executor of automations.yaml (its lock guards every write)."""
@@ -4658,111 +3728,6 @@ class NluConversationEntity(
         self._audit_trail.record(
             dt_util.now(), getattr(context, "user_id", None), plan
         )
-
-
-    async def _async_handle_service_confirmation_reply(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        confirmation: PendingServiceConfirmation,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Confirm a high-risk lock or garage movement before execution."""
-        current_user_id = conversation_user_id(user_input)
-        if (
-            confirmation.requested_by_user_id is not None
-            and confirmation.requested_by_user_id != current_user_id
-        ):
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                "Diese Bestätigung gehört zu einem anderen Benutzer.",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        reply = classify_confirmation_reply(user_input.text)
-        if reply is ConfirmationReply.UNCLEAR:
-            response.async_set_speech("Bitte antworte mit Ja oder Nein.")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        self._context_store.clear(user_input.conversation_id)
-        if reply is ConfirmationReply.NO:
-            response.async_set_speech("Abgebrochen. Es wurde nichts ausgeführt.")
-        else:
-            undo = build_undo_plan(
-                confirmation.plan,
-                entities,
-                requested_by_user_id=current_user_id,
-            )
-            is_admin = await user_is_admin(self.hass, user_input)
-            execution = await async_execute_service_plan(
-                self.hass,
-                confirmation.plan,
-                entities,
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=current_user_id,
-                confirmed=True,
-                audit_trail=self._audit_trail,
-                audit_actor_id=current_user_id,
-                effect_monitor=self._runtime_data.effect_monitor,
-                origin=confirmation.origin,
-                binding_confirmed=confirmation.binding_confirmed,
-                scope=confirmation.scope,
-            )
-            for additional in confirmation.additional_plans:
-                if not execution.executed:
-                    break
-                execution = await async_execute_service_plan(
-                    self.hass,
-                    additional,
-                    entities,
-                    self.entry.options,
-                    is_admin=is_admin,
-                    user_id=current_user_id,
-                    confirmed=True,
-                    audit_trail=self._audit_trail,
-                    audit_actor_id=current_user_id,
-                    effect_monitor=self._runtime_data.effect_monitor,
-                    origin=confirmation.origin,
-                    scope=confirmation.scope,
-                )
-            if not execution.executed:
-                _LOGGER.error(
-                    "Confirmed service call %s.%s on %s failed: %s",
-                    confirmation.plan.domain,
-                    confirmation.plan.service,
-                    confirmation.plan.entity_id,
-                    execution.error,
-                )
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    _execution_failure_text(execution),
-                )
-            else:
-                spoken = _with_effect_summary(confirmation.success_text, execution)
-                if confirmation.binding_offer is not None:
-                    spoken = f"{spoken} " + await self._async_store_routine_binding(
-                        *confirmation.binding_offer, current_user_id
-                    )
-                response.async_set_speech(spoken)
-                if undo is not None:
-                    self._context_store.set(
-                        user_input.conversation_id,
-                        ConversationContext(
-                            last_command=None,
-                            last_entities=(),
-                            last_area=None,
-                            pending_clarification=None,
-                            pending_undo=undo,
-                        ),
-                    )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
 
 
 def _comfort_profile_from_document(
