@@ -174,7 +174,12 @@ def test_slow_garage_effect_answers_at_once_and_verifies_in_background(tmp_path)
         assert reply is not None and reply.handled
         assert reply.speech.startswith("In Ordnung, ich schließe die Garage jetzt")
         assert "melde mich nur, falls es nicht klappt" in reply.speech
-        await asyncio.sleep(0.2)
+        # Wait for the background verification itself, not a fixed time: a
+        # slow CI runner may need longer than a few hundred milliseconds.
+        for _ in range(200):
+            if world.engine.proposals.get(proposal_id).state is not ProposalState.EXECUTING:
+                break
+            await asyncio.sleep(0.025)
         assert world.sink.device_calls == [
             ("cover", "close_cover", {"entity_id": "cover.garage"}),
         ]
