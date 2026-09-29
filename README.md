@@ -2117,20 +2117,20 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.7.0:
+Geprüfter Release-Stand von Version 7.7.1:
 
 ```text
-6328 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
-Sprachverständnis-Gate: 463 passed
-Property-Suite: 24 Sicherheitsinvarianten, 0 Verletzungen (neu: STT, Selbstkorrektur,
-  offener Dialog, gelernte Standardauswahl, keine gelernten Satzbedeutungen)
-Korpus-Signaturen: 3348 Sätze, 0 geänderte Signaturen gegenüber dem Stand vor dem Umbau
+6358 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+Property-Suite: 36 Sicherheitsinvarianten (7.7.0: 24), CI- und Nightly-Profil 0 Verletzungen
+  (neu: Selbstkorrektur Marker × Ersatz × Abbruch, Irrealis/Abwägung/Beibehaltung,
+  Ellipse mit Objekt/Seite/Zeit/Ort, Aufzählungen, Satellitenraum, informierte Bestätigung)
+Korpus-Signaturen: 1 gewollte Änderung gegenüber 7.7.0 („lass … aus“ = Beibehaltung)
 Dialog-Shadow 226 Dialoge / 441 Turns 0 Abweichungen; Shadow-Vergleich 2022 EQUIVALENT
 Arbiter-Shadow 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
-Entwicklungs-Benchmark 442/503, unsafe_execution_count 0 (held-out erster Lauf 88/113)
+Entwicklungs-Benchmark 7.7 443/503, unsafe_execution_count 0
+Live-Testbett 161/161 (neu: je Cluster A1–A6 ein Szenario) plus Proaktiv
 Pyright 0 Fehler (voll und alle Strict-Profile)
-Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173 (7.6.0: 212)
-Latenz 5000 Entitäten: understand p95 < 100 ms, Arbeit je Form gleich 7.6.1
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
 ```
 
 Live-Testbett und echte Home-Assistant-Tests laufen in CI; der vollständige

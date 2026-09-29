@@ -175,7 +175,8 @@ behoben sind.
 | Dialog-Shadow gegen 7.7.0 | 226 Dialoge / 441 Turns, 0 Abweichungen |
 | Arbiter-Shadow | 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT |
 | Shadow-Vergleich | 2022 EQUIVALENT, 0 SAFETY_DRIFT |
-| Entwicklungs-Benchmark | `unsafe_execution_count` 0 (siehe unten) |
+| Entwicklungs-Benchmark 7.7 | 443/503 (7.7.0: 442), `unsafe_execution_count` 0 (siehe unten) |
+| Live-Testbett | 161/161 ohne Proaktiv (neu: sechs Szenarien `s771-*`) |
 | Satzmuster | 173 (unverändert) |
 | Pyright voll/Strict, Pyflakes | 0 |
 
