@@ -130,12 +130,26 @@ def names_its_targets(text: str, payload: Any, entities: Sequence[EntitySnapshot
     return bool(targets) and all(routine_named_explicitly(text, entity) for entity in targets)
 
 
+def context_candidates(readings: Sequence[tuple[str, Any]]) -> list[Candidate]:
+    """Writing readings of the context connections (ellipsis, reference,
+    query and command follow-ups), all with discourse authority."""
+    candidates: list[Candidate] = []
+    for source, payload in readings:
+        candidate = _candidate(source, "", Authority.DISCOURSE, payload, explicit=False)
+        if candidate is not None and candidate.executable:
+            candidates.append(candidate)
+    return candidates
+
+
 def need_query_candidates(
     view: Any,
     need: Any,
     speech_act: str,
     *,
     parser: Any = None,
+    discourse: Any = None,
+    release: Any = None,
+    deferred: bool = False,
     text: str = "",
     entities: Sequence[EntitySnapshot] = (),
 ) -> list[Candidate]:
@@ -158,7 +172,26 @@ def need_query_candidates(
     )
     if parser_candidate is not None:
         candidates.append(parser_candidate)
-    return candidates
+    for source, payload, authority in (
+        ("discourse", discourse, Authority.DISCOURSE),
+        ("release", release, Authority.PARSER),
+    ):
+        candidate = _candidate(source, speech_act, authority, payload, explicit=False)
+        if candidate is not None and candidate.executable:
+            candidates.append(candidate)
+    return _deferred(candidates) if deferred else candidates
+
+
+def _deferred(candidates: list[Candidate]) -> list[Candidate]:
+    """Time-bound or conditional meaning never writes now: every executable
+    reading becomes a deferred one (automation, reminder, timer)."""
+    return [
+        Candidate(item.source, item.speech_act, item.authority, Effect.DEFER, item.targets,
+                  item.operations, item.risk, item.residue, item.explicit_device, item.evidence,
+                  item.payload)
+        if item.effect is Effect.WRITE else item
+        for item in candidates
+    ]
 
 
 def collect_candidates(
@@ -209,18 +242,12 @@ def collect_candidates(
         clause.time is not TimeKind.NOW or clause.conditions for clause in meaning.clauses
     )
     if later:
-        # Time-bound or conditional meaning never writes now (7.3.3 Q5):
-        # every executable reading becomes a deferred one.
-        candidates = [
-            Candidate(item.source, item.speech_act, item.authority, Effect.DEFER, item.targets,
-                      item.operations, item.risk, item.residue, item.explicit_device, item.evidence,
-                      item.payload)
-            if item.effect is Effect.WRITE else item
-            for item in candidates
-        ]
+        # Time-bound or conditional meaning never writes now (7.3.3 Q5).
+        candidates = _deferred(candidates)
     return candidates, explicit_question
 
 
 __all__ = (
-    "collect_candidates", "complete_command_candidate", "dialog_evidence", "need_query_candidates",
+    "collect_candidates", "complete_command_candidate", "context_candidates", "dialog_evidence",
+    "need_query_candidates",
 )

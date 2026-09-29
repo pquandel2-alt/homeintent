@@ -341,6 +341,7 @@ from .nlu.recurrence import (
 )
 from .bindings import BindingKind, BindingScope
 from .conversation_learning import DialogLearningMixin, is_known_device_word
+from .nlu.meaning_ir import is_deferred
 from .arbitration import (
     DecisionKind,
     DialogReply,
@@ -350,6 +351,7 @@ from .arbitration import (
 )
 from .arbitration_candidates import (
     complete_command_candidate,
+    context_candidates,
     dialog_evidence,
     need_query_candidates,
 )
@@ -1599,18 +1601,41 @@ class NluConversationEntity(
                     language_document,
                     context=understanding_context,
                 )
+            # A reference to the conversation ("Und im Bad auch") and a
+            # release ("Das Licht kann aus") are readings of their own.
+            bound = (
+                self._engine.understand_discourse(
+                    language_document, entities, pending, understanding=understanding_context
+                )
+                if pending is not None and pending.pending_clarification is None
+                else None
+            )
+            released = self._engine.understand_release(
+                language_document, entities, context=understanding_context
+            )
             decision = arbitrate(
                 need_query_candidates(
                     view, need, language_document.utterance.speech_act.name,
                     parser=direct_understanding.payload if direct_understanding is not None else None,
+                    discourse=bound, release=released,
+                    deferred=is_deferred(language_document),
                     text=user_input.text, entities=entities,
                 ),
                 explicit_question=question_shaped,
             )
-            if decision.chosen and all(item.source == "parser" for item in decision.chosen):
-                # The command meaning applies; it runs at the direct-command
-                # step below with the same payload.
-                need = None
+            if decision.kind is DecisionKind.DEFER:
+                # Automation ↔ time-shifted command (7.7): a time-bound or
+                # conditional meaning is compiled by the automation and
+                # reminder contracts below, never run now.
+                need = bound = released = None
+            if decision.writes:
+                # The arbiter decided which meaning applies; the other
+                # readings are dropped. A parser meaning runs at the
+                # direct-command step below with the same payload.
+                source = decision.chosen[0].source
+                need = need if source == "need" else None
+                bound = bound if source == "discourse" else None
+                released = released if source == "release" else None
             elif decision.kind is DecisionKind.ASK:
                 self._context_store.clear(user_input.conversation_id)
                 response.async_set_speech(_ambiguous_reading_text(decision))
@@ -1654,17 +1679,10 @@ class NluConversationEntity(
                 return await self._async_handle_match_result(
                     user_input, response, need, entities
                 )
-            if pending is not None and pending.pending_clarification is None:
-                bound = self._engine.understand_discourse(
-                    language_document, entities, pending, understanding=understanding_context
+            if bound is not None:
+                return await self._async_handle_bound_result(
+                    user_input, response, bound, entities
                 )
-                if bound is not None:
-                    return await self._async_handle_bound_result(
-                        user_input, response, bound, entities
-                    )
-            released = self._engine.understand_release(
-                language_document, entities, context=understanding_context
-            )
             if isinstance(released, CommandPlan):
                 return await self._async_handle_command_plan(
                     user_input, response, released, entities
@@ -2558,21 +2576,25 @@ class NluConversationEntity(
                 is not None
             )
             if result is None and not names_unknown:
-                result = self._engine.match_followup(user_input.text, pending)
-            if result is None and not names_unknown:
-                result = self._engine.match_contextual_property_followup(
-                    user_input.text, entities, pending
+                # Context connections (7.7, B3): every reader proposes, the
+                # arbiter decides between writing readings; an answer or a
+                # question keeps the established order.
+                readings = (
+                    ("followup", lambda: self._engine.match_followup(user_input.text, pending)),
+                    ("property", lambda: self._engine.match_contextual_property_followup(
+                        user_input.text, entities, pending
+                    )),
+                    ("reference", lambda: self._engine.match_reference(
+                        user_input.text, entities, pending, self._world_model
+                    )),
+                    ("query", lambda: self._engine.match_query_followup(
+                        user_input.text, entities, pending, self._world_model
+                    )),
+                    ("command", lambda: self._engine.match_command_followup(
+                        user_input.text, entities, pending
+                    )),
                 )
-            if result is None and not names_unknown:
-                result = self._engine.match_reference(
-                    user_input.text, entities, pending, self._world_model
-                )
-            if result is None and not names_unknown:
-                result = self._engine.match_query_followup(
-                    user_input.text, entities, pending, self._world_model
-                )
-            if result is None and not names_unknown:
-                result = self._engine.match_command_followup(user_input.text, entities, pending)
+                result = self._arbitrate_context_readings(readings)
             if result is None and _AUTOMATION_DELETE_RE.search(user_input.text):
                 # V5.28 "Automation Deletion": checked before the query gate
                 # below - "Lösche die Automation für X" also contains the
@@ -7433,6 +7455,17 @@ class NluConversationEntity(
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    def _arbitrate_context_readings(self, readings: Sequence[tuple[str, Any]]) -> Any:
+        """Discourse connections as arbiter candidates (7.7, B3)."""
+        payloads = [(source, read()) for source, read in readings]
+        candidates = context_candidates(payloads)
+        decision = arbitrate(candidates)
+        if decision.writes:
+            return decision.chosen[0].payload
+        if decision.kind is DecisionKind.ASK:
+            return MatchResult(plan=None, response_text=_ambiguous_reading_text(decision))
+        return next((payload for _source, payload in payloads if payload is not None), None)
 
     def _confirmation(
         self, entities: Sequence[EntitySnapshot], plan: ServiceCallPlan, *args: Any, **kwargs: Any

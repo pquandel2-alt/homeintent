@@ -92,6 +92,21 @@ def _time(document: LanguageDocument) -> TimeKind:
     return TimeKind.UNSPECIFIED
 
 
+def is_deferred(document: LanguageDocument) -> bool:
+    """Time-bound or conditional meaning: nothing of it runs now (7.3.3 Q5).
+
+    The one rule the arbiter applies to every executable reading (7.7).
+    """
+    if document.utterance.speech_act is SpeechAct.AUTOMATION:
+        return True
+    if any(
+        clause.kind in {ClauseKind.CONDITION, ClauseKind.TEMPORAL}
+        for clause in document.structure.clauses
+    ):
+        return True
+    return _time(document) is not TimeKind.NOW
+
+
 def _origin(utterance: SemanticUtterance, words: Sequence[str]) -> str | None:
     from .need_semantics import interpret_need
 
@@ -194,4 +209,4 @@ def _main_role():
     return ClauseRole.MAIN
 
 
-__all__ = ("ground_meaning",)
+__all__ = ("ground_meaning", "is_deferred")
