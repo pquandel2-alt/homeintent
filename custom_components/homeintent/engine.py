@@ -912,9 +912,9 @@ def _ambiguous_kind_question(
             continue
         resolution = resolve_description(description, entities)
         if resolution.outcome is ResolutionOutcome.AMBIGUOUS and 1 < len(resolution.entities) <= 8:
-            names = [entity.friendly_name for entity in resolution.entities]
-            listed = ", ".join(names[:-1]) + " oder " + names[-1]
-            return f"Welches Gerät meinst du: {listed}? Ich habe nichts ausgeführt."
+            from .nlu.entity_clarification import which_question
+
+            return f"{which_question(resolution.entities)} Ich habe nichts ausgeführt."
     return None
 
 

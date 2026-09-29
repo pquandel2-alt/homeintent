@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from functools import lru_cache
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..name_similarity import edit_distance
@@ -184,6 +184,37 @@ def _has_registry_mention(text: str, entities: tuple[EntitySnapshot, ...]) -> bo
         for name in (entity.friendly_name, *entity.aliases)
         if (key := normalize_for_compare(name))
     )
+
+
+def registry_name_spans(
+    tokens: Sequence[LanguageToken], entities: Iterable[EntitySnapshot]
+) -> tuple[tuple[int, int], ...]:
+    """Token ranges that spell an exposed multi-word name or alias exactly.
+
+    Words inside such a name belong to the name ("Guten Morgen", "Gute
+    Nacht"): they are neither greeting nor time. Single-word names never
+    shadow a word, so "morgen" before a device named "Morgen" stays time.
+    """
+    words = [(index, token.canonical) for index, token in enumerate(tokens) if token.is_word]
+    if len(words) < 2:
+        return ()
+    keys = [key for _index, key in words]
+    present = set(keys)
+    spans: set[tuple[int, int]] = set()
+    for entity in entities:
+        for name in (entity.friendly_name, *entity.aliases):
+            parts = normalize_for_compare(name).split()
+            if len(parts) < 2 or parts[0] not in present:
+                continue
+            width = len(parts)
+            for start in range(len(keys) - width + 1):
+                if keys[start:start + width] == parts:
+                    spans.add((words[start][0], words[start + width - 1][0] + 1))
+    return tuple(sorted(spans))
+
+
+def _inside_name(item: TemporalExpression, spans: Sequence[tuple[int, int]]) -> bool:
+    return any(start <= item.token_start and item.token_end <= end for start, end in spans)
 
 
 @lru_cache(maxsize=2048)
@@ -519,6 +550,7 @@ def analyse_language(
     if _has_near_negation(text, entity_tuple) and not explicit_unmute:
         utterance = replace(utterance, polarity=Polarity.NEGATIVE)
     tokens = tokenize_language(text)
+    name_spans = registry_name_spans(tokens, entity_tuple)
     structure = analyse_german_structure(tokens)
     maintain, _clause_ranges = maintain_frames(text, tokens)
     if maintain and all(frame is not None for frame in maintain):
@@ -551,7 +583,7 @@ def analyse_language(
         # scheduling and must not block the direct path (7.5.0).
         temporal=tuple(
             item for item in analyse_temporal_semantics(tokens)
-            if item.kind is not TemporalKind.NOW
+            if item.kind is not TemporalKind.NOW and not _inside_name(item, name_spans)
         ),
         maintain=maintain,
         release=(

@@ -34,6 +34,7 @@ from .frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .german_structure import ClauseKind
 from .language_frontend import tokenize_language
 from .normalize import normalize
+from .entity_clarification import which_question
 from .parser import ClarificationRequest, ParseResult
 from .place_model import Place, PlaceKind, build_place_lexicon
 from .primitives import SemanticAction, SemanticDirection, SemanticProperty
@@ -816,9 +817,8 @@ def _compile_clauses(
                         "service_data": {k: v for k, v in operation[1].items() if k == "volume_level"},
                     }
                 if len({entity.domain for entity in resolution.entities}) != 1 or len(clauses) > 1:
-                    names = _names(resolution.entities)
                     return OntologyCommand(
-                        message=f"Welches Gerät meinst du: {names}?",
+                        message=which_question(tuple(resolution.entities)),
                         clauses=len(clauses),
                     )
                 return OntologyCommand(
