@@ -214,7 +214,7 @@ def registry_name_spans(
     return tuple(sorted(spans))
 
 
-_MULTIWORD_CACHE: list[tuple[object, dict[str, list[list[str]]]]] = []
+_MULTIWORD_CACHE: list[tuple[tuple[int, object, object], dict[str, list[list[str]]]]] = []
 
 
 def _multiword_names(entities: Iterable[EntitySnapshot]) -> dict[str, list[list[str]]]:
@@ -222,9 +222,8 @@ def _multiword_names(entities: Iterable[EntitySnapshot]) -> dict[str, list[list[
     items = entities if isinstance(entities, (list, tuple)) else tuple(entities)
     marker = (len(items), items[0] if items else None, items[-1] if items else None)
     for owner, table in _MULTIWORD_CACHE:
-        cached = owner if isinstance(owner, tuple) else ()
         # Same snapshots (a tuple copy of the turn's list is the same list).
-        if len(cached) == 3 and cached[0] == marker[0] and cached[1] is marker[1] and cached[2] is marker[2]:
+        if owner[0] == marker[0] and owner[1] is marker[1] and owner[2] is marker[2]:
             return table
     entities = items
     table: dict[str, list[list[str]]] = {}

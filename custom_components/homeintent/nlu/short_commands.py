@@ -125,7 +125,7 @@ def expand_short_command(text: str, entities: Iterable[EntitySnapshot]) -> str |
     noun = target.text
     if not target.registry_ids and target.genera and noun.split()[0].casefold() not in _ARTICLE_WORDS:
         # A kind word is a noun phrase: "Licht im Büro an" -> "das Licht".
-        gender = _GENDER.get(target.genera[0])
+        gender = _GENDER.get(target.genera[0], Gender.FEMININE)
         spoken = analyse_word(normalize_for_compare(noun.split()[-1]))
         article = "die" if spoken is not None and spoken.plural else _ACCUSATIVE.get(gender, "die")
         noun = f"{article} {noun}"

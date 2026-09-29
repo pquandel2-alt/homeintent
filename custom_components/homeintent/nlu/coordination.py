@@ -83,7 +83,11 @@ def _expand_shared_head(text: str, entities: Sequence[EntitySnapshot]) -> str:
     tokens = [token for token in tokenize_language(text) if token.is_word]
     words = [token.canonical for token in tokens]
     mentions = _place_mentions(words, entities)
+    covered = _registry_covered(words, entities)
     for left, right in zip(mentions, mentions[1:]):
+        if any(index in covered for index in range(left.token_start, left.token_end)):
+            # "Flurlicht oben und Gäste-WC Licht": registry names, not places.
+            continue
         if left.explicit_preposition or right.explicit_preposition:
             continue
         if right.token_start != left.token_end + 1 or words[left.token_end] not in _CONJUNCTIONS:
@@ -105,6 +109,19 @@ def _expand_shared_head(text: str, entities: Sequence[EntitySnapshot]) -> str:
         )
         return text[:tokens[start].start] + rewritten + text[tokens[noun_index].end:]
     return text
+
+
+def _registry_covered(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> set[int]:
+    """Word positions inside an exactly spoken registry name or alias."""
+    from .self_correction import registry_name_table
+
+    table = registry_name_table(entities)
+    covered: set[int] = set()
+    for size in range(min(table.max_words, len(words)), 0, -1):
+        for start in range(len(words) - size + 1):
+            if tuple(words[start:start + size]) in table.by_words:
+                covered.update(range(start, start + size))
+    return covered
 
 
 def _segments(tokens: Sequence[LanguageToken]) -> list[tuple[int, int]]:

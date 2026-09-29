@@ -742,3 +742,29 @@ S("s771-a5-satellite", L771, "A5: Satellitenraum ohne passendes Gerät – nur A
 S("s771-a6-informed", L771, "A6: Rückfrage nennt die kritische Wirkung des Skripts",
   say("Starte das Skript Gute Nacht.", no_calls=True, any=["haustürschloss"]),
   say("Nein.", no_calls=True))
+
+# ========================================================= 7.8 Sprachverständnis
+L78 = "Sprache 7.8"
+S("s78-b2-frames", L78, "B2: Höflichkeit, Dank und Begründung sind Rahmen",
+  say("Sei so lieb und schalte das Bürolicht ein.", calls=["light.buerolicht:turn_on"], only_calls=True),
+  say("Mach das Kellerlicht an, danke.", calls=["light.kellerlicht:turn_on"], only_calls=True),
+  say("Mach das Kellerlicht aus, wir essen gleich.", calls=["light.kellerlicht:turn_off"], only_calls=True))
+S("s78-b3-short", L78, "B3: Kurzbefehle und Werte ohne Einheit",
+  say("Markise raus.", settle=4, calls=["cover.markise:open_cover"], only_calls=True),
+  say("Heizung Schlafzimmer 18 Grad.", calls=["climate.heizung_schlafzimmer:set_temperature"], only_calls=True),
+  say("Stell die Heizung im Bad auf 23.", calls=["climate.heizung_badezimmer:set_temperature"], only_calls=True))
+S("s78-b4-ellipsis", L78, "B4: Ellipse übernimmt die Operation",
+  say("Stell die Heizung im Büro auf 20 Grad.", calls=["climate.heizung_buero:set_temperature"]),
+  say("Und in der Küche auf 18.", calls=["climate.heizung_kueche:set_temperature"], only_calls=True))
+S("s78-b5-presence", L78, "B5: Präsenz als Auslöser, verblose Aktion",
+  say("Wenn im Wohnzimmer jemand ist, mach die Stehlampe an.", no_calls=True, any=["automation"]),
+  say("Nein."),
+  say("Jeden Morgen um sieben die Kaffeemaschine an.", no_calls=True, any=["07:00"]),
+  say("Nein."))
+S("s78-b6-garage", L78, "B6: „Garage“ meint das Garagentor, mit Bestätigung",
+  say("Öffne die Garage.", no_calls=True, any=["garagentor"]),
+  say("Nein.", no_calls=True))
+S("s78-b7-dialog", L78, "B7: neue Frage beendet die offene Bestätigung ausdrücklich",
+  say("Öffne das Garagentor.", no_calls=True),
+  say("Wie warm ist es im Büro?", no_calls=True, any=["verworfen"]),
+  say("Ja.", no_calls=True))

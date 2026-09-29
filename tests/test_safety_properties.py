@@ -885,6 +885,51 @@ def test_confirmation_names_every_high_effect(high, low, script_first):
         assert target.friendly_name in turn.speech, (turn.speech, name)
 
 
+# ------------------------------------------------------------ 7.8 B2/B3: frames and short forms
+_FRAMES = st.sampled_from([
+    "Sei so lieb und {c}", "Sei bitte so gut und {c}", "{C}, danke", "Danke dir, {c}",
+    "{C}, ich muss arbeiten", "{C}, wir essen gleich", "{C}, schnell", "{C}, aber zügig",
+    "Wenn du so nett wärst, {c}", "Wenn's geht, {c}", "Wäre super, wenn du {c}",
+])
+
+
+def _frame(frame: str, command: str) -> str:
+    return frame.format(c=command[:1].lower() + command[1:], C=command)
+
+
+@given(device_phrase(), ON_OFF, _FRAMES, st.booleans())
+def test_frames_never_change_target_set_or_safety_form(device, switch, frame, negated):
+    """B2: politeness, thanks, reasons and urgency change neither the
+    targets nor the safety shape (a negation stays a negation)."""
+    _genus, phrase, _nom, place, _count, _plural = device
+    command = f"Mach {phrase} {place} {'nicht ' if negated else ''}{switch[0]}"
+    plain = say(command + ".")
+    framed = say(_frame(frame, command) + ".")
+    assert _written(framed) <= _written(plain), (framed.text, framed.speech)
+    if negated:
+        assert _written(framed) == set(), (framed.text, framed.speech)
+
+
+@given(device_phrase(), ON_OFF, st.sampled_from([
+    "Kannst du mir sagen, ob {n} {p} {s} ist?", "Weißt du, ob {n} {p} {s} ist?",
+    "Sag mir bitte, ob {n} {p} {s} ist.", "Ich frage mich, ob {n} {p} {s} ist.",
+]))
+def test_embedded_question_stays_a_question(device, switch, frame):
+    _genus, _phrase, nominative, place, _count, _plural = device
+    text = frame.format(n=nominative, p=place, s=switch[0])
+    assert writes(say(text)) == [], text
+
+
+@given(device_phrase(plural=False), ON_OFF)
+def test_short_command_never_writes_more_than_the_full_command(device, switch):
+    """B3: "<Gerät> <Ort> an" writes nothing the full command would not."""
+    genus, _phrase, _nom, place, _count, _plural = device
+    noun = genus.lemmas[0]
+    short = say(f"{noun} {place} {switch[0]}")
+    full = say(f"Schalte {_ARTICLE[genus.gender]} {noun} {place} {switch[1]}.")
+    assert _written(short) <= _written(full), (short.text, short.speech)
+
+
 # ------------------------------------------------------------ fixed regressions
 # Counterexamples from nightly runs are pinned here (sentence, forbidden writes).
 REGRESSIONS: list[str] = []

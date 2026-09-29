@@ -26,6 +26,7 @@ from enum import Enum, auto
 from typing import Iterable, Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
+from .place_model import Place
 from .device_ontology import analyse_word
 from .normalize import german_number
 from .temporal_semantics import TemporalKind, analyse_temporal_semantics
@@ -33,6 +34,7 @@ from .temporal_semantics import TemporalKind, analyse_temporal_semantics
 __all__ = (
     "IMPERATIVE_VERBS",
     "utterance_fields",
+    "registry_name_table",
     "CorrectionKind",
     "SelfCorrection",
     "analyse_self_correction",
@@ -167,7 +169,7 @@ class _Field:
     registry_ids: tuple[str, ...] = ()
     genera: tuple[str, ...] = ()
     modifier: str | None = None
-    place: object | None = None
+    place: Place | None = None
 
 
 _NAMES_CACHE: list[tuple[object, "_Names"]] = []
@@ -181,6 +183,11 @@ def _names_for(entities: Sequence[EntitySnapshot]) -> "_Names":
     names = _Names(entities)
     _NAMES_CACHE[:] = [(entities, names), *_NAMES_CACHE[:3]]
     return names
+
+
+def registry_name_table(entities: Sequence[EntitySnapshot]) -> "_Names":
+    """Registry names and aliases as word tuples (shared with coordination)."""
+    return _names_for(entities if isinstance(entities, list) else list(entities))
 
 
 class _Names:

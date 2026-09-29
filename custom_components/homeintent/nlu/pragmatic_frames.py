@@ -224,8 +224,7 @@ def _names_nothing(segment: str, entities: Sequence[EntitySnapshot]) -> bool:
     for item in fields:
         if item.kind in {"reference", "verb"}:
             continue
-        if item.kind == "place" and getattr(getattr(item, "place", None), "kind", None) is not None \
-                and item.place.kind.name == "HERE":
+        if item.kind == "place" and item.place is not None and item.place.kind.name == "HERE":
             continue
         return False
     return True
