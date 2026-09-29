@@ -840,8 +840,13 @@ def test_satellite_room_is_never_left_silently(case, switch):
         for entity in genus_members(genus.key, _ENTITIES)
         for name in (entity.friendly_name, *entity.aliases)
     ))
-    house = HouseConversation(pytest.MonkeyPatch(), area=area, options=AUTO)
-    turn = house.say(f"Mach {_ARTICLE[genus.gender]} {noun} {switch[0]}.")
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, area=area, options=AUTO)
+        turn = house.say(f"Mach {_ARTICLE[genus.gender]} {noun} {switch[0]}.")
+    finally:
+        # The satellite room is patched module-wide; never leak it.
+        patch.undo()
     assert _written(turn) == set(), (area, turn.text, turn.speech)
 
 
@@ -864,12 +869,16 @@ def test_confirmation_names_every_high_effect(high, low, script_first):
     from homeintent.entities import EntitySnapshot
 
     entities = _ENTITIES + [EntitySnapshot("script.abendlauf", "Abendlauf", "script", "off")]
-    house = HouseConversation(pytest.MonkeyPatch(), entities=entities, options=AUTO)
-    steps = [step for step, _name in high] + list(low)
-    if not script_first:
-        steps.reverse()
-    _ha_stub.register_script(house.entity.hass, "script.abendlauf", steps)
-    turn = house.say("Starte das Skript Abendlauf.")
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, entities=entities, options=AUTO)
+        steps = [step for step, _name in high] + list(low)
+        if not script_first:
+            steps.reverse()
+        _ha_stub.register_script(house.entity.hass, "script.abendlauf", steps)
+        turn = house.say("Starte das Skript Abendlauf.")
+    finally:
+        patch.undo()
     assert _written(turn) == set(), turn.speech
     for step, name in high:
         target = next(entity for entity in _ENTITIES if entity.entity_id == step["target"]["entity_id"])

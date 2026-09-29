@@ -185,6 +185,19 @@ umgestellt und im Korpus kommentiert – fünf Selbstkorrekturen, die in 7.7
 nur „nichts ausführen“ verlangten und jetzt den Ersatz ausführen, „Lass das
 Flurlicht aus“ (Beibehaltung) und „Im Büro auch“ (Rolle statt Raummenge).
 
+## Gemeinsame Oberfläche (Nachtrag zum 7.7.1-Release)
+
+Der erste CI-Lauf des Release-Commits zeigte im Arbiter-Shadow drei
+SAFETY_DRIFT: Der Shadow las die neuen Live-Szenarien roh („…, ich meine
+den Fernseher“), die Konversation dagegen die korrigierte Oberfläche; die
+rohe Lesart des Arbiters war die unsichere. Selbstkorrektur und
+Koordination liegen deshalb jetzt in einer Funktion
+(`nlu/surface.prepare_surface`), die Konversation und Arbiter-Shadow
+gleichermaßen nutzen: 2062 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT.
+Außerdem ließ eine neue Invariante den Satellitenraum-Patch für spätere
+Tests stehen; sie hebt ihn jetzt wieder auf (Stub-Suite ohne Parallelisierung
+6358 passed).
+
 ## Bewusst offen (7.7.1)
 
 - Zwei Registry-Namen ohne Konjunktion („Schalte A aus B“) ohne Marker

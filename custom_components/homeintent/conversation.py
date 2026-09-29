@@ -86,13 +86,8 @@ from .nlu.device_ontology import analyse_word, lookup_genus_word
 from .nlu.target_resolution import genus_members, hidden_device_text, hidden_name_mentions
 from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain, render_non_executable
-from .nlu.self_correction import (
-    CorrectionKind,
-    analyse_self_correction,
-    render_correction,
-    utterance_fields,
-)
-from .nlu.coordination import expand_coordination
+from .nlu.self_correction import render_correction, utterance_fields
+from .nlu.surface import prepare_surface
 from .nlu.ellipsis_contract import EllipsisFields, ellipsis_fields, violation
 from .nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from .nlu.action_model import NotificationRecipient, NotificationRecipientKind
@@ -674,19 +669,16 @@ class NluConversationEntity(
                 localized_text = (
                     f"{replacement.group('verb')} {replacement.group('rest')}"
                 )
-        # "A, ich meine B" / "A, halt, B": retraction + replacement is one
-        # structure (7.7.1 A1). Only the corrected command is read further;
-        # an abort or an unclear correction runs nothing.
-        correction = analyse_self_correction(localized_text, entities)
-        if correction.kind in {CorrectionKind.CANCELLED, CorrectionKind.AMBIGUOUS}:
-            response.async_set_speech(render_correction(correction))
+        # One shared surface for every reader of the turn (7.7.1): self
+        # correction and coordination. An abort or an unclear correction
+        # runs nothing.
+        surface = prepare_surface(localized_text, entities)
+        if surface.stops:
+            response.async_set_speech(render_correction(surface.correction))
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
-        if correction.kind is CorrectionKind.REPLACED:
-            localized_text = correction.text
-        # Shared heads, hyphen ellipsis and a place for all parts (7.7.1 A4).
-        localized_text = expand_coordination(localized_text, entities)
+        localized_text = surface.text
         wake = wake_request(localized_text)
         if wake is not None:
             # "Weck mich um sieben mit Licht": a wake request is a timed
