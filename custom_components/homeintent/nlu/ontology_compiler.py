@@ -519,6 +519,19 @@ def compile_clauses(
     unclear = [clause for clause in clauses if clause.residue]
     if unclear:
         if len(clauses) == 1:
+            clause = clauses[0]
+            if clause.descriptions and (clause.actions or clause.degree or clause.percent is not None
+                                        or clause.temperature is not None):
+                # Operation and target are understood, a rest is not (7.8 B1):
+                # say the rest, never a capability the device does have.
+                rest = " ".join(clause.residue)
+                return OntologyCommand(
+                    message=(
+                        f"Den Teil „{rest}“ habe ich nicht verstanden. "
+                        "Ich habe deshalb nichts ausgeführt."
+                    ),
+                    clauses=1,
+                )
             return None
         parts = " und ".join(f"„{clause.text.strip(' ,.')}“" for clause in unclear)
         return OntologyCommand(

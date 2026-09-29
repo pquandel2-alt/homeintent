@@ -16,6 +16,7 @@ from .automation_results import AutomationMatchResult
 from .entities import EntitySnapshot
 from .nlu.language_frontend import analyse_language
 from .nlu.meaning_ir import ground_meaning
+from .nlu.dialog_meta import meta_questions
 from .nlu.semantic_utterance import SpeechAct, TimeKind
 from .nlu.situation_views import answer_situation_view
 
@@ -80,8 +81,22 @@ def dialog_evidence(
         and utterance.safe_to_execute_directly
         and not contextual_followup
     )
+    new_question = (
+        reply is DialogReply.UNCLEAR
+        # "Warum fragst du?" / "Was hast du verstanden?" ask about the dialog.
+        and not meta_questions(document.normalized_text.casefold())
+        and words >= 3
+        and (
+            utterance.speech_act is SpeechAct.QUERY
+            or any(token.canonical in _QUESTION_OPENERS for token in document.tokens[:2])
+        )
+        and (document.source_text.rstrip().endswith("?")
+             or any(token.canonical in _QUESTION_OPENERS | {"ist", "sind", "wo", "wann", "wer"}
+                    for token in document.tokens[:1]))
+    )
     return DialogEvidence(
-        kind, reply, new_sentence, command_shaped, supersedable, drops_on_new_sentence
+        kind, reply, new_sentence, command_shaped, supersedable, drops_on_new_sentence,
+        new_question,
     )
 
 

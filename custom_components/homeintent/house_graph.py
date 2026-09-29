@@ -142,6 +142,13 @@ class HouseGraph:
             raise ValueError(f"Stabile ID {node.node_id!r} hat widersprüchliche Typen")
         self._nodes[node.node_id] = node
 
+    def replace_node(self, node: GraphNode) -> None:
+        """Replace an existing node's label/attributes (live state, 7.8 B8)."""
+        existing = self._nodes.get(node.node_id)
+        if existing is None or existing.kind is not node.kind:
+            raise ValueError(f"Knoten {node.node_id!r} kann nicht ersetzt werden")
+        self._nodes[node.node_id] = node
+
     def add_relation(
         self,
         source_id: str,

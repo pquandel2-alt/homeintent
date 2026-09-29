@@ -263,6 +263,12 @@ class AutomationController:
         return self.handle_match_result(user_input, response, result, entities)
 
 
+    async def async_may_create(self, user_input: Any) -> bool:
+        """Whether this user may create automations at all (7.8 B5)."""
+        if bool(self.entry.options.get(CONF_ALLOW_NON_ADMIN_AUTOMATIONS, True)):
+            return True
+        return await user_is_admin(self.hass, user_input)
+
     async def _async_handle_automation_confirmation_reply(
         self,
         user_input: conversation.ConversationInput,

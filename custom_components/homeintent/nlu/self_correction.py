@@ -170,6 +170,19 @@ class _Field:
     place: object | None = None
 
 
+_NAMES_CACHE: list[tuple[object, "_Names"]] = []
+
+
+def _names_for(entities: Sequence[EntitySnapshot]) -> "_Names":
+    """One name table per entity list object (the list of the turn)."""
+    for owner, names in _NAMES_CACHE:
+        if owner is entities:
+            return names
+    names = _Names(entities)
+    _NAMES_CACHE[:] = [(entities, names), *_NAMES_CACHE[:3]]
+    return names
+
+
 class _Names:
     """Registry names and aliases as word tuples (built once per turn)."""
 
@@ -331,8 +344,8 @@ def utterance_fields(text: str, entities: Sequence[EntitySnapshot]) -> tuple[lis
     """
     from .place_model import build_place_lexicon
 
-    entity_list = list(entities)
-    return _fields(text, entity_list, _Names(entity_list), build_place_lexicon(entity_list))
+    entity_list = entities if isinstance(entities, list) else list(entities)
+    return _fields(text, entity_list, _names_for(entity_list), build_place_lexicon(entity_list))
 
 
 # --------------------------------------------------------------- markers
@@ -594,8 +607,8 @@ def analyse_self_correction(text: str, entities: Iterable[EntitySnapshot]) -> Se
         return SelfCorrection(CorrectionKind.NONE, text)
     from .place_model import build_place_lexicon
 
-    entity_list = list(entities)
-    names = _Names(entity_list)
+    entity_list = entities if isinstance(entities, list) else list(entities)
+    names = _names_for(entity_list)
     places = build_place_lexicon(entity_list)
     base = _clean(text[: markers[0].char_start])
     base_fields, _rest = _fields(base, entity_list, names, places)

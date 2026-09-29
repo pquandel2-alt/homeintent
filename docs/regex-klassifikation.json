@@ -4183,6 +4183,55 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/short_commands.py::_number::2255834899",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "_number",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/short_commands.py::expand_short_command::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "expand_short_command",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/short_commands.py::expand_short_command::76c8de11f0",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "expand_short_command",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/short_commands.py::complete_value_unit::266c792a1e",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "complete_value_unit",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/short_commands.py::complete_value_unit::75c8201ae5",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "complete_value_unit",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/short_commands.py::complete_value_unit::bdefcc6098",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "complete_value_unit",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/short_commands.py::drop_group_kind_word::2f8a763ac1",
+   "datei": "custom_components/homeintent/nlu/short_commands.py",
+   "bereich": "drop_group_kind_word",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/stt_repair.py::_WORD::b488d5a77c",
    "datei": "custom_components/homeintent/nlu/stt_repair.py",
    "bereich": "_WORD",
@@ -4891,7 +4940,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 365,
+  "LEXICAL": 372,
   "MORPHOLOGICAL": 38,
   "STRUCTURAL": 121,
   "SEMANTIC_SENTENCE_PATTERN": 173

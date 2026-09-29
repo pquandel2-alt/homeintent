@@ -1596,6 +1596,7 @@ class SemanticCommandCompiler:
                     for item in ranked_candidates
                     if top_score - item.score <= V7_ENTITY_AMBIGUITY_MARGIN
                 ]
+                selected_ranked = _prefer_complete_name(selected_ranked)
                 candidates = [item.entity for item in selected_ranked]
             elif source_area_applied:
                 selected_ranked = []
@@ -2195,3 +2196,22 @@ class SemanticQueryCompiler:
             ),
             resolved_entities=list(query_result.entities),
         )
+
+
+def _prefer_complete_name(ranked: list) -> list:
+    """An exact complete name outranks the names it contains (7.8 B7):
+    "Gute Nacht Test" over "Gute Nacht" when both are said exactly."""
+    exact = [item for item in ranked if item.source != "fuzzy" and item.matched_name]
+    if len(exact) < 2 or len(exact) != len(ranked):
+        return ranked
+    names = {id(item): normalize_for_compare(item.matched_name).split() for item in exact}
+    longest = max(exact, key=lambda item: len(names[id(item)]))
+    long_words = names[id(longest)]
+
+    def contained(words: list[str]) -> bool:
+        return any(long_words[start:start + len(words)] == words for start in range(len(long_words)))
+
+    if all(item is longest or (len(names[id(item)]) < len(long_words) and contained(names[id(item)]))
+           for item in exact):
+        return [longest]
+    return ranked

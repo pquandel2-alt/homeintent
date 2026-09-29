@@ -94,10 +94,11 @@ def test_the_created_push_automation_reaches_annas_phone(monkeypatch, tmp_path):
 
 def test_non_admin_without_option_is_refused_by_homeintent(monkeypatch, tmp_path):
     house = _house(monkeypatch, tmp_path, allow_non_admin_automations=False)
-    house.say(SENTENCE)
-    assert house.say("Ja.").speech == (
+    # 7.8 B5: refused before the preview, not after "Ja".
+    assert house.say(SENTENCE).speech == (
         "Das Erstellen von Automationen ist nur für Administratoren erlaubt."
     )
+    house.say("Ja.")
     assert house.automations() == []
     assert not [call for call in house.calls if call[:2] == ("automation", "reload")]
 

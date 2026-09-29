@@ -1,0 +1,127 @@
+# Entwicklungs-Benchmark 7.8 - Entwicklungswerkzeug, kein unabhängiger Nachweis.
+# Eigene Paraphrasen je Cluster B1-B7 der umsetzenden Session, gegen das
+# Testhaus (tests/_testhaus.py). Die Beispielsätze des unabhängigen Berichts
+# wurden nicht übernommen. "heldout" markiert Fälle, die vor jeder
+# Nachbesserung zurückgehalten und getrennt berichtet werden.
+# Format und Erwartungen: scripts/dev_benchmark.py.
+
+# ---------------------------------------------------------------- B1 Rest ehrlich melden (nie falsche Fähigkeitsmeldung)
+rest :: Schalte das Bürolicht ein, sagt der Opa :: nowrite say=nicht_verstanden
+rest :: Mach die Kücheninsel an plimplam :: nowrite say=nicht_verstanden
+rest :: Schalte das Garagenlicht aus und zwar zackig mit Schwung :: nowrite say=nicht_verstanden
+rest heldout :: Mach den Deckenfluter an wie gestern beim Grillen mit Onkel Horst :: nowrite say=nicht_verstanden
+rest :: Schalte die Stehlampe ein, mit Glitzerzauber :: nowrite say=nicht_verstanden
+rest heldout :: Mach das Nachtlicht an bis die Kühe heimkommen :: nowrite say=nicht_verstanden
+rest :: Mach die Schreibtischlampe an nach dem Blubber :: nowrite say=nicht_verstanden
+rest :: Schalte den Badlüfter ein, weil Frieda Geburtstag hat und so :: call=turn.turn_on:fan.badluefter  # korrigiert: ein weil-Satz ist Begründung (B2)
+rest heldout :: Fahr den Küchenrollladen runter wegen dem Wetterfrosch-Knödel :: nowrite say=nicht_verstanden
+
+# ---------------------------------------------------------------- B2 Höflichkeit, Dank, Begründung, Dringlichkeit
+hoeflich :: Sei so gut und schalte das Bürolicht ein :: call=turn.turn_on:light.buerolicht
+hoeflich :: Hättest du die Freundlichkeit, die Stehlampe anzumachen :: call=turn.turn_on:light.stehlampe
+hoeflich :: Würde es dir etwas ausmachen, das Küchenlicht auszuschalten :: call=turn.turn_off:light.kuechenlicht
+hoeflich heldout :: Wärst du so lieb und machst das Flurlicht an :: call=turn.turn_on:light.flurlicht
+hoeflich :: Magst du den Küchenrollladen runterfahren :: call=cover.close_cover:cover.kuechenrollladen
+hoeflich :: Wäre klasse, wenn du das Garagenlicht einschaltest :: call=turn.turn_on:light.garagenlicht
+hoeflich heldout :: Wenn du so nett wärst, mach bitte das Nachtlicht an :: call=turn.turn_on:light.nachtlicht
+hoeflich :: Wenn's geht, schalte das Terrassenlicht ein :: call=turn.turn_on:light.terrassenlicht
+hoeflich :: Schalte das Kellerlicht an, danke :: call=turn.turn_on:light.kellerlicht
+hoeflich heldout :: Mach die Kücheninsel aus, vielen Dank :: call=turn.turn_off:light.kuecheninsel
+hoeflich :: Danke dir, mach noch den Deckenfluter an :: call=turn.turn_on:light.deckenfluter_buero
+hoeflich :: Mach den Badlüfter an, es ist so feucht hier :: call=turn.turn_on:fan.badluefter
+hoeflich heldout :: Fahr den Esszimmer Rollladen runter, wir essen gleich :: call=cover.close_cover:cover.esszimmer_rollladen
+hoeflich :: Schalte das Bürolicht ein, ich muss arbeiten :: call=turn.turn_on:light.buerolicht
+hoeflich :: Mach das Schlafzimmerlicht aus, ich schlafe gleich :: call=turn.turn_off:light.schlafzimmerlicht
+hoeflich heldout :: Schalte den Deckenventilator aus, der nervt :: call=turn.turn_off:fan.deckenventilator
+hoeflich :: Mach das Flurlicht an, schnell :: call=turn.turn_on:light.flurlicht
+hoeflich :: Mach die Stehlampe aus, aber zügig :: call=turn.turn_off:light.stehlampe
+hoeflich heldout :: Schalte das Küchenlicht an, fix bitte :: call=turn.turn_on:light.kuechenlicht
+hoeflich :: Wenn das Küchenfenster aufgeht, schalte den Badlüfter an :: draft
+hoeflich :: Kannst du mir sagen, ob das Bürolicht an ist :: answer
+hoeflich heldout :: Könntest du mir sagen, ob die Stehlampe brennt :: answer
+
+# ---------------------------------------------------------------- B3 Kurzbefehle, Partikelverben, Werte ohne Einheit
+kurz :: Büro an :: call=turn.turn_on:light.buerolicht,light.deckenfluter_buero,light.schreibtischlampe
+kurz :: Küche aus :: call=turn.turn_off:light.kuecheninsel,light.kuechenlicht
+kurz heldout :: Flur an :: call=turn.turn_on:light.flurlicht
+kurz :: Kaffeemaschine an :: call=turn.turn_on:switch.kaffeemaschine
+kurz :: Stehlampe aus :: call=turn.turn_off:light.stehlampe
+kurz :: Markise rein :: call=cover.close_cover:cover.markise
+kurz heldout :: Markise raus :: call=cover.open_cover:cover.markise
+kurz :: Garagentor zu :: confirm
+kurz :: Saugroboter los :: call=vacuum.start:vacuum.saugroboter
+kurz heldout :: Den Staubsauger losschicken :: call=vacuum.start:vacuum.saugroboter
+kurz :: Mähroboter raus :: call=lawn_mower.start_mowing:lawn_mower.maehroboter
+kurz :: Esszimmer Rollladen halb :: call=cover.set_cover_position:cover.esszimmer_rollladen position=50
+kurz heldout :: Küchenrollladen auf halb :: call=cover.set_cover_position:cover.kuechenrollladen position=50
+kurz :: Stehlampe auf sechzig prozent :: call=light.turn_on:light.stehlampe brightness_pct=60
+kurz :: heizung büro auf einundzwanzig :: call=climate.set_temperature:climate.heizung_buero temperature=21.0
+kurz heldout :: heizung küche auf neunzehn :: call=climate.set_temperature:climate.heizung_kueche temperature=19.0
+kurz :: Heizung Schlafzimmer 18 Grad :: call=climate.set_temperature:climate.heizung_schlafzimmer temperature=18.0
+kurz heldout :: Heizung Wohnzimmer 22 Grad bitte :: call=climate.set_temperature:climate.heizung_wohnzimmer temperature=22.0
+kurz :: Stell die Heizung im Bad auf 23 :: call=climate.set_temperature:climate.heizung_badezimmer temperature=23.0
+kurz :: Dimm die Stehlampe auf 40 :: call=light.turn_on:light.stehlampe brightness_pct=40
+kurz heldout :: Schreibtischlampe 30 :: call=light.turn_on:light.schreibtischlampe brightness_pct=30
+kurz :: Auf wie viel Grad ist die Heizung im Büro eingestellt? :: answer say=eingestellt  # korrigiert: Sollwert wird als eingestellt genannt
+kurz heldout :: Wie warm ist es im Büro? :: answer
+
+# ---------------------------------------------------------------- B4 Ellipsen mit Operationsübernahme
+ellipse :: Stell die Heizung im Büro auf 20 Grad || Und in der Küche auf 18 :: call=climate.set_temperature:climate.heizung_buero || call=climate.set_temperature:climate.heizung_kueche temperature=18.0
+ellipse :: Schalte das Bürolicht ein || Das Küchenlicht ebenfalls :: call=turn.turn_on:light.buerolicht || call=turn.turn_on:light.kuechenlicht
+ellipse heldout :: Schalte das Kellerlicht ein || Das Garagenlicht genauso :: call=turn.turn_on:light.kellerlicht || call=turn.turn_on:light.garagenlicht
+ellipse :: Fahr den Küchenrollladen runter || Im Esszimmer ebenso :: call=cover.close_cover:cover.kuechenrollladen || call=cover.close_cover:cover.esszimmer_rollladen
+ellipse :: Mach die Stehlampe heller || Noch eins heller :: call=light.turn_on:light.stehlampe || call=light.turn_on:light.stehlampe
+ellipse heldout :: Mach das Küchenradio lauter || Noch lauter :: call=media_player.volume_up:media_player.kuechenradio || call=media_player.volume_up:media_player.kuechenradio
+ellipse :: Schalte das Kinderzimmerlicht an || Dasselbe im Büro :: call=turn.turn_on:light.kinderzimmerlicht || call=turn.turn_on:light.buerolicht
+ellipse heldout :: Schalte das Kinderzimmerlicht an || Das Gleiche in der Garage :: call=turn.turn_on:light.kinderzimmerlicht || call=turn.turn_on:light.garagenlicht
+ellipse :: Wie warm ist es im Büro? || Und in der Küche? :: answer || answer
+ellipse :: Welche Lichter sind im Wohnzimmer an? || Und wie viele davon? :: answer || answer
+ellipse heldout :: Stell die Heizung im Schlafzimmer auf 19 Grad || Im Kinderzimmer auch :: call=climate.set_temperature:climate.heizung_schlafzimmer || call=climate.set_temperature:climate.heizung_kinderzimmer temperature=19.0
+
+# ---------------------------------------------------------------- B5 Automationssprache
+auto :: Immer wenn die Haustür aufgeht, schalte das Flurlicht ein :: draft
+auto :: Jedes Mal wenn das Küchenfenster geöffnet wird, mach die Heizung in der Küche aus :: draft
+auto heldout :: Sobald im Büro jemand ist, schalte das Bürolicht an :: draft
+auto :: Wenn im Wohnzimmer jemand ist, mach die Stehlampe an :: draft
+auto :: Wenn niemand mehr im Schlafzimmer ist, schalte das Schlafzimmerlicht aus :: draft
+auto heldout :: Wenn die Temperatur im Kinderzimmer unter 19 Grad fällt, Heizung Kinderzimmer auf 21 :: draft
+auto :: Jeden Abend um zehn die Außenbeleuchtung aus :: draft
+auto :: Jeden Morgen um sieben die Kaffeemaschine an :: draft
+auto heldout :: Werktags um halb acht das Küchenlicht an :: draft
+auto :: Bei Sonnenaufgang die Außenbeleuchtung aus :: draft
+auto heldout :: Bei Sonnenuntergang das Terrassenlicht an :: draft
+auto :: Wenn es draußen kälter als 5 Grad wird, schalte die Heizung im Büro auf 22 Grad :: draft
+auto heldout :: Wenn die Außentemperatur über 28 Grad steigt, fahr die Markise aus :: draft
+auto :: Falls der Wassermelder im Keller auslöst, schick mir eine Nachricht :: draft
+
+# ---------------------------------------------------------------- B6 Gerät vor Raum/Kontakt, Zählfragen, Leistung
+geraet :: Mach das Garagentor auf :: confirm
+geraet :: Öffne die Garage :: confirm
+geraet heldout :: Mach die Garage zu :: confirm
+geraet :: Schließ die Haustür ab :: confirm
+geraet :: Mach die Haustür zu :: confirm
+geraet heldout :: Sperr die Haustür auf :: confirm
+geraet :: Schalte die Alarmanlage aus :: nowrite say=code
+geraet :: Ist das Licht im Büro an? :: answer
+geraet heldout :: Sind die Lichter im Schlafzimmer an? :: answer
+geraet :: Ist der Fernseher an? :: answer
+geraet :: Wie viele Lichter gibt es im Haus? :: answer say=24
+geraet heldout :: Wie viele Lampen sind im Büro? :: answer say=3
+geraet :: Wie viele Rollläden gibt es im Erdgeschoss? :: answer
+geraet :: Wie viel Strom braucht die Kaffeemaschine gerade? :: answer
+geraet heldout :: Was verbraucht die Waschmaschine gerade? :: answer
+geraet :: Wie voll ist die Batterie vom Bewegungsmelder im Flur? :: answer
+
+# ---------------------------------------------------------------- B7 Dialoge und Namen
+dialog :: Öffne das Garagentor || Ja, mach :: confirm || call=cover.open_cover:cover.garagentor
+dialog heldout :: Öffne das Garagentor || Genau :: confirm || call=cover.open_cover:cover.garagentor
+dialog :: Öffne das Garagentor || Klar :: confirm || call=cover.open_cover:cover.garagentor
+dialog :: Öffne das Garagentor || Los :: confirm || call=cover.open_cover:cover.garagentor
+dialog :: Öffne das Garagentor || Wie warm ist es im Büro? :: confirm || answer
+dialog heldout :: Öffne das Garagentor || Ist das Küchenfenster offen? :: confirm || answer
+dialog :: Öffne das Garagentor || Schalte das Bürolicht ein :: confirm || call=turn.turn_on:light.buerolicht
+dialog :: Öffne das Garagentor || Hmm vielleicht :: confirm || nowrite
+dialog :: Schalte die Gruppe Treppe ein :: nowrite
+dialog heldout :: Aktiviere die Szene Guten Morgen :: call=scene.turn_on:scene.guten_morgen
+dialog :: Mach das Leselicht an :: nowrite
+dialog heldout :: Schalte die Zauberlampe ein :: nowrite

@@ -113,6 +113,7 @@ from .nlu.german_morphology import dative_location_phrase, sentence_initial
 from .nlu.semantic_exclusion import has_exclusion_clause, split_exclusion
 from .nlu.semantic_lexicon import SemanticKind, analyse_semantics
 from .nlu.semantic_state import SemanticState
+from .nlu.clause_reading import read_operation
 from .nlu.semantic_catalog import INTENT_BY_DOMAIN_ACTION
 from .nlu.semantic_interpreter import InterpreterResult, SemanticInterpreter
 from .nlu.repair_semantics import repaired_temporal_command
@@ -749,6 +750,37 @@ def _names_its_target(
         for name in names
         if name
     )
+
+
+_REST_IGNORED = frozenset({
+    "bitte", "mal", "doch", "noch", "jetzt", "gleich", "sofort", "und", "so", "auch", "den",
+    "die", "das", "der", "dem", "ein", "eine", "einen", "im", "in", "am", "an", "aus",
+})
+
+
+def _unexplained_rest(text: str, mentioned: Sequence[EntitySnapshot]) -> str | None:
+    """The unexplained words of a command whose operation every mentioned
+    device supports, or ``None`` when the operation itself is the problem."""
+    if not mentioned:
+        return None
+    normalized = normalize(text)
+    actions, _words = read_operation(normalized)
+    if not actions or not all(
+        any((entity.domain, action) in INTENT_BY_DOMAIN_ACTION for action in actions)
+        for entity in mentioned
+    ):
+        return None
+    name_words = {
+        word
+        for entity in mentioned
+        for name in (entity.friendly_name, *entity.aliases, entity.area_name or "")
+        for word in normalize_for_compare(name).replace("-", " ").split()
+    }
+    rest = [
+        token for token in analyse_semantics(normalized).unexplained_tokens
+        if normalize_for_compare(token) not in name_words | _REST_IGNORED
+    ]
+    return " ".join(rest) if rest else None
 
 
 class NluEngine:
@@ -1909,6 +1941,25 @@ class NluEngine:
                         "Bitte nenne das Gerät genauer.",
                         {"entity_ids": tuple(entity.entity_id for entity in candidates)},
                     )
+            if mentioned and all(entity.domain == "alarm_control_panel" for entity in mentioned):
+                # Disarming needs the code; never a false "nur abfragen" (7.8 B6).
+                names = " und ".join(entity.friendly_name for entity in mentioned)
+                return UnderstandingFeedback(
+                    ParseFailureReason.UNSUPPORTED_CAPABILITY,
+                    f"{names} schalte ich per Sprache nicht unscharf, dafür braucht Home Assistant "
+                    "den Code. Bitte nutze das Bedienfeld. Ich habe nichts ausgeführt.",
+                    {"entity_ids": tuple(entity.entity_id for entity in mentioned)},
+                )
+            rest = _unexplained_rest(text, mentioned)
+            if mentioned and rest:
+                # The device can do what was asked; a part of the sentence
+                # was not understood (7.8 B1). Say that part, never a
+                # capability the device has.
+                return UnderstandingFeedback(
+                    ParseFailureReason.INCOMPLETE_REQUEST,
+                    f"Den Teil „{rest}“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt.",
+                    {"entity_ids": tuple(entity.entity_id for entity in mentioned)},
+                )
             if mentioned:
                 return UnderstandingFeedback(
                     ParseFailureReason.UNSUPPORTED_CAPABILITY,

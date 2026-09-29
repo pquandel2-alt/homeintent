@@ -141,7 +141,8 @@ from .security_control import (
 )
 from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
-from .world_model import WorldModel, build_world_model as assemble_world_model
+from .structure_cache import SHARED as STRUCTURE_CACHE, structure_key
+from .world_model import WorldModel
 from .undo import is_undo_request
 from .runtime_data import HomeIntentRuntimeData
 from .execution_context import begin_turn, end_turn
@@ -636,17 +637,23 @@ class NluConversationEntity(
         # Preferences only add a confirmed contextual alias to the existing
         # snapshots. Rebuild the same authoritative NOW view; no second
         # resolver or WorldModel is introduced.
-        self._world_model = assemble_world_model(entities, devices)
+        # Index and house graph depend only on the registry/exposure/alias
+        # structure; they are rebuilt when it changes, states stay live (7.8 B8).
+        structure = structure_key(entities, devices)
+        self._world_model = STRUCTURE_CACHE.world_model(entities, devices, structure)
+        world_model = self._world_model
         try:
             configured_relations = parse_relation_specs(
                 self.entry.options.get(CONF_HOUSE_RELATIONS)
             )
-            self._house_graph = self._world_model.build_house_graph(
-                configured_relations
-            )
         except ValueError:
             # Invalid migrated configuration never weakens language safety.
-            self._house_graph = self._world_model.build_house_graph()
+            configured_relations = ()
+        self._house_graph = STRUCTURE_CACHE.house_graph(
+            hash((structure, configured_relations)),
+            lambda: world_model.build_house_graph(configured_relations),
+            entities,
+        )
         self._world_model = self._world_model.with_house_graph(self._house_graph)
         understanding_context = UnderstandingContext(source_area=conversation_area)
         localized_text = materialize_local_reference(
@@ -669,9 +676,9 @@ class NluConversationEntity(
                 localized_text = (
                     f"{replacement.group('verb')} {replacement.group('rest')}"
                 )
-        # One shared surface for every reader of the turn (7.7.1): self
-        # correction and coordination. An abort or an unclear correction
-        # runs nothing.
+        # One shared surface for every reader of the turn (7.7.1/7.8):
+        # self correction, frames, short commands, operable device,
+        # coordination. An abort or an unclear correction runs nothing.
         surface = prepare_surface(localized_text, entities)
         if surface.stops:
             response.async_set_speech(render_correction(surface.correction))
@@ -679,6 +686,7 @@ class NluConversationEntity(
                 response=response, conversation_id=user_input.conversation_id
             )
         localized_text = surface.text
+        frames = surface.frames
         wake = wake_request(localized_text)
         if wake is not None:
             # "Weck mich um sieben mit Licht": a wake request is a timed
@@ -710,6 +718,8 @@ class NluConversationEntity(
         if localized_text != user_input.text:
             user_input = replace(user_input, text=localized_text)
         language_document = analyse_language(user_input.text, entities)
+        if frames.found:
+            language_document = replace(language_document, pragmatics=frames)
         if conversation_area is not None and (
             pending is None or pending.last_area is None
         ):
@@ -733,11 +743,22 @@ class NluConversationEntity(
             dialog_evidence, document=language_document, reply=reply,
             contextual_followup=contextual,
         )
-        if active_dialog is not None and arbitrate_dialog(dialog_evidence_for(
-            active_dialog.kind.name,
-            supersedable=False,
-            drops_on_new_sentence=active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION,
-        )).kind is DecisionKind.SUPERSEDE_DIALOG:
+        opening_decision = (
+            arbitrate_dialog(dialog_evidence_for(
+                active_dialog.kind.name,
+                supersedable=False,
+                drops_on_new_sentence=active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION,
+            ))
+            if active_dialog is not None
+            else None
+        )
+        if opening_decision is not None and opening_decision.kind is DecisionKind.SUPERSEDE_DIALOG:
+            if opening_decision.reason == "new_question_drops_question":
+                # Answer the question, say that the open one is gone (7.8 B7).
+                self._append_to_turn(
+                    user_input.conversation_id,
+                    "Die offene Rückfrage habe ich verworfen; es wurde nichts ausgeführt.",
+                )
             # A full new sentence instead of "Ja"/"Nein" drops the open
             # proposal (nothing runs) and is understood on its own.
             self._context_store.clear(user_input.conversation_id)
@@ -2204,6 +2225,18 @@ class NluConversationEntity(
         if isinstance(result, CommandPlan):
             return await self._devices.async_handle_command_plan(
                 user_input, response, result, entities
+            )
+
+        if isinstance(
+            result, (AutomationMatchResult, AutomationDraftMatchResult, AutomationClarificationResult)
+        ) and not await self._automations.async_may_create(user_input):
+            # Refused before any preview, not after "Ja" (7.8 B5).
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                "Das Erstellen von Automationen ist nur für Administratoren erlaubt.",
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
             )
 
         if isinstance(result, AutomationMatchResult):

@@ -45,8 +45,10 @@ _REFERENTIAL = frozenset({
 _OTHER = frozenset({"andere", "anderen", "anderer", "anderes", "zweite", "zweiten"})
 _SIDES = frozenset({"links", "rechts", "vorne", "hinten", "oben", "unten", "gross", "klein"})
 _DEICTIC_PLACE = frozenset({"da", "dort", "dorthin", "drin", "drueben"})
-_ALSO = frozenset({"auch", "ebenfalls", "genauso"})
-_REPEAT = frozenset({"mehr", "weiter", "nochmal", "nochmals"})
+# "ebenfalls/ebenso/genauso/das Gleiche/dasselbe" take over the previous
+# operation (7.8 B4).
+_ALSO = frozenset({"auch", "ebenfalls", "genauso", "ebenso", "gleiche", "gleichen", "dasselbe", "selbe", "selben"})
+_REPEAT = frozenset({"mehr", "weiter", "nochmal", "nochmals", "eins", "tick", "stueck", "stufe", "stufen"})
 _GLUE = frozenset({"und", "dann", "noch", "wieder", "jetzt", "bitte", "etwas", "bisschen", "ein", "mal", "s"})
 _INTENT_ACTIONS = {
     "HassTurnOn": "turn_on", "HassTurnOff": "turn_off", "HassOpenCover": "open",
@@ -86,6 +88,30 @@ def _previous_operation(
     if key in _SERVICE_DEGREES:
         return frozenset(), _SERVICE_DEGREES[key]
     return frozenset(), None
+
+
+_VALUE_INTENTS = {"HassClimateSetTemperature": "temperature", "HassSetPercentage": "percent"}
+
+
+def _previous_value(context: ConversationContext) -> tuple[str, float] | None:
+    command = context.last_command
+    if command is None or command.intent not in _VALUE_INTENTS:
+        return None
+    kind = _VALUE_INTENTS[command.intent]
+    value = command.parameters.get(kind)
+    return (kind, float(value)) if isinstance(value, (int, float)) else None
+
+
+def _bare_number(words: Sequence[str]) -> float | None:
+    from .normalize import german_number
+
+    for word in words:
+        if word.replace(",", "").isdigit():
+            return float(word.replace(",", "."))
+        value = german_number(word) if word not in {"ein", "eine", "einen", "eins"} else None
+        if value is not None:
+            return float(value)
+    return None
 
 
 def _context_place(
@@ -179,11 +205,37 @@ def compile_discourse(
         return None
     word_set = set(words)
     actions, operation_words = read_operation(normalize(text))
+    if any(
+        word == "auf" and index + 1 < len(words) and _bare_number(words[index + 1:index + 2]) is not None
+        for index, word in enumerate(words)
+    ):
+        # "auf 18": a value, not the operation "open" (7.8 B4).
+        actions = frozenset(actions) - {"open"}
     degrees = [DEGREE_WORDS[word] for word in words if word in DEGREE_WORDS]
     degree = degrees[0] if len(set(degrees)) == 1 else None
     temperature = temperature_value(text)
     percent = None if temperature is not None else percent_value(text)
     previous_actions, previous_degree = _previous_operation(context)
+    values = [token.canonical for token in tokens if token.is_word or token.is_number]
+    spoken_unit = bool(word_set & {"prozent", "grad"}) or "%" in text or "°" in text
+    previous_value = _previous_value(context)
+    if (
+        previous_value is not None and previous_value[0] == "temperature" and not spoken_unit
+        and percent is not None and temperature is None and not actions and degree is None
+    ):
+        # A bare number after a temperature setting is a temperature.
+        percent = None
+    if not actions and degree is None and percent is None and temperature is None:
+        # "Und in der Küche auf 18" / "Im Kinderzimmer auch" after a setting:
+        # the previous setting, with the new number if one is spoken.
+        number = _bare_number(values)
+        if previous_value is not None and (number is not None or word_set & _ALSO):
+            kind, old = previous_value
+            value = number if number is not None else old
+            if kind == "temperature":
+                temperature = float(value)
+            else:
+                percent = int(value)
     if not actions and degree is None and word_set & _REPEAT and previous_degree is not None:
         degree = previous_degree
     sibling = _side_sibling(

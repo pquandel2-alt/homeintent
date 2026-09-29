@@ -37,6 +37,11 @@ _YES_PHRASES = frozenset({
     "ja", "ja bitte", "jawohl", "ja klar", "klar", "genau", "korrekt", "richtig",
     "ok", "okay", "in ordnung", "mach das", "erstelle sie", "erstellen",
     "bestätigt", "bestätige", "ja genau", "passt",
+    # 7.8 B7: everyday assent
+    "ja mach", "ja mach das", "ja mach mal", "ja mach es", "mach mal", "mach es", "los",
+    "ja los", "leg los", "los gehts", "los geht's", "tu das", "ja tu das", "ja gerne", "gerne",
+    "gern", "sicher", "ja sicher", "unbedingt", "auf jeden fall", "jep", "jo", "jawoll",
+    "passt so", "ja passt", "ja bitte mach das", "ja genau so", "genau so", "mach nur",
 })
 _NO_PHRASES = frozenset({
     "nein", "nein danke", "nicht", "abbrechen", "stopp", "stop", "falsch",

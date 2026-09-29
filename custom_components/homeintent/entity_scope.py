@@ -29,7 +29,8 @@ class EntityScope:
 
 def _contains(text: str, candidate: str | None) -> bool:
     normalized = normalize_for_compare(candidate or "")
-    return bool(normalized) and re.search(
+    # Literal pre-check: the bounded pattern only runs when the name occurs.
+    return bool(normalized) and normalized in text and re.search(
         rf"(?<!\w){re.escape(normalized)}(?!\w)", text
     ) is not None
 

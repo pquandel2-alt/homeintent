@@ -325,7 +325,7 @@ reject :: Sofern die Temperatur steigt.
 reject :: Benachrichtigung wenn Rollladen.
 reject :: Nachricht an mich.
 reject :: Push Nachricht Büro.
-reject :: Rollladen Büro 50.
+reject :: Rollladen Büro 50?
 reject :: Büro Rolllade.
 reject :: Hmm, Benachrichtigung, Rollladen, keine Ahnung.
 reject :: Ich weiß nicht, ob ich eine Nachricht will.

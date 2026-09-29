@@ -142,7 +142,10 @@ class WorldModel:
 
 
 def build_world_model(
-    entities: list[EntitySnapshot], devices: list[DeviceSnapshot]
+    entities: list[EntitySnapshot],
+    devices: list[DeviceSnapshot],
+    *,
+    index: EntityIndex | None = None,
 ) -> WorldModel:
     """Construct a ``WorldModel`` from already-fetched entity/device
     snapshots - hass-free, reuses ``build_entity_index()``/
@@ -179,7 +182,7 @@ def build_world_model(
         devices=tuple(devices),
         areas=area_snapshots(entities),
         floors=floor_snapshots(entities),
-        entity_index=build_entity_index(entities),
+        entity_index=index if index is not None else build_entity_index(entities),
         entities_by_id=entities_by_id,
         devices_by_id=devices_by_id,
         devices_by_area_id={area_id: tuple(ds) for area_id, ds in devices_by_area_id.items()},

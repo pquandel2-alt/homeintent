@@ -510,6 +510,9 @@ class EventRoles:
     half: bool = False
     state: SemanticState | None = None
     motion: bool = False
+    # "jemand ist im Büro" / "niemand mehr im Schlafzimmer" (7.8 B5): room
+    # presence, read by the room's presence or motion detector.
+    occupancy: bool = False
     full_travel: bool = False  # "ganz/komplett offen" -> a state, not a percentage
     direction: TravelDirection | None = None
     for_seconds: int | None = None
@@ -774,6 +777,7 @@ def read_event_roles(event_text: str) -> EventRoles:
     # STATE ---------------------------------------------------------------------
     state: SemanticState | None = None
     motion = False
+    occupancy = False
     full_travel = False
     if value is None:
         for index, key in enumerate(keys):
@@ -804,6 +808,10 @@ def read_event_roles(event_text: str) -> EventRoles:
             key in _MOTION_VERBS for key in keys
         ):
             motion, state = True, SemanticState.ON
+        if state is None and "jemand" in keys and set(keys) & _PRESENT_VERBS:
+            motion, occupancy, state = True, True, SemanticState.ON
+        elif state is None and set(keys) & {"niemand", "keiner"} and set(keys) & _PRESENT_VERBS:
+            motion, occupancy, state = True, True, SemanticState.OFF
 
     subject: list[str] = []
     for index, word in enumerate(words):
@@ -812,7 +820,9 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         if key in _FULL_TRAVEL or key in _MOTION_VERBS or key in {
             "sich", "etwas", "bewegt", "auslöst", "ausgelöst", "anschlägt", "reagiert",
-        } or key in _DETECTOR_EVENT_VERBS or (motion and key == "bewegung"):
+        } or key in _DETECTOR_EVENT_VERBS or (motion and key == "bewegung") or (
+            occupancy and key in _PRESENT_VERBS | {"jemand", "niemand", "keiner", "mehr"}
+        ):
             if key == "etwas":
                 subject.append(word)
             continue
@@ -832,6 +842,7 @@ def read_event_roles(event_text: str) -> EventRoles:
         half=half,
         state=state,
         motion=motion,
+        occupancy=occupancy,
         full_travel=full_travel,
         direction=direction,
         for_seconds=for_seconds,
@@ -850,6 +861,10 @@ _LEAVE_RE = re.compile(
     r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b",
     re.IGNORECASE,
 )
+_PRESENT_VERBS = frozenset({
+    "ist", "sind", "da", "kommt", "betritt", "reinkommt", "hereinkommt", "rein", "herein",
+    "anwesend", "drin", "befindet",
+})
 _PRESENCE_FILLERS = frozenset({
     "hat", "habe", "hast", "ist", "bin", "bist", "sind", "wieder", "gerade", "dann",
     "irgendwann", "endlich",

@@ -76,6 +76,9 @@ class DialogEvidence:
     command_shaped: bool
     supersedable: bool
     drops_on_new_sentence: bool = False
+    # A complete new question (7.8 B7): answered; a safety question it
+    # interrupts is dropped explicitly, nothing of it runs.
+    new_question: bool = False
 
 
 @dataclass(frozen=True)
@@ -161,6 +164,8 @@ def arbitrate_dialog(evidence: DialogEvidence, new_command: Candidate | None = N
     """
     if evidence.drops_on_new_sentence and evidence.new_sentence:
         return Decision(DecisionKind.SUPERSEDE_DIALOG, (), "new_sentence_drops_question")
+    if evidence.drops_on_new_sentence and evidence.new_question:
+        return Decision(DecisionKind.SUPERSEDE_DIALOG, (), "new_question_drops_question")
     if (
         new_command is not None
         and evidence.supersedable

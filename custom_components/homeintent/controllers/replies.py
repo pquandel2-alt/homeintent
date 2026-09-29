@@ -17,6 +17,8 @@ from ..service_executor import CHANGED_SINCE_CONFIRMATION
 # infinitive a confirmation question needs ("Burgtor wird geöffnet" ->
 # "Soll ich wirklich Burgtor öffnen?"). Longer endings come first.
 _CONFIRMATION_INFINITIVES: tuple[tuple[str, str], ...] = (
+    ("unscharf geschaltet", "unscharf schalten"),
+    ("scharf geschaltet", "scharf schalten"),
     ("wird geöffnet", "öffnen"),
     ("wird geschlossen", "schließen"),
     ("aufgeschlossen", "aufschließen"),

@@ -190,7 +190,7 @@ def expand_coordination(text: str, entities: Iterable[EntitySnapshot]) -> str:
     lowered = text.casefold()
     if "-" not in text and " und " not in lowered and "," not in text and " dann " not in lowered:
         return text
-    entity_list = list(entities)
+    entity_list = entities if isinstance(entities, list) else list(entities)
     if "-" in text:
         text = _expand_hyphen(text)
     if " und " in lowered or " oder " in lowered:

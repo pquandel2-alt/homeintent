@@ -546,8 +546,15 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             subject=subject, roles=roles,
         )
     if roles.motion and subject.noun is None:
+        detector = "bewegungsmelder"
+        if roles.occupancy and any(
+            (entity.device_class or "") in {"occupancy", "presence"}
+            and (subject.area_id is None or entity.area_id == subject.area_id)
+            for entity in entities
+        ):
+            detector = "präsenzmelder"
         subject = SubjectReading(
-            noun=noun_class("bewegungsmelder"), noun_word="Bewegungsmelder",
+            noun=noun_class(detector), noun_word=detector.capitalize(),
             area_id=subject.area_id, area_name=subject.area_name,
             unknown_location=subject.unknown_location,
             modifiers=tuple(m for m in subject.modifiers if m not in {"bewegung", "eine"}),
@@ -572,6 +579,7 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
         subject = SubjectReading(
             noun=None, noun_word=None, area_id=subject.area_id, area_name=subject.area_name,
             unknown_location=None, modifiers=(), quantifier=subject.quantifier, implicit=True,
+            place=subject.place,
         )
     if subject.noun is None and subject.implicit:
         if roles.value is not None and roles.unit is ValueUnit.DEGREE:
@@ -579,6 +587,7 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                 noun=noun_class("temperatur"), noun_word="Temperatur",
                 area_id=subject.area_id, area_name=subject.area_name, unknown_location=None,
                 modifiers=subject.modifiers, quantifier=Quantifier.DEFINITE, implicit=False,
+                place=subject.place,
             )
         else:
             return GroundedEvent(
@@ -601,6 +610,11 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
 
     if roles.state is not None and roles.value is None:
         candidates = [entity for entity in candidates if _state_ok(entity, roles.state)]
+    if subject.place is not None and len(candidates) > 1:
+        # "wenn es draußen kälter als 5 Grad wird": the spoken place narrows
+        # the measured quantity (7.8 B5) - never the action's device.
+        placed = [entity for entity in candidates if subject.place.contains(entity)]
+        candidates = placed or candidates
     if not candidates:
         where = (
             f" {dative_location_phrase(subject.area_name)}" if subject.area_name
