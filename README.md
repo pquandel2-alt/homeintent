@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.6.0** (Generalisierung: Bedeutungsklassen statt einzelner Sätze)
+- Aktuelle Version: **7.6.1** (Fehlerbehebung nach dem unabhängigen Nachtest von 7.6.0)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -42,7 +42,40 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
-## Was ist in Version 7.6.0 neu?
+## Was ist in Version 7.6.1 neu?
+
+Behebt die acht Befunde des unabhängigen Nachtests von 7.6.0. Keiner davon
+führte zu einer falschen Geräteaktion.
+
+- **Nicht-Admins legen wieder Automationen an** (Regression seit 7.3.2): Das
+  Neuladen der Automationen ist in Home Assistant ein Admin-Dienst. HomeIntent
+  prüft die Berechtigung selbst (`allow_non_admin_automations`) und ruft nur
+  diese Verwaltungsaufrufe im Systemkontext des Turns auf (ohne Benutzer, mit
+  dem Turn als Eltern-Kontext). Gerätewrites laufen weiter mit dem Kontext des
+  sprechenden Benutzers. Ablehnungen von Home Assistant erscheinen nie roh
+  oder englisch.
+- **Namen mit Grußformel:** „Aktiviere Guten Morgen.“ startet die Szene. Wörter
+  eines im Satz genannten Geräte- oder Aliasnamens sind keine Zeitangabe. Die
+  Rückfrage nennt die Gattung („Welche Szene meinst du …“).
+- **Mengen bei relativen Änderungen:** „zwei Grad wärmer“, „um 20 Prozent
+  heller“, „zehn Prozent lauter“, „30 Prozent höher“, „um drei Grad hoch“ –
+  in Ziffern und Worten; Gerätegrenzen gelten. „um drei Grad“ ist keine
+  Uhrzeit mehr.
+- **„oben“/„unten“:** eine Regel für Etage, Richtung und Stellung. Bei „gibt
+  es“, „wie viele“, „welche“ und Befehlen mit Ort ist es die Etage; nur die
+  Zustandsfrage („Sind die Rollläden oben?“) meint die Stellung. „unten“ ist
+  überall das Erdgeschoss.
+- **Nicht freigegebene Geräte** werden so benannt („Saugroboter ist für
+  HomeIntent nicht freigegeben.“, für Admins mit Hinweis, wo man das ändert);
+  ihre Nebenentitäten sind kein Ersatzziel.
+- **Verschmelzungen** („fürs“, „ins“, „ans“, „aufs“ …) gehören zur gemeinsamen
+  Normalisierung.
+- **„Mach alles für die Nacht fertig.“** bietet vorhandene Routinen an wie „Ich
+  gehe schlafen.“; angelegt wird nur, wenn es keine gibt.
+- **Abschwächungspartikel** („Könntest du vielleicht irgendwann mal …“) ändern
+  die höfliche Bitte nicht; eingebettete Fragen bleiben Fragen.
+
+## Was war in Version 7.6.0 neu?
 
 **Generalisierung: Bedeutungsklassen statt einzelner Sätze.** Abschluss des
 Umbaus 7.3.1 – 7.6.0 (Bericht: `docs/umsetzung-7.3.1-7.6.md`).
@@ -2009,7 +2042,7 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.6.0:
+Geprüfter Release-Stand von Version 7.6.1:
 
 ```text
 6407 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
@@ -2060,7 +2093,7 @@ Serviceausführung über den versionierten Shadow-Report vergleichen:
 
 ```bash
 python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.6.0.json --quiet
+  --check docs/perf/v7-shadow-baseline-7.6.1.json --quiet
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

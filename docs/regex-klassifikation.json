@@ -1451,7 +1451,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/dialog_learning.py::_PREF_RE::c2de364691",
+   "id": "custom_components/homeintent/dialog_learning.py::_PREF_RE::9493e4b5f2",
    "datei": "custom_components/homeintent/dialog_learning.py",
    "bereich": "_PREF_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -1500,7 +1500,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/dialog_learning.py::_PREF_QUESTION_RE::ddbe3c0f31",
+   "id": "custom_components/homeintent/dialog_learning.py::_PREF_QUESTION_RE::5fe58ef918",
    "datei": "custom_components/homeintent/dialog_learning.py",
    "bereich": "_PREF_QUESTION_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -1528,7 +1528,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/dialog_learning.py::_FORGET_RE::dbf6e340ef",
+   "id": "custom_components/homeintent/dialog_learning.py::_FORGET_RE::1d60068c7a",
    "datei": "custom_components/homeintent/dialog_learning.py",
    "bereich": "_FORGET_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",

@@ -159,3 +159,188 @@ def test_a3_um_with_a_unit_is_no_clock_time(monkeypatch, sentence):
     house = HouseConversation(monkeypatch)
     turn = house.say(sentence)
     assert "Uhr" not in turn.speech and "Automation" not in turn.speech
+
+
+# ------------------------------------------------------- A4 "oben"/"unten"
+UPPER_SHUTTERS = ("Badezimmer Rollladen", "Kinderzimmer Rollladen", "Schlafzimmer Rollladen")
+
+
+@pytest.mark.parametrize("sentence", [
+    "Wie viele Rollläden gibt es oben?",
+    "Welche Rollläden gibt es oben?",
+])
+def test_a4_counting_and_listing_keep_the_floor(monkeypatch, sentence):
+    house = HouseConversation(monkeypatch)
+    answer = house.say(sentence).speech
+    assert all(name in answer for name in UPPER_SHUTTERS)
+    assert "Wohnzimmer" not in answer and "Küche" not in answer
+
+
+def test_a4_state_question_reads_the_position(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    answer = house.say("Sind alle Rollläden unten?").speech
+    assert "geschlossen" in answer
+
+
+def test_a4_floor_and_position_in_one_question(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    answer = house.say("Sind oben alle Rollläden unten?").speech
+    assert answer.startswith("Nein") and "geschlossen" in answer
+    assert all(name in answer for name in UPPER_SHUTTERS)
+    assert "Wohnzimmer" not in answer
+
+
+def test_a4_command_with_place_keeps_the_floor(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    turn = house.say("Fahr oben alle Rollläden runter.")
+    ((domain, service, data),) = _writes(turn)
+    assert (domain, service) == ("cover", "close_cover")
+    assert sorted(data["entity_id"]) == [
+        "cover.badezimmer_rollladen", "cover.kinderzimmer_rollladen", "cover.schlafzimmer_rollladen",
+    ]
+
+
+def test_a4_direction_after_nach_stays_a_direction(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    turn = house.say("Fahr den Rollladen im Büro nach unten.")
+    assert _writes(turn) == [("cover", "close_cover", {"entity_id": "cover.buero_raffstore"})]
+
+
+def _house_without(monkeypatch, *hidden_ids, user="admin", options=None):
+    """Test house where ``hidden_ids`` exist in HA but are not exposed."""
+    from homeassistant.core import State
+
+    entities = house_entities()
+    house = HouseConversation(
+        monkeypatch,
+        entities=[entity for entity in entities if entity.entity_id not in hidden_ids],
+        user=user,
+        options=options,
+    )
+    for entity in entities:
+        house.entity.hass.states._states[entity.entity_id] = State(
+            entity.entity_id, entity.state, {"friendly_name": entity.friendly_name}
+        )
+    return house
+
+
+# ------------------------------------------------- A5 non-exposed devices
+def test_a5_a_hidden_vacuum_is_named_as_not_released(monkeypatch):
+    house = _house_without(monkeypatch, "vacuum.saugroboter")
+    turn = house.say("Starte den Saugroboter.")
+    assert _writes(turn) == []
+    assert turn.speech.startswith("Saugroboter ist für HomeIntent nicht freigegeben.")
+    assert "Einstellungen" in turn.speech  # admins learn where to change it
+
+
+def test_a5_non_admins_get_no_settings_hint(monkeypatch):
+    house = _house_without(monkeypatch, "vacuum.saugroboter", user="anna")
+    turn = house.say("Starte den Saugroboter.")
+    assert turn.speech == "Saugroboter ist für HomeIntent nicht freigegeben."
+
+
+def test_a5_side_entities_are_no_substitute(monkeypatch):
+    house = _house_without(monkeypatch, "switch.kaffeemaschine")
+    turn = house.say("Schalte die Kaffeemaschine ein.")
+    assert _writes(turn) == []
+    assert turn.speech.startswith("Kaffeemaschine ist für HomeIntent nicht freigegeben.")
+    assert "entkalken" not in turn.speech
+
+
+def test_a5_an_exposed_side_entity_by_its_own_name_still_works(monkeypatch):
+    house = _house_without(monkeypatch, "switch.kaffeemaschine")
+    turn = house.say("Drücke Kaffeemaschine entkalken.")
+    assert "nicht freigegeben" not in turn.speech
+
+
+def test_a5_a_genus_word_with_exposed_members_is_no_hidden_name():
+    from homeintent.nlu.target_resolution import hidden_name_mentions
+
+    entities = house_entities()
+    assert hidden_name_mentions(
+        "Schalte das Licht im Flur ein.", entities, [("light", "Licht")]
+    ) == ()
+    assert hidden_name_mentions(
+        "Starte den Saugroboter.",
+        [entity for entity in entities if entity.domain != "vacuum"],
+        [("vacuum", "Saugroboter")],
+    ) == ("Saugroboter",)
+
+
+# ------------------------------------------------------ A6 contractions
+def test_a6_contractions_are_shared_morphology():
+    from homeintent.nlu.normalize import expand_clitics, normalize
+
+    assert expand_clitics("Welche Routine nutzt du fürs Schlafen?") == (
+        "Welche Routine nutzt du für das Schlafen?"
+    )
+    assert normalize("Schick mir das aufs Handy") == "Schick mir das auf das Handy"
+    assert "in das" in normalize("Ich gehe ins Bett")
+    # The canonical dative forms stay as the lexicon reads them.
+    assert normalize("Beim Lesen zum Schlafen") == "Beim Lesen zum Schlafen"
+
+
+def test_a6_welche_routine_fuers_schlafen(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    plain = house.say("Welche Routine nutzt du für das Schlafen?").speech
+    house = HouseConversation(monkeypatch)
+    fused = house.say("Welche Routine nutzt du fürs Schlafen?").speech
+    assert fused == plain
+    assert "nicht verstanden" not in fused
+
+
+# ------------------------------------------------ A7 preparing the night
+def test_a7_preparing_the_night_offers_the_routines(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    turn = house.say("Mach alles für die Nacht fertig.")
+    assert _writes(turn) == []
+    expected = HouseConversation(monkeypatch).say("Ich gehe schlafen.").speech
+    assert turn.speech == expected
+    assert "erledigen" not in turn.speech
+
+
+def test_a7_without_routines_the_definition_dialog_has_good_grammar(monkeypatch):
+    entities = [entity for entity in house_entities() if entity.domain not in {"script", "scene"}]
+    house = HouseConversation(monkeypatch, entities=entities)
+    turn = house.say("Mach alles für die Nacht fertig.")
+    assert _writes(turn) == []
+    assert "beim Schlafengehen" in turn.speech
+    assert "bei schlafengehen" not in turn.speech
+
+
+# ------------------------------------------------ A8 softening particles
+@pytest.mark.parametrize("sentence", [
+    "Könntest du vielleicht irgendwann mal die Markise einfahren?",
+    "Könntest du mal vielleicht die Markise einfahren?",
+    "Kannst du eventuell eben mal kurz die Markise einfahren?",
+    "Würdest du bitte vielleicht die Markise einfahren?",
+])
+def test_a8_softening_particles_keep_the_request(monkeypatch, sentence):
+    from homeintent.nlu.semantic_utterance import SpeechAct, analyse_utterance
+
+    assert analyse_utterance(sentence).speech_act is SpeechAct.COMMAND
+    reference = HouseConversation(monkeypatch).say("Fahr die Markise ein.")
+    house = HouseConversation(monkeypatch)
+    assert _writes(house.say(sentence)) == _writes(reference)
+    assert _writes(reference)
+
+
+def test_a8_embedded_questions_stay_questions(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    turn = house.say("Kannst du mir vielleicht sagen, ob die Markise eingefahren ist?")
+    assert _writes(turn) == []
+
+
+def test_a4_one_rule_for_the_level_words():
+    from homeintent.nlu.place_model import level_for_keyword, level_word_role
+
+    assert level_for_keyword("upper", (-1, 0, 1)) == 1
+    assert level_for_keyword("ground", (-1, 0, 1)) == 0
+    assert level_for_keyword("basement", (-1, 0, 1)) == -1
+    assert level_for_keyword("upper", (0,)) is None
+    words = "sind oben alle rolllaeden unten".split()
+    assert level_word_role(words, 1) == "floor"
+    assert level_word_role(words, 4) == "position"
+    assert level_word_role("wie viele rolllaeden gibt es oben".split(), 5) == "floor"
+    assert level_word_role("fahr nach oben".split(), 2) == "direction"
+    assert level_word_role("fahr oben alle rolllaeden runter".split(), 1) == "floor"
