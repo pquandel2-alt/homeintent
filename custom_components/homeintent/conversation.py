@@ -40,7 +40,6 @@ from .automation_management import parse_automation_management
 from .automation_structure_edit import parse_automation_structure_edit
 from .automation_wizard import starts_automation_wizard
 from .advanced_queries import match_advanced_query
-from .audit_log import render_today
 from .calendar_event import start_calendar_event_draft, writable_calendars
 from .calendar_management import CalendarManagementRequest
 from .capability_audit import match_capability_audit_query
@@ -70,13 +69,7 @@ from .hass_entities import (
     exposure_hint,
     hidden_entity_names,
 )
-from .history_query import (
-    ComparativeHistoryQuery,
-    HistoryQuery,
-    StateHistoryQuery,
-    async_execute_history_query,
-    parse_history_query,
-)
+from .history_query import parse_history_query
 from .household_query import match_household_query
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
@@ -97,7 +90,6 @@ from .nlu.automation_confirmation import ConfirmationReply, classify_confirmatio
 from .nlu.action_model import NotificationRecipient, NotificationRecipientKind
 from .notification_request import NotificationRequest
 from .nlu.automation_model import TriggerTarget
-from .nlu.automation_preview import render_automation_preview
 from .nlu.context import (
     active_pending_dialog,
     ConversationContext,
@@ -122,7 +114,7 @@ from .nlu.entity_clarification import (
     render_candidate_question,
     resolve_candidate_reply,
 )
-from .nlu.explanation import explain_command, is_explanation_request
+from .nlu.explanation import is_explanation_request
 from .nlu.language_frontend import analyse_language
 from .nlu.semantic_utterance import (
     Modality,
@@ -150,13 +142,7 @@ from .world_model import WorldModel, build_world_model as assemble_world_model
 from .undo import is_undo_request
 from .runtime_data import HomeIntentRuntimeData
 from .execution_context import begin_turn, end_turn
-from .execution_trace import (
-    CauseExplanation,
-    ContextIndex,
-    Evidence,
-    ExecutionTraceStore,
-    explain_change,
-)
+from .execution_trace import Evidence
 from .nlu.causal_question import interpret_cause_question
 from .conversation_learning import DialogLearningMixin, is_known_device_word
 from .nlu.meaning_ir import is_deferred
@@ -169,6 +155,7 @@ from .controllers.automation_management import AutomationManagementController
 from .controllers.automations import AutomationController
 from .controllers.notifications import NotificationController
 from .controllers.productivity import ProductivityController
+from .controllers.queries import QueryController
 from .controllers.replies import ambiguous_reading_text
 from .arbitration import (
     DecisionKind,
@@ -211,8 +198,6 @@ _UNIVERSAL_CANCEL_RE = re.compile(
     r"stopp|stop|vergiss\s+(?:es|das)|egal|schon\s+gut|nicht\s+mehr\s+noetig|"
     r"nicht\s+mehr\s+nötig)(?:\s+bitte)?)[.!]?\s*"
 )
-
-
 
 
 # Open questions whose expected answer is itself a command (a routine being
@@ -429,6 +414,12 @@ class NluConversationEntity(
             runtime=runtime,
             learned_alias_view=self.learned_alias_view,
         )
+        self._queries = QueryController(
+            hass=lambda: self.hass,
+            context_store=self._context_store,
+            audit_trail=self._audit_trail,
+            runtime=runtime,
+        )
         self._management = AutomationManagementController(
             context_store=self._context_store,
             executor=self._automation_store,
@@ -523,38 +514,6 @@ class NluConversationEntity(
         self._apply_continue_conversation(user_input, result)
         return result
 
-
-    async def _async_explain_cause(self, entity: EntitySnapshot) -> CauseExplanation:
-        """Cause of a device's current state, strictly from evidence."""
-        trace = self._runtime_data.trace
-        store = trace.store if trace is not None else ExecutionTraceStore()
-        index = trace.index if trace is not None else ContextIndex()
-        state = self.hass.states.get(entity.entity_id)
-        users: dict[str, str] = {}
-        try:
-            users = {
-                user.id: user.name
-                for user in await self.hass.auth.async_get_users()
-                if getattr(user, "name", None)
-            }
-        except Exception:  # noqa: BLE001 - names are cosmetic only
-            users = {}
-        cause = explain_change(
-            entity.entity_id,
-            entity.friendly_name,
-            getattr(state, "context", None),
-            getattr(state, "last_changed", None) or entity.last_changed,
-            store,
-            index,
-            users,
-            name_of=lambda entity_id: (
-                str(item.attributes.get("friendly_name"))
-                if (item := self.hass.states.get(entity_id)) is not None
-                and item.attributes.get("friendly_name")
-                else None
-            ),
-        )
-        return cause
 
     def _apply_continue_conversation(
         self,
@@ -915,7 +874,7 @@ class NluConversationEntity(
             # context chain and the execution trace (7.3.2).
             cause_question = interpret_cause_question(language_document, entities)
             cause = (
-                await self._async_explain_cause(cause_question.entity)
+                await self._queries.async_explain_cause(cause_question.entity)
                 if cause_question is not None and cause_question.entity is not None
                 else None
             )
@@ -1300,7 +1259,7 @@ class NluConversationEntity(
             )
 
         if is_explanation_request(user_input.text):
-            return self._handle_explanation_request(
+            return self._queries.handle_explanation_request(
                 user_input, response, pending, entities
             )
 
@@ -1552,7 +1511,7 @@ class NluConversationEntity(
             r"\bwas\s+wurde\s+heute\s+(?:durch|von)\s+homeintent\s+ausgefuehrt\b",
             normalize_for_compare(user_input.text),
         ):
-            return self._handle_audit_query(user_input, response)
+            return self._queries.handle_audit_query(user_input, response)
 
         # A trigger/notification request ("Benachrichtige mich, wenn der Akku
         # unter 20 Prozent fällt") shares words with read-only queries but is
@@ -1563,7 +1522,7 @@ class NluConversationEntity(
             else parse_history_query(user_input.text, entities, dt_util.now())
         )
         if history_query is not None:
-            return await self._async_handle_history_query_result(
+            return await self._queries.async_handle_history_query_result(
                 user_input, response, history_query
             )
 
@@ -1572,7 +1531,7 @@ class NluConversationEntity(
             else match_advanced_query(user_input.text, entities, dt_util.now())
         )
         if advanced_answer is not None:
-            return self._handle_advanced_answer(user_input, response, advanced_answer)
+            return self._queries.handle_advanced_answer(user_input, response, advanced_answer)
 
         if not automation_turn and re.search(
             r"\b(?:alarm|alarmanlage|sicherung|scharf|unscharf)\b",
@@ -2191,84 +2150,6 @@ class NluConversationEntity(
         )
 
 
-    def _handle_explanation_request(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        pending: ConversationContext | None,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Explain the pending automation or the last understood command."""
-        if pending is not None and pending.pending_automation_confirmation is not None:
-            speech = (
-                "Ich habe folgende Automation verstanden:\n"
-                + render_automation_preview(
-                    pending.pending_automation_confirmation.model, entities
-                )
-            )
-        elif pending is not None and pending.last_command is not None:
-            speech = explain_command(pending.last_command)
-        elif pending is not None and (
-            pending.memory is not None and pending.memory.explanation is not None
-            or pending.last_explanation is not None
-        ):
-            speech = (
-                pending.memory.explanation
-                if pending.memory is not None and pending.memory.explanation is not None
-                else pending.last_explanation
-            )
-        else:
-            speech = "In diesem Gespräch gibt es noch keinen verstandenen Befehl."
-        response.async_set_speech(speech)
-        response.response_type = intent.IntentResponseType.QUERY_ANSWER
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
-    def _handle_audit_query(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-    ) -> conversation.ConversationResult:
-        """Render today's bounded HomeIntent execution audit."""
-        response.async_set_speech(render_today(self._audit_trail.today(dt_util.now())))
-        response.response_type = intent.IntentResponseType.QUERY_ANSWER
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_history_query_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        history_query: HistoryQuery | StateHistoryQuery | ComparativeHistoryQuery,
-    ) -> conversation.ConversationResult:
-        """Execute a read-only recorder query and render its answer."""
-        self._context_store.clear(user_input.conversation_id)
-        response.async_set_speech(
-            await async_execute_history_query(self.hass, history_query)
-        )
-        response.response_type = intent.IntentResponseType.QUERY_ANSWER
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    def _handle_advanced_answer(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        answer: str,
-    ) -> conversation.ConversationResult:
-        """Return an already composed advanced-query answer."""
-        self._context_store.clear(user_input.conversation_id)
-        response.async_set_speech(answer)
-        response.response_type = intent.IntentResponseType.QUERY_ANSWER
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
     def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
         """The configured action sequence of one script entity, if readable."""
         component = self.hass.data.get("script")
@@ -2306,7 +2187,5 @@ class NluConversationEntity(
         self._audit_trail.record(
             dt_util.now(), getattr(context, "user_id", None), plan
         )
-
-
 
 
