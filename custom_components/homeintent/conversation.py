@@ -149,6 +149,7 @@ from .nlu.meaning_ir import is_deferred
 from .controllers.comfort import ComfortController
 from .controllers.devices import DeviceController
 from .nlu.dialog_meta import MetaQuestion, meta_questions
+from .nlu.stt_repair import join_split_compounds
 from .controllers.learning import LearningController
 from .controllers.routines import RoutineController, RoutineSelection
 from .controllers.goals import GoalController
@@ -602,7 +603,11 @@ class NluConversationEntity(
         self._world_model = self._world_model.with_house_graph(self._house_graph)
         understanding_context = UnderstandingContext(source_area=conversation_area)
         localized_text = materialize_local_reference(
-            canonical_exception_words(normalize_clock_expressions(expand_clitics(user_input.text))),
+            canonical_exception_words(normalize_clock_expressions(expand_clitics(
+                # Speech recognition splits compounds ("küchen licht"); join
+                # them only into exact registry/vocabulary words (7.7 B8).
+                join_split_compounds(user_input.text, entities)
+            ))),
             conversation_area,
         )
         explicit_topic_switch = False

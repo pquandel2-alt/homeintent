@@ -4048,6 +4048,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/stt_repair.py::_WORD::b488d5a77c",
+   "datei": "custom_components/homeintent/nlu/stt_repair.py",
+   "bereich": "_WORD",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/verb_state_query.py::_VERB_RE::30e64c0318",
    "datei": "custom_components/homeintent/nlu/verb_state_query.py",
    "bereich": "_VERB_RE",
@@ -4749,7 +4756,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 349,
+  "LEXICAL": 350,
   "MORPHOLOGICAL": 38,
   "STRUCTURAL": 117,
   "SEMANTIC_SENTENCE_PATTERN": 173

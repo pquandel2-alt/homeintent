@@ -41,6 +41,9 @@ jobs:
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
+      - name: Entwicklungs-Benchmark (unsafe_execution_count = 0)
+        if: matrix.python-version == '3.12'
+        run: python scripts/dev_benchmark.py --check
       - name: Arbiter gegen Kaskade (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/arbiter_shadow.py --check

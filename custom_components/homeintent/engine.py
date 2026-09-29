@@ -657,6 +657,31 @@ _SAY_REQUEST_RE = re.compile(
 
 # A polite modal request ("..., kannst du mir dann Bescheid sagen?") is a
 # request even though it is phrased as a question; wh-questions never are.
+_REPETITION_WORDS = frozenset({"mal", "male"})
+_COUNT_WORDS = frozenset({
+    "zwei", "drei", "vier", "fuenf", "sechs", "sieben", "acht", "neun", "zehn",
+    "zwanzig", "hundert", "tausend",
+})
+
+
+def _repetition_count(document: LanguageDocument) -> str | None:
+    """The spoken repetition count ("1000 Mal", "drei Mal"), if any."""
+    words = [token for token in document.tokens if token.is_word or token.is_number]
+    for number, following in zip(words, words[1:]):
+        if following.canonical in _REPETITION_WORDS and (
+            number.is_number or number.canonical in _COUNT_WORDS
+        ):
+            return document.source_text[number.start:following.end]
+    return None
+
+
+def _writes(payload: object) -> bool:
+    commands = getattr(payload, "commands", None)
+    if commands is not None:
+        return any(command.plan is not None for command in commands)
+    return getattr(payload, "plan", None) is not None
+
+
 # "Nein, ich meinte …" / "gemeint war …" before a corrected name or place.
 _MEANT_PREFIX_RE = re.compile(r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+", re.IGNORECASE)
 _MODAL_REQUEST_RE = re.compile(
@@ -841,6 +866,19 @@ class NluEngine:
             text, entities, world_model, document, context=context
         )
         payload = outcome.payload
+        repeated = _repetition_count(document or analyse_language(
+            text, entities, include_registry_compounds=False
+        )) if _writes(payload) else None
+        if repeated is not None:
+            # "Schalte das Licht 1000 Mal ein": the count is an instruction
+            # the plan would silently drop. Never execute a reduced command.
+            return replace(outcome, payload=MatchResult(
+                plan=None,
+                response_text=(
+                    f"Wiederholtes Schalten („{repeated}“) führe ich nicht aus. "
+                    "Ich habe nichts ausgeführt."
+                ),
+            ))
         marked = _mark_inferred_routines(payload, text, entities)
         if marked is payload:
             return outcome
