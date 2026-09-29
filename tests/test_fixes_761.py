@@ -75,3 +75,87 @@ def test_a2_the_question_names_the_genus(monkeypatch):
     assert which_question(scenes).startswith("Welche Szene meinst du: ")
     mixed = scenes[:1] + tuple(entity for entity in base if entity.domain == "light")[:1]
     assert which_question(mixed).startswith("Welches Gerät meinst du: ")
+
+
+# ------------------------------------------------------ A3 relative amounts
+@pytest.mark.parametrize(("sentence", "temperature"), [
+    ("Mach die Heizung im Bad zwei Grad wärmer.", 24.0),
+    ("Mach die Heizung im Bad 2 Grad wärmer.", 24.0),
+    ("Mach die Heizung im Bad um zwei Grad wärmer.", 24.0),
+    ("Mach die Heizung im Bad drei Grad kälter.", 19.0),
+    ("Dreh die Heizung im Bad um drei Grad hoch.", 25.0),
+    ("Heizung im Bad zwei Grad höher.", 24.0),
+    ("Mach die Heizung im Bad 1,5 Grad kälter.", 20.5),
+    ("Mach die Heizung im Bad ein halbes Grad wärmer.", 22.5),
+    ("Mach die Heizung im Bad wärmer.", 23.0),
+])
+def test_a3_amount_sets_the_climate_step(monkeypatch, sentence, temperature):
+    house = HouseConversation(monkeypatch)
+    turn = house.say(sentence)
+    assert _writes(turn) == [(
+        "climate", "set_temperature",
+        {"temperature": temperature, "entity_id": "climate.heizung_badezimmer"},
+    )]
+
+
+def test_a3_device_limits_still_apply(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    turn = house.say("Mach die Heizung im Bad zwanzig Grad wärmer.")
+    ((_, _, data),) = _writes(turn)
+    assert data["temperature"] == 30.0
+    assert "Grenzwert" in turn.speech
+
+
+@pytest.mark.parametrize(("sentence", "step"), [
+    ("Mach die Stehlampe 20 Prozent heller.", 20),
+    ("Mach die Stehlampe zwanzig Prozent heller.", 20),
+    ("Mach die Stehlampe um dreißig Prozent dunkler.", -30),
+    ("Mach die Stehlampe etwas dunkler.", -5),
+])
+def test_a3_amount_sets_the_brightness_step(monkeypatch, sentence, step):
+    house = HouseConversation(monkeypatch)
+    ((domain, _, data),) = _writes(house.say(sentence))
+    assert domain in {"light", "homeassistant"} and data["brightness_step_pct"] == step
+
+
+def test_a3_amount_changes_the_volume_relative_to_now(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    radio = next(e for e in house.entities if e.entity_id == "media_player.kuechenradio")
+    now = float(radio.attributes["volume_level"])
+    ((_, service, data),) = _writes(house.say("Mach das Radio in der Küche zehn Prozent lauter."))
+    assert service == "volume_set" and data["volume_level"] == round(now + 0.1, 2)
+    ((_, service, data),) = _writes(house.say("Mach das Radio in der Küche fünf Prozent leiser."))
+    assert service == "volume_set" and data["volume_level"] == round(now - 0.05, 2)
+    ((_, service, _),) = _writes(house.say("Mach das Radio in der Küche lauter."))
+    assert service == "volume_up"
+
+
+def test_a3_amount_moves_a_cover_relative_to_now(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    cover = next(e for e in house.entities if e.entity_id == "cover.wohnzimmer_rollladen_links")
+    now = int(cover.attributes["current_position"])
+    turn = house.say("Fahr den linken Rollladen im Wohnzimmer um 20 Prozent runter.")
+    ((_, _, data),) = _writes(turn)
+    assert data["position"] == max(0, now - 20)
+    # Asked back for the cover, the step still applies to the chosen one.
+    house = HouseConversation(monkeypatch)
+    assert _writes(house.say("Fahr den Rollladen im Wohnzimmer um 20 Prozent runter.")) == []
+    ((_, _, data),) = _writes(house.say("Den linken."))
+    assert data["position"] == max(0, now - 20)
+
+
+def test_a3_an_absolute_value_after_auf_is_no_step(monkeypatch):
+    house = HouseConversation(monkeypatch)
+    turn = house.say("Fahr den linken Rollladen im Wohnzimmer auf 20 Prozent runter.")
+    ((_, _, data),) = _writes(turn)
+    assert data["position"] == 20
+
+
+@pytest.mark.parametrize("sentence", [
+    "Dreh die Heizung im Bad um drei Grad hoch.",
+    "Fahr den linken Rollladen im Wohnzimmer um 20 Prozent runter.",
+])
+def test_a3_um_with_a_unit_is_no_clock_time(monkeypatch, sentence):
+    house = HouseConversation(monkeypatch)
+    turn = house.say(sentence)
+    assert "Uhr" not in turn.speech and "Automation" not in turn.speech

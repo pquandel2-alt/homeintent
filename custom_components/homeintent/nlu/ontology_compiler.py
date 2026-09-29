@@ -28,7 +28,7 @@ from typing import Sequence
 from ..areas import AreaSnapshot
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..service_call import REGISTERED_OPERATION_INTENT
-from .degree_semantics import extract_degree
+from .degree_semantics import extract_degree, relative_amount
 from .device_ontology import GENERA, analyse_word, entity_genera, genus
 from .frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .german_structure import ClauseKind
@@ -259,7 +259,10 @@ def _clause_meanings(
             # "Stelle die Heizung ein" asks to configure a value, it does not
             # mean "switch on" (existing contract F11).
             return ()
+        spoken_step = relative_amount(normalized)
         ignore = frozenset(operation_words | _FILLER_WORDS | frozenset(DEGREE_WORDS))
+        if spoken_step is not None:
+            ignore |= {"um"}
         descriptions, residue = describe_with_residue(
             clause_tokens, entities, lexicon=lexicon, ignore=ignore, names=names
         )
@@ -276,6 +279,25 @@ def _clause_meanings(
             continue
         genera_here = {key for item in descriptions for key in item.genera}
         actions, degree = directional_as_degree(actions, degree, words_here, genera_here)
+        if spoken_step is not None and degree is None and actions in (
+            frozenset({"open"}), frozenset({"close"})
+        ):
+            # "um 20 Prozent runter", "drei Grad hoch": a direction particle
+            # with an amount is a step, for every genus (7.6.1).
+            sign = 1 if actions == {"open"} else -1
+            if genera_here and set(genera_here) <= _MOVABLE_GENERA:
+                degree = ("level", sign)
+            else:
+                properties = {_GENUS_PROPERTY.get(key) for key in genera_here}
+                if len(properties) == 1 and None not in properties:
+                    degree = (next(iter(properties)) or "", sign)
+            if degree is not None:
+                actions = frozenset()
+        if degree is not None and spoken_step is not None:
+            # "zwei Grad wärmer", "30 Prozent höher": the number is the size
+            # of the step, never an absolute target (7.6.1).
+            percent = None
+            temperature = None
         if (
             not actions and degree is None and percent is None and temperature is None
             and any(word.startswith("mach") for word in words_here)
@@ -385,8 +407,16 @@ def _operation_for(domain: str, clause: ClauseMeaning) -> tuple[OperationTarget,
         if operation is None:
             return None
         parameters: dict[str, object] = {}
+        adjustment = extract_degree(normalize(clause.text))
         if operation[0] in {"HassLightBrighten", "HassLightDim"}:
-            parameters["step_percent"] = extract_degree(clause.text).light_percent
+            parameters["step_percent"] = adjustment.light_percent
+        elif operation[0] in {"HassClimateIncreaseTemperature", "HassClimateDecreaseTemperature"}:
+            parameters["step"] = adjustment.climate_degrees
+        elif domain in {"cover", "media_player"} and (
+            domain == "cover" or adjustment.amount is not None
+        ):
+            # A spoken step from the current value; built per device.
+            parameters["relative_step"] = direction * adjustment.percent_step
         return operation, parameters
     candidates = {
         ONTOLOGY_OPERATIONS[(domain, action)]
@@ -465,6 +495,46 @@ def _build_result(
         ),
         resolved_entities=list(targets),
     )
+
+
+def _relative_results(
+    clause: ClauseMeaning,
+    domain: str,
+    members: tuple[EntitySnapshot, ...],
+    step: float,
+    source_text: str,
+    area: AreaReference | None,
+) -> list[ParseResult] | None:
+    """A spoken step from each device's current value (7.6.1).
+
+    Volume and cover position have no relative service with an amount;
+    the new absolute value is current ± step, bounded by the device range.
+    An unknown current value is never guessed.
+    """
+    results: list[ParseResult] = []
+    for entity in members:
+        stepped = apply_relative_step(entity, step)
+        if stepped is None:
+            return None
+        results.append(_build_result(clause, (entity,), stepped[0], stepped[1], source_text, area))
+    return results
+
+
+def apply_relative_step(
+    entity: EntitySnapshot, step: float
+) -> tuple[OperationTarget, dict[str, object]] | None:
+    """Current volume/position ± step (percent points), bounded to 0-100."""
+    attribute, scale = (
+        ("volume_level", 100.0) if entity.domain == "media_player" else ("current_position", 1.0)
+    )
+    try:
+        current = float(entity.attributes[attribute]) * scale
+    except (KeyError, TypeError, ValueError):
+        return None
+    target = max(0.0, min(100.0, current + step))
+    if entity.domain == "media_player":
+        return ("svc", "media_player", "volume_set"), {"volume_level": round(target / 100.0, 2)}
+    return ("HassSetPercentage",), {"percent": int(round(target))}
 
 
 def _names(entities: Sequence[EntitySnapshot]) -> str:
@@ -871,10 +941,19 @@ def _compile_clauses(
                     if place is not None and place.kind is PlaceKind.AREA and len(place.area_ids) == 1
                     else None
                 )
-                results.append(_build_result(
-                    clause, tuple(members), operation[0], operation[1],
-                    getattr(document, "source_text"), area,
-                ))
+                if "relative_step" in operation[1]:
+                    stepped = _relative_results(
+                        clause, domain, tuple(members), float(str(operation[1]["relative_step"])),
+                        getattr(document, "source_text"), area,
+                    )
+                    if stepped is None:
+                        return None
+                    results.extend(stepped)
+                else:
+                    results.append(_build_result(
+                        clause, tuple(members), operation[0], operation[1],
+                        getattr(document, "source_text"), area,
+                    ))
                 domains_seen.add(domain)
                 total_targets += len(members)
     if not results:

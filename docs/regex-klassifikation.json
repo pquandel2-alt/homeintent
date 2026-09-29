@@ -415,7 +415,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_CLOCK_RE::394374f56f",
+   "id": "custom_components/homeintent/automation_language.py::_CLOCK_RE::e1fd15c9d9",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_CLOCK_RE",
    "klasse": "LEXICAL",
@@ -2872,6 +2872,27 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::_AMOUNT_RE::61032641b4",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "_AMOUNT_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::_HALF_RE::91ff1eb98c",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "_HALF_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::relative_amount::25ef703b14",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "relative_amount",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/degree_semantics.py::extract_degree::25ef703b14",
    "datei": "custom_components/homeintent/nlu/degree_semantics.py",
    "bereich": "extract_degree",
@@ -5162,9 +5183,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 367,
+  "LEXICAL": 369,
   "MORPHOLOGICAL": 39,
-  "STRUCTURAL": 118,
+  "STRUCTURAL": 119,
   "SEMANTIC_SENTENCE_PATTERN": 212
  }
 }

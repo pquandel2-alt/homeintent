@@ -427,6 +427,10 @@ DEGREE_OPERATIONS: dict[tuple[str, str, int], OperationTarget] = {
     ("climate", "level", -1): ("HassClimateDecreaseTemperature",),
     ("media_player", "level", 1): ("svc", "media_player", "volume_up"),
     ("media_player", "level", -1): ("svc", "media_player", "volume_down"),
+    # "Fahr den Rollladen 30 Prozent höher" (7.6.1): a position step from
+    # the current position, compiled per cover.
+    ("cover", "level", 1): ("HassSetPercentage",),
+    ("cover", "level", -1): ("HassSetPercentage",),
     ("fan", "level", 1): ("HassFanIncreaseSpeed",),
     ("fan", "level", -1): ("HassFanDecreaseSpeed",),
 }

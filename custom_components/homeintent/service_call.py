@@ -624,10 +624,41 @@ def _climate_step_plan(es: list[EntitySnapshot], step: float) -> ServiceCallPlan
     recognition"). ``None`` here means "fall through to not understood",
     same as any other unsupported-capability case.
     """
-    current = es[0].attributes.get("temperature")
-    if current is None:
+    target = _climate_step_target(es[0], step)
+    if target is None:
         return None
-    return ServiceCallPlan("climate", "set_temperature", _entity_id_field(es), {"temperature": current + step})
+    return ServiceCallPlan("climate", "set_temperature", _entity_id_field(es), {"temperature": target})
+
+
+def _climate_step_target(entity: EntitySnapshot, step: float) -> float | None:
+    """Current setpoint ± step, never beyond the device's reported range."""
+    current = entity.attributes.get("temperature")
+    if not isinstance(current, (int, float)):
+        return None
+    target = float(current) + step
+    try:
+        low = float(entity.attributes.get("min_temp", target))
+        high = float(entity.attributes.get("max_temp", target))
+    except (TypeError, ValueError):
+        return target
+    return max(low, min(high, target))
+
+
+def _climate_step_text(es: list[EntitySnapshot], params: Mapping[str, Any], word: str) -> str:
+    """"Heizung Bad wärmer gestellt." - with the spoken amount when it is not one degree."""
+    step = params.get("step", _CLIMATE_TEMPERATURE_STEP)
+    if not isinstance(step, (int, float)):
+        return f"{es[0].friendly_name} {word} gestellt."
+    signed = float(step) if word == "wärmer" else -float(step)
+    current = es[0].attributes.get("temperature")
+    target = _climate_step_target(es[0], signed)
+    if isinstance(current, (int, float)) and target is not None and target != float(current) + signed:
+        limit = f"{target:g}".replace(".", ",")
+        return f"{es[0].friendly_name} auf den Grenzwert von {limit} Grad gestellt."
+    if step != _CLIMATE_TEMPERATURE_STEP:
+        amount = f"{step:g}".replace(".", ",")
+        return f"{es[0].friendly_name} um {amount} Grad {word} gestellt."
+    return f"{es[0].friendly_name} {word} gestellt."
 
 
 CLIMATE_EXTENDED_INTENTS: dict[str, ClimateExtendedIntentSpec] = {
@@ -641,12 +672,12 @@ CLIMATE_EXTENDED_INTENTS: dict[str, ClimateExtendedIntentSpec] = {
     "HassClimateIncreaseTemperature": ClimateExtendedIntentSpec(
         capability=Capability.TEMPERATURE,
         build=lambda es, params: _climate_step_plan(es, params.get("step", _CLIMATE_TEMPERATURE_STEP)),
-        response=lambda es, params: f"{es[0].friendly_name} wärmer gestellt.",
+        response=lambda es, params: _climate_step_text(es, params, "wärmer"),
     ),
     "HassClimateDecreaseTemperature": ClimateExtendedIntentSpec(
         capability=Capability.TEMPERATURE,
         build=lambda es, params: _climate_step_plan(es, -params.get("step", _CLIMATE_TEMPERATURE_STEP)),
-        response=lambda es, params: f"{es[0].friendly_name} kälter gestellt.",
+        response=lambda es, params: _climate_step_text(es, params, "kälter"),
     ),
 }
 

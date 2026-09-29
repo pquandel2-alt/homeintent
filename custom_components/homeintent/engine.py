@@ -4944,6 +4944,16 @@ class NluEngine:
             return None
 
         matched = [entity]
+        pending_parameters = dict(clarification.pending_parameters)
+        if "relative_step" in pending_parameters:
+            # "um 20 Prozent runter" asked which cover: the step applies to
+            # the chosen device's current position (7.6.1).
+            from .nlu.ontology_compiler import apply_relative_step
+
+            stepped = apply_relative_step(entity, float(str(pending_parameters["relative_step"])))
+            if stepped is None or stepped[0] != (clarification.pending_intent,):
+                return None
+            pending_parameters = dict(stepped[1])
         spec = INTENTS.get(clarification.pending_intent)
         if spec is not None:
             area = (
@@ -4961,7 +4971,7 @@ class NluEngine:
                             domain=entity.domain,
                         ),
                         area=area,
-                        parameters=dict(clarification.pending_parameters),
+                        parameters=pending_parameters,
                         source_text=reply_text,
                     ),
                     resolved_entities=matched,
@@ -4990,7 +5000,7 @@ class NluEngine:
                             domain=entity.domain,
                         ),
                         area=area,
-                        parameters=dict(clarification.pending_parameters),
+                        parameters=pending_parameters,
                         source_text=reply_text,
                     ),
                     resolved_entities=matched,
