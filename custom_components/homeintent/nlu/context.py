@@ -30,6 +30,7 @@ from .primitives import SemanticProperty
 from .semantic_state import SemanticState
 
 if TYPE_CHECKING:
+    from ..service_executor import ConfirmedScope
     from ..alias_learning import AliasLearningDraft
     from ..automation_composition import EventClarification
     from ..automation_wizard import AutomationWizardState
@@ -173,6 +174,9 @@ class PendingServiceConfirmation:
     binding_confirmed: bool = False
     # (routine concept, entity id): "Ja" also stores this routine binding.
     binding_offer: tuple[str, str] | None = None
+    # Risk and effective targets the question covered (7.7): an edited
+    # script is not confirmed by the earlier "Ja".
+    scope: ConfirmedScope | None = None
 
 
 @dataclass(frozen=True)

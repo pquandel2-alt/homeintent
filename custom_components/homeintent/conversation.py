@@ -293,7 +293,11 @@ from .nlu.semantic_utterance import (
 from .nlu.understanding import UnderstandingAuthority
 from .nlu.understanding_context import UnderstandingContext
 from .service_call import QUERY_INTENTS, ServiceCallPlan
-from .service_executor import async_execute_service_plan
+from .service_executor import (
+    CHANGED_SINCE_CONFIRMATION,
+    async_execute_service_plan,
+    confirmed_scope,
+)
 from .effect_graph import build_plan_effects, is_composite_entity, summarize_effects
 from .semantic_dialog import continue_semantic_dialog, start_semantic_dialog
 from .reminder import (
@@ -622,6 +626,17 @@ _OCCASION_PHRASES = {
 def _occasion_phrase(routine_id: str) -> str:
     """"beim Schlafengehen" - the occasion with its preposition (7.6.1)."""
     return _OCCASION_PHRASES.get(routine_id, f"bei „{routine_id}“")
+
+
+def _execution_failure_text(execution: Any) -> str:
+    """A refusal of the policy is said as it is; a technical error gets a prefix."""
+    error = str(execution.error or "")
+    decision = getattr(execution, "decision", None)
+    if error == CHANGED_SINCE_CONFIRMATION or (
+        decision is not None and decision.outcome is PolicyOutcome.DENY
+    ):
+        return error
+    return f"Fehler beim Ausführen: {error}"
 
 
 def _is_complete_actionable_understanding(
@@ -1084,8 +1099,8 @@ class NluConversationEntity(
                     last_entities=(),
                     last_area=None,
                     pending_clarification=None,
-                    pending_service_confirmation=PendingServiceConfirmation(
-                        plan, success, actor_id,
+                    pending_service_confirmation=self._confirmation(
+                        entities, plan, success, actor_id,
                         binding_offer=(payload.concept_key, chosen.entity_id),
                     ),
                 ),
@@ -5455,7 +5470,8 @@ class NluConversationEntity(
                         last_entities=(),
                         last_area=None,
                         pending_clarification=None,
-                        pending_service_confirmation=PendingServiceConfirmation(
+                        pending_service_confirmation=self._confirmation(
+                            entities,
                             result.plan,
                             result.response_text,
                             conversation_user_id(user_input),
@@ -5585,7 +5601,7 @@ class NluConversationEntity(
                 )
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {execution.error}",
+                    _execution_failure_text(execution),
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
@@ -6007,7 +6023,8 @@ class NluConversationEntity(
                     last_entities=(),
                     last_area=None,
                     pending_clarification=None,
-                    pending_service_confirmation=PendingServiceConfirmation(
+                    pending_service_confirmation=self._confirmation(
+                        entities,
                         plan,
                         success,
                         conversation_user_id(user_input),
@@ -6164,7 +6181,8 @@ class NluConversationEntity(
                         last_entities=(),
                         last_area=None,
                         pending_clarification=None,
-                        pending_service_confirmation=PendingServiceConfirmation(
+                        pending_service_confirmation=self._confirmation(
+                            entities,
                             plans[0],
                             success,
                             actor_id,
@@ -7287,7 +7305,8 @@ class NluConversationEntity(
                         last_entities=(),
                         last_area=None,
                         pending_clarification=None,
-                        pending_service_confirmation=PendingServiceConfirmation(
+                        pending_service_confirmation=self._confirmation(
+                            resolved_entities,
                             device_control.plan,
                             device_control.response_text,
                             actor_id,
@@ -7361,6 +7380,16 @@ class NluConversationEntity(
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    def _confirmation(
+        self, entities: Sequence[EntitySnapshot], plan: ServiceCallPlan, *args: Any, **kwargs: Any
+    ) -> PendingServiceConfirmation:
+        """A pending "Ja" bound to the risk and effects it was asked for (7.7)."""
+        pending = PendingServiceConfirmation(plan, *args, **kwargs)
+        return replace(pending, scope=confirmed_scope(
+            self.hass, (plan, *pending.additional_plans), entities, self.entry.options,
+            origin=pending.origin, binding_confirmed=pending.binding_confirmed,
+        ))
 
     def _record_execution(self, user_input, plan) -> None:
         context = getattr(user_input, "context", None)
@@ -8013,6 +8042,7 @@ class NluConversationEntity(
                 effect_monitor=self._runtime_data.effect_monitor,
                 origin=confirmation.origin,
                 binding_confirmed=confirmation.binding_confirmed,
+                scope=confirmation.scope,
             )
             for additional in confirmation.additional_plans:
                 if not execution.executed:
@@ -8029,6 +8059,7 @@ class NluConversationEntity(
                     audit_actor_id=current_user_id,
                     effect_monitor=self._runtime_data.effect_monitor,
                     origin=confirmation.origin,
+                    scope=confirmation.scope,
                 )
             if not execution.executed:
                 _LOGGER.error(
@@ -8040,7 +8071,7 @@ class NluConversationEntity(
                 )
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {execution.error}",
+                    _execution_failure_text(execution),
                 )
             else:
                 spoken = _with_effect_summary(confirmation.success_text, execution)

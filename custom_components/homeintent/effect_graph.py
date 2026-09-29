@@ -32,7 +32,7 @@ TARGET_KEYS = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
 
 # Services that never change a device and carry no entity target.
 _HARMLESS_SERVICE_DOMAINS = frozenset({"persistent_notification", "logbook", "system_log"})
-_HARMLESS_SERVICES = frozenset({("scene", "create")})
+_HARMLESS_SERVICES: frozenset[tuple[str, str]] = frozenset()
 # Services whose effect cannot be determined statically at all.
 _OPAQUE_SERVICE_DOMAINS = frozenset({
     "python_script", "shell_command", "rest_command", "pyscript", "command_line",
@@ -228,6 +228,9 @@ class _Builder:
         self.unknown: list[UnknownStep] = []
         self.names: dict[str, str] = {}
         self._active: set[str] = set()
+        # Scenes created by an earlier step (``scene.create``): id -> states,
+        # or ``None`` for a snapshot whose states are not known statically.
+        self._created_scenes: dict[str, Mapping[str, Any] | None] = {}
 
     # -------------------------------------------------------------- helpers
     def _name(self, kind: str, item_id: str) -> None:
@@ -320,6 +323,18 @@ class _Builder:
     def _activate_scene(
         self, entity_id: str, path: tuple[str, ...], depth: int, alias: str | None
     ) -> None:
+        if entity_id in self._created_scenes:
+            created = self._created_scenes[entity_id]
+            if created is None:
+                self._unknown(
+                    f"Die Szene „{entity_id}“ stellt einen gespeicherten Zustand wieder her; "
+                    "dessen Wirkung kann ich nicht prüfen.",
+                    alias, path,
+                )
+                return
+            self.nested.append(entity_id)
+            self._apply_states(created, (*path, entity_id), depth + 1, alias, kind="scene")
+            return
         states = self.sources.scene_states(entity_id)
         if states is None:
             self._unknown(
@@ -452,6 +467,34 @@ class _Builder:
         else:
             self._unknown("Ein Schritt hat eine unbekannte Art.", alias, path)
 
+    def _names_existing_entity(self, value: Any) -> bool:
+        return any(
+            _ENTITY_ID.match(text.strip()) and self.sources.entity_exists(text.strip())
+            for text in _nested_strings(value)
+        )
+
+    def _create_scene(
+        self, data_maps: Sequence[Mapping[str, Any]], alias: str | None, path: tuple[str, ...]
+    ) -> None:
+        """``scene.create`` changes nothing now; its later activation might."""
+        data: dict[str, Any] = {}
+        for item in data_maps:
+            data.update(item)
+        scene_id = data.get("scene_id")
+        if not isinstance(scene_id, str) or is_template(scene_id):
+            self._unknown("Die erzeugte Szene ist nicht statisch bestimmbar.", alias, path)
+            return
+        entities = data.get("entities")
+        if "snapshot_entities" in data or (entities is not None and not isinstance(entities, Mapping)):
+            self._created_scenes[f"scene.{scene_id}"] = None
+            return
+        if isinstance(entities, Mapping) and any(
+            is_template(key) or is_template(value) for key, value in entities.items()
+        ):
+            self._created_scenes[f"scene.{scene_id}"] = None
+            return
+        self._created_scenes[f"scene.{scene_id}"] = dict(entities or {})
+
     def _device_step(self, action: Mapping[str, Any], alias: str | None, path: tuple[str, ...]) -> None:
         domain = str(action.get("domain"))
         action_type = str(action.get("type"))
@@ -529,10 +572,17 @@ class _Builder:
                 selector.setdefault(key, [])
                 selector[key].extend(_as_list(value))
 
-        # Second targets hidden in the data of a foreign service.
+        if (domain, service) == ("scene", "create"):
+            self._create_scene(data_maps, alias, path)
+            return
+
+        # Second targets hidden in the data of a foreign service, at any
+        # depth (script ``variables``, lists of mappings ...): a known one is
+        # an effect, any other existing entity makes the step unknown (7.7).
+        scene_states = (domain, service) == ("scene", "apply")
         for data_map in data_maps:
             for key, value in data_map.items():
-                if key in TARGET_KEYS or key == "entities":
+                if key in TARGET_KEYS or (key == "entities" and scene_states):
                     continue
                 if key in _DATA_TARGETS:
                     if is_template(value):
@@ -544,11 +594,7 @@ class _Builder:
                         kind="service", alias=alias, path=path,
                     )
                     continue
-                candidates = _as_list(value) if isinstance(value, (str, list, tuple)) else []
-                if any(
-                    _ENTITY_ID.match(candidate) and self.sources.entity_exists(candidate)
-                    for candidate in candidates
-                ):
+                if self._names_existing_entity(value):
                     self._unknown(
                         f"Der Dienst {name} nennt in „{key}“ ein weiteres Ziel.", alias, path
                     )
@@ -604,6 +650,21 @@ class _Builder:
             resolved, service, path, depth, alias, kind="service",
             call_domain=None if domain == "homeassistant" else domain, selector=selector_label,
         )
+
+
+def _nested_strings(value: Any, depth: int = 0) -> Iterable[str]:
+    if depth > 8:
+        return
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str):
+                yield key
+            yield from _nested_strings(item, depth + 1)
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            yield from _nested_strings(item, depth + 1)
 
 
 def _device_action_service(action_type: str) -> str:
