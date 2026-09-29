@@ -1262,6 +1262,76 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/controllers/comfort.py::ComfortController.async_handle_comfort_turn::620b42e102",
+   "datei": "custom_components/homeintent/controllers/comfort.py",
+   "bereich": "ComfortController.async_handle_comfort_turn",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/comfort.py::ComfortController.async_handle_comfort_turn::1c4c33b7be",
+   "datei": "custom_components/homeintent/controllers/comfort.py",
+   "bereich": "ComfortController.async_handle_comfort_turn",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/comfort.py::ComfortController.async_handle_comfort_turn::5da9bf084b",
+   "datei": "custom_components/homeintent/controllers/comfort.py",
+   "bereich": "ComfortController.async_handle_comfort_turn",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_learning_turn::43238faadb",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_learning_turn",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_learning_turn::37dd3709d8",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_learning_turn",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_learning_turn::8444350b1c",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_learning_turn",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_learning_turn::48c6f7946d",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_learning_turn",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_memory_turn::1c4c33b7be",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_memory_turn",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_memory_turn::620b42e102",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_memory_turn",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_memory_turn::5da9bf084b",
+   "datei": "custom_components/homeintent/controllers/learning.py",
+   "bereich": "LearningController.async_handle_memory_turn",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/controllers/productivity.py::_helper_timer_seconds_left::d9ec5313b8",
    "datei": "custom_components/homeintent/controllers/productivity.py",
    "bereich": "_helper_timer_seconds_left",
@@ -1371,76 +1441,6 @@
    "datei": "custom_components/homeintent/conversation.py",
    "bereich": "NluConversationEntity._async_handle_message_inner",
    "klasse": "MORPHOLOGICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_comfort_turn::620b42e102",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_comfort_turn",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_comfort_turn::1c4c33b7be",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_comfort_turn",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_comfort_turn::5da9bf084b",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_comfort_turn",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_learning_turn::43238faadb",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_learning_turn",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_learning_turn::37dd3709d8",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_learning_turn",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_learning_turn::8444350b1c",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_learning_turn",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_learning_turn::48c6f7946d",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_learning_turn",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_memory_turn::1c4c33b7be",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_memory_turn",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_memory_turn::620b42e102",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_memory_turn",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/conversation.py::NluConversationEntity._async_handle_memory_turn::5da9bf084b",
-   "datei": "custom_components/homeintent/conversation.py",
-   "bereich": "NluConversationEntity._async_handle_memory_turn",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
    "quelle": "heuristik"
   },
   {

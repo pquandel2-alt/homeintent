@@ -211,24 +211,24 @@ def test_confirmed_preference_stays_user_area_and_live_entity_scoped(
         "light.floor", "Stehlampe", "light", "on", area_id="living",
         capabilities=frozenset({"TURN_ON", "TURN_OFF"}),
     )
-    same = asyncio.run(agent._async_apply_confirmed_preferences(
+    same = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         [floor], area_id="living", user_id="philipp"
     ))
     assert "Lampe" in same[0].aliases
-    other_user = asyncio.run(agent._async_apply_confirmed_preferences(
+    other_user = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         [floor], area_id="living", user_id="julia"
     ))
     assert "Lampe" not in other_user[0].aliases
-    other_area = asyncio.run(agent._async_apply_confirmed_preferences(
+    other_area = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         [floor], area_id="kitchen", user_id="philipp"
     ))
     assert "Lampe" not in other_area[0].aliases
-    moved = asyncio.run(agent._async_apply_confirmed_preferences(
+    moved = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         [replace(floor, area_id="kitchen")],
         area_id="living", user_id="philipp",
     ))
     assert "Lampe" not in moved[0].aliases
-    removed = asyncio.run(agent._async_apply_confirmed_preferences(
+    removed = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         [], area_id="living", user_id="philipp"
     ))
     assert removed == []

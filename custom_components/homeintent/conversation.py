@@ -15,13 +15,11 @@ default conversation agent does it.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from functools import partial
-from dataclasses import dataclass, replace
-from datetime import timedelta
-from typing import Any, Literal, Mapping, Sequence
+from dataclasses import replace
+from typing import Any, Literal, Sequence
 
 from homeassistant.components import conversation
 from homeassistant.components.conversation import ConversationEntityFeature
@@ -36,7 +34,6 @@ from .alias_learning import (
     AliasLearningDraft,
     parse_alias_learning,
 )
-from .agent_action_policy import validate_agent_service_plan
 from .automation_action_edit import is_action_edit_request
 from .automation_scenarios import interpret_downstairs_shutdown
 from .automation_management import parse_automation_management
@@ -47,14 +44,12 @@ from .audit_log import render_today
 from .calendar_event import start_calendar_event_draft, writable_calendars
 from .calendar_management import CalendarManagementRequest
 from .capability_audit import match_capability_audit_query
-from .comfort_intent import is_comfort_request
 from .conversation_location import (
     materialize_local_reference,
     resolve_conversation_area,
 )
-from .const import CONF_CUSTOM_ALIASES, CONF_HOUSE_RELATIONS, DOMAIN
+from .const import CONF_HOUSE_RELATIONS, DOMAIN
 from .dialog_manager import DialogPriority, DialogTaskKind
-from .document_intent import interpret_document_search
 from .engine import (
     AutomationClarificationResult,
     AutomationDraftMatchResult,
@@ -83,44 +78,11 @@ from .history_query import (
     parse_history_query,
 )
 from .household_query import match_household_query
-from .house_graph import FactProvenance, HouseGraph, parse_relation_specs
-from .goal_intent import interpret_goal
-from .memory import MemoryKind
-from .memory_intent import MemoryOperation, interpret_memory_intent
-from .learning_intent import LearningOperation, interpret_learning_request
-from .learning_dialog import LearningDialogOperation, LearningDialogPayload
-from .model_registry import (
-    LearnedKind,
-    LearnedModel,
-    ModelHealth,
-    explain_learned_model,
-)
-from .learning_policy import KnowledgeState
-from .learning_control import (
-    LearningControlError,
-    async_accept_habit,
-    async_confirm_preference,
-    async_forget_model,
-    async_reject_habit,
-    async_reject_preference,
-    async_reset_models,
-    model_owner,
-    options_without_preference_aliases,
-)
-from .preferences import (
-    LearnedPreference, PreferenceContext, resolve_preferences,
-)
+from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
 from .proactive_dialog import V12_TASK_KINDS
 from .proactive_session import classify_proposal_reply
 from .room_presence import build_area_lookup
-from .planner import (
-    Goal,
-    GoalKind,
-    MaterializedPlan,
-    materialize_goal,
-    materialize_comfort_profile,
-)
 from .thermal_question import answer_thermal_question
 from .nlu.clock_language import normalize_clock_expressions, wake_request
 from .nlu.semantic_exclusion import canonical_exception_words
@@ -131,10 +93,6 @@ from .nlu.device_ontology import analyse_word, lookup_genus_word
 from .nlu.target_resolution import genus_members, hidden_device_text, hidden_name_mentions
 from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain
-from .nlu.german_morphology import counted_passive
-from .profiles import ComfortProfile, RoutineDefinition
-from .procedure_intent import ProcedureOperation, interpret_procedure_intent
-from .routine_intent import interpret_routine_feedback
 from .nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from .nlu.action_model import NotificationRecipient, NotificationRecipientKind
 from .notification_request import NotificationRequest
@@ -165,7 +123,7 @@ from .nlu.entity_clarification import (
     resolve_candidate_reply,
 )
 from .nlu.explanation import explain_command, is_explanation_request
-from .nlu.language_frontend import LanguageDocument, analyse_language
+from .nlu.language_frontend import analyse_language
 from .nlu.semantic_utterance import (
     Modality,
     SpeechAct,
@@ -174,9 +132,7 @@ from .nlu.semantic_utterance import (
 )
 from .nlu.understanding import UnderstandingAuthority
 from .nlu.understanding_context import UnderstandingContext
-from .service_call import ServiceCallPlan
 from .service_executor import async_execute_service_plan
-from .effect_graph import build_plan_effects
 from .reminder import (
     reminder_automation_text,
     reminder_quiet_hours,
@@ -190,7 +146,6 @@ from .security_control import (
 )
 from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
-from .execution_policy import PolicyOutcome, evaluate_service_plan
 from .world_model import WorldModel, build_world_model as assemble_world_model
 from .undo import is_undo_request
 from .runtime_data import HomeIntentRuntimeData
@@ -203,16 +158,18 @@ from .execution_trace import (
     explain_change,
 )
 from .nlu.causal_question import interpret_cause_question
-from .bindings import BindingKind, BindingScope
 from .conversation_learning import DialogLearningMixin, is_known_device_word
 from .nlu.meaning_ir import is_deferred
+from .controllers.comfort import ComfortController
 from .controllers.devices import DeviceController
+from .controllers.learning import LearningController
+from .controllers.routines import RoutineController, RoutineSelection
 from .controllers.goals import GoalController
 from .controllers.automation_management import AutomationManagementController
 from .controllers.automations import AutomationController
 from .controllers.notifications import NotificationController
 from .controllers.productivity import ProductivityController
-from .controllers.replies import ambiguous_reading_text, confirmation_question, with_effect_summary
+from .controllers.replies import ambiguous_reading_text
 from .arbitration import (
     DecisionKind,
     DialogReply,
@@ -226,31 +183,8 @@ from .arbitration_candidates import (
     dialog_evidence,
     need_query_candidates,
 )
-from .dialog_learning import MEMORY_DISABLED_TEXT, alias_rejection, unknown_device_noun
-from .nlu.need_semantics import ROUTINE_CONCEPTS, routine_concept_by_key
-from .routine_binding_intent import (
-    RoutineBindingOperation,
-    RoutineBindingRequest,
-    choose_candidate,
-    interpret_routine_binding,
-)
-
-
-@dataclass(frozen=True)
-class RoutineSelection:
-    """Open question "Welche Routine meinst du: A, B oder C?"."""
-
-    concept_key: str
-    candidate_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RoutineBindConfirmation:
-    """Open question "Soll ich für „…“ künftig X nehmen?"."""
-
-    concept_key: str
-    entity_id: str
-    personal: bool = False
+from .dialog_learning import alias_rejection, unknown_device_noun
+from .routine_binding_intent import interpret_routine_binding
 
 
 from .productivity import TimerRequest, TodoRequest
@@ -277,37 +211,8 @@ _UNIVERSAL_CANCEL_RE = re.compile(
     r"stopp|stop|vergiss\s+(?:es|das)|egal|schon\s+gut|nicht\s+mehr\s+noetig|"
     r"nicht\s+mehr\s+nötig)(?:\s+bitte)?)[.!]?\s*"
 )
-_MEMORY_KIND_DE = {
-    "episode": "Ereignisse", "household_fact": "Haushaltsfakten",
-    "preference": "Vorlieben", "procedure": "Abläufe", "decision": "Entscheidungen",
-    "routine_grant": "Routinen-Freigaben",
-}
 
 
-_MEMORY_KIND_SINGULAR_DE = {
-    "episode": "Ereignis", "household_fact": "Haushaltsfakt", "preference": "Vorliebe",
-    "procedure": "Ablauf", "decision": "Entscheidung", "routine_grant": "Routinen-Freigabe",
-}
-
-
-def _describe_memory(record: Any, labels: Mapping[str, str]) -> str:
-    """One remembered record in plain German, without internal keys."""
-    content = record.content if isinstance(record.content, Mapping) else {}
-    entity_name = labels.get(str(content.get("entity_id", "")), "")
-    percent = content.get("brightness_percent")
-    activity = content.get("activity")
-    if record.kind.value == "preference":
-        situation = " beim Fernsehen" if activity == "television" else ""
-        if isinstance(percent, int) and entity_name:
-            return f"Vorliebe{situation}: {entity_name} auf {percent} Prozent"
-        if isinstance(percent, int):
-            return f"Vorliebe{situation}: Helligkeit {percent} Prozent"
-        if entity_name:
-            return f"Vorliebe{situation}: {entity_name}"
-        return "eine Vorliebe ohne Details"
-    text = content.get("text") or content.get("summary") or content.get("fact")
-    kind = _MEMORY_KIND_SINGULAR_DE.get(record.kind.value, "Eintrag")
-    return f"{kind}: {text}" if isinstance(text, str) and text else f"ein Eintrag ({kind})"
 
 
 # Open questions whose expected answer is itself a command (a routine being
@@ -475,6 +380,16 @@ class NluConversationEntity(
             context_store=self._context_store,
             runtime=runtime,
         )
+        self._routines = RoutineController(
+            hass=lambda: self.hass,
+            entry=entry,
+            context_store=self._context_store,
+            audit_trail=self._audit_trail,
+            runtime=runtime,
+            pending_confirmation=lambda *args, **kwargs: self._devices.pending_confirmation(
+                *args, **kwargs
+            ),
+        )
         self._devices = DeviceController(
             hass=lambda: self.hass,
             entry=entry,
@@ -487,7 +402,7 @@ class NluConversationEntity(
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
             ask_unknown_word=self._async_ask_unknown_word,
             default_choice=self._default_choice,
-            store_routine_binding=self._async_store_routine_binding,
+            store_routine_binding=self._routines.async_store_binding,
         )
         self._goals = GoalController(
             hass=lambda: self.hass,
@@ -499,6 +414,20 @@ class NluConversationEntity(
             runtime=runtime,
             entities=lambda: build_entity_snapshots(self.hass, self.entry),
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
+        )
+        self._comfort = ComfortController(
+            hass=lambda: self.hass,
+            entry=entry,
+            audit_trail=self._audit_trail,
+            runtime=runtime,
+            entities=lambda: build_entity_snapshots(self.hass, self.entry),
+            stage_plan=self._goals.stage_plan,
+        )
+        self._learning = LearningController(
+            hass=lambda: self.hass,
+            entry=entry,
+            runtime=runtime,
+            learned_alias_view=self.learned_alias_view,
         )
         self._management = AutomationManagementController(
             context_store=self._context_store,
@@ -594,205 +523,6 @@ class NluConversationEntity(
         self._apply_continue_conversation(user_input, result)
         return result
 
-
-    def _routine_bindings_for(self, user_id: str | None) -> dict[str, str]:
-        """Concept -> bound script/scene for this speaker (own before household)."""
-        store = self._runtime_data.bindings
-        found: dict[str, str] = {}
-        for concept in ROUTINE_CONCEPTS:
-            binding = store.find(BindingKind.ROUTINE, concept.key, user_id)
-            if binding is not None:
-                found[concept.key] = binding.target
-        return found
-
-    async def _async_store_routine_binding(
-        self, concept_key: str, entity_id: str, user_id: str | None, *, personal: bool = False
-    ) -> str:
-        """Store after an explicit "Ja"/choice; returns the spoken note."""
-        concept = routine_concept_by_key(concept_key)
-        await self._runtime_data.bindings.async_bind(
-            BindingKind.ROUTINE,
-            concept_key,
-            entity_id,
-            confirmed=True,
-            scope=BindingScope.USER if personal and user_id else BindingScope.HOUSEHOLD,
-            user_id=user_id if personal else None,
-            created_by=user_id,
-            now=dt_util.now(),
-        )
-        self._runtime_data.learning_center_revision.bump()
-        label = concept.label if concept is not None else concept_key
-        return f"Das merke ich mir für „{label}“."
-
-    async def _async_handle_routine_binding_request(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        request: RoutineBindingRequest,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """"Vergiss die Schlafroutine" / "Schlafen ist ab jetzt das Skript X"."""
-        user_id = conversation_user_id(user_input)
-        store = self._runtime_data.bindings
-        label = request.concept.label
-        if request.operation is RoutineBindingOperation.SHOW:
-            binding = store.find(BindingKind.ROUTINE, request.concept.key, user_id)
-            name = (
-                next(
-                    (item.friendly_name for item in entities if item.entity_id == binding.target),
-                    binding.target,
-                )
-                if binding is not None else None
-            )
-            response.async_set_speech(
-                f"Für „{label}“ nehme ich {name}." if name
-                else f"Für „{label}“ ist noch keine Routine hinterlegt."
-            )
-        elif request.operation is RoutineBindingOperation.FORGET:
-            binding = store.find(BindingKind.ROUTINE, request.concept.key, user_id)
-            is_admin = await user_is_admin(self.hass, user_input)
-            if binding is None:
-                response.async_set_speech(f"Für „{label}“ war keine Routine hinterlegt.")
-            elif (
-                binding.scope is BindingScope.HOUSEHOLD
-                and not is_admin
-                and binding.created_by not in {None, user_id}
-            ):
-                response.async_set_speech(
-                    f"Die Routine für „{label}“ gilt für den ganzen Haushalt; "
-                    "ändern darf sie nur, wer sie angelegt hat, oder ein Administrator."
-                )
-            else:
-                await store.async_remove(binding.binding_id)
-                self._runtime_data.learning_center_revision.bump()
-                response.async_set_speech(
-                    f"Erledigt. Für „{label}“ ist keine Routine mehr hinterlegt; "
-                    "beim nächsten Mal frage ich wieder nach."
-                )
-        elif request.target is None:
-            names = ", ".join(entity.friendly_name for entity in request.candidates)
-            response.async_set_speech(
-                f"Welche Routine meinst du genau: {names}?" if request.candidates
-                else "Ein Skript oder eine Szene mit diesem Namen finde ich nicht."
-            )
-        else:
-            kind = "die Szene" if request.target.domain == "scene" else "das Skript"
-            self._runtime_data.dialog_manager.create(
-                user_input.conversation_id,
-                "routine-binding",
-                DialogTaskKind.ROUTINE_BINDING,
-                DialogPriority.CONFIRMATION,
-                reason="Eine Routine-Bindung muss ausdrücklich bestätigt werden.",
-                requested_by_user_id=user_id,
-                payload=RoutineBindConfirmation(
-                    request.concept.key, request.target.entity_id, request.personal
-                ),
-            )
-            response.async_set_speech(
-                f"Soll ich für „{label}“ künftig {kind} {request.target.friendly_name} nehmen?"
-            )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_routine_binding_task(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        task: Any,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        """Answer to a routine choice or a spoken binding confirmation."""
-        manager = self._runtime_data.dialog_manager
-        conversation_id = user_input.conversation_id
-        actor_id = conversation_user_id(user_input)
-        if task.requested_by_user_id is not None and task.requested_by_user_id != actor_id:
-            response.async_set_speech("Diese Rückfrage gehört zu einem anderen Benutzer.")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        payload = task.payload
-        reply = classify_confirmation_reply(user_input.text)
-        if isinstance(payload, RoutineBindConfirmation):
-            manager.cancel(conversation_id, task.task_id)
-            if reply is ConfirmationReply.YES:
-                if not any(entity.entity_id == payload.entity_id for entity in entities):
-                    response.async_set_speech(
-                        "Diese Routine ist nicht mehr freigegeben. Ich habe nichts gespeichert."
-                    )
-                else:
-                    note = await self._async_store_routine_binding(
-                        payload.concept_key, payload.entity_id, actor_id, personal=payload.personal
-                    )
-                    response.async_set_speech(f"Gespeichert. {note}")
-            elif reply is ConfirmationReply.NO:
-                response.async_set_speech("In Ordnung, ich habe nichts gespeichert.")
-            else:
-                return None
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        if not isinstance(payload, RoutineSelection):
-            return None
-        if reply is ConfirmationReply.NO:
-            manager.cancel(conversation_id, task.task_id)
-            response.async_set_speech("In Ordnung, ich habe nichts gestartet.")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        candidates = [
-            entity for candidate_id in payload.candidate_ids
-            for entity in entities if entity.entity_id == candidate_id
-        ]
-        chosen = choose_candidate(user_input.text, candidates)
-        if chosen is None:
-            if len(user_input.text.split()) > 4:
-                manager.cancel(conversation_id, task.task_id)
-                return None  # a new request, not an answer
-            names = ", ".join(entity.friendly_name for entity in candidates)
-            response.async_set_speech(f"Welche meinst du: {names}?")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        manager.cancel(conversation_id, task.task_id)
-        # The user named the routine: evaluated like the explicit command.
-        plan = ServiceCallPlan(chosen.domain, "turn_on", chosen.entity_id)
-        is_admin = await user_is_admin(self.hass, user_input)
-        policy = evaluate_service_plan(
-            plan, entities, self.entry.options, is_admin=is_admin, user_id=actor_id,
-            effects=build_plan_effects(self.hass, plan),
-        )
-        success = f"{chosen.friendly_name} ausgeführt."
-        if policy.outcome is PolicyOutcome.DENY:
-            response.async_set_speech(
-                (policy.reason or "Diese Routine darf ich nicht ausführen.")
-                + " Ich habe nichts gespeichert."
-            )
-        elif policy.outcome is PolicyOutcome.CONFIRM:
-            self._context_store.set(
-                conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_service_confirmation=self._devices.pending_confirmation(
-                        entities, plan, success, actor_id,
-                        binding_offer=(payload.concept_key, chosen.entity_id),
-                    ),
-                ),
-            )
-            question = confirmation_question(success)
-            response.async_set_speech(f"{policy.note} {question}" if policy.note else question)
-        else:
-            execution = await async_execute_service_plan(
-                self.hass, plan, entities, self.entry.options,
-                is_admin=is_admin, user_id=actor_id, confirmed=False,
-                audit_trail=self._audit_trail, audit_actor_id=actor_id,
-                effect_monitor=self._runtime_data.effect_monitor,
-            )
-            if not execution.executed:
-                response.async_set_speech(
-                    f"{execution.error or 'Das hat nicht geklappt.'} Ich habe nichts gespeichert."
-                )
-            else:
-                note = await self._async_store_routine_binding(
-                    payload.concept_key, chosen.entity_id, actor_id
-                )
-                response.async_set_speech(f"{with_effect_summary(success, execution)} {note}")
-        return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
     async def _async_explain_cause(self, entity: EntitySnapshot) -> CauseExplanation:
         """Cause of a device's current state, strictly from evidence."""
@@ -890,7 +620,7 @@ class NluConversationEntity(
         devices = build_device_snapshots(self.hass, self.entry)
         pending = self._context_store.get(user_input.conversation_id)
         conversation_area = resolve_conversation_area(self.hass, user_input)
-        entities = await self._async_apply_confirmed_preferences(
+        entities = await self._learning.async_apply_confirmed_preferences(
             entities,
             area_id=(conversation_area.area_id if conversation_area is not None else None),
             user_id=conversation_user_id(user_input),
@@ -1162,7 +892,7 @@ class NluConversationEntity(
             and active_task is not None
             and active_task.kind is DialogTaskKind.ROUTINE_BINDING
         ):
-            handled = await self._async_handle_routine_binding_task(
+            handled = await self._routines.async_handle_task(
                 user_input, response, active_task, entities
             )
             if handled is not None:
@@ -1226,7 +956,7 @@ class NluConversationEntity(
                     if pending is not None and pending.last_area is not None
                     else None
                 ),
-                routine_bindings=self._routine_bindings_for(conversation_user_id(user_input)),
+                routine_bindings=self._routines.bindings_for(conversation_user_id(user_input)),
             )
             # The direct command reading competes with need and question
             # (7.7, B3): routine ↔ scene name is decided here by evidence,
@@ -1396,7 +1126,7 @@ class NluConversationEntity(
                 response.async_set_speech("Bitte antworte mit Ja oder Nein.")
             else:
                 try:
-                    await self._async_confirm_alias_learning(draft, actor_id)
+                    await self._learning.async_confirm_alias_learning(draft, actor_id)
                 except ValueError as err:
                     response.async_set_speech(str(err))
                 else:
@@ -1430,12 +1160,12 @@ class NluConversationEntity(
                     return conversation.ConversationResult(
                         response=response, conversation_id=user_input.conversation_id
                     )
-            procedure_result = await self._async_handle_procedure_turn(
+            procedure_result = await self._comfort.async_handle_procedure_turn(
                 user_input, response, language_document, entities
             )
             if procedure_result is not None:
                 return procedure_result
-            routine_feedback_result = await self._async_handle_routine_feedback_turn(
+            routine_feedback_result = await self._learning.async_handle_routine_feedback_turn(
                 user_input, response, language_document, entities
             )
             if routine_feedback_result is not None:
@@ -1445,7 +1175,7 @@ class NluConversationEntity(
                 return self._automations.handle_match_result(
                     user_input, response, scenario, entities
                 )
-            comfort_result = await self._async_handle_comfort_turn(
+            comfort_result = await self._comfort.async_handle_comfort_turn(
                 user_input,
                 response,
                 language_document,
@@ -1454,7 +1184,7 @@ class NluConversationEntity(
             )
             if comfort_result is not None:
                 return comfort_result
-            document_result = await self._async_handle_document_turn(
+            document_result = await self._comfort.async_handle_document_turn(
                 user_input, response, language_document
             )
             if document_result is not None:
@@ -1474,7 +1204,7 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            learning_result = await self._async_handle_learning_turn(
+            learning_result = await self._learning.async_handle_learning_turn(
                 user_input, response, language_document
             )
             if learning_result is not None:
@@ -1484,7 +1214,7 @@ class NluConversationEntity(
             )
             if plan_result is not None:
                 return plan_result
-            memory_result = await self._async_handle_memory_turn(
+            memory_result = await self._learning.async_handle_memory_turn(
                 user_input, response, language_document, entities
             )
             if memory_result is not None:
@@ -1549,7 +1279,7 @@ class NluConversationEntity(
                 response.async_set_speech("Bitte antworte mit Ja oder Nein.")
             else:
                 try:
-                    await self._async_confirm_alias_learning(
+                    await self._learning.async_confirm_alias_learning(
                         draft, conversation_user_id(user_input)
                     )
                 except ValueError as err:
@@ -1771,7 +1501,7 @@ class NluConversationEntity(
 
         routine_request = interpret_routine_binding(user_input.text, entities)
         if routine_request is not None:
-            return await self._async_handle_routine_binding_request(
+            return await self._routines.async_handle_request(
                 user_input, response, routine_request, entities
             )
 
@@ -2461,1158 +2191,6 @@ class NluConversationEntity(
         )
 
 
-    async def _async_handle_procedure_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        """Manage named goals; execution always rematerializes a fresh plan."""
-        request = interpret_procedure_intent(language_document)
-        if request is None:
-            return None
-        store = self._runtime_data.memory
-        manager = self._runtime_data.dialog_manager
-        conversation_id = user_input.conversation_id
-        actor_id = conversation_user_id(user_input)
-        if store is None or not store.enabled:
-            response.async_set_speech(MEMORY_DISABLED_TEXT)
-            return conversation.ConversationResult(
-                response=response, conversation_id=conversation_id
-            )
-        if actor_id is None:
-            response.async_set_speech(
-                "Benannte Prozeduren verwalte ich nur für einen authentifizierten Benutzer."
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=conversation_id
-            )
-        records = await store.async_list(
-            person_id=actor_id, kinds=(MemoryKind.PROCEDURE,)
-        )
-        if request.operation is ProcedureOperation.LIST:
-            names = sorted(
-                str(record.content.get("name"))
-                for record in records
-                if isinstance(record.content.get("name"), str)
-            )
-            if not names:
-                speech = "Für dich sind keine benannten Prozeduren gespeichert."
-            else:
-                visible = ", ".join(names[:3])
-                suffix = f" und {len(names) - 3} weitere" if len(names) > 3 else ""
-                speech = f"Gespeicherte Prozeduren: {visible}{suffix}."
-            response.async_set_speech(speech)
-        elif request.operation is ProcedureOperation.SAVE_ACTIVE_PLAN:
-            active = manager.active(conversation_id)
-            plan = active.slots.get("plan") if active is not None else None
-            if not isinstance(plan, MaterializedPlan) or request.name is None:
-                response.async_set_speech(
-                    "Es ist kein vollständiger Plan offen, den ich benennen könnte."
-                )
-            elif any(
-                normalize_for_compare(str(record.content.get("name", "")))
-                == request.name
-                for record in records
-            ):
-                response.async_set_speech(
-                    "Eine Prozedur mit diesem Namen existiert bereits. Bitte lösche oder benenne sie zuerst um."
-                )
-            else:
-                manager.cancel(conversation_id)
-                manager.create(
-                    conversation_id,
-                    "procedure-save",
-                    DialogTaskKind.MEMORY_CONFIRMATION,
-                    DialogPriority.CONFIRMATION,
-                    slots={
-                        "operation": ProcedureOperation.SAVE_ACTIVE_PLAN.value,
-                        "kind": MemoryKind.PROCEDURE.value,
-                        "content": {
-                            "name": request.name,
-                            "goal_kind": plan.goal.kind.value,
-                            "parameters": dict(plan.goal.parameters),
-                        },
-                        "person_id": actor_id,
-                    },
-                    reason="Ein benannter Mehrschrittplan soll dauerhaft gespeichert werden.",
-                    requested_by_user_id=actor_id,
-                )
-                response.async_set_speech(
-                    f"Soll ich die Prozedur {request.name} dauerhaft speichern?"
-                )
-        else:
-            matches = [
-                record
-                for record in records
-                if request.name is not None
-                and normalize_for_compare(str(record.content.get("name", "")))
-                == request.name
-            ]
-            if len(matches) != 1:
-                response.async_set_speech(
-                    "Diese Prozedur ist nicht eindeutig gespeichert. Ich habe nichts geändert."
-                )
-            elif request.operation is ProcedureOperation.FORGET:
-                deleted = await store.async_forget(matches[0].memory_id)
-                response.async_set_speech(
-                    "Die Prozedur wurde kontrolliert gelöscht."
-                    if deleted
-                    else "Die Prozedur konnte nicht gelöscht werden."
-                )
-            else:
-                record = matches[0]
-                raw_goal = record.content.get("goal_kind")
-                raw_parameters = record.content.get("parameters")
-                try:
-                    goal_kind = GoalKind(str(raw_goal))
-                    if not isinstance(raw_parameters, dict):
-                        raise ValueError("ungültige Parameter")
-                    plan = materialize_goal(
-                        Goal(goal_kind, raw_parameters),
-                        entities,
-                        options=self.entry.options,
-                        is_admin=await user_is_admin(self.hass, user_input),
-                        user_id=actor_id,
-                    )
-                except (PermissionError, ValueError):
-                    response.async_set_speech(
-                        "Die Prozedur ist mit dem aktuellen Hauszustand nicht mehr sicher ausführbar."
-                    )
-                else:
-                    manager.create(
-                        conversation_id,
-                        "procedure-plan",
-                        DialogTaskKind.PLAN_CONFIRMATION,
-                        DialogPriority.CONFIRMATION,
-                        slots={"plan": plan},
-                        reason="Die gespeicherte Prozedur wurde frisch materialisiert und wartet auf Bestätigung.",
-                        requested_by_user_id=actor_id,
-                    )
-                    response.async_set_speech(
-                        f"Die Prozedur {request.name} ergibt aktuell {plan.summary} Soll ich sie ausführen?"
-                    )
-        return conversation.ConversationResult(
-            response=response, conversation_id=conversation_id
-        )
-
-    async def _async_handle_routine_feedback_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        """Bind explicit feedback to exactly one recent routine signal."""
-        request = interpret_routine_feedback(language_document)
-        if request is None:
-            return None
-        now = dt_util.utcnow()
-        recent = [
-            (entity_id, stats)
-            for entity_id, stats in self._runtime_data.routine_statistics.items()
-            if stats.last_alert_at is not None
-            and timedelta(0) <= now - stats.last_alert_at <= timedelta(minutes=15)
-        ]
-        if not recent:
-            response.async_set_speech(
-                "Es gibt keinen eindeutigen aktuellen Routinehinweis für dieses Feedback."
-            )
-        elif len(recent) > 1:
-            names_by_id = {entity.entity_id: entity.friendly_name for entity in entities}
-            names = ", ".join(
-                names_by_id.get(entity_id, "unbekanntes Gerät")
-                for entity_id, _ in recent[:3]
-            )
-            response.async_set_speech(
-                f"Mehrere Routinehinweise sind offen: {names}. Bitte beziehe dich eindeutig auf einen."
-            )
-        else:
-            entity_id, stats = recent[0]
-            stats.record_feedback(request.feedback, now=now)
-            actor_id = conversation_user_id(user_input)
-            store = self._runtime_data.memory
-            if store is not None and store.enabled and actor_id is not None:
-                await store.async_remember(
-                    MemoryKind.DECISION,
-                    {
-                        "routine_entity_id": entity_id,
-                        "feedback": request.feedback.value,
-                    },
-                    provenance=FactProvenance.CONFIRMED_MEMORY,
-                    confirmed=True,
-                    person_id=actor_id,
-                )
-            messages = {
-                "helpful": "Danke. Ich habe den Hinweis als hilfreich bewertet.",
-                "unnecessary": "Verstanden. Ich habe den Hinweis als unnötig bewertet.",
-                "wrong": "Verstanden. Ich habe den Hinweis als falsch bewertet.",
-                "ignore": "Verstanden. Dieses lokale Muster wird künftig nicht mehr gemeldet.",
-                "later": "Verstanden. Ich frage zu diesem Muster frühestens später erneut.",
-            }
-            response.async_set_speech(messages[request.feedback.value])
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_comfort_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-        entities: list[EntitySnapshot],
-        *,
-        area_id: str | None,
-    ) -> conversation.ConversationResult | None:
-        """Turn a vague comfort command into one explicit, confirmed ASK."""
-        manager = self._runtime_data.dialog_manager
-        conversation_id = user_input.conversation_id
-        active = manager.active(conversation_id)
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.CONFLICT_RESOLUTION
-            and active.task_id == "comfort-household-conflict"
-        ):
-            actor_id = conversation_user_id(user_input)
-            stored_area = active.slots.get("area_id")
-            raw_users = active.slots.get("present_user_ids")
-            users = tuple(
-                item for item in raw_users if isinstance(item, str)
-            ) if isinstance(raw_users, tuple) else ()
-            draft = (
-                _comfort_profile_from_document(
-                    language_document, stored_area, actor_id
-                )
-                if isinstance(stored_area, str) and actor_id is not None
-                else None
-            )
-            if draft is None or len(users) < 2 or self._runtime_data.profiles is None:
-                response.async_set_speech(
-                    "Bitte nenne einen konkreten gemeinsamen Temperaturwert in Grad."
-                )
-            else:
-                shared = replace(
-                    draft,
-                    profile_id=("comfort:shared:" + hashlib.sha256(
-                        repr((stored_area, tuple(sorted(users)))).encode()
-                    ).hexdigest()[:24]),
-                    owner_user_id="shared",
-                    confirmed=True,
-                    household_user_ids=tuple(sorted(users)),
-                )
-                await self._runtime_data.profiles.async_save_comfort_profile(
-                    shared, confirmed=True
-                )
-                manager.cancel(conversation_id)
-                response.async_set_speech(
-                    "Gespeichert. Dieses gemeinsame Komfortprofil gilt nur für "
-                    "diesen Bereich und genau diese anwesende Benutzergruppe."
-                )
-            return conversation.ConversationResult(
-                response=response, conversation_id=conversation_id
-            )
-        if active is not None and active.kind is DialogTaskKind.COMFORT_PROFILE_DEFINITION:
-            actor_id = conversation_user_id(user_input)
-            if active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Komfortprofil-Definition gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            draft = active.slots.get("profile")
-            reply = classify_confirmation_reply(language_document.source_text)
-            if reply is ConfirmationReply.NO:
-                manager.cancel(conversation_id)
-                response.async_set_speech("In Ordnung. Das Komfortprofil wurde nicht gespeichert.")
-            elif reply is not ConfirmationReply.YES:
-                response.async_set_speech("Bitte bestätige das Komfortprofil eindeutig mit Ja oder Nein.")
-            elif not isinstance(draft, ComfortProfile) or self._runtime_data.profiles is None:
-                manager.cancel(conversation_id)
-                response.async_set_speech("Die Komfortprofil-Definition ist nicht mehr vollständig.")
-            else:
-                confirmed_profile = replace(draft, confirmed=True)
-                await self._runtime_data.profiles.async_save_comfort_profile(
-                    confirmed_profile, confirmed=True
-                )
-                manager.cancel(conversation_id)
-                response.async_set_speech("Gespeichert. Das bestätigte Komfortprofil ist jetzt lokal verfügbar.")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.MISSING_SLOT
-            and active.task_id == "comfort-missing-action"
-        ):
-            normalized = language_document.normalized_text.casefold()
-            if re.search(r"\bwarum\s+fragst\s+du\b", normalized):
-                response.async_set_speech(manager.explain(conversation_id))
-            elif re.search(r"\bwas\s+hast\s+du\s+verstanden\b", normalized):
-                response.async_set_speech(manager.understood(conversation_id))
-            elif re.search(r"\b(?:abbrechen|vergiss\s+es|lass\s+das)\b", normalized):
-                manager.cancel(conversation_id)
-                response.async_set_speech("In Ordnung. Ich ändere nichts.")
-            else:
-                actor_id = conversation_user_id(user_input)
-                stored_area = active.slots.get("area_id")
-                profile = (
-                    _comfort_profile_from_document(
-                        language_document, stored_area, actor_id
-                    )
-                    if isinstance(stored_area, str) and actor_id is not None
-                    else None
-                )
-                if profile is None:
-                    response.async_set_speech(
-                        "Bitte nenne einen konkreten Temperaturbereich in Grad, einen Helligkeitsbereich in Prozent oder beides."
-                    )
-                else:
-                    manager.create(
-                        conversation_id,
-                        "comfort-profile-definition",
-                        DialogTaskKind.COMFORT_PROFILE_DEFINITION,
-                        DialogPriority.CONFIRMATION,
-                        slots={"profile": profile},
-                        reason="Ein typisiertes Komfortprofil wartet auf ausdrückliche Bestätigung.",
-                        requested_by_user_id=actor_id,
-                    )
-                    response.async_set_speech(
-                        f"Als Komfortprofil habe ich verstanden: {_comfort_profile_preview(profile)}. Soll ich diese Werte lokal speichern?"
-                    )
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        if active is not None and active.kind is DialogTaskKind.COMFORT_CONFIRMATION:
-            actor_id = conversation_user_id(user_input)
-            if active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Komfort-Rückfrage gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            reply = classify_confirmation_reply(language_document.source_text)
-            if reply is ConfirmationReply.NO:
-                manager.cancel(conversation_id)
-                response.async_set_speech("In Ordnung. Ich ändere nichts.")
-            elif reply is ConfirmationReply.YES:
-                proposed = active.slots.get("plan")
-                if not isinstance(proposed, ServiceCallPlan):
-                    manager.cancel(conversation_id)
-                    response.async_set_speech("Der Vorschlag ist nicht mehr vollständig. Ich ändere nichts.")
-                else:
-                    fresh = build_entity_snapshots(self.hass, self.entry)
-                    validation_error = validate_agent_service_plan(proposed)
-                    if validation_error is not None:
-                        manager.cancel(conversation_id)
-                        response.async_set_speech(f"Ich habe nichts geändert: {validation_error}")
-                    else:
-                        execution = await async_execute_service_plan(
-                            self.hass,
-                            proposed,
-                            fresh,
-                            self.entry.options,
-                            is_admin=await user_is_admin(self.hass, user_input),
-                            user_id=actor_id,
-                            confirmed=True,
-                            audit_trail=self._audit_trail,
-                            audit_actor_id=actor_id or "voice",
-                            effect_monitor=self._runtime_data.effect_monitor,
-                        )
-                        manager.cancel(conversation_id)
-                        response.async_set_speech(
-                            "Die bestätigte Komfortänderung wurde ausgeführt."
-                            if execution.executed
-                            else f"Ich habe nichts geändert: {execution.error or 'Policy abgelehnt.'}"
-                        )
-            elif len(language_document.tokens) <= 3:
-                response.async_set_speech("Bitte antworte eindeutig mit Ja oder Nein.")
-            else:
-                manager.cancel(conversation_id)
-                return None
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        if not is_comfort_request(language_document):
-            return None
-        # V10 consolidates comfort under the confirmed ProfileStore and the
-        # same bounded planner used by every other goal.
-        manager.cancel(conversation_id)
-        actor_id = conversation_user_id(user_input)
-        profiles = self._runtime_data.profiles
-        profile: ComfortProfile | None = None
-        if profiles is not None and actor_id is not None and area_id is not None:
-            states = {item.entity_id: item.state for item in entities}
-            present_user_ids = (
-                self._runtime_data.user_contexts.present_user_ids(states)
-                if self._runtime_data.user_contexts is not None else ()
-            )
-            if not present_user_ids:
-                present_user_ids = (actor_id,)
-            candidates = profiles.comfort_profiles(
-                area_id=area_id, user_ids=present_user_ids
-            )
-            shared = profiles.shared_comfort(
-                area_id=area_id, user_ids=present_user_ids
-            )
-            typed = tuple(
-                LearnedPreference(
-                    item.profile_id,
-                    PreferenceContext(
-                        item.owner_user_id, "comfortable_environment", area_id,
-                        presence_set=present_user_ids,
-                    ),
-                    _comfort_value_signature(item), KnowledgeState.CONFIRMED,
-                    1.0, 1, 1, item.owner_user_id,
-                )
-                for item in candidates
-            )
-            typed_shared = (
-                LearnedPreference(
-                    shared.profile_id,
-                    PreferenceContext(
-                        "shared", "comfortable_environment", area_id,
-                        presence_set=tuple(sorted(present_user_ids)),
-                    ),
-                    _comfort_value_signature(shared), KnowledgeState.CONFIRMED,
-                    1.0, 1, 1, shared.owner_user_id,
-                )
-                if shared is not None else None
-            )
-            resolution = resolve_preferences(
-                typed, present_user_ids=present_user_ids,
-                shared_preference=typed_shared,
-                concept="comfortable_environment", area_id=area_id,
-            )
-            if resolution.requires_clarification and len(present_user_ids) > 1:
-                manager.create(
-                    conversation_id, "comfort-household-conflict",
-                    DialogTaskKind.CONFLICT_RESOLUTION,
-                    DialogPriority.SELECTION,
-                    slots={"area_id": area_id,
-                           "present_user_ids": present_user_ids},
-                    reason="Bestätigte Komfortprofile anwesender Benutzer widersprechen sich.",
-                    requested_by_user_id=actor_id,
-                )
-                response.async_set_speech(
-                    "Für euch sind unterschiedliche Komfortwerte gespeichert. "
-                    "Welche Temperatur soll gelten, wenn ihr beide zuhause seid?"
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=conversation_id
-                )
-            if typed_shared is not None and resolution.source_preference_ids == (typed_shared.preference_id,):
-                profile = shared
-            elif resolution.source_preference_ids:
-                selected_id = resolution.source_preference_ids[0]
-                profile = next(
-                    (item for item in candidates if item.profile_id == selected_id), None
-                )
-        if profile is None:
-            if area_id is None:
-                response.async_set_speech(
-                    "Ich kann „hier“ keinem eindeutigen Home-Assistant-Bereich zuordnen. Bitte nutze einen Sprachsatelliten mit Bereich oder nenne den Raum."
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=conversation_id
-                )
-            manager.create(
-                conversation_id,
-                "comfort-missing-action",
-                DialogTaskKind.MISSING_SLOT,
-                DialogPriority.FOLLOWUP,
-                slots={"area_id": area_id},
-                missing_slots=("konkrete Aktion",),
-                reason="Gemütlicher ist ohne eine eindeutige bestätigte Präferenz mehrdeutig.",
-                requested_by_user_id=actor_id,
-            )
-            response.async_set_speech(
-                "Was bedeutet angenehm für dich hier? Soll ich Temperatur, Licht oder beides berücksichtigen? Ich speichere nur ausdrücklich bestätigte Werte."
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=conversation_id
-            )
-        goal = interpret_goal(
-            language_document,
-            current_user_id=actor_id,
-            conversation_id=conversation_id,
-            voice_area_id=area_id,
-        )
-        if goal is None:
-            return None
-        try:
-            plan = materialize_comfort_profile(
-                goal,
-                profile,
-                entities,
-                options=self.entry.options,
-                is_admin=await user_is_admin(self.hass, user_input),
-                user_id=actor_id,
-            )
-        except (PermissionError, ValueError) as err:
-            response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        return self._goals.stage_plan(user_input, response, plan, actor_id)
-
-    async def _async_handle_document_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-    ) -> conversation.ConversationResult | None:
-        query = interpret_document_search(language_document)
-        if query is None:
-            return None
-        index = self._runtime_data.document_index
-        if index is None:
-            response.async_set_speech("Der lokale Dokumentindex ist deaktiviert.")
-        else:
-            hits = await index.async_search(query, limit=3)
-            if not hits:
-                response.async_set_speech("Dazu habe ich in den freigegebenen lokalen Dokumenten keinen Treffer gefunden.")
-            else:
-                rendered = "; ".join(
-                    f"{hit.title} ({hit.relative_path}): {hit.excerpt}"
-                    for hit in hits
-                )
-                response.async_set_speech(f"Lokale Dokumenttreffer: {rendered}")
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
-    async def _async_handle_learning_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-    ) -> conversation.ConversationResult | None:
-        """Review/explain/delete V11 knowledge without exposing raw history."""
-        registry = self._runtime_data.learned_models
-        if registry is None:
-            return None
-        normalized_request = language_document.normalized_text.casefold()
-        if re.search(
-            # Only predictive wording. A bare "wie lange" also asks for a
-            # running timer, an appliance's remaining time or recorder history,
-            # which have their own authoritative read paths.
-            r"\b(?:normalerweise|typischerweise|vermutlich|trend|wann.*leer)\b",
-            normalized_request,
-        ):
-            if re.search(r"\b(?:strom|energie|verbrauch)\b", normalized_request):
-                response.async_set_speech(
-                    "Für dieses Gerät habe ich noch kein belastbares Verbrauchsmodell."
-                )
-            elif re.search(r"\b(?:batterie|akku)\b", normalized_request):
-                response.async_set_speech(
-                    "Für dieses Gerät habe ich noch kein belastbares Batterie-Trendmodell."
-                )
-            elif re.search(r"\b(?:dauer|lange|fertig|laufzeit)\b", normalized_request):
-                response.async_set_speech(
-                    "Für dieses Gerät habe ich noch kein belastbares Dauermodell."
-                )
-            else:
-                return None
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        manager = self._runtime_data.dialog_manager
-        conversation_id = user_input.conversation_id
-        actor_id = conversation_user_id(user_input)
-        active = manager.active(conversation_id)
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.PREFERENCE_CONFIRMATION
-            and isinstance(active.payload, LearningDialogPayload)
-        ):
-            if active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Präferenzrückfrage gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            model = (
-                await registry.async_get(active.payload.preference_id)
-                if active.payload.preference_id is not None else None
-            )
-            reply = classify_confirmation_reply(language_document.source_text)
-            if reply is ConfirmationReply.NO:
-                if model is not None and actor_id is not None:
-                    try:
-                        await async_reject_preference(registry, model.model_id, actor_id)
-                    except LearningControlError:
-                        pass
-                manager.cancel(conversation_id)
-                response.async_set_speech(
-                    "In Ordnung. Die beobachtete Auswahl bleibt unverbindlich."
-                )
-            elif reply is not ConfirmationReply.YES:
-                response.async_set_speech("Bitte antworte eindeutig mit Ja oder Nein.")
-            elif model is None or actor_id is None:
-                manager.cancel(conversation_id)
-                response.async_set_speech("Der Präferenzkandidat ist nicht mehr verfügbar.")
-            else:
-                manager.cancel(conversation_id)
-                try:
-                    await async_confirm_preference(registry, model.model_id, actor_id)
-                except LearningControlError as err:
-                    response.async_set_speech(_learning_control_speech(err))
-                else:
-                    response.async_set_speech(
-                        "Gespeichert. Diese Präferenz gilt nur im bestätigten Kontext."
-                    )
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.HABIT_SUGGESTION
-            and isinstance(active.payload, LearningDialogPayload)
-        ):
-            if active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Gewohnheitsrückfrage gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            model = (
-                await registry.async_get(active.payload.habit_id)
-                if active.payload.habit_id is not None else None
-            )
-            reply = classify_confirmation_reply(language_document.source_text)
-            if reply is ConfirmationReply.NO:
-                if model is not None and actor_id is not None:
-                    try:
-                        await async_reject_habit(registry, model.model_id, actor_id)
-                    except LearningControlError:
-                        pass
-                manager.cancel(conversation_id)
-                response.async_set_speech(
-                    "In Ordnung. Dieses unveränderte Muster schlage ich nicht erneut vor."
-                )
-            elif reply is not ConfirmationReply.YES:
-                response.async_set_speech("Bitte antworte eindeutig mit Ja oder Nein.")
-            elif model is None or actor_id is None:
-                manager.cancel(conversation_id)
-                response.async_set_speech("Der Gewohnheitskandidat ist nicht mehr verfügbar.")
-            else:
-                try:
-                    routine: RoutineDefinition | None = await async_accept_habit(
-                        registry, model.model_id, actor_id
-                    )
-                except LearningControlError:
-                    routine = None
-                if routine is None:
-                    manager.cancel(conversation_id)
-                    response.async_set_speech(
-                        "Aus dem Kandidaten lässt sich keine sichere typisierte Routine bilden."
-                    )
-                else:
-                    manager.create(
-                        conversation_id, "habit-routine-preview",
-                        DialogTaskKind.ROUTINE_DEFINITION,
-                        DialogPriority.CONFIRMATION,
-                        slots={"routine_id": routine.routine_id, "routine": routine},
-                        reason="Ein bestätigter Habit-Kandidat wartet als V10-Routine auf Bestätigung.",
-                        requested_by_user_id=actor_id,
-                    )
-                    preview = "; ".join(step.description for step in routine.steps)
-                    response.async_set_speech(
-                        f"Routinenvorschau {routine.name}: {preview}. Soll ich diese V10-Routine speichern?"
-                    )
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.MODEL_RESET_CONFIRMATION
-            and isinstance(active.payload, LearningDialogPayload)
-        ):
-            if active.requested_by_user_id is not None and active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Lernrückfrage gehört zu einem anderen Benutzer.")
-            else:
-                reply = classify_confirmation_reply(language_document.source_text)
-                if reply is ConfirmationReply.YES:
-                    model_id = active.payload.model_id
-                    predictive = self._runtime_data.predictive_house
-                    if active.payload.operation is LearningDialogOperation.DELETE_MODEL and model_id is not None:
-                        forgotten = await async_forget_model(registry, predictive, model_id)
-                        deleted = int(forgotten is not None)
-                        removed: tuple[LearnedModel, ...] = (
-                            (forgotten,) if forgotten is not None else ()
-                        )
-                    else:
-                        deleted, removed = await async_reset_models(registry, predictive)
-                    updated_options = options_without_preference_aliases(
-                        self.entry.options, removed, CONF_CUSTOM_ALIASES
-                    )
-                    if updated_options is not None:
-                        self.hass.config_entries.async_update_entry(
-                            self.entry, options=updated_options
-                        )
-                    response.async_set_speech(
-                        f"{deleted} gelernte Modelle wurden gelöscht und für alte Evidenz unterdrückt."
-                    )
-                    manager.cancel(conversation_id)
-                elif reply is ConfirmationReply.NO:
-                    manager.cancel(conversation_id)
-                    response.async_set_speech("Abgebrochen. Es wurde kein gelerntes Modell gelöscht.")
-                else:
-                    response.async_set_speech("Bitte antworte eindeutig mit Ja oder Nein.")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        request = interpret_learning_request(language_document.source_text)
-        if request is None:
-            return None
-        # Personal knowledge (preferences, habits) is only ever described to
-        # its authenticated owner - the same server-side visibility rule the
-        # Learning Center applies.
-        models = tuple(
-            item for item in await registry.async_list()
-            if (owner := model_owner(item)) is None or owner == actor_id
-        )
-        matched = tuple(item for item in models if _model_matches_hint(item, request.subject_hint))
-        if request.operation is LearningOperation.LIST:
-            if not matched:
-                response.async_set_speech("Dazu ist kein aktives gelerntes Wissen gespeichert.")
-            else:
-                habit = next((
-                    item for item in matched
-                    if item.kind is LearnedKind.HABIT
-                    and item.health is ModelHealth.VALID
-                    and item.parameters.get("suggestion_status") == "new"
-                ), None)
-                policy = self._runtime_data.learning_policy
-                preference = next((
-                    item for item in matched
-                    if item.kind is LearnedKind.PREFERENCE
-                    and item.knowledge_state is KnowledgeState.INFERRED
-                    and item.parameters.get("suggestion_status") == "new"
-                ), None)
-                if preference is not None and policy is not None and policy.suggestions_enabled:
-                    await registry.async_upsert(replace(
-                        preference,
-                        parameters={**preference.parameters, "suggestion_status": "shown"},
-                        model_version=preference.model_version + 1,
-                    ))
-                    manager.create(
-                        conversation_id, "preference-suggestion",
-                        DialogTaskKind.PREFERENCE_CONFIRMATION,
-                        DialogPriority.CONFIRMATION,
-                        reason="Eine statistische Auswahl benötigt ausdrückliche Autorität.",
-                        requested_by_user_id=actor_id,
-                        payload=LearningDialogPayload(
-                            LearningDialogOperation.CONFIRM_PREFERENCE,
-                            preference_id=preference.model_id,
-                            requested_by_user_id=actor_id,
-                        ),
-                    )
-                    response.async_set_speech(
-                        f"In {preference.parameters.get('support_count', 0)} von "
-                        f"{preference.sample_count} bestätigten Auswahlen hast du "
-                        f"{preference.parameters.get('entity_id')} gewählt. "
-                        f"Soll das in diesem Kontext dein Standard für {preference.subject} sein?"
-                    )
-                elif habit is not None and policy is not None and policy.suggestions_enabled:
-                    await registry.async_upsert(replace(
-                        habit,
-                        parameters={**habit.parameters, "suggestion_status": "shown"},
-                        model_version=habit.model_version + 1,
-                    ))
-                    manager.create(
-                        conversation_id, "habit-suggestion",
-                        DialogTaskKind.HABIT_SUGGESTION,
-                        DialogPriority.CONFIRMATION,
-                        reason="Ein belegter Ablauf kann nur nach Zustimmung zur Routine werden.",
-                        requested_by_user_id=actor_id,
-                        payload=LearningDialogPayload(
-                            LearningDialogOperation.ACCEPT_HABIT,
-                            habit_id=habit.model_id,
-                            requested_by_user_id=actor_id,
-                        ),
-                    )
-                    response.async_set_speech(
-                        f"Du führst {_TIME_BAND_DE.get(str(habit.parameters.get('time_band', habit.context.get('time_band', ''))), 'regelmäßig')} "
-                        f"häufig dieselbe Folge aus ({habit.sample_count} Belege). "
-                        "Soll ich daraus eine Routine vorschlagen?"
-                    )
-                else:
-                    descriptions = "; ".join(_learned_model_summary(item) for item in matched[:5])
-                    # Assist cannot navigate the UI; it only points to the panel.
-                    response.async_set_speech(
-                        f"{descriptions}. Die vollständige Übersicht findest du "
-                        "im HomeIntent Learning Center."
-                    )
-        elif request.operation is LearningOperation.EXPLAIN:
-            if len(matched) != 1:
-                response.async_set_speech("Dazu ist kein einzelnes belegtes Modell eindeutig.")
-            else:
-                response.async_set_speech(explain_learned_model(matched[0]))
-        elif request.operation is LearningOperation.RESET:
-            if actor_id is None or not await user_is_admin(self.hass, user_input):
-                response.async_set_speech("Alle Lernmodelle darf nur ein authentifizierter Administrator zurücksetzen.")
-            else:
-                manager.create(
-                    conversation_id, "learning-reset",
-                    DialogTaskKind.MODEL_RESET_CONFIRMATION, DialogPriority.SAFETY,
-                    reason="Alle lokalen Lernmodelle sollen persistent gelöscht werden.",
-                    requested_by_user_id=actor_id,
-                    payload=LearningDialogPayload(
-                        LearningDialogOperation.RESET_MODELS,
-                        requested_by_user_id=actor_id,
-                    ),
-                )
-                response.async_set_speech("Soll ich wirklich alle lokalen Lernmodelle zurücksetzen?")
-        else:
-            if len(matched) != 1:
-                response.async_set_speech("Das zu löschende Modell ist nicht eindeutig.")
-            else:
-                manager.create(
-                    conversation_id, "learning-delete-model",
-                    DialogTaskKind.MODEL_RESET_CONFIRMATION, DialogPriority.SAFETY,
-                    reason="Ein gelerntes Modell soll persistent gelöscht werden.",
-                    requested_by_user_id=actor_id,
-                    payload=LearningDialogPayload(
-                        LearningDialogOperation.DELETE_MODEL,
-                        model_id=matched[0].model_id,
-                        requested_by_user_id=actor_id,
-                    ),
-                )
-                response.async_set_speech(
-                    f"Soll ich das Modell {matched[0].model_id} wirklich löschen?"
-                )
-        return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-    async def _async_confirm_alias_learning(
-        self, draft: AliasLearningDraft, actor_id: str | None
-    ) -> None:
-        """Store a confirmed alias as a binding (7.4.1).
-
-        A plain alias belongs to the household; an alias taught for one room
-        ("Mit Lampe meine ich im Wohnzimmer die Stehlampe") is the speaker's
-        own and only applies in that room.
-        """
-        personal = draft.area_id is not None and actor_id is not None
-        await self._runtime_data.bindings.async_bind(
-            BindingKind.ALIAS,
-            draft.alias,
-            draft.entity_id,
-            confirmed=True,
-            scope=BindingScope.USER if personal else BindingScope.HOUSEHOLD,
-            user_id=actor_id if personal else None,
-            created_by=actor_id,
-            now=dt_util.now(),
-            data={
-                "spoken": draft.alias,
-                **({"area_id": draft.area_id} if draft.area_id is not None else {}),
-            },
-        )
-        self._runtime_data.learning_center_revision.bump()
-
-    async def _async_apply_confirmed_preferences(
-        self,
-        entities: list[EntitySnapshot],
-        *,
-        area_id: str | None,
-        user_id: str | None,
-    ) -> list[EntitySnapshot]:
-        """Expose confirmed preferences as aliases only in their exact context."""
-        entities = self.learned_alias_view(entities, area_id=area_id, user_id=user_id)
-        registry = self._runtime_data.learned_models
-        if registry is None or user_id is None:
-            return entities
-        models = await registry.async_list(kind=LearnedKind.PREFERENCE)
-        aliases_by_entity: dict[str, list[str]] = {}
-        for model in models:
-            if model.knowledge_state is not KnowledgeState.CONFIRMED:
-                continue
-            if model.context.get("user_id") != user_id:
-                continue
-            model_area = model.context.get("area_id")
-            if model_area is not None and model_area != area_id:
-                continue
-            entity_id = model.parameters.get("entity_id")
-            if isinstance(entity_id, str):
-                aliases_by_entity.setdefault(entity_id, []).append(model.subject)
-        return [
-            replace(
-                item,
-                aliases=tuple(dict.fromkeys((*item.aliases, *aliases_by_entity[item.entity_id]))),
-            )
-            if item.entity_id in aliases_by_entity
-            and any(
-                model.knowledge_state is KnowledgeState.CONFIRMED
-                and model.context.get("user_id") == user_id
-                and model.parameters.get("entity_id") == item.entity_id
-                and (
-                    model.context.get("area_id") is None
-                    or model.context.get("area_id") == item.area_id == area_id
-                )
-                for model in models
-            )
-            else item
-            for item in entities
-        ]
-
-    async def _async_handle_memory_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        """Handle explicit memory meanings after the shared language frontend."""
-        store = self._runtime_data.memory
-        manager = self._runtime_data.dialog_manager
-        conversation_id = user_input.conversation_id
-        active = manager.active(conversation_id)
-        if active is not None and active.kind is DialogTaskKind.MEMORY_CONFIRMATION:
-            actor_id = conversation_user_id(user_input)
-            if (
-                active.requested_by_user_id is not None
-                and active.requested_by_user_id != actor_id
-            ):
-                response.async_set_speech("Diese Gedächtnisrückfrage gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(
-                    response=response, conversation_id=conversation_id
-                )
-            normalized = language_document.normalized_text.casefold()
-            if re.search(r"\bwas\s+hast\s+du\s+verstanden\b", normalized):
-                response.async_set_speech(manager.understood(conversation_id))
-            elif re.search(r"\bwarum\s+fragst\s+du\b", normalized):
-                response.async_set_speech(manager.explain(conversation_id))
-            elif re.search(r"\b(?:abbrechen|vergiss\s+es|lass\s+das)\b", normalized):
-                manager.cancel(conversation_id)
-                response.async_set_speech("In Ordnung. Ich speichere und lösche nichts.")
-            else:
-                reply = classify_confirmation_reply(language_document.source_text)
-                if reply is ConfirmationReply.NO:
-                    manager.cancel(conversation_id)
-                    response.async_set_speech("In Ordnung. Es wurde nichts dauerhaft geändert.")
-                elif reply is ConfirmationReply.YES:
-                    operation = active.slots.get("operation")
-                    if operation == MemoryOperation.RESET.value:
-                        deleted = await store.async_reset() if store is not None else 0
-                        response.async_set_speech(
-                            counted_passive(
-                                deleted, "gespeicherter Eintrag", "gespeicherte Einträge",
-                                "kontrolliert gelöscht",
-                            )
-                        )
-                    elif operation == MemoryOperation.FORGET_PERSON.value:
-                        person_id = active.slots.get("person_id")
-                        deleted = (
-                            await store.async_forget_person(person_id)
-                            if store is not None and isinstance(person_id, str)
-                            else 0
-                        )
-                        response.async_set_speech(
-                            counted_passive(
-                                deleted, "dir zugeordneter Eintrag", "dir zugeordnete Einträge",
-                                "kontrolliert gelöscht",
-                            )
-                        )
-                    elif operation == MemoryOperation.FORGET_PREFERENCE.value:
-                        memory_id = active.slots.get("memory_id")
-                        deleted = (
-                            await store.async_forget(memory_id)
-                            if store is not None and isinstance(memory_id, str)
-                            else False
-                        )
-                        response.async_set_speech(
-                            "Die Präferenz wurde kontrolliert gelöscht."
-                            if deleted
-                            else "Die Präferenz war nicht mehr vorhanden."
-                        )
-                    elif operation == MemoryOperation.CORRECT_PREFERENCE.value:
-                        memory_id = active.slots.get("memory_id")
-                        content = active.slots.get("content")
-                        corrected = (
-                            await store.async_correct(memory_id, content, confirmed=True)
-                            if store is not None
-                            and isinstance(memory_id, str)
-                            and isinstance(content, dict)
-                            else None
-                        )
-                        response.async_set_speech(
-                            "Die Präferenz wurde korrigiert."
-                            if corrected is not None
-                            else "Die Präferenz war nicht mehr vorhanden."
-                        )
-                    elif store is None or not store.enabled:
-                        response.async_set_speech(MEMORY_DISABLED_TEXT)
-                    else:
-                        content = active.slots.get("content")
-                        person_id = active.slots.get("person_id")
-                        if not isinstance(content, dict) or not isinstance(person_id, str):
-                            response.async_set_speech("Die Erinnerung ist nicht mehr vollständig. Ich speichere nichts.")
-                        else:
-                            raw_kind = active.slots.get("kind")
-                            try:
-                                kind = (
-                                    MemoryKind(str(raw_kind))
-                                    if raw_kind is not None
-                                    else MemoryKind.PREFERENCE
-                                )
-                            except ValueError:
-                                response.async_set_speech(
-                                    "Der Erinnerungstyp ist ungültig. Ich speichere nichts."
-                                )
-                                manager.cancel(conversation_id)
-                                return conversation.ConversationResult(
-                                    response=response,
-                                    conversation_id=conversation_id,
-                                )
-                            await store.async_remember(
-                                kind,
-                                content,
-                                provenance=FactProvenance.CONFIRMED_MEMORY,
-                                confirmed=True,
-                                person_id=person_id,
-                            )
-                            response.async_set_speech("Gespeichert. Du kannst diese Erinnerung jederzeit kontrolliert löschen.")
-                    manager.cancel(conversation_id)
-                elif len(language_document.tokens) <= 3:
-                    response.async_set_speech("Bitte antworte eindeutig mit Ja oder Nein.")
-                else:
-                    # A complete new command replaces this optional memory dialog.
-                    manager.cancel(conversation_id)
-                    return None
-            return conversation.ConversationResult(
-                response=response, conversation_id=conversation_id
-            )
-
-        request = interpret_memory_intent(language_document, entities)
-        if request is None:
-            return None
-        if store is None or not store.enabled:
-            response.async_set_speech(MEMORY_DISABLED_TEXT)
-        elif request.operation is MemoryOperation.LIST:
-            records = await store.async_list(person_id=conversation_user_id(user_input))
-            # Say what is remembered, in German - not internal kind names
-            # ("1 preference") (F16/F23).
-            labels = {entity.entity_id: entity.friendly_name for entity in entities}
-            described = [_describe_memory(record, labels) for record in records[:8]]
-            more = f" und {len(records) - 8} weitere Einträge" if len(records) > 8 else ""
-            response.async_set_speech(
-                f"Ich habe mir gemerkt: {'; '.join(described)}{more}."
-                if described else "Für dich sind keine dauerhaften Erinnerungen gespeichert."
-            )
-        elif request.operation is MemoryOperation.EXPORT_REDACTED:
-            exported = await store.async_redacted_export()
-            exported_counts = exported.get("record_counts", {})
-            summary = ", ".join(
-                f"{count} {_MEMORY_KIND_DE.get(str(kind), str(kind))}"
-                for kind, count in sorted(exported_counts.items())
-            ) if isinstance(exported_counts, dict) else ""
-            response.async_set_speech(
-                "Der redigierte Export enthält nur Zähler und Herkunftsklassen"
-                + (f": {summary}." if summary else ". Es sind keine aktiven Einträge vorhanden.")
-            )
-        elif request.operation is MemoryOperation.FORGET_ROUTINES:
-            person_id = conversation_user_id(user_input)
-            if person_id is None:
-                response.async_set_speech("Persönliche Routinen kann ich nur einem authentifizierten Benutzer zuordnen.")
-            else:
-                deleted = await store.async_forget_person(
-                    person_id,
-                    kinds=(MemoryKind.ROUTINE_GRANT, MemoryKind.DECISION),
-                )
-                response.async_set_speech(f"{deleted} persönliche Routinen und Routineentscheidungen wurden gelöscht.")
-        elif request.operation is MemoryOperation.FORGET_PERSON:
-            person_id = conversation_user_id(user_input)
-            if person_id is None:
-                response.async_set_speech(
-                    "Persönliche Daten kann ich nur einem authentifizierten Benutzer zuordnen."
-                )
-            else:
-                manager.create(
-                    conversation_id,
-                    "memory-forget-person",
-                    DialogTaskKind.MEMORY_CONFIRMATION,
-                    DialogPriority.SAFETY,
-                    slots={
-                        "operation": MemoryOperation.FORGET_PERSON.value,
-                        "person_id": person_id,
-                    },
-                    reason="Alle diesem Benutzer zugeordneten Erinnerungen sollen gelöscht werden.",
-                    requested_by_user_id=person_id,
-                )
-                response.async_set_speech(
-                    "Soll ich wirklich alle dir zugeordneten HomeIntent-Erinnerungen löschen?"
-                )
-        elif request.operation is MemoryOperation.RESET:
-            reset_user_id = conversation_user_id(user_input)
-            if reset_user_id is None or not await user_is_admin(self.hass, user_input):
-                response.async_set_speech("Das vollständige Gedächtnis darf nur ein authentifizierter Administrator zurücksetzen.")
-                return conversation.ConversationResult(
-                    response=response, conversation_id=conversation_id
-                )
-            manager.create(
-                conversation_id,
-                "memory-reset",
-                DialogTaskKind.MEMORY_CONFIRMATION,
-                DialogPriority.SAFETY,
-                slots={"operation": MemoryOperation.RESET.value},
-                reason="Das würde alle dauerhaften HomeIntent-Erinnerungen löschen.",
-                requested_by_user_id=reset_user_id,
-            )
-            response.async_set_speech("Soll ich wirklich alle dauerhaften HomeIntent-Erinnerungen löschen?")
-        elif request.target_entity_id is None:
-            if request.ambiguous_entity_ids:
-                response.async_set_speech("Mehrere Geräte passen zur genannten Präferenz. Bitte nenne eines eindeutig.")
-            else:
-                response.async_set_speech("Welches eindeutige Gerät soll Teil dieser Präferenz sein?")
-        elif request.operation in {
-            MemoryOperation.CORRECT_PREFERENCE,
-            MemoryOperation.FORGET_PREFERENCE,
-        }:
-            person_id = conversation_user_id(user_input)
-            records = (
-                await store.async_list(
-                    person_id=person_id, kinds=(MemoryKind.PREFERENCE,)
-                )
-                if person_id is not None
-                else ()
-            )
-            matches = [
-                record for record in records
-                if record.content.get("entity_id") == request.target_entity_id
-            ]
-            if len(matches) != 1:
-                response.async_set_speech(
-                    "Zu diesem Gerät ist keine eindeutige persönliche Präferenz gespeichert."
-                )
-            else:
-                record = matches[0]
-                corrected_content = {
-                    **record.content,
-                    **request.content,
-                    "entity_id": request.target_entity_id,
-                }
-                manager.create(
-                    conversation_id,
-                    "memory-preference-change",
-                    DialogTaskKind.MEMORY_CONFIRMATION,
-                    DialogPriority.CONFIRMATION,
-                    slots={
-                        "operation": request.operation.value,
-                        "memory_id": record.memory_id,
-                        "content": corrected_content,
-                        "person_id": person_id,
-                    },
-                    reason="Eine dauerhafte persönliche Präferenz soll geändert werden.",
-                    requested_by_user_id=person_id,
-                )
-                response.async_set_speech(
-                    "Soll ich diese Präferenz dauerhaft korrigieren?"
-                    if request.operation is MemoryOperation.CORRECT_PREFERENCE
-                    else "Soll ich diese Präferenz kontrolliert löschen?"
-                )
-        else:
-            person_id = conversation_user_id(user_input)
-            if person_id is None:
-                response.async_set_speech("Persönliche Präferenzen speichere ich nur für einen authentifizierten Benutzer.")
-            else:
-                content = {**request.content, "entity_id": request.target_entity_id}
-                manager.create(
-                    conversation_id,
-                    "memory-preference",
-                    DialogTaskKind.MEMORY_CONFIRMATION,
-                    DialogPriority.CONFIRMATION,
-                    slots={
-                        "operation": request.operation.value,
-                        "content": content,
-                        "person_id": person_id,
-                    },
-                    reason="Eine persönliche Präferenz soll dauerhaft gespeichert werden.",
-                    requested_by_user_id=person_id,
-                )
-                response.async_set_speech("Soll ich mir diese persönliche Präferenz dauerhaft merken?")
-        return conversation.ConversationResult(
-            response=response, conversation_id=conversation_id
-        )
-
-
     def _handle_explanation_request(
         self,
         user_input: conversation.ConversationInput,
@@ -3730,139 +2308,5 @@ class NluConversationEntity(
         )
 
 
-def _comfort_profile_from_document(
-    document: LanguageDocument,
-    area_id: str,
-    owner_user_id: str,
-) -> ComfortProfile | None:
-    """Extract explicit numeric ranges; absent dimensions remain unset."""
-    tokens = document.tokens
-    unit_positions = [
-        index
-        for index, token in enumerate(tokens)
-        if token.canonical in {"grad", "prozent", "%"}
-    ]
-
-    def values_before(position: int) -> tuple[float, ...]:
-        previous_unit = max((item for item in unit_positions if item < position), default=-1)
-        values: list[float] = []
-        for token in tokens[previous_unit + 1 : position]:
-            if not token.is_number:
-                continue
-            try:
-                values.append(float(token.canonical.replace(",", ".")))
-            except ValueError:
-                continue
-        return tuple(values[-2:])
-
-    temperature: tuple[float, ...] = ()
-    brightness: tuple[float, ...] = ()
-    for position in unit_positions:
-        unit = tokens[position].canonical
-        if unit == "grad" and not temperature:
-            temperature = values_before(position)
-        elif unit in {"prozent", "%"} and not brightness:
-            brightness = values_before(position)
-    if not temperature and not brightness:
-        return None
-    temperature_min = min(temperature) if temperature else None
-    temperature_max = max(temperature) if temperature else None
-    brightness_min = round(min(brightness)) if brightness else None
-    brightness_max = round(max(brightness)) if brightness else None
-    return ComfortProfile(
-        f"comfort:{owner_user_id}:{area_id}",
-        owner_user_id,
-        area_id,
-        temperature_min,
-        temperature_max,
-        brightness_min,
-        brightness_max,
-        confirmed=False,
-    )
-
-
-def _comfort_profile_preview(profile: ComfortProfile) -> str:
-    parts: list[str] = []
-    if profile.temperature_min is not None and profile.temperature_max is not None:
-        parts.append(
-            f"Temperatur {profile.temperature_min:g} bis {profile.temperature_max:g} Grad"
-        )
-    if profile.brightness_min is not None and profile.brightness_max is not None:
-        parts.append(
-            f"Helligkeit {profile.brightness_min} bis {profile.brightness_max} Prozent"
-        )
-    return ", ".join(parts)
-
-
-def _comfort_value_signature(profile: ComfortProfile) -> str:
-    """Comparable typed value; never averages conflicting user profiles."""
-    return repr((
-        profile.temperature_min, profile.temperature_max,
-        profile.brightness_min, profile.brightness_max,
-        profile.color_temperature_kelvin, profile.humidity_min,
-        profile.humidity_max, profile.cover_position,
-    ))
-
-
-def _model_matches_hint(model: LearnedModel, hint: str | None) -> bool:
-    if hint is None:
-        return True
-    searchable = " ".join(
-        (model.model_id, model.subject, *(str(value) for value in model.context.values()))
-    ).casefold()
-    aliases = {
-        "heizung": ("thermal", "climate", "heizung"),
-        "garage": ("garage", "cover"),
-        "licht": ("light", "licht", "lampe"),
-        "lampe": ("light", "licht", "lampe"),
-        "morgenroutine": ("habit", "morning", "morgen"),
-    }
-    return any(term in searchable for term in aliases.get(hint, (hint,)))
-
-
-def _learning_control_speech(error: LearningControlError) -> str:
-    return {
-        "wrong_owner": "Dieses gelernte Wissen gehört zu einem anderen Benutzer.",
-        "invalid_state": "Dieser Vorschlag ist bereits entschieden.",
-        "not_found": "Der Kandidat ist nicht mehr verfügbar.",
-    }.get(error.code.value, "Diese Änderung ist für dieses Modell nicht möglich.")
-
-
-_LEARNED_KIND_DE = {
-    "fact": "Fakt",
-    "preference": "Vorliebe",
-    "thermal_model": "Wärmemodell",
-    "effect_timing": "Wirkungsdauer",
-    "reliability": "Zuverlässigkeit",
-    "habit": "Gewohnheit",
-    "duration": "Laufzeit",
-    "energy": "Energieverbrauch",
-    "battery_trend": "Batterieverlauf",
-}
-_TIME_BAND_DE = {"morning": "morgens", "day": "tagsüber", "evening": "abends", "night": "nachts"}
-_MODEL_HEALTH_DE = {
-    "valid": "gültig",
-    "low_confidence": "noch unsicher",
-    "unreliable": "unzuverlässig",
-    "stale": "veraltet",
-    "drift_detected": "Abweichung erkannt",
-    "invalid": "ungültig",
-}
-
-
-def _learned_model_summary(model: LearnedModel) -> str:
-    """German summary; no English enum values reach the speech (7.4.1)."""
-    state = {
-        "observed": "beobachtet",
-        "inferred": "vermutet",
-        "confirmed": "bestätigt",
-    }[model.knowledge_state.value]
-    kind = _LEARNED_KIND_DE.get(model.kind.value, model.kind.value)
-    health = _MODEL_HEALTH_DE.get(model.health.value, model.health.value)
-    confidence = f"{model.confidence:.2f}".replace(".", ",")
-    return (
-        f"{kind} für {model.subject}: {state}, "
-        f"{model.sample_count} Belege, Konfidenz {confidence}, Status {health}"
-    )
 
 

@@ -148,17 +148,17 @@ def test_contextual_preference_is_persistent_and_area_scoped(tmp_path):
     )
     assert draft is not None
 
-    asyncio.run(agent._async_confirm_alias_learning(draft, "philipp"))
+    asyncio.run(agent._learning.async_confirm_alias_learning(draft, "philipp"))
     (alias,) = agent._runtime_data.bindings.all(BindingKind.ALIAS)
     assert (alias.target, alias.scope, alias.user_id, alias.data["area_id"]) == (
         "light.floor", BindingScope.USER, "philipp", "living_room"
     )
     assert "custom_aliases" not in entry.options
 
-    living = asyncio.run(agent._async_apply_confirmed_preferences(
+    living = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         AREA_ENTITIES, area_id="living_room", user_id="philipp"
     ))
-    kitchen = asyncio.run(agent._async_apply_confirmed_preferences(
+    kitchen = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         AREA_ENTITIES, area_id="kitchen", user_id="philipp"
     ))
     assert "Lampe" in next(item for item in living if item.entity_id == "light.floor").aliases

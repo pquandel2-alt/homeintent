@@ -55,7 +55,7 @@ def test_memory_listing_names_the_remembered_content():
     import _ha_stub
 
     _ha_stub.install()
-    from homeintent.conversation import _describe_memory
+    from homeintent.controllers.learning import _describe_memory
 
     record = SimpleNamespace(
         kind=SimpleNamespace(value="preference"),
