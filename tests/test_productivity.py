@@ -291,10 +291,10 @@ def test_todo_complete_and_remove_resolve_stable_uids(monkeypatch):
     ]}}
     agent.hass.services.async_call = ServiceMock(side_effect=[items, None, items, None])
 
-    completed = asyncio.run(agent._async_execute_todo(TodoRequest(
+    completed = asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
         TodoOperation.COMPLETE, items=("Milch",), entity_id=SHOPPING.entity_id
     )))
-    removed = asyncio.run(agent._async_execute_todo(TodoRequest(
+    removed = asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
         TodoOperation.REMOVE, items=("Brot",), entity_id=SHOPPING.entity_id
     )))
 
@@ -328,7 +328,7 @@ def test_todo_mutation_refuses_unknown_duplicate_or_unstable_items(
     })
 
     with pytest.raises(ValueError, match=message):
-        asyncio.run(agent._async_execute_todo(TodoRequest(
+        asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
             TodoOperation.REMOVE, items=(spoken,), entity_id=SHOPPING.entity_id
         )))
 
@@ -341,7 +341,7 @@ def test_todo_move_preserves_metadata_then_removes_source(monkeypatch):
     }]}}
     agent.hass.services.async_call = ServiceMock(side_effect=[source, None, None])
 
-    speech = asyncio.run(agent._async_execute_todo(TodoRequest(
+    speech = asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
         TodoOperation.MOVE,
         items=("Bericht",),
         entity_id=SHOPPING.entity_id,
@@ -360,7 +360,7 @@ def test_todo_move_requires_destination_before_any_service(monkeypatch):
     agent = _entity(monkeypatch, [SHOPPING])
 
     with pytest.raises(ValueError, match="Zielliste"):
-        asyncio.run(agent._async_execute_todo(TodoRequest(
+        asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
             TodoOperation.MOVE, items=("Milch",), entity_id=SHOPPING.entity_id
         )))
     agent.hass.services.async_call.assert_not_awaited()
