@@ -48,6 +48,34 @@ class DecisionKind(Enum):
     DEFER = auto()
     ASK = auto()
     NOTHING = auto()
+    # Open dialog (7.7): the turn continues it, or a new turn supersedes it.
+    CONTINUE_DIALOG = auto()
+    SUPERSEDE_DIALOG = auto()
+
+
+class DialogReply(Enum):
+    YES = auto()
+    NO = auto()
+    UNCLEAR = auto()
+
+
+@dataclass(frozen=True)
+class DialogEvidence:
+    """An open question of the conversation as typed evidence (7.7, B3).
+
+    The arbiter does not manage dialogs; it only learns what is open and how
+    the turn relates to it. ``supersedable``: a complete new command may
+    replace the question (not while an automation is being composed).
+    ``drops_on_new_sentence``: a yes/no safety question that any full new
+    sentence ends - nothing of it runs.
+    """
+
+    kind: str
+    reply: DialogReply
+    new_sentence: bool
+    command_shaped: bool
+    supersedable: bool
+    drops_on_new_sentence: bool = False
 
 
 @dataclass(frozen=True)
@@ -124,4 +152,38 @@ def arbitrate(candidates: Sequence[Candidate], *, explicit_question: bool = Fals
     return Decision(DecisionKind.NOTHING, (), "no_candidate")
 
 
-__all__ = ("Authority", "Candidate", "Decision", "DecisionKind", "Effect", "arbitrate")
+def arbitrate_dialog(evidence: DialogEvidence, new_command: Candidate | None = None) -> Decision:
+    """Continue the open question or let the new turn supersede it.
+
+    Pure and deterministic. A superseded question is discarded, never
+    executed; the new turn still passes validator, EffectGraph and policy,
+    so an open dialog can never lower a confirmation.
+    """
+    if evidence.drops_on_new_sentence and evidence.new_sentence:
+        return Decision(DecisionKind.SUPERSEDE_DIALOG, (), "new_sentence_drops_question")
+    if (
+        new_command is not None
+        and evidence.supersedable
+        and evidence.command_shaped
+        and new_command.executable
+        and not new_command.residue
+    ):
+        return Decision(DecisionKind.SUPERSEDE_DIALOG, (new_command,), "complete_new_command")
+    if evidence.reply in {DialogReply.YES, DialogReply.NO}:
+        return Decision(DecisionKind.CONTINUE_DIALOG, (), "answer")
+    return Decision(DecisionKind.CONTINUE_DIALOG, (), "dialog_continues")
+
+
+def needs_command_reading(evidence: DialogEvidence) -> bool:
+    """Whether the caller has to read the turn as a command for the arbiter."""
+    return (
+        evidence.supersedable
+        and evidence.command_shaped
+        and not (evidence.drops_on_new_sentence and evidence.new_sentence)
+    )
+
+
+__all__ = (
+    "Authority", "Candidate", "Decision", "DecisionKind", "DialogEvidence", "DialogReply", "Effect",
+    "arbitrate", "arbitrate_dialog", "needs_command_reading",
+)

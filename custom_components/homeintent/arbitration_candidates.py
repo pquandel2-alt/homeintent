@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from .arbitration import Authority, Candidate, Effect
+from .arbitration import Authority, Candidate, DialogEvidence, DialogReply, Effect
 from .automation_results import AutomationMatchResult
 from .entities import EntitySnapshot
 from .nlu.language_frontend import analyse_language
@@ -54,15 +54,110 @@ def _candidate(source: str, speech_act: str, authority: Authority, payload: Any,
     return Candidate(source, speech_act, authority, Effect.NONE, payload=payload)
 
 
-def need_query_candidates(view: Any, need: Any, speech_act: str) -> list[Candidate]:
-    """The need ↔ question pair as the conversation sees it (switched to
-    the arbiter in 7.5.0)."""
+_QUESTION_OPENERS = frozenset({"warum", "wieso", "was", "welche", "welches", "wie"})
+
+
+def dialog_evidence(
+    kind: str,
+    document: Any,
+    reply: DialogReply,
+    *,
+    contextual_followup: bool,
+    supersedable: bool,
+    drops_on_new_sentence: bool = False,
+) -> DialogEvidence:
+    """How this turn relates to the open question (7.7, B3)."""
+    utterance = document.utterance
+    words = sum(1 for token in document.tokens if token.is_word)
+    new_sentence = (
+        reply is DialogReply.UNCLEAR
+        and words >= 3
+        and utterance.speech_act is not SpeechAct.QUERY
+        and not any(token.canonical in _QUESTION_OPENERS for token in document.tokens[:2])
+    )
+    command_shaped = (
+        utterance.speech_act is SpeechAct.COMMAND
+        and utterance.safe_to_execute_directly
+        and not contextual_followup
+    )
+    return DialogEvidence(
+        kind, reply, new_sentence, command_shaped, supersedable, drops_on_new_sentence
+    )
+
+
+def complete_command_candidate(payload: Any) -> Candidate | None:
+    """A fresh command reading that could replace an open question.
+
+    Complete means: at least one plan and no clarification anywhere.
+    """
+    commands = getattr(payload, "commands", None)
+    if commands is not None:
+        complete = bool(commands) and all(
+            getattr(command, "clarification", None) is None for command in commands
+        ) and any(getattr(command, "plan", None) is not None for command in commands)
+    else:
+        complete = (
+            getattr(payload, "plan", None) is not None
+            and getattr(payload, "clarification", None) is None
+        )
+    if not complete:
+        return None
+    return _candidate("parser", SpeechAct.COMMAND.name, Authority.PARSER, payload, explicit=False)
+
+
+def _authority_of(payload: Any, default: Authority) -> Authority:
+    """A confirmed binding is BINDING; a routine only inferred from similar
+    words is not "the words of this sentence" (at most a need)."""
+    from .plan_origin import PlanOrigin
+
+    if getattr(payload, "binding_confirmed", False):
+        return Authority.BINDING
+    origin = getattr(payload, "origin", None)
+    if origin is None:
+        commands = getattr(payload, "commands", None) or ()
+        origin = next((getattr(item, "origin", None) for item in commands), None)
+    if origin is PlanOrigin.INFERRED_ROUTINE:
+        return min(default, Authority.NEED)
+    return default
+
+
+def names_its_targets(text: str, payload: Any, entities: Sequence[EntitySnapshot]) -> bool:
+    """Whether the sentence says a target's name or alias verbatim."""
+    from .nlu.need_compiler import routine_named_explicitly
+
+    by_id = {entity.entity_id: entity for entity in entities}
+    targets = [by_id[item] for plan in _plans(payload) for item in _ids(plan) if item in by_id]
+    return bool(targets) and all(routine_named_explicitly(text, entity) for entity in targets)
+
+
+def need_query_candidates(
+    view: Any,
+    need: Any,
+    speech_act: str,
+    *,
+    parser: Any = None,
+    text: str = "",
+    entities: Sequence[EntitySnapshot] = (),
+) -> list[Candidate]:
+    """Situation question, need/routine and the direct command reading of
+    one turn (need ↔ question since 7.5.0; routine ↔ scene name and the
+    direct command since 7.7). An explicitly named device is evidence."""
     candidates: list[Candidate] = []
     if view is not None:
         candidates.append(Candidate("situation", speech_act, Authority.PARSER, Effect.READ, payload=view))
-    need_candidate = _candidate("need", speech_act, Authority.NEED, need, explicit=False)
+    need_candidate = _candidate("need", speech_act, _authority_of(need, Authority.NEED), need, explicit=False)
     if need_candidate is not None:
         candidates.append(need_candidate)
+    parser_candidate = (
+        _candidate(
+            "parser", speech_act, _authority_of(parser, Authority.PARSER), parser,
+            explicit=names_its_targets(text, parser, entities),
+        )
+        if parser is not None and _plans(parser)
+        else None
+    )
+    if parser_candidate is not None:
+        candidates.append(parser_candidate)
     return candidates
 
 
@@ -86,7 +181,8 @@ def collect_candidates(
         meaning.speech_act is SpeechAct.QUERY or text.rstrip().endswith("?")
     ) and not (need_statement and not text.rstrip().endswith("?"))
     candidates: list[Candidate] = []
-    parser = _candidate("parser", speech_act, Authority.PARSER, engine.understand(text, entity_list).payload, explicit=explicit)
+    parsed = engine.understand(text, entity_list).payload
+    parser = _candidate("parser", speech_act, _authority_of(parsed, Authority.PARSER), parsed, explicit=explicit)
     if parser is not None:
         candidates.append(parser)
     from .security_control import match_alarm_control
@@ -102,7 +198,7 @@ def collect_candidates(
         document, entity_list, source_area_id=source_area_id, context_area_id=None,
         routine_bindings=dict(routine_bindings or {}),
     )
-    need_candidate = _candidate("need", speech_act, Authority.NEED, need, explicit=False)
+    need_candidate = _candidate("need", speech_act, _authority_of(need, Authority.NEED), need, explicit=False)
     if need_candidate is not None:
         candidates.append(need_candidate)
     if meaning.speech_act is SpeechAct.QUERY or text.rstrip().endswith("?"):
@@ -125,4 +221,6 @@ def collect_candidates(
     return candidates, explicit_question
 
 
-__all__ = ("collect_candidates", "need_query_candidates")
+__all__ = (
+    "collect_candidates", "complete_command_candidate", "dialog_evidence", "need_query_candidates",
+)

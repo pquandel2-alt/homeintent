@@ -21,6 +21,7 @@ import logging
 import re
 import secrets
 import uuid
+from functools import partial
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal, Mapping, Sequence
@@ -340,8 +341,18 @@ from .nlu.recurrence import (
 )
 from .bindings import BindingKind, BindingScope
 from .conversation_learning import DialogLearningMixin, is_known_device_word
-from .arbitration import DecisionKind, arbitrate
-from .arbitration_candidates import need_query_candidates
+from .arbitration import (
+    DecisionKind,
+    DialogReply,
+    arbitrate,
+    arbitrate_dialog,
+    needs_command_reading,
+)
+from .arbitration_candidates import (
+    complete_command_candidate,
+    dialog_evidence,
+    need_query_candidates,
+)
 from .dialog_learning import MEMORY_DISABLED_TEXT, alias_rejection, unknown_device_noun
 from .nlu.need_semantics import ROUTINE_CONCEPTS, routine_concept_by_key
 from .routine_binding_intent import (
@@ -454,6 +465,20 @@ _PLAN_REPLY_BUDGET_SECONDS = 2.0
 
 # Open questions whose expected answer is itself a command (a routine being
 # defined step by step, an automation action): a command answers them.
+# Dialogs that compose an automation: a complete command is their content,
+# not a new topic (unless the user switches explicitly, "mach lieber ...").
+_COMPOSING_DIALOG_KINDS = frozenset({
+    PendingDialogKind.AUTOMATION_DRAFT,
+    PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
+    PendingDialogKind.AUTOMATION_ACTION_EDIT,
+    PendingDialogKind.AUTOMATION_STRUCTURE_EDIT,
+    PendingDialogKind.AUTOMATION_WIZARD,
+})
+_DIALOG_REPLY = {
+    ConfirmationReply.YES: DialogReply.YES,
+    ConfirmationReply.NO: DialogReply.NO,
+    ConfirmationReply.UNCLEAR: DialogReply.UNCLEAR,
+}
 _COMMAND_ANSWER_TASK_KINDS = frozenset({
     DialogTaskKind.ROUTINE_DEFINITION,
     DialogTaskKind.AUTOMATION,
@@ -628,6 +653,18 @@ def _occasion_phrase(routine_id: str) -> str:
     return _OCCASION_PHRASES.get(routine_id, f"bei „{routine_id}“")
 
 
+def _ambiguous_reading_text(decision: Any) -> str:
+    """Two readings with different effects and no evidence: ask, run nothing."""
+    names = sorted({
+        entity_id for candidate in decision.chosen for entity_id in candidate.targets
+    })
+    listed = ", ".join(names[:5])
+    return (
+        f"Das kann ich unterschiedlich verstehen ({listed}). "
+        "Bitte sag genauer, was ich tun soll. Ich habe nichts ausgeführt."
+    )
+
+
 def _execution_failure_text(execution: Any) -> str:
     """A refusal of the policy is said as it is; a technical error gets a prefix."""
     error = str(execution.error or "")
@@ -637,19 +674,6 @@ def _execution_failure_text(execution: Any) -> str:
     ):
         return error
     return f"Fehler beim Ausführen: {error}"
-
-
-def _is_complete_actionable_understanding(
-    payload: MatchResult | CommandPlan | None,
-) -> bool:
-    """Whether a fresh V7 turn is complete enough to replace a dialog."""
-    if isinstance(payload, MatchResult):
-        return payload.plan is not None and payload.clarification is None
-    if isinstance(payload, CommandPlan):
-        return bool(payload.commands) and all(
-            command.clarification is None for command in payload.commands
-        ) and any(command.plan is not None for command in payload.commands)
-    return False
 
 
 def _dialog_manager_kind(
@@ -1304,17 +1328,19 @@ class NluConversationEntity(
             )
 
         active_dialog = active_pending_dialog(pending)
-        if (
-            active_dialog is not None
-            and active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION
-            and classify_confirmation_reply(user_input.text) is ConfirmationReply.UNCLEAR
-            and sum(1 for token in language_document.tokens if token.is_word) >= 3
-            and language_document.utterance.speech_act is not SpeechAct.QUERY
-            and not any(
-                token.canonical in {"warum", "wieso", "was", "welche", "welches", "wie"}
-                for token in language_document.tokens[:2]
-            )
-        ):
+        # Open questions are typed evidence for the arbiter (7.7, B3): it
+        # decides whether this turn answers them or supersedes them.
+        reply = _DIALOG_REPLY[classify_confirmation_reply(user_input.text)]
+        contextual = is_contextual_followup(user_input.text)
+        dialog_evidence_for = partial(
+            dialog_evidence, document=language_document, reply=reply,
+            contextual_followup=contextual,
+        )
+        if active_dialog is not None and arbitrate_dialog(dialog_evidence_for(
+            active_dialog.kind.name,
+            supersedable=False,
+            drops_on_new_sentence=active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION,
+        )).kind is DecisionKind.SUPERSEDE_DIALOG:
             # A full new sentence instead of "Ja"/"Nein" drops the open
             # proposal (nothing runs) and is understood on its own.
             self._context_store.clear(user_input.conversation_id)
@@ -1360,21 +1386,13 @@ class NluConversationEntity(
                 ),
                 payload=active_dialog.payload,
             )
-            if (
-                language_document.utterance.speech_act is SpeechAct.COMMAND
-                and language_document.utterance.safe_to_execute_directly
-                and not is_contextual_followup(user_input.text)
-                and (
-                    active_dialog.kind not in {
-                        PendingDialogKind.AUTOMATION_DRAFT,
-                        PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
-                        PendingDialogKind.AUTOMATION_ACTION_EDIT,
-                        PendingDialogKind.AUTOMATION_STRUCTURE_EDIT,
-                        PendingDialogKind.AUTOMATION_WIZARD,
-                    }
-                    or explicit_topic_switch
-                )
-            ):
+            evidence = dialog_evidence_for(
+                active_dialog.kind.name,
+                supersedable=(
+                    active_dialog.kind not in _COMPOSING_DIALOG_KINDS or explicit_topic_switch
+                ),
+            )
+            if needs_command_reading(evidence):
                 candidate = self._engine.understand(
                     user_input.text,
                     entities,
@@ -1382,7 +1400,9 @@ class NluConversationEntity(
                     language_document,
                     context=understanding_context,
                 )
-                if _is_complete_actionable_understanding(candidate.payload):
+                if arbitrate_dialog(
+                    evidence, complete_command_candidate(candidate.payload)
+                ).kind is DecisionKind.SUPERSEDE_DIALOG:
                     self._context_store.clear(user_input.conversation_id)
                     manager.replace_with_complete_command(user_input.conversation_id)
                     pending = None
@@ -1394,14 +1414,15 @@ class NluConversationEntity(
         # question (alias confirmation, comfort conflict, proactive
         # clarification ...) instead of being swallowed as its answer (F10).
         # The superseded question is discarded, never executed.
-        if (
-            active_dialog is None
-            and active_task is not None
-            and active_task.kind not in _COMMAND_ANSWER_TASK_KINDS
-            and language_document.utterance.speech_act is SpeechAct.COMMAND
-            and language_document.utterance.safe_to_execute_directly
-            and not is_contextual_followup(user_input.text)
-        ):
+        task_evidence = (
+            dialog_evidence_for(
+                active_task.kind.name,
+                supersedable=active_task.kind not in _COMMAND_ANSWER_TASK_KINDS,
+            )
+            if active_dialog is None and active_task is not None
+            else None
+        )
+        if task_evidence is not None and needs_command_reading(task_evidence):
             candidate = self._engine.understand(
                 user_input.text,
                 entities,
@@ -1409,7 +1430,9 @@ class NluConversationEntity(
                 language_document,
                 context=understanding_context,
             )
-            if _is_complete_actionable_understanding(candidate.payload):
+            if arbitrate_dialog(
+                task_evidence, complete_command_candidate(candidate.payload)
+            ).kind is DecisionKind.SUPERSEDE_DIALOG:
                 manager.replace_with_complete_command(user_input.conversation_id)
                 active_task = None
                 direct_understanding = candidate
@@ -1560,10 +1583,40 @@ class NluConversationEntity(
                 ),
                 routine_bindings=self._routine_bindings_for(conversation_user_id(user_input)),
             )
+            # The direct command reading competes with need and question
+            # (7.7, B3): routine ↔ scene name is decided here by evidence,
+            # not by which interpreter runs first.
+            if (
+                direct_understanding is None
+                and language_document.utterance.speech_act is SpeechAct.COMMAND
+                and language_document.utterance.safe_to_execute_directly
+                and not (pending is not None and contextual)
+            ):
+                direct_understanding = self._engine.understand(
+                    user_input.text,
+                    entities,
+                    self._world_model,
+                    language_document,
+                    context=understanding_context,
+                )
             decision = arbitrate(
-                need_query_candidates(view, need, language_document.utterance.speech_act.name),
+                need_query_candidates(
+                    view, need, language_document.utterance.speech_act.name,
+                    parser=direct_understanding.payload if direct_understanding is not None else None,
+                    text=user_input.text, entities=entities,
+                ),
                 explicit_question=question_shaped,
             )
+            if decision.chosen and all(item.source == "parser" for item in decision.chosen):
+                # The command meaning applies; it runs at the direct-command
+                # step below with the same payload.
+                need = None
+            elif decision.kind is DecisionKind.ASK:
+                self._context_store.clear(user_input.conversation_id)
+                response.async_set_speech(_ambiguous_reading_text(decision))
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
             if decision.kind is DecisionKind.ANSWER and view is not None:
                 return await self._async_handle_match_result(
                     user_input,

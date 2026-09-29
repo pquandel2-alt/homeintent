@@ -72,7 +72,6 @@ from .nlu.device_ontology import analyse_word
 from .nlu.ontology_compiler import compile_ontology_command, compile_release
 from .nlu.discourse_compiler import compile_discourse
 from .nlu.need_compiler import compile_need, proposal_from_reason, routine_named_explicitly
-from .nlu.need_semantics import routine_concept_of_compound
 from .nlu.capabilities import describe_abilities
 from .plan_origin import PlanOrigin
 from .nlu.need_semantics import interpret_need
@@ -1484,11 +1483,7 @@ class NluEngine:
             SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION, SpeechAct.CORRECTION,
         } or utterance.modality is Modality.HYPOTHETICAL:
             return None
-        actions = document.semantics.values(SemanticKind.ACTION) - {"close"}
         words = [token.canonical for token in document.tokens if token.is_word]
-        names_routine = any(routine_concept_of_compound(word) for word in words)
-        if utterance.speech_act is SpeechAct.COMMAND and actions and not names_routine:
-            return None
         meaning = interpret_need(
             words, question=document.source_text.rstrip().endswith("?")
         )
