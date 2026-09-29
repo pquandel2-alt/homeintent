@@ -1,6 +1,6 @@
 {
  "beschreibung": "Klassifikation aller Regex-Muster (scripts/regex_inventory.py)",
- "maximum_semantic_sentence_pattern": 212,
+ "maximum_semantic_sentence_pattern": 210,
  "verlauf": {
   "7.5.0": 272,
   "7.5.1": 258,
@@ -1833,13 +1833,6 @@
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "_NOTIFICATION_REQUEST_VERB_RE",
    "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/engine.py::NluEngine._legacy_shadow_match::6b5a3b3558",
-   "datei": "custom_components/homeintent/engine.py",
-   "bereich": "NluEngine._legacy_shadow_match",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
    "quelle": "heuristik"
   },
   {
@@ -4391,136 +4384,10 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/parsers.py::_QUERY_DEVICE_CLASS_PATTERNS::f45aa8e9f7",
+   "id": "custom_components/homeintent/parsers.py::strip_locative_prepositions::25ef703b14",
    "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "_QUERY_DEVICE_CLASS_PATTERNS",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::_QUERY_DEVICE_CLASS_PATTERNS::189454b193",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "_QUERY_DEVICE_CLASS_PATTERNS",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::_QUERY_DEVICE_CLASS_PATTERNS::a5e696e2eb",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "_QUERY_DEVICE_CLASS_PATTERNS",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::_QUERY_DEVICE_CLASS_PATTERNS::49d132a84d",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "_QUERY_DEVICE_CLASS_PATTERNS",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::_QUERY_DEVICE_CLASS_PATTERNS::d275714b94",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "_QUERY_DEVICE_CLASS_PATTERNS",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::_strip_locative_prepositions::25ef703b14",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "_strip_locative_prepositions",
+   "bereich": "strip_locative_prepositions",
    "klasse": "STRUCTURAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::SingleTargetParser.parse::c088638ae0",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "SingleTargetParser.parse",
-   "klasse": "STRUCTURAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::PercentageParser.parse::506b3bd644",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "PercentageParser.parse",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::ComparisonQueryParser._semantic_components::29c119560b",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "ComparisonQueryParser._semantic_components",
-   "klasse": "MORPHOLOGICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::ComparisonQueryParser._semantic_components::87514fe07c",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "ComparisonQueryParser._semantic_components",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::ComparisonQueryParser._semantic_components::0ef5f00553",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "ComparisonQueryParser._semantic_components",
-   "klasse": "STRUCTURAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::ComparisonQueryParser._semantic_components::bf5e54e76c",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "ComparisonQueryParser._semantic_components",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::ComparisonQueryParser._semantic_components::cf839aab74",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "ComparisonQueryParser._semantic_components",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::StateQueryParser._parse_state_query::0c6e707f87",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "StateQueryParser._parse_state_query",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::StateQueryParser._parse_state_query::3a58da9d3f",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "StateQueryParser._parse_state_query",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::StateQueryParser._parse_state_query::89a7b0fecf",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "StateQueryParser._parse_state_query",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::StateQueryParser._parse_state_query::1cf7a62754",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "StateQueryParser._parse_state_query",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::StateQueryParser._parse_state_query::761e5be413",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "StateQueryParser._parse_state_query",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/parsers.py::StateQueryParser._parse_check_state::7ca470b2f6",
-   "datei": "custom_components/homeintent/parsers.py",
-   "bereich": "StateQueryParser._parse_check_state",
-   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -5183,9 +5050,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 369,
-  "MORPHOLOGICAL": 39,
-  "STRUCTURAL": 119,
-  "SEMANTIC_SENTENCE_PATTERN": 212
+  "LEXICAL": 355,
+  "MORPHOLOGICAL": 38,
+  "STRUCTURAL": 117,
+  "SEMANTIC_SENTENCE_PATTERN": 210
  }
 }

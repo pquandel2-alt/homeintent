@@ -16,7 +16,6 @@ from ..entities import (
     normalize_for_compare,
     resolve_entities_by_domain,
     resolve_entity,
-    resolve_entity_scored,
     generate_aliases,
 )
 from ..entity_scope import resolve_entity_scope
@@ -26,7 +25,7 @@ from .target_resolution import resolve_phrase
 __all__ = (
     "ResolutionResult", "ResolutionStatus", "ResolveResult", "ResolveStatus",
     "all_mentioned_entities", "mentioned_entities", "resolve_entities_by_domain", "resolve_entity",
-    "resolve_entity_scored", "resolve_phrase", "resolve_mentioned_target", "resolve_named_target",
+    "resolve_phrase", "resolve_mentioned_target", "resolve_named_target",
     "resolve_query_targets", "rank_semantic_targets", "RankedTarget",
 )
 

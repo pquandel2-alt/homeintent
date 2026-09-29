@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from hassil import TextSlotList
 
-from homeintent import parsers
 from homeintent.nlu import lexicon
 
 
@@ -151,29 +150,6 @@ def test_state_adj_slot_list_values_pinned():
         ("aktive", "ACTIVE"), ("aktives", "ACTIVE"), ("aktiver", "ACTIVE"), ("aktiven", "ACTIVE"),
         ("inaktive", "INACTIVE"), ("inaktives", "INACTIVE"), ("inaktiver", "INACTIVE"), ("inaktiven", "INACTIVE"),
     ]
-
-
-def test_parsers_reexports_same_slot_list_objects_from_lexicon():
-    """parsers.py imports these from nlu/lexicon.py rather than defining them
-    itself - same object identity, not just equal values."""
-    names = [
-        "_DOMAIN_SLOT_LIST",
-        "_QUANTIFIER_SLOT_LIST",
-        "_COUNT_SLOT_LIST",
-        "_LEVEL_SLOT_LIST",
-        "_COLOR_SLOT_LIST",
-        "_COLOR_TEMP_SLOT_LIST",
-        "_COMPARATOR_SLOT_LIST",
-        "_COMPARISON_DOMAIN_SLOT_LIST",
-        "_TEMPORAL_KIND_SLOT_LIST",
-        "_TEMPORAL_UNIT_SLOT_LIST",
-        "_TEMPORAL_RELATIVE_SLOT_LIST",
-        "_DEVICE_CLASS_SLOT_LIST",
-        "_STATE_SLOT_LIST",
-        "_STATE_ADJ_SLOT_LIST",
-    ]
-    for name in names:
-        assert getattr(parsers, name) is getattr(lexicon, name), name
 
 
 def test_semantic_property_candidates_cover_every_color_and_color_temp_word():

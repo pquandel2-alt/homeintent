@@ -2,7 +2,7 @@
 "Performance/Indexing") - hass-free, no engine/hassil involved.
 
 The second half of this file (World Model Wave 1) covers
-``resolve_entity_scored``'s optional ``index`` parameter: the candidate
+``resolve_phrase``'s optional ``index`` parameter: the candidate
 prefilter built on top of ``EntityIndex``. Each test asserts the indexed
 path returns the *exact same* ``ResolutionResult`` as the index-less full
 scan for the same inputs - scoring equivalence, not just "still passes"."""
@@ -13,8 +13,8 @@ from homeintent.entities import (
     EntitySnapshot,
     ResolutionStatus,
     build_entity_index,
-    resolve_entity_scored,
 )
+from homeintent.nlu.target_resolution import resolve_phrase
 from homeintent.nlu.semantic_location import resolve_semantic_location
 from homeintent.world_model import build_world_model
 
@@ -94,17 +94,17 @@ def test_empty_entities_yields_empty_index():
     assert index.by_normalized_name_token == {}
 
 
-# --- resolve_entity_scored(index=...) - candidate prefilter (World Model Wave 1) ---
+# --- resolve_phrase(index=...) - candidate prefilter (World Model Wave 1) ---
 
 
-def test_resolve_entity_scored_without_index_is_unaffected_by_the_new_parameter():
+def test_resolve_phrase_without_index_is_unaffected_by_the_new_parameter():
     """Backward compatibility: omitting ``index`` (the default) must behave
     exactly like before the parameter existed."""
     entities = [
         EntitySnapshot("light.a", "Lampe", "light", "off", area_id="wohnzimmer"),
         EntitySnapshot("light.b", "Lampe", "light", "off", area_id="buro"),
     ]
-    result = resolve_entity_scored("Lampe", entities, area_id="wohnzimmer")
+    result = resolve_phrase("Lampe", entities, area_id="wohnzimmer")
     assert result.status is ResolutionStatus.RESOLVED
     assert result.entity.entity_id == "light.a"
     assert result.score == 130
@@ -120,8 +120,8 @@ def test_index_area_prefilter_matches_full_scan_result():
     ]
     index = build_entity_index(entities)
 
-    without_index = resolve_entity_scored("Lampe", entities, area_id="wohnzimmer")
-    with_index = resolve_entity_scored("Lampe", entities, area_id="wohnzimmer", index=index)
+    without_index = resolve_phrase("Lampe", entities, area_id="wohnzimmer")
+    with_index = resolve_phrase("Lampe", entities, area_id="wohnzimmer", index=index)
 
     assert with_index == without_index
     assert with_index.status is ResolutionStatus.RESOLVED
@@ -134,8 +134,8 @@ def test_index_domain_prefilter_matches_full_scan_result():
     entities = [EntitySnapshot("sensor.a", "Temperatur", "sensor", "18", device_class="temperature")]
     index = build_entity_index(entities)
 
-    without_index = resolve_entity_scored("Temperatur", entities, domain="sensor", device_class="temperature")
-    with_index = resolve_entity_scored(
+    without_index = resolve_phrase("Temperatur", entities, domain="sensor", device_class="temperature")
+    with_index = resolve_phrase(
         "Temperatur", entities, domain="sensor", device_class="temperature", index=index
     )
 
@@ -161,8 +161,8 @@ def test_index_domain_and_area_prefilter_matches_full_scan_result():
     entities = [light_wohnzimmer, light_kueche, switch_wohnzimmer]
     index = build_entity_index(entities)
 
-    without_index = resolve_entity_scored("Deckenlicht", entities, domain="light", area_id="wohnzimmer")
-    with_index = resolve_entity_scored(
+    without_index = resolve_phrase("Deckenlicht", entities, domain="light", area_id="wohnzimmer")
+    with_index = resolve_phrase(
         "Deckenlicht", entities, domain="light", area_id="wohnzimmer", index=index
     )
 
@@ -183,8 +183,8 @@ def test_index_without_domain_or_area_does_not_change_ambiguity():
     ]
     index = build_entity_index(entities)
 
-    without_index = resolve_entity_scored("Licht", entities)
-    with_index = resolve_entity_scored("Licht", entities, index=index)
+    without_index = resolve_phrase("Licht", entities)
+    with_index = resolve_phrase("Licht", entities, index=index)
 
     assert with_index == without_index
     assert with_index.status is ResolutionStatus.AMBIGUOUS
@@ -200,8 +200,8 @@ def test_index_exact_tier_matches_full_scan_without_scope():
     ]
     index = build_entity_index(entities)
 
-    without_index = resolve_entity_scored("Stehlampe", entities)
-    with_index = resolve_entity_scored("Stehlampe", entities, index=index)
+    without_index = resolve_phrase("Stehlampe", entities)
+    with_index = resolve_phrase("Stehlampe", entities, index=index)
 
     assert with_index == without_index
     assert with_index.status is ResolutionStatus.AMBIGUOUS
@@ -212,7 +212,7 @@ def test_index_exact_tier_matches_full_scan_without_scope():
 
 
 def test_index_domain_prefilter_can_diverge_from_full_scan_by_design():
-    """Documents the caveat spelled out in resolve_entity_scored's docstring:
+    """Documents the caveat spelled out in resolve_phrase's docstring:
     ``domain``/``area_id`` are additive *bonuses* in the index-less path (an
     entity outside the domain can still win on name match alone), but a
     *hard filter* once an ``index`` is supplied. This is the one case where
@@ -223,12 +223,12 @@ def test_index_domain_prefilter_can_diverge_from_full_scan_by_design():
 
     # Index-less: no entity is in domain "switch", but "Lampe" still wins on
     # an exact name match alone (domain is only a bonus, never a gate here).
-    without_index = resolve_entity_scored("Lampe", entities, domain="switch")
+    without_index = resolve_phrase("Lampe", entities, domain="switch")
     assert without_index.status is ResolutionStatus.RESOLVED
     assert without_index.entity.entity_id == "light.a"
     assert without_index.score == 100
 
     # Indexed: the domain prefilter drops light.a before scoring even runs,
     # since it isn't in index.by_domain["switch"] - NOT_FOUND instead.
-    with_index = resolve_entity_scored("Lampe", entities, domain="switch", index=index)
+    with_index = resolve_phrase("Lampe", entities, domain="switch", index=index)
     assert with_index.status is ResolutionStatus.NOT_FOUND

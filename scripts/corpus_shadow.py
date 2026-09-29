@@ -11,6 +11,12 @@ sentence-like literal of the test suite), each from its own source tree.
     python scripts/corpus_shadow.py --dump new.json
     python scripts/corpus_shadow.py --compare old.json new.json
 
+Release baseline (replaces the legacy/V7 divergence report, 7.7 B5): a
+compact digest per sentence, checked in CI; a changed signature fails.
+
+    python scripts/corpus_shadow.py --write-baseline docs/perf/corpus-signatures-7.7.0.json
+    python scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.7.0.json
+
 Per sentence it records the behaviour signature of ``NluEngine.understand``
 (writes, targets, domains, risk, confirmation, response) and the grounded
 meaning IR (operation, targets, value, time, residue per clause). Nothing
@@ -21,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import os
 import subprocess
@@ -90,13 +97,62 @@ def _dump(root: Path, sentences: list[str]) -> dict[str, object]:
     return result
 
 
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _signatures() -> dict[str, dict[str, str]]:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dump = Path(tmp) / "signatures.json"
+        listing = dump.with_suffix(".sentences.json")
+        listing.write_text(json.dumps(_sentences(), ensure_ascii=False), encoding="utf-8")
+        code = subprocess.call(
+            [sys.executable, __file__, "--dump", str(dump), "--sentences", str(listing)],
+            env={**os.environ, "PYTHONHASHSEED": "0"}, stdout=subprocess.DEVNULL,
+        )
+        if code:
+            raise SystemExit(code)
+        return json.loads(dump.read_text(encoding="utf-8"))
+
+
+def _baseline(data: dict[str, dict[str, str]]) -> dict[str, str]:
+    return {
+        _digest(text): _digest(signature["engine"] + "\x00" + signature["ir"])
+        for text, signature in data.items()
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=SCRIPT_ROOT)
     parser.add_argument("--dump", type=Path)
     parser.add_argument("--compare", nargs=2, type=Path)
     parser.add_argument("--sentences", type=Path, help="internal: sentence list file")
+    parser.add_argument("--write-baseline", type=Path)
+    parser.add_argument("--check", type=Path)
     args = parser.parse_args()
+    if args.write_baseline:
+        baseline = _baseline(_signatures())
+        args.write_baseline.write_text(
+            json.dumps(dict(sorted(baseline.items())), indent=0) + "\n", encoding="utf-8",
+        )
+        print(f"{len(baseline)} Satzsignaturen -> {args.write_baseline}")
+        return 0
+    if args.check:
+        expected = json.loads(args.check.read_text(encoding="utf-8"))
+        data = _signatures()
+        changed = [
+            text for text, signature in data.items()
+            if (key := _digest(text)) in expected
+            and expected[key] != _digest(signature["engine"] + "\x00" + signature["ir"])
+        ]
+        known = sum(_digest(text) in expected for text in data)
+        print(f"{len(data)} Sätze, {known} mit Baseline; geänderte Signaturen: {len(changed)}")
+        for text in changed[:25]:
+            print(f"  {text}\n    {data[text]['engine'][:300]}")
+        return 1 if changed else 0
     if args.compare:
         old = json.loads(args.compare[0].read_text(encoding="utf-8"))
         new = json.loads(args.compare[1].read_text(encoding="utf-8"))

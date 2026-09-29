@@ -2,8 +2,8 @@ from homeintent.entities import (
     EntityMatchSource,
     EntitySnapshot,
     ResolutionStatus,
-    resolve_entity_scored,
 )
+from homeintent.nlu.target_resolution import resolve_phrase
 from homeintent.nlu.entity_clarification import (
     CandidateReplyKind,
     candidate_labels,
@@ -75,8 +75,8 @@ def test_multiple_fuzzy_names_are_ambiguous_but_single_fuzzy_needs_confirmation(
         EntitySnapshot("light.a", "Küchenlicht", "light", "off"),
         EntitySnapshot("light.b", "Kuchenlicht", "light", "off"),
     ]
-    ambiguous = resolve_entity_scored("Kuechenlict", similar)
-    single = resolve_entity_scored("Kuechenlict", similar[:1])
+    ambiguous = resolve_phrase("Kuechenlict", similar)
+    single = resolve_phrase("Kuechenlict", similar[:1])
 
     assert ambiguous.status is ResolutionStatus.AMBIGUOUS
     assert len(ambiguous.candidates) == 2

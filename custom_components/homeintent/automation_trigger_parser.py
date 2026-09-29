@@ -18,7 +18,7 @@ system") rather than inventing new ones:
 
 - ``resolve_area_scored``/``resolve_entity_scored``/``constraint_resolver``
   - the exact same entity/area resolution every other parser uses.
-- ``_STATE_NAME_TO_SEMANTIC`` plus ``automation_target_resolver.py`` - State
+- ``STATE_NAME_TO_SEMANTIC`` plus ``automation_target_resolver.py`` - State
   Trigger und State Condition share one target-resolution implementation.
 - ``WorldModel.device_for_entity()`` - the Device Trigger resolves a spoken
   *entity* name (``devices.py`` deliberately has no spoken-device-name
@@ -68,7 +68,7 @@ from .nlu.lexicon import (
 )
 from .nlu.parser import ParseContext
 from .nlu.semantic_automation import compile_state_predicate
-from .parsers import _STATE_NAME_TO_SEMANTIC, _strip_locative_prepositions
+from .parsers import STATE_NAME_TO_SEMANTIC, strip_locative_prepositions
 
 AUTOMATION_TRIGGER_DIR = Path(__file__).parent / "intents" / "de" / "automation_trigger"
 
@@ -241,9 +241,9 @@ class AutomationTriggerParser:
         state_slot = slots.get("state")
         state_verb_slot = slots.get("state_verb")
         if state_slot is not None:
-            semantic_state = _STATE_NAME_TO_SEMANTIC[str(state_slot.value)]
+            semantic_state = STATE_NAME_TO_SEMANTIC[str(state_slot.value)]
         elif state_verb_slot is not None:
-            semantic_state = _STATE_NAME_TO_SEMANTIC[str(state_verb_slot.value)]
+            semantic_state = STATE_NAME_TO_SEMANTIC[str(state_verb_slot.value)]
         else:
             return None  # structurally unreachable - HassStateTrigger's grammar always captures one of the two
 
@@ -313,7 +313,7 @@ class AutomationTriggerParser:
         if context.world_model is None:
             return None  # no entity->device mapping available - never guess a device_id
 
-        name = _strip_locative_prepositions(str(name_slot.value))
+        name = strip_locative_prepositions(str(name_slot.value))
         resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None
@@ -329,7 +329,7 @@ class AutomationTriggerParser:
         if name_slot is None or event_slot is None:
             return None
 
-        name = _strip_locative_prepositions(str(name_slot.value))
+        name = strip_locative_prepositions(str(name_slot.value))
         resolved = resolve_phrase(name, context.entities, domain="person", index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None

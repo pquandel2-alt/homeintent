@@ -870,53 +870,6 @@ def numbered_question(candidates: Sequence[EntitySnapshot], *, noun: str = "GerÃ
 
 
 # ---------------------------------------------------------------------------
-# Shadow comparison of the historic resolver and ``resolve_phrase`` (7.4.0).
-
-RESOLUTION_DRIFTS = ("EQUIVALENT", "REFINEMENT", "OLD_BETTER", "SAFETY_DRIFT")
-
-
-def _resolution_ids(result: ResolutionResult) -> frozenset[str]:
-    ids = {entity.entity_id for entity in result.candidates}
-    if result.entity is not None:
-        ids.add(result.entity.entity_id)
-    return frozenset(ids)
-
-
-def compare_resolutions(
-    old: ResolutionResult, new: ResolutionResult, name: str = ""
-) -> tuple[str, str]:
-    """Drift class and reason between the historic and the new resolution.
-
-    * new ids outside the old ids, or a dropped confirmation for a fuzzy
-      correction: ``SAFETY_DRIFT``;
-    * the old one resolved, the new one does not: ``OLD_BETTER`` - unless the
-      old entity lies outside the device kind the phrase names (the old
-      resolver crossed a class boundary: ``REFINEMENT``/``class_boundary``);
-    * the new one names a subset (fewer candidates, place narrowing,
-      class boundary): ``REFINEMENT``.
-    """
-    from ..entities import ResolutionStatus
-
-    old_ids, new_ids = _resolution_ids(old), _resolution_ids(new)
-    if old.status is new.status and old_ids == new_ids:
-        return "EQUIVALENT", ""
-    if not new_ids <= old_ids:
-        return "SAFETY_DRIFT", "new_targets"
-    if old.status is ResolutionStatus.CONFIRMATION_REQUIRED and new.status is ResolutionStatus.RESOLVED:
-        return "SAFETY_DRIFT", "confirmation_dropped"
-    if old.status is ResolutionStatus.RESOLVED:
-        words = normalize_for_compare(name).replace("-", " ").split()
-        kinds = _phrase_domains(words)
-        if (
-            kinds is not None and old.entity is not None
-            and not _within_kind(old.entity, kinds, _phrase_genera(words))
-        ):
-            return "REFINEMENT", "class_boundary"
-        return "OLD_BETTER", f"resolved_to_{new.status.name.lower()}"
-    return "REFINEMENT", f"{old.status.name.lower()}_to_{new.status.name.lower()}"
-
-
-# ---------------------------------------------------------------------------
 # Learned bindings (7.4.1) - applied here and only here.
 
 

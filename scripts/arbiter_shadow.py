@@ -30,7 +30,6 @@ _ha_stub.install()
 
 import pytest  # noqa: E402
 from _testhaus import HouseConversation  # noqa: E402
-import homeintent.conversation as conversation_module  # noqa: E402
 from homeintent.arbitration import arbitrate  # noqa: E402
 from homeintent.arbitration_candidates import collect_candidates  # noqa: E402
 from homeintent.engine import CommandPlan, MatchResult  # noqa: E402
@@ -53,13 +52,19 @@ class Cascade:
     def __init__(self) -> None:
         self.house = HouseConversation(pytest.MonkeyPatch())
         self.handed: list = []
-        original = conversation_module.evaluate_service_plan
+        # Since 7.7 B4 the controllers hand plans to the policy; record the
+        # hand-over wherever the conversation layer calls it.
+        import importlib
 
-        def recording(plan, *args, **kwargs):
-            self.handed.append(plan)
-            return original(plan, *args, **kwargs)
+        for name in ("controllers.devices", "controllers.goals", "controllers.routines"):
+            module = importlib.import_module(f"homeintent.{name}")
+            original = module.evaluate_service_plan
 
-        conversation_module.evaluate_service_plan = recording
+            def recording(plan, *args, _original=original, **kwargs):
+                self.handed.append(plan)
+                return _original(plan, *args, **kwargs)
+
+            module.evaluate_service_plan = recording
         self.counter = 0
 
     def run(self, text: str):

@@ -2088,12 +2088,13 @@ folgenden Befehl ausgeführt werden:
 ./scripts/run_language_eval.sh
 ```
 
-Legacy und vollständig kompiliertes V7 lassen sich außerdem ohne
-Serviceausführung über den versionierten Shadow-Report vergleichen:
+Das Verhalten jedes Korpussatzes (Engine-Signatur und Bedeutungs-IR) ist
+ohne Serviceausführung gegen eine versionierte Signatur-Baseline prüfbar;
+eine geänderte Signatur schlägt fehl:
 
 ```bash
-python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.6.1.json --quiet
+python scripts/corpus_shadow.py \
+  --check docs/perf/corpus-signatures-7.6.1.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

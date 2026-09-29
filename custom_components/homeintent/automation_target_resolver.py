@@ -7,7 +7,7 @@ from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 from .nlu.automation_model import TriggerTarget
 from .nlu.constraint_resolver import Constraints, resolve_candidates
 from .nlu.parser import ParseContext
-from .parsers import _strip_locative_prepositions
+from .parsers import strip_locative_prepositions
 
 
 _PRONOUN_WORDS = frozenset({"es"})
@@ -19,7 +19,7 @@ def resolve_automation_area(
     area_slot = slots.get("area")
     if area_slot is None:
         return None, None
-    area_text = _strip_locative_prepositions(str(area_slot.value))
+    area_text = strip_locative_prepositions(str(area_slot.value))
     if not area_text:
         return None, None
     resolved = resolve_area_scored(area_text, context.entities)
@@ -82,7 +82,7 @@ def build_pronoun_target(context: ParseContext) -> TriggerTarget | None:
 
 def build_named_target(name_slot, context: ParseContext) -> TriggerTarget | None:
     """Resolve one spoken target, retaining entity_id only when necessary."""
-    name = _strip_locative_prepositions(str(name_slot.value))
+    name = strip_locative_prepositions(str(name_slot.value))
     if name.strip().casefold() in _PRONOUN_WORDS:
         return build_pronoun_target(context)
     resolved = resolve_phrase(name, context.entities, index=context.index)

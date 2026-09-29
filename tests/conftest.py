@@ -156,29 +156,6 @@ SENSOR_ENTITIES: list[EntitySnapshot] = [
 SCRIPT_ENTITIES: list[EntitySnapshot] = _snapshots(SCRIPTS, "script", "off", capabilities=frozenset({"TURN_ON"}))
 
 
-def pytest_sessionstart(session):
-    """Opt-in shadow run of the one target resolution (7.4.0)."""
-    import os
-
-    if os.environ.get("HOMEINTENT_RESOLVER_SHADOW"):
-        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-        import _ha_stub
-        import resolver_shadow
-
-        _ha_stub.install()
-        resolver_shadow.install()
-
-
-def pytest_sessionfinish(session, exitstatus):
-    import json
-    import os
-
-    target = os.environ.get("HOMEINTENT_RESOLVER_SHADOW")
-    if target and "resolver_shadow" in sys.modules:
-        result = sys.modules["resolver_shadow"].summary()
-        Path(target).write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
-
-
 @pytest.fixture(scope="session")
 def engine() -> NluEngine:
     return NluEngine()
