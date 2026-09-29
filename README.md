@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.7.1** (Sicherheit: Selbstkorrektur, Irrealis, Ellipsen, Aufzählungen, Satellitenraum, informierte Bestätigung)
+- Aktuelle Version: **7.8.0** (Sprachverständnis: Rahmen, Kurzbefehle, Ellipsen, Automationssprache; ganzer Turn bei 5000 Entitäten p95 ≈ 110 ms)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -42,7 +42,48 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
-## Was ist in Version 7.7.1 neu?
+## Was ist in Version 7.8.0 neu?
+
+**Sprachverständnis und Leistung** nach dem unabhängigen Test 7.7
+(Bericht: `docs/umsetzung-7.7.1-7.8.md`). Jede Verbesserung ist eine Regel
+über Struktur, Lexikon, Modalität, Diskurs oder Ontologie; die Zahl der
+Satzmuster steigt nicht (173).
+
+- **Ehrliche Restmeldung:** Kann das Gerät, was verlangt ist, nennt
+  HomeIntent den nicht verstandenen Teil („Den Teil „…“ habe ich nicht
+  verstanden.“) statt einer falschen Fähigkeitsmeldung.
+- **Höflichkeit, Dank, Begründung, Eile** sind Rahmen ohne Wirkung auf Ziel
+  und Operation: „Sei so lieb und …“, „Hättest du die Güte, … anzuschalten“,
+  „Magst du … runterfahren“, „Wäre super, wenn du …“, „…, danke“,
+  „…, wir essen gleich“, „…, fix“. Ein höflicher Konditionalsatz ist nie
+  eine Automation.
+- **Kurzbefehle:** „Büro an“, „Markise raus“, „Saugroboter los“, „Esszimmer
+  Rollladen halb“, „Heizung Schlafzimmer 18 Grad“, „heizung büro auf
+  einundzwanzig“; die Einheit folgt aus der Gattung („auf 23“ bei der
+  Heizung sind 23 °C).
+- **Ellipsen übernehmen die Operation:** „Und in der Küche auf 18“, „Im
+  Esszimmer ebenso“, „Dasselbe im Büro“, „Noch eins heller“.
+- **Automationen:** verblose Aktionen („Jeden Morgen um sieben die
+  Kaffeemaschine an“), Präsenz („Wenn im Wohnzimmer jemand ist …“), der Ort
+  des Auslösers begrenzt die Messgröße („draußen wärmer als 25 Grad“ →
+  Außentemperatur). Nicht-Admins ohne Freigabe hören die Ablehnung vor der
+  Vorschau.
+- **Gerät vor Raum/Kontakt:** „Öffne die Garage“ → Garagentor, „Mach die
+  Haustür zu“ → Haustürschloss, jeweils mit Bestätigung; die Alarmanlage
+  verweist auf den Code.
+- **Dialoge und Namen:** „Ja, mach“/„los“ bestätigen; eine neue Frage wird
+  beantwortet und die offene Sicherheitsfrage ausdrücklich verworfen; „Gute
+  Nacht Test“ schlägt „Gute Nacht“; „Vergiss die Sonnenlampe“ löscht den
+  Alias; „Schalte die Gruppe Treppe ein“.
+- **Leistung:** Entitätsindex, Weltmodell-Gruppen und Hausgraph werden je
+  Registry-/Freigabe-/Alias-Stand gecacht und bei jeder Änderung neu gebaut;
+  Zustände bleiben live. Ganzer Turn bei 5000 Entitäten: p50 ≈ 31 ms,
+  p95 ≈ 110 ms (7.7.1: p50 394 ms, p95 612 ms).
+- **Entwicklungs-Benchmark 7.8** (eigene Paraphrasen): dev 32 → 70/71,
+  zurückgehalten 13 → 32/36, `unsafe_execution_count` 0 – ein
+  Entwicklungswerkzeug, kein unabhängiger Nachweis.
+
+## Was war in Version 7.7.1 neu?
 
 **Sicherheit nach dem unabhängigen Test 7.7** (1005 blind erstellte Sätze,
 `docs/independent-test-7.7.md`). Dort wurde 15-mal ein harmloses Gerät
@@ -2117,18 +2158,18 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.7.1:
+Geprüfter Release-Stand von Version 7.8.0:
 
 ```text
-6358 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
-Property-Suite: 36 Sicherheitsinvarianten (7.7.0: 24), CI- und Nightly-Profil 0 Verletzungen
-  (neu: Selbstkorrektur Marker × Ersatz × Abbruch, Irrealis/Abwägung/Beibehaltung,
-  Ellipse mit Objekt/Seite/Zeit/Ort, Aufzählungen, Satellitenraum, informierte Bestätigung)
-Korpus-Signaturen: 1 gewollte Änderung gegenüber 7.7.0 („lass … aus“ = Beibehaltung)
-Dialog-Shadow 226 Dialoge / 441 Turns 0 Abweichungen; Shadow-Vergleich 2022 EQUIVALENT
-Arbiter-Shadow 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
-Entwicklungs-Benchmark 7.7 443/503, unsafe_execution_count 0
-Live-Testbett 161/161 (neu: je Cluster A1–A6 ein Szenario) plus Proaktiv
+6365 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+Sprachverständnis-Gate: 463 passed
+Property-Suite: 39 Sicherheitsinvarianten, CI- und Nightly-Profil 0 Verletzungen
+Korpus-Signaturen: 0 Änderungen gegenüber 7.7.1
+Dialog-Shadow gegen 7.7.1: 238 Dialoge / 477 Turns, 12 gewollte Abweichungen; Shadow-Vergleich 2039 EQUIVALENT
+Arbiter-Shadow 2062 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
+Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107 (held-out 32/36), unsafe_execution_count 0
+Live-Testbett LIVE_RESULT
+Ganzer Turn 5000 Entitäten p50 31 ms, p90 92 ms, p95 108 ms, p99 128 ms
 Pyright 0 Fehler (voll und alle Strict-Profile)
 Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
 ```
@@ -2170,7 +2211,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.7.1.json
+  --check docs/perf/corpus-signatures-7.8.0.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

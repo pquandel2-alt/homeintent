@@ -99,8 +99,11 @@ def _neutral(value: object) -> object:
 
 
 def _dump(root: Path, corpus: list[tuple[str, list[dict[str, object]]]]) -> dict[str, object]:
+    # The helpers of the measured tree: its _testhaus puts *its own*
+    # custom_components first. With the helpers of this tree, "--root" would
+    # silently measure the new code twice (fixed in 7.8).
     sys.path.insert(0, str(root / "custom_components"))
-    sys.path.insert(0, str(SCRIPT_ROOT / "tests"))
+    sys.path.insert(0, str(root / "tests"))
     import _ha_stub
 
     _ha_stub.install()

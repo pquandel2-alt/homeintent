@@ -30,6 +30,7 @@ _DOMAINS = {item.key: item.domains for item in GENERA}
 _GENDER = {item.key: item.gender for item in GENERA}
 _ACCUSATIVE = {Gender.MASCULINE: "den", Gender.FEMININE: "die", Gender.NEUTER: "das"}
 _ARTICLE_WORDS = frozenset({"der", "die", "das", "den", "dem", "alle", "beide", "mein", "meine", "meinen"})
+_FRACTIONS = frozenset({"viertel", "drittel", "haelfte", "achtel", "fuenftel", "zehntel", "mal", "stufen", "stufe"})
 _QUESTION_WORDS = frozenset({
     "wie", "was", "wer", "wo", "wann", "warum", "welche", "welcher", "welches", "ist", "sind",
     "ob", "gibt", "hat", "haben", "steht", "stehen",
@@ -130,6 +131,9 @@ def expand_short_command(text: str, entities: Iterable[EntitySnapshot]) -> str |
         article = "die" if spoken is not None and spoken.plural else _ACCUSATIVE.get(gender, "die")
         noun = f"{article} {noun}"
     if values:
+        following = text[values[0].end:].split()
+        if following and normalize_for_compare(following[0].strip(".,!?")) in _FRACTIONS:
+            return None
         number = _number(values[0].text)
         if number is None:
             return None
@@ -166,6 +170,10 @@ def complete_value_unit(text: str, entities: Iterable[EntitySnapshot]) -> str:
     if len(values) != 1 or len(targets) != 1 or re.search(r"(?i)grad|prozent|%|°|uhr|minute|stunde", values[0].text):
         return text
     if not values[0].text.casefold().startswith("auf"):
+        return text
+    following = text[values[0].end:].split()
+    if following and normalize_for_compare(following[0].strip(".,!?")) in _FRACTIONS:
+        # "auf drei Viertel": a fraction, not a number with a missing unit.
         return text
     unit = _unit_for(_domains_of(targets[0], entity_list))
     number = _number(values[0].text)

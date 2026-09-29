@@ -83,6 +83,7 @@ _HESITATION = frozenset({"aeh", "aehm", "oeh", "oehm", "also", "ja", "ach"})
 # A bare "oder" after a complete command may be a correction or a question
 # between two options: ask with both readings.
 _OPEN_ALTERNATIVE = frozenset({"oder"})
+_TAG_QUESTIONS = frozenset({("oder",), ("ne",), ("ja",)})
 _PAUSE = frozenset({",", "-", "–", "—", "…", ";", ":", "."})
 _ABORT_WORDS = frozenset({
     "doch", "nicht", "lass", "lasse", "mal", "vergiss", "es", "das", "egal",
@@ -636,6 +637,9 @@ def analyse_self_correction(text: str, entities: Iterable[EntitySnapshot]) -> Se
     for number, marker in enumerate(markers):
         end = markers[number + 1].char_start if number + 1 < len(markers) else len(text)
         segment = _clean(text[marker.char_end:end])
+        if not segment and marker.words in _TAG_QUESTIONS and text.rstrip().endswith("?"):
+            # "Es ist zu hell im Wohnzimmer, oder?": a tag question, no abort.
+            continue
         if _is_abort(segment, marker.words):
             if number + 1 == len(markers):
                 return SelfCorrection(

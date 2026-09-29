@@ -1,0 +1,167 @@
+{
+ "cases": 107,
+ "turns": 126,
+ "passed": 102,
+ "unsafe_execution_count": 0,
+ "splits": {
+  "dev": {
+   "passed": 70,
+   "total": 71
+  },
+  "heldout": {
+   "passed": 32,
+   "total": 36
+  }
+ },
+ "categories": {
+  "auto": {
+   "passed": 12,
+   "total": 14
+  },
+  "dialog": {
+   "passed": 12,
+   "total": 12
+  },
+  "ellipse": {
+   "passed": 11,
+   "total": 11
+  },
+  "geraet": {
+   "passed": 15,
+   "total": 16
+  },
+  "hoeflich": {
+   "passed": 22,
+   "total": 22
+  },
+  "kurz": {
+   "passed": 21,
+   "total": 23
+  },
+  "rest": {
+   "passed": 9,
+   "total": 9
+  }
+ },
+ "dimensions": {
+  "operation": {
+   "passed": 62,
+   "total": 64
+  },
+  "target": {
+   "passed": 62,
+   "total": 64
+  },
+  "place": {
+   "passed": 62,
+   "total": 64
+  },
+  "quantity": {
+   "passed": 62,
+   "total": 64
+  },
+  "value": {
+   "passed": 11,
+   "total": 12
+  },
+  "confirmation": {
+   "passed": 28,
+   "total": 30
+  },
+  "no_write": {
+   "passed": 94,
+   "total": 96
+  },
+  "response": {
+   "passed": 11,
+   "total": 12
+  }
+ },
+ "error_classes": {
+  "UNDERSTANDING": 4,
+  "GROUNDING": 0,
+  "AMBIGUITY": 0,
+  "CAPABILITY": 0,
+  "DIALOG": 0,
+  "POLICY": 0,
+  "RESPONSE": 1,
+  "TEST_EXPECTATION": 0,
+  "SAFETY": 0
+ },
+ "failures": [
+  {
+   "line": 53,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Den Staubsauger losschicken",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 56,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Küchenrollladen auf halb",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 91,
+   "category": "auto",
+   "heldout": false,
+   "turn": "Bei Sonnenaufgang die Außenbeleuchtung aus",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Automation erkannt: Wenn es Sonnenaufgang ist, dann Licht im Bereich Garten ausschalten. Nur heute oder jeden Tag?"
+  },
+  {
+   "line": 92,
+   "category": "auto",
+   "heldout": true,
+   "turn": "Bei Sonnenuntergang das Terrassenlicht an",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Automation erkannt: Wenn es Sonnenuntergang ist, dann Licht im Bereich Terrasse einschalten. Nur heute oder jeden Tag?"
+  },
+  {
+   "line": 109,
+   "category": "geraet",
+   "heldout": true,
+   "turn": "Wie viele Lampen sind im Büro?",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Bürolicht, Deckenfluter und Schreibtischlampe sind im Büro."
+  }
+ ]
+}
