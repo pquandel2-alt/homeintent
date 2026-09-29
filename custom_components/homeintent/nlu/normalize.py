@@ -368,6 +368,36 @@ def _polite_requests(text: str) -> str:
     return text
 
 
+# Softening particles after a polite modal ("Könntest du vielleicht
+# irgendwann mal ..."): any number, any order, they never change the request
+# (7.6.1). Only directly after "kannst/könntest/würdest du", so an embedded
+# question ("Kannst du mir sagen, ob ...") and a real time word elsewhere
+# stay untouched.
+_MITIGATION = frozenset({
+    "vielleicht", "irgendwann", "mal", "eben", "kurz", "schnell", "eventuell",
+    "möglicherweise", "moeglicherweise", "gerade", "grad", "bitte", "wohl", "evtl",
+    "doch", "einmal", "noch",
+})
+_POLITE_MODALS = frozenset({
+    "kannst", "könntest", "koenntest", "würdest", "wuerdest", "magst", "willst",
+})
+
+
+def _drop_mitigation(text: str) -> str:
+    words = text.split(" ")
+    keys = [word.strip(",").casefold() for word in words]
+    for index in range(len(keys) - 1):
+        if keys[index] in _POLITE_MODALS and keys[index + 1] == "du":
+            end = index + 2
+            while end < len(keys) - 1 and keys[end] in _MITIGATION:
+                end += 1
+            if end > index + 2:
+                kept = [word for word in words[index + 2:end] if word.casefold() == "bitte"]
+                return " ".join([*words[:index + 2], *kept, *words[end:]])
+            break
+    return text
+
+
 def is_polite_request(text: str) -> bool:
     """Whether ``text`` is one of the politeness shells above."""
     return _polite_requests(text) != text
@@ -382,6 +412,7 @@ def normalize(text: str) -> str:
     text = _HESITATION_RE.sub(" ", text)
     text = _PERCENT_SYMBOL_RE.sub(r"\1 Prozent", text)
     text = _DEGREE_SYMBOL_RE.sub(r"\1 Grad", text)
+    text = _drop_mitigation(text)
     text = _POLITE_MODAL_RE.sub("kannst du", text)
     text = _TRIGGER_DISCOURSE_RE.sub("wenn", text)
     text = _SHORT_DRIVE_IMPERATIVE_RE.sub(r"\g<prefix>fahre", text)

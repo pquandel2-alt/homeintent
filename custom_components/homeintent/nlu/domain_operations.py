@@ -12,7 +12,11 @@ from __future__ import annotations
 DOMAIN_EXPRESSIONS: dict[str, tuple[str, ...]] = {
     "light": (r"licht(?:er)?", r"lamp(?:e|en)", r"leucht(?:e|en)", r"beleuchtung"),
     "switch": (r"schalter", r"steckdos(?:e|en)"),
-    "cover": (r"rol{1,3}[aä]d(?:e|en)", r"rollos?", r"jalousie(?:n)?"),
+    # Every shading genus (7.6.1: "Kannst du die Markise einfahren?").
+    "cover": (
+        r"rol{1,3}[aä]d(?:e|en)", r"rollos?", r"jalousie(?:n)?", r"markisen?",
+        r"raffstores?", r"vorh[aä]nge?",
+    ),
     "fan": (r"ventilator(?:en)?", r"lüfter"),
     "climate": (r"heizung(?:en)?", r"thermostat(?:e)?"),
     "script": (r"skript(?:e)?",),
