@@ -29,18 +29,12 @@ from .context import ConversationContext
 from .device_ontology import entity_genera
 from .language_frontend import tokenize_language
 from .normalize import normalize
-from .ontology_compiler import (
-    ClauseMeaning,
-    OntologyCommand,
-    _FILLER_WORDS,
-    _compile_clauses,
-    _operation_words,
-    directional_as_degree,
-)
+from .clause_reading import FILLER_WORDS, ClauseMeaning, directional_as_degree, read_operation
+from .ontology_compiler import OntologyCommand, compile_clauses
 from .place_model import Place, PlaceKind, build_place_lexicon
 from .semantic_catalog import DEGREE_WORDS, PROPERTY_GENUS
-from .semantic_compiler import _percent, _temperature
-from .target_resolution import Quantity, TargetDescription, _name_index, describe_with_residue
+from .degree_semantics import percent_value, temperature_value
+from .target_resolution import Quantity, TargetDescription, name_index, describe_with_residue
 
 __all__ = ("compile_discourse",)
 
@@ -184,11 +178,11 @@ def compile_discourse(
     if not words:
         return None
     word_set = set(words)
-    actions, operation_words = _operation_words(normalize(text))
+    actions, operation_words = read_operation(normalize(text))
     degrees = [DEGREE_WORDS[word] for word in words if word in DEGREE_WORDS]
     degree = degrees[0] if len(set(degrees)) == 1 else None
-    temperature = _temperature(text)
-    percent = None if temperature is not None else _percent(text)
+    temperature = temperature_value(text)
+    percent = None if temperature is not None else percent_value(text)
     previous_actions, previous_degree = _previous_operation(context)
     if not actions and degree is None and word_set & _REPEAT and previous_degree is not None:
         degree = previous_degree
@@ -203,14 +197,14 @@ def compile_discourse(
             text=text, actions=frozenset(actions), degree=degree, percent=None, temperature=None,
             descriptions=(TargetDescription(explicit=(sibling,), quantity=Quantity.ALL),),
         )
-        return _compile_clauses((clause,), document, entities, source_area)
+        return compile_clauses((clause,), document, entities, source_area)
     ignore = frozenset(
-        operation_words | _FILLER_WORDS | frozenset(DEGREE_WORDS) | _REFERENTIAL | _OTHER
+        operation_words | FILLER_WORDS | frozenset(DEGREE_WORDS) | _REFERENTIAL | _OTHER
         | _DEICTIC_PLACE | _ALSO | _REPEAT | _GLUE
     )
     descriptions, residue = describe_with_residue(
         tokens, entities, lexicon=build_place_lexicon(entities), ignore=ignore,
-        names=_name_index(entities),
+        names=name_index(entities),
     )
     if residue:
         return None
@@ -304,7 +298,7 @@ def compile_discourse(
         text=text, actions=actions, degree=degree, percent=percent,
         temperature=temperature, descriptions=tuple(descriptions),
     )
-    return _compile_clauses((clause,), document, entities, source_area)
+    return compile_clauses((clause,), document, entities, source_area)
 
 
 def _with_place(description: TargetDescription, place: Place) -> TargetDescription:

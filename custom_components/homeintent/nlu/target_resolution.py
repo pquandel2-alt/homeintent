@@ -175,7 +175,7 @@ class _NameIndex:
 _NAME_INDEX_CACHE: dict[int, tuple[tuple[object, ...], "_NameIndex"]] = {}
 
 
-def _name_index(entities: Sequence[EntitySnapshot]) -> _NameIndex:
+def name_index(entities: Sequence[EntitySnapshot]) -> _NameIndex:
     """Registry name/alias phrase index, cached per exact name content."""
     signature = tuple((entity.entity_id, entity.friendly_name, entity.aliases) for entity in entities)
     key = hash(signature)
@@ -280,7 +280,7 @@ def describe_with_residue(
 ) -> tuple[tuple[TargetDescription, ...], tuple[str, ...]]:
     """Descriptions plus every word nothing explained (the residue)."""
     lexicon = lexicon or build_place_lexicon(entities)
-    names = names or _name_index(entities)
+    names = names or name_index(entities)
     words, positions = _words_of(tokens)
     taken = [False] * len(words)
 
@@ -734,12 +734,12 @@ def closest_genus_word(word: str, *, max_distance: int = 2) -> tuple[str, ...]:
     ``max_distance`` edits of ``word``.  A correction therefore never jumps
     between kinds of devices (never "Wassermelder" -> "Bewegungsmelder").
     """
-    from .device_ontology import _form_index  # local: private data index
+    from .device_ontology import genus_form_index
 
     normalized = normalize_for_compare(word)
     scored = sorted(
         (edit_distance(normalized, form), keys)
-        for form, keys in _form_index().items()
+        for form, keys in genus_form_index().items()
         if abs(len(form) - len(normalized)) <= max_distance and len(form) >= 5
     )
     if not scored or scored[0][0] > max_distance:

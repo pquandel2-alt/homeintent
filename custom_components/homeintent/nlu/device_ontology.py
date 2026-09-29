@@ -264,7 +264,7 @@ def _diminutives(lemma: str) -> set[str]:
 
 
 @lru_cache(maxsize=1)
-def _form_index() -> Mapping[str, tuple[str, ...]]:
+def genus_form_index() -> Mapping[str, tuple[str, ...]]:
     """Normalized surface form -> genus keys (most specific first)."""
     index: dict[str, list[str]] = {}
 
@@ -295,7 +295,7 @@ def _form_index() -> Mapping[str, tuple[str, ...]]:
 
 def genus_forms(key: str) -> frozenset[str]:
     """Every normalized surface form that names ``key`` directly."""
-    return frozenset(form for form, keys in _form_index().items() if key in keys)
+    return frozenset(form for form, keys in genus_form_index().items() if key in keys)
 
 
 @lru_cache(maxsize=1)
@@ -315,7 +315,7 @@ def _plural_forms() -> frozenset[str]:
 
 def lookup_genus_word(word: str) -> tuple[str, ...]:
     """Genus keys for one complete word (no compound splitting)."""
-    return _form_index().get(normalize_for_compare(word).replace("-", ""), ())
+    return genus_form_index().get(normalize_for_compare(word).replace("-", ""), ())
 
 
 @dataclass(frozen=True)
@@ -384,7 +384,7 @@ def analyse_word(word: str) -> WordAnalysis | None:
         return WordAnalysis(normalized, ("device",), universal=True)
     if normalized in _INDEFINITE_UNIVERSAL_WORDS:
         return WordAnalysis(normalized, ("device",), universal=True, indefinite=True)
-    index = _form_index()
+    index = genus_form_index()
     direct = index.get(normalized)
     if direct:
         return WordAnalysis(

@@ -110,7 +110,7 @@ def ground_meaning(
     document: LanguageDocument | str, entities: Sequence[EntitySnapshot]
 ) -> SemanticUtterance:
     """The utterance with every clause's meaning fields filled in."""
-    from .ontology_compiler import _clause_meanings  # the genus compiler's clause reader
+    from .clause_reading import read_clauses
     from .semantic_lexicon import SemanticKind, analyse_semantics
     from .target_resolution import describe_with_residue
 
@@ -137,7 +137,7 @@ def ground_meaning(
     shared = dict(time=time, conditions=conditions, exceptions=exceptions, origin=origin)
 
     grounded: list[MeaningClause] = []
-    for meaning in _clause_meanings(document, entities):
+    for meaning in read_clauses(document, entities):
         value: dict[str, object] = {}
         if meaning.percent is not None:
             value["percent"] = meaning.percent

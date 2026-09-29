@@ -46,7 +46,51 @@ _AMOUNT_RE = re.compile(
     r"(?<![\wäöüß])(?:um\s+)?(?P<number>\d+(?:[,.]\d+)?|[a-zäöüß]+)\s*(?P<unit>grad\b|°|prozent\b|%)",
     re.I,
 )
-_HALF_RE = re.compile(r"(?<![\wäöüß])(?:um\s+)?(?:ein\s+)?halbe[sn]?\s+grad\b", re.I)
+_HALF_DEGREE_RE = re.compile(r"(?<![\wäöüß])(?:um\s+)?(?:ein\s+)?halbe[sn]?\s+grad\b", re.I)
+
+
+# Absolute values of a clause (7.7: public, shared by every compiler and the
+# meaning IR instead of private helpers of one compiler).
+_HALF_VALUE_RE = re.compile(r"\b(?:halb|halbe(?:r|n)?|hälfte|zur\s+hälfte)\b", re.I)
+
+ZERO_POSITION_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:runter|herunter|zu)\b", re.I)
+
+FULL_POSITION_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:hoch|auf)\b", re.I)
+
+_PERCENT_VALUE_RE = re.compile(
+    r"(?:\bauf\s+(?P<after>100|[1-9]?\d)\b|"
+    r"\b(?P<unit>100|[1-9]?\d)\s*(?:prozent|%)\b)", re.I
+)
+
+_FIFTY_PERCENT_RE = re.compile(r"\bfünfzig\s+prozent\b", re.I)
+
+TEMPERATURE_VALUE_RE = re.compile(
+    r"\bauf\s+(?:(?:mindestens|höchstens|nicht\s+höher\s+als|über|unter)\s+)?"
+    r"(?P<value>-?\d{1,2}(?:[,.]\d)?)\s*(?:grad|°\s*c|°c)\b",
+    re.I,
+)
+
+
+def percent_value(text: str) -> int | None:
+    """Absolute percentage of a clause ("auf 40", "halb", "ganz zu")."""
+    if _HALF_VALUE_RE.search(text):
+        return 50
+    if ZERO_POSITION_RE.search(text):
+        return 0
+    if FULL_POSITION_RE.search(text):
+        return 100
+    if _FIFTY_PERCENT_RE.search(text):
+        return 50
+    match = _PERCENT_VALUE_RE.search(text)
+    return int(match.group("after") or match.group("unit")) if match else None
+
+
+def temperature_value(text: str) -> float | None:
+    match = TEMPERATURE_VALUE_RE.search(text)
+    if match is None:
+        return None
+    value = float(match.group("value").replace(",", "."))
+    return value if 5 <= value <= 30 else None
 
 
 def _number(raw: str) -> float | None:
@@ -74,7 +118,7 @@ def relative_amount(text: str) -> tuple[RelativeAmount, str] | None:
         if before.endswith("auf") or before.endswith("bei"):
             continue
         found.append((match, RelativeAmount(value, _UNITS[match.group("unit").casefold()])))
-    half = _HALF_RE.search(text)
+    half = _HALF_DEGREE_RE.search(text)
     if half is not None and not found:
         found.append((half, RelativeAmount(0.5, "degree")))
     if len(found) != 1:

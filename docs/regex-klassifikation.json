@@ -2879,10 +2879,52 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/degree_semantics.py::_HALF_RE::91ff1eb98c",
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::_HALF_DEGREE_RE::91ff1eb98c",
    "datei": "custom_components/homeintent/nlu/degree_semantics.py",
-   "bereich": "_HALF_RE",
+   "bereich": "_HALF_DEGREE_RE",
    "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::_HALF_VALUE_RE::4776a4d1b0",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "_HALF_VALUE_RE",
+   "klasse": "MORPHOLOGICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::ZERO_POSITION_RE::44e020cc6f",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "ZERO_POSITION_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::FULL_POSITION_RE::ab0421592a",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "FULL_POSITION_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::_PERCENT_VALUE_RE::4979a84a5a",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "_PERCENT_VALUE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::_FIFTY_PERCENT_RE::973abeacc4",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "_FIFTY_PERCENT_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/degree_semantics.py::TEMPERATURE_VALUE_RE::d124585c9e",
+   "datei": "custom_components/homeintent/nlu/degree_semantics.py",
+   "bereich": "TEMPERATURE_VALUE_RE",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
    "quelle": "heuristik"
   },
   {
@@ -3670,52 +3712,10 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_HALF_RE::4776a4d1b0",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "_HALF_RE",
-   "klasse": "MORPHOLOGICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_ZERO_RE::44e020cc6f",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "_ZERO_RE",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_HUNDRED_RE::ab0421592a",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "_HUNDRED_RE",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_PERCENT_RE::4979a84a5a",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "_PERCENT_RE",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
    "id": "custom_components/homeintent/nlu/semantic_compiler.py::_ANY_PERCENT_RE::9f565218a4",
    "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
    "bereich": "_ANY_PERCENT_RE",
    "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_FIFTY_PERCENT_RE::973abeacc4",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "_FIFTY_PERCENT_RE",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_TEMPERATURE_RE::d124585c9e",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "_TEMPERATURE_RE",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
    "quelle": "heuristik"
   },
   {

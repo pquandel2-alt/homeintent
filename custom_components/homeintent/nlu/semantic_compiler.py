@@ -26,7 +26,14 @@ from ..entities import (
 )
 from ..name_similarity import bounded_name_similarity
 from ..world_model import WorldModel
-from .degree_semantics import extract_degree
+from .degree_semantics import (
+    FULL_POSITION_RE,
+    TEMPERATURE_VALUE_RE,
+    ZERO_POSITION_RE,
+    extract_degree,
+    percent_value,
+    temperature_value,
+)
 from .constraint_resolver import Constraints, resolve_candidates
 from .entity_resolution import (
     ResolutionStatus,
@@ -139,20 +146,7 @@ _COUNT_WORDS = {
 }
 _COUNT_RE = re.compile(r"\b(" + "|".join(_COUNT_WORDS) + r"|[2-9]|10)\b", re.I)
 _ORDERED_SUBSET_RE = re.compile(r"\b(?:erste\w*|letzte\w*)\b", re.I)
-_HALF_RE = re.compile(r"\b(?:halb|halbe(?:r|n)?|hälfte|zur\s+hälfte)\b", re.I)
-_ZERO_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:runter|herunter|zu)\b", re.I)
-_HUNDRED_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:hoch|auf)\b", re.I)
-_PERCENT_RE = re.compile(
-    r"(?:\bauf\s+(?P<after>100|[1-9]?\d)\b|"
-    r"\b(?P<unit>100|[1-9]?\d)\s*(?:prozent|%)\b)", re.I
-)
 _ANY_PERCENT_RE = re.compile(r"\b(?P<value>\d+)\s*(?:prozent|%)\b", re.I)
-_FIFTY_PERCENT_RE = re.compile(r"\bfünfzig\s+prozent\b", re.I)
-_TEMPERATURE_RE = re.compile(
-    r"\bauf\s+(?:(?:mindestens|höchstens|nicht\s+höher\s+als|über|unter)\s+)?"
-    r"(?P<value>-?\d{1,2}(?:[,.]\d)?)\s*(?:grad|°\s*c|°c)\b",
-    re.I,
-)
 _DIRECTIVE_RE = re.compile(
     r"\b(?:bitte|soll(?:st|en|t)?|möchte|will|kannste|könntest|koenntest|"
     r"würdest|wuerdest|würde\s+gern|würd\s+gern|wuerd\s+gern)\b", re.I
@@ -704,27 +698,6 @@ def _quantity(text: str) -> Quantifier | None:
     if _ALL_RE.search(text) or _PLURAL_RE.search(text):
         return Quantifier("all")
     return None
-
-
-def _percent(text: str) -> int | None:
-    if _HALF_RE.search(text):
-        return 50
-    if _ZERO_RE.search(text):
-        return 0
-    if _HUNDRED_RE.search(text):
-        return 100
-    if _FIFTY_PERCENT_RE.search(text):
-        return 50
-    match = _PERCENT_RE.search(text)
-    return int(match.group("after") or match.group("unit")) if match else None
-
-
-def _temperature(text: str) -> float | None:
-    match = _TEMPERATURE_RE.search(text)
-    if match is None:
-        return None
-    value = float(match.group("value").replace(",", "."))
-    return value if 5 <= value <= 30 else None
 
 
 def canonicalize_exclusion_clause(text: str) -> str:
@@ -1406,7 +1379,7 @@ class SemanticCommandCompiler:
         spoken_percent = _ANY_PERCENT_RE.search(positive_text)
         if spoken_percent is not None and int(spoken_percent.group("value")) > 100:
             return None
-        spoken_temperature = _TEMPERATURE_RE.search(positive_text)
+        spoken_temperature = TEMPERATURE_VALUE_RE.search(positive_text)
         if spoken_temperature is not None and not (
             5
             <= float(spoken_temperature.group("value").replace(",", "."))
@@ -1499,14 +1472,14 @@ class SemanticCommandCompiler:
             and has_explicit_location_cue(positive_text, entities)
         ):
             return None
-        temperature = _temperature(positive_text)
+        temperature = temperature_value(positive_text)
         # ``auf 22 Grad`` and ``auf 22 Prozent`` share the same numeric
         # preposition.  The explicit temperature unit owns the value and
         # prevents the bare-percentage shorthand from creating a second
         # intent.
-        percent = None if temperature is not None else _percent(positive_text)
+        percent = None if temperature is not None else percent_value(positive_text)
         if spoken_percent is None and (
-            _ZERO_RE.search(positive_text) or _HUNDRED_RE.search(positive_text)
+            ZERO_POSITION_RE.search(positive_text) or FULL_POSITION_RE.search(positive_text)
         ):
             # ``ganz auf/zu`` is the ordinary endpoint operation, not a
             # competing set-position interpretation.
