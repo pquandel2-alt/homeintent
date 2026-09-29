@@ -81,6 +81,54 @@ def plan_is_composite(
     ))
 
 
+_EFFECT_VERBS = {
+    ("lock", "unlock"): "entriegelt", ("lock", "lock"): "verriegelt", ("lock", "open"): "öffnet",
+    ("cover", "open_cover"): "öffnet", ("cover", "close_cover"): "schließt",
+    ("cover", "set_cover_position"): "bewegt",
+    ("valve", "open_valve"): "öffnet", ("valve", "close_valve"): "schließt",
+    ("alarm_control_panel", "alarm_disarm"): "schaltet unscharf:",
+    ("button", "press"): "drückt",
+}
+_ROOT_KINDS = {
+    "script": "Das Skript", "scene": "Die Szene", "automation": "Die Automation",
+    "group": "Die Gruppe", "light": "Die Gruppe", "switch": "Die Gruppe", "cover": "Die Gruppe",
+}
+
+
+def describe_critical_effects(
+    effects: PlanEffects, entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...]
+) -> str | None:
+    """"Das Skript Schlafen entriegelt dabei Haustürschloss." - every effect
+    whose own risk is HIGH or CRITICAL, in the words of the question."""
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
+    parts: list[tuple[str, str, str]] = []
+    for effect in effects.effects:
+        if effect.domain in {"script", "scene", "automation", "group"}:
+            continue
+        plan = ServiceCallPlan(effect.domain, effect.service, list(effect.entity_ids))
+        if classify_service_plan(plan, entities) < RiskLevel.HIGH:
+            continue
+        targets = ", ".join(names.get(entity_id, entity_id) for entity_id in effect.entity_ids)
+        verb = _EFFECT_VERBS.get((effect.domain, effect.service), f"führt {effect.domain}.{effect.service} aus für")
+        suffix = ""
+        if verb.endswith(":"):
+            verb, suffix = "schaltet", " unscharf"
+        part = (verb, targets, suffix)
+        if part not in parts:
+            parts.append(part)
+    if not parts:
+        return None
+    root = effects.roots[0] if effects.roots else ""
+    kind = _ROOT_KINDS.get(root.split(".", 1)[0], "Die Aktion")
+    name = effects.names.get(root) or names.get(root) or root
+    rendered = [
+        f"{verb} dabei {targets}{suffix}" if index == 0 else f"{verb} {targets}{suffix}"
+        for index, (verb, targets, suffix) in enumerate(parts)
+    ]
+    listed = rendered[0] if len(rendered) == 1 else ", ".join(rendered[:-1]) + " und " + rendered[-1]
+    return f"{kind} {name} {listed}."
+
+
 def evaluate_service_plan(
     plan: ServiceCallPlan,
     entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],
@@ -164,6 +212,11 @@ def evaluate_service_plan(
         note = unknown_text
         unknown_needs_confirmation = True
     if effects is not None:
+        # Informed consent (7.7.1 A6): a question about a script, scene,
+        # group or routine names every effect from HIGH risk upwards.
+        critical = describe_critical_effects(effects, entities)
+        if critical:
+            note = f"{note} {critical}" if note else critical
         followups = describe_followups(effects)
         if followups:
             note = f"{note} {followups}" if note else followups

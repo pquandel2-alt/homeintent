@@ -22,7 +22,7 @@ from typing import Any, Mapping, Sequence
 
 from hassil import Intents
 
-from .areas import AreaResolveStatus, resolve_area_name
+from .areas import AreaResolveStatus, AreaSnapshot, resolve_area_name
 from .automation_summary import AutomationSummary
 from .automation_composition import (
     CompositionOutcome,
@@ -121,6 +121,7 @@ from .nlu.semantic_projection import project_independent_predicates
 from .nlu.semantic_utterance import (
     ClauseRole,
     Modality,
+    NON_EXECUTABLE_MODALITIES,
     Polarity,
     PragmaticDisposition,
     SpeechAct,
@@ -1031,9 +1032,14 @@ class NluEngine:
         elif ontology_result is not None:
             result = ontology_result
             authority = UnderstandingAuthority.V8_SEMANTIC
-        return self._direct_understanding_outcome(
-            text, document, interpreted, result, entities, authority
-        )
+        # The honest failure sentence knows the speaker's room (7.7.1 A5).
+        self._feedback_source_area = context.source_area if context is not None else None
+        try:
+            return self._direct_understanding_outcome(
+                text, document, interpreted, result, entities, authority
+            )
+        finally:
+            self._feedback_source_area = None
 
     def understand_need(
         self,
@@ -1165,7 +1171,7 @@ class NluEngine:
         utterance = document.utterance
         if (
             utterance.speech_act in {SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION}
-            or utterance.modality in {Modality.HYPOTHETICAL, Modality.UNCERTAIN, Modality.MAINTAIN}
+            or utterance.modality in NON_EXECUTABLE_MODALITIES
             or utterance.polarity is not Polarity.POSITIVE
             or (
                 document.source_text.rstrip().endswith("?")
@@ -1213,7 +1219,9 @@ class NluEngine:
         if not document.utterance.safe_to_execute_directly:
             # Asking which device is meant is safe for any command shape.
             return _ambiguous_kind_question(document, entities) if document.temporal else None
-        compiled = compile_ontology_command(document, entities)
+        compiled = compile_ontology_command(
+            document, entities, source_area=getattr(self, "_feedback_source_area", None)
+        )
         if compiled is not None and compiled.message is not None:
             return compiled.message
         return _ambiguous_kind_question(document, entities)
@@ -1791,9 +1799,19 @@ class NluEngine:
         )
 
 
-    def failure_feedback(self, text: str, entities: list[EntitySnapshot] | None = None) -> str | None:
+    def failure_feedback(
+        self,
+        text: str,
+        entities: list[EntitySnapshot] | None = None,
+        *,
+        source_area: AreaSnapshot | None = None,
+    ) -> str | None:
         """Best-effort explanation after every deterministic parser failed."""
-        feedback = self.understanding_feedback(text, entities)
+        self._feedback_source_area = source_area
+        try:
+            feedback = self.understanding_feedback(text, entities)
+        finally:
+            self._feedback_source_area = None
         return feedback.speech if feedback is not None else None
 
     def understanding_feedback(

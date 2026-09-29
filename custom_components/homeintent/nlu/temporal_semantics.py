@@ -126,6 +126,14 @@ def analyse_temporal_semantics(
                         " ".join(words[index:index + 3]),
                         amount * multiplier,
                     ))
+        if word == "um" and index + 3 < len(words) and words[index + 2] == ":":
+            # "um 6:30 (Uhr)" - the clock form of "um halb sieben" (7.7.1 A3).
+            hour, minute = _number(words[index + 1]), _number(words[index + 3])
+            if hour is not None and minute is not None and 0 <= hour <= 23 and 0 <= minute <= 59:
+                end = index + 5 if index + 4 < len(words) and words[index + 4] == "uhr" else index + 4
+                found.append(TemporalExpression(
+                    TemporalKind.ABSOLUTE_TIME, index, end, f"{hour:02d}:{minute:02d}"
+                ))
         if word == "um" and index + 2 < len(words):
             hour = _number(words[index + 1])
             if hour is not None and words[index + 2] == "uhr" and 0 <= hour <= 23:

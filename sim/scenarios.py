@@ -710,3 +710,35 @@ S("s73-7-delay-plural", L73, "§7: Verzögerung in beliebiger Wortstellung, Plur
 S("s73-7-camera", L73, "Einfahrtkamera auf dem Fernseher (README-Gegenstück)",
   service("media_player.turn_on", {"entity_id": "media_player.wohnzimmer_tv"}),
   say("Zeig die Einfahrtkamera auf dem Fernseher im Wohnzimmer.", calls=["media_player.wohnzimmer_tv:play_media"]))
+
+# ========================================================= 7.7.1 Sicherheit (unabhängiger Test 7.7)
+L771 = "Sicherheit 7.7.1"
+S("s771-a1-correction", L771, "A1: Selbstkorrektur ohne Negationswort – nur der Ersatz",
+  say("Schalte das Küchenradio aus, ich meine den Fernseher im Wohnzimmer.",
+      not_calls=["media_player.kuechenradio:turn_off"]),
+  say("Licht im Kinderzimmer an, halt, im Schlafzimmer.",
+      not_calls=["light.kinderzimmerlicht:turn_on", "light.nachtlicht:turn_on"]),
+  say("Mach die Stehlampe an, nein, doch nicht.", no_calls=True))
+S("s771-a2-irrealis", L771, "A2: Irrealis, Abwägung, Beibehaltung schreiben nie",
+  say("Hätte ich doch die Heizung im Büro ausgeschaltet.", no_calls=True),
+  say("Ich überlege, ob ich den Mähroboter starten soll.", no_calls=True),
+  say("Den Fernseher lass bitte aus.", no_calls=True, any=["lasse"]))
+S("s771-a3-ellipsis", L771, "A3: Ellipse mit neuem Objekt, Seite, Zeit, Ort",
+  say("Fahr den linken Rollladen im Wohnzimmer hoch.", settle=4, calls=["cover.wohnzimmer_rollladen_links:open_cover"]),
+  say("Den rechten runter.", settle=4, calls=["cover.wohnzimmer_rollladen_rechts:close_cover"], only_calls=True),
+  say("Mach das Licht im Flur aus.", calls=["light.flurlicht:turn_off"]),
+  say("Morgen früh wieder an.", no_calls=True),
+  say("Nein."),
+  say("Mach das Licht im Flur an.", calls=["light.flurlicht:turn_on"]),
+  say("Oben auch.", calls=["light.flurlicht_oben:turn_on"], only_calls=True))
+S("s771-a4-coordination", L771, "A4: Ergänzungsstrich, gemeinsamer Kopf, Ort für alle Teile",
+  say("Schalte Garten- und Terrassenlicht ein.", calls=["light.terrassenlicht:turn_on"]),
+  say("Fahr Küche und Esszimmer Rollladen runter.", settle=4,
+      calls=["cover.kuechenrollladen:close_cover", "cover.esszimmer_rollladen:close_cover"]),
+  say("Mach im Wohnzimmer das Licht aus und fahr die Rollläden runter.", settle=4,
+      not_calls=["cover.schlafzimmer_rollladen:close_cover", "cover.kinderzimmer_rollladen:close_cover"]))
+S("s771-a5-satellite", L771, "A5: Satellitenraum ohne passendes Gerät – nur Angebot",
+  say("Schalte den Fernseher ein.", device="Badezimmer", no_calls=True, any=["badezimmer"]))
+S("s771-a6-informed", L771, "A6: Rückfrage nennt die kritische Wirkung des Skripts",
+  say("Starte das Skript Gute Nacht.", no_calls=True, any=["haustürschloss"]),
+  say("Nein.", no_calls=True))

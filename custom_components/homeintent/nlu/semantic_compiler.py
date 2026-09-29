@@ -35,6 +35,7 @@ from .degree_semantics import (
     temperature_value,
 )
 from .constraint_resolver import Constraints, resolve_candidates
+from .device_ontology import analyse_word, entity_genera
 from .entity_resolution import (
     ResolutionStatus,
     ResolveStatus,
@@ -1614,6 +1615,19 @@ class SemanticCommandCompiler:
                         entity
                         for entity in candidates
                         if capability in entity.capabilities
+                    ]
+                # The speaker's room narrows the spoken kind; it never swaps
+                # it for another device of the same domain ("die Steckdose"
+                # is no garden pump, 7.7.1 A5).
+                spoken_genera = {
+                    key
+                    for word in re.findall(r"[\wäöüß]+", positive_text)
+                    if (spoken_word := analyse_word(word)) is not None and not spoken_word.universal
+                    for key in spoken_word.genera
+                }
+                if spoken_genera:
+                    candidates = [
+                        entity for entity in candidates if entity_genera(entity) & spoken_genera
                     ]
             else:
                 selected_ranked = []

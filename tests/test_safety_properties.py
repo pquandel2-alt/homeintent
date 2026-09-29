@@ -34,7 +34,7 @@ _ha_stub.install()
 
 from _testhaus import HouseConversation, house_entities  # noqa: E402
 from homeintent.effect_graph import build_plan_effects_from_sources  # noqa: E402
-from homeintent.entities import EntitySnapshot  # noqa: E402
+from homeintent.entities import EntitySnapshot, normalize_for_compare  # noqa: E402
 from homeintent.execution_policy import PolicyOutcome, evaluate_service_plan  # noqa: E402
 from homeintent.nlu.device_ontology import GENERA, Gender, genus_forms  # noqa: E402
 from homeintent.nlu.german_morphology import dative_location_phrase  # noqa: E402
@@ -646,6 +646,234 @@ def test_habit_learning_never_learns_what_a_sentence_means():
             name.startswith(("nlu", "engine", "parsers", "conversation", "arbitration"))
             for name in imported
         ), (module, imported)
+
+
+# ------------------------------------------------------------ 7.7.1: forms the earlier generators never reached
+# Why the 7.7 generators missed the independent findings: the self-correction
+# frames were six fixed sentences with "nein"/"äh" and "ich meine" only in
+# mid-position; no replacement named a place or a side, and none followed a
+# complete first clause without a negation word. The counterfactual frame
+# used only the participles "angemacht"/"ausgemacht" and no "hätte … sollen";
+# deliberation and maintenance had no generator at all. No invariant spoke
+# two turns (ellipsis), coordinated with hyphen or shared head, or used the
+# speaker's room. The building blocks below add exactly these.
+_CORRECTION_MARKERS = st.sampled_from([
+    "ich meine", "ich meinte", "halt", "äh", "ähm", "nein", "nee", "Quatsch", "sorry",
+    "Moment", "korrigiere", "ach nee", "oder nee", "also", "sprich", "lieber", "besser gesagt",
+    "Entschuldigung", "stopp,", "nein, doch lieber",
+])
+_CORRECTION_FRAMES = st.sampled_from([
+    "Schalte {a} ein, {m}, {b}.",
+    "Mach {a} an, {m} {b}.",
+    "{a} an, {m}, {b}.",
+    "Schalte {a} aus {m} {b}",
+    "Mach {a} aus – {m}, {b}.",
+    "Schalte {a}, {m}, {b} ein.",
+])
+_SWITCH_LIGHTS = sorted(
+    (entity.entity_id, entity.friendly_name) for entity in _ENTITIES if entity.domain == "light"
+)
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), st.sampled_from(_SWITCH_LIGHTS), _CORRECTION_MARKERS, _CORRECTION_FRAMES)
+def test_correction_never_writes_to_a_target_only_retracted(first, second, marker, frame):
+    """A1: command × marker × replacement - never a target named only in
+    the retracted part, never both."""
+    assume(first != second)
+    (first_id, first_name), (second_id, second_name) = first, second
+    turn = say(frame.format(a=first_name, b=second_name, m=marker))
+    written = _written(turn)
+    assert first_id not in written, (turn.text, turn.speech)
+    assert written <= {second_id}, (turn.text, turn.speech)
+
+
+_PLACE_LIGHTS = [
+    (place, frozenset(entity.entity_id for entity in genus_members("light", _ENTITIES) if entity.area_id == area))
+    for area, place, _count in _places_for("light")
+]
+
+
+@given(st.sampled_from(_PLACE_LIGHTS), st.sampled_from(_PLACE_LIGHTS), _CORRECTION_MARKERS, ON_OFF)
+def test_place_correction_never_writes_to_the_retracted_place(first, second, marker, switch):
+    """A1: "Licht im Kinderzimmer an, halt, im Schlafzimmer"."""
+    (first_place, first_ids), (second_place, second_ids) = first, second
+    assume(first_place != second_place)
+    turn = say(f"Licht {first_place} {switch[0]}, {marker}, {second_place}.")
+    assert not _written(turn) & (first_ids - second_ids), (turn.text, turn.speech)
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), _CORRECTION_MARKERS, st.sampled_from([
+    "doch nicht", "lass mal", "vergiss es", "", "lieber nicht", "doch nicht, egal",
+]))
+def test_aborted_command_never_writes(light, marker, abort):
+    """A1: "…, nein, doch nicht" / "…, stopp." runs nothing."""
+    assume(marker not in {"also", "sprich", "äh", "ähm"} or abort)
+    text = f"Mach {light[1]} an, {marker}, {abort}".rstrip(", ") + "."
+    turn = say(text)
+    assert _written(turn) == set(), (turn.text, turn.speech)
+
+
+_PARTICIPLES = st.sampled_from([
+    ("angemacht", "ausgemacht"), ("eingeschaltet", "ausgeschaltet"),
+    ("angeschaltet", "abgeschaltet"), ("angelassen", "ausgelassen"),
+])
+_INFINITIVES = st.sampled_from([("anmachen", "ausmachen"), ("einschalten", "ausschalten")])
+
+
+@given(device_phrase(), st.integers(0, 1), _PARTICIPLES, _INFINITIVES, st.sampled_from(range(10)))
+def test_irrealis_deliberation_and_maintenance_never_write(device, on_off, participle, infinitive, frame):
+    """A2: these frames around any valid command never write."""
+    _genus, phrase, nominative, place, _count, plural = device
+    particle = ("an", "aus")[on_off]
+    part = participle[on_off]
+    infinitive_form = infinitive[on_off]
+    texts = [
+        f"Hätte ich doch {phrase} {place} {part}.",
+        f"Ich hätte {phrase} {place} {infinitive_form} sollen.",
+        f"Wir hätten {phrase} {place} schon längst {part}.",
+        f"Wäre {nominative} {place} doch {particle} gewesen.",
+        f"Ich überlege, ob ich {phrase} {place} {infinitive_form} soll.",
+        f"Ich weiß nicht, ob ich {phrase} {place} {infinitive_form} soll.",
+        f"Vielleicht sollte ich {phrase} {place} {infinitive_form}.",
+        f"Lass {phrase} {place} bitte {particle}.",
+        f"{phrase[:1].upper()}{phrase[1:]} {place} lass bitte {particle}.",
+        f"{nominative[:1].upper()}{nominative[1:]} {place} {'sollen' if plural else 'soll'} {particle} bleiben.",
+    ]
+    text = texts[frame]
+    assert writes(say(text)) == [], text
+
+
+def _dialog(*texts):
+    house = _house()
+    _COUNTER[0] += 1
+    house.conversation_id = f"prop-ellipsis-{_COUNTER[0]}"
+    return [house.say(text) for text in texts]
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), st.sampled_from(_SWITCH_LIGHTS), ON_OFF)
+def test_ellipsis_with_a_new_object_never_writes_to_the_previous_target(first, second, switch):
+    """A3: "Mach die Stehlampe an." -> "Und das Deckenlicht aus." """
+    assume(first != second)
+    (first_id, first_name), (second_id, second_name) = first, second
+    _opening, follow = _dialog(f"Mach {first_name} an.", f"Und {second_name} {switch[0]}.")
+    assert first_id not in _written(follow) or first_id == second_id, (follow.text, follow.speech)
+    assert _written(follow) <= {second_id}, (follow.text, follow.speech)
+
+
+_SIDED = [
+    (entity.entity_id, entity.friendly_name)
+    for entity in _ENTITIES
+    if entity.friendly_name.endswith((" links", " rechts"))
+]
+
+
+@given(st.sampled_from(_SIDED), st.sampled_from(["runter", "hoch", "an", "aus", "zu", "auf"]),
+       st.sampled_from(["", "Und ", "Jetzt "]))
+def test_ellipsis_with_another_side_never_writes_to_the_previous_side(sided, particle, lead):
+    """A3: "…linken … hoch." -> "Den rechten runter." """
+    entity_id, name = sided
+    other = "rechten" if name.endswith("links") else "linken"
+    _opening, follow = _dialog(f"Schalte {name} ein.", f"{lead}den {other} {particle}.")
+    assert entity_id not in _written(follow), (follow.text, follow.speech)
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), CLOCK, ON_OFF)
+def test_ellipsis_with_a_time_never_runs_now(light, clock, switch):
+    """A3: "Mach das Licht im Flur aus." -> "Morgen früh wieder an." """
+    _opening, follow = _dialog(f"Mach {light[1]} aus.", f"{clock[:1].upper()}{clock[1:]} wieder {switch[0]}.")
+    assert [call for call in writes(follow) if call[0] != "automation"] == [], (follow.text, follow.speech)
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), st.sampled_from([place for place, _ids in _PLACE_LIGHTS] + ["oben", "unten", "im Keller"]),
+       st.sampled_from(["{p} auch.", "Und {p} auch.", "{p} ebenfalls."]))
+def test_ellipsis_never_widens_the_target_set(light, place, frame):
+    """A3: "Mach das Licht im Flur an." -> "Oben auch." is at most one light."""
+    _opening, follow = _dialog(f"Schalte {light[1]} ein.", frame.format(p=place[:1].upper() + place[1:]))
+    assert len(_written(follow)) <= 1, (follow.text, follow.speech)
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), st.sampled_from(_SWITCH_LIGHTS), st.one_of(st.none(), UNKNOWN),
+       st.sampled_from(["Schalte {a} und {b} ein.", "Mach {a} an, dann {b}.", "{a} und {b} an."]))
+def test_executed_parts_equal_named_parts_or_nothing(first, second, unknown, frame):
+    """A4: every named part runs, or none does."""
+    assume(first != second)
+    names = (first[1], unknown or second[1])
+    turn = say(frame.format(a=names[0], b=names[1]))
+    written = _written(turn)
+    expected = {first[0]} if unknown else {first[0], second[0]}
+    if unknown:
+        assert written == set(), (turn.text, turn.speech)
+    else:
+        assert written in (set(), expected), (turn.text, turn.speech)
+
+
+@given(st.sampled_from([place for place, _ids in _PLACE_LIGHTS]), ON_OFF,
+       st.sampled_from(["fahr die Rollläden runter", "mach die Heizung aus", "schalte den Fernseher aus"]))
+def test_first_place_bounds_later_parts(place, switch, second):
+    """A4 (SC-10): "Im Wohnzimmer das Licht aus und die Rollläden runter"
+    never reaches devices of other rooms."""
+    turn = say(f"Mach {place} das Licht {switch[0]} und {second}.")
+    area = next(area for area, spoken, _count in _places_for("light") if spoken == place)
+    by_id = {entity.entity_id: entity for entity in _ENTITIES}
+    assert all(by_id[entity].area_id == area for entity in _written(turn) if entity in by_id), (turn.text, turn.speech)
+
+
+_SATELLITE_CASES = [
+    (genus, area)
+    for genus in _SWITCHABLE
+    if genus_members(genus.key, _ENTITIES)
+    for area in sorted({entity.area_id for entity in _ENTITIES if entity.area_id})
+    if not any(entity.area_id == area for entity in genus_members(genus.key, _ENTITIES))
+]
+
+
+@settings(max_examples=12)
+@given(st.sampled_from(_SATELLITE_CASES), ON_OFF)
+def test_satellite_room_is_never_left_silently(case, switch):
+    """A5: without a place, a device of another room is only offered."""
+    genus, area = case
+    noun = genus.lemmas[0]
+    # A device whose registry name is the kind word itself ("Luftbefeuchter")
+    # is named, not described; a name is no description of the room.
+    assume(not any(
+        normalize_for_compare(name) == normalize_for_compare(noun)
+        for entity in genus_members(genus.key, _ENTITIES)
+        for name in (entity.friendly_name, *entity.aliases)
+    ))
+    house = HouseConversation(pytest.MonkeyPatch(), area=area, options=AUTO)
+    turn = house.say(f"Mach {_ARTICLE[genus.gender]} {noun} {switch[0]}.")
+    assert _written(turn) == set(), (area, turn.text, turn.speech)
+
+
+_HIGH_STEPS = [
+    ({"action": "lock.unlock", "target": {"entity_id": "lock.haustuerschloss"}}, "Haustürschloss"),
+    ({"action": "lock.lock", "target": {"entity_id": "lock.gartentor_schloss"}}, "Gartentor"),
+    ({"action": "cover.open_cover", "target": {"entity_id": "cover.garagentor"}}, "Garagentor"),
+]
+_LOW_STEPS = [
+    {"action": "light.turn_on", "target": {"entity_id": "light.stehlampe"}},
+    {"action": "light.turn_off", "target": {"entity_id": "light.flurlicht"}},
+]
+
+
+@settings(max_examples=10)
+@given(st.lists(st.sampled_from(_HIGH_STEPS), min_size=1, max_size=2, unique_by=lambda item: item[1]),
+       st.lists(st.sampled_from(_LOW_STEPS), max_size=2), st.booleans())
+def test_confirmation_names_every_high_effect(high, low, script_first):
+    """A6: the question about a script names each HIGH/CRITICAL effect."""
+    from homeintent.entities import EntitySnapshot
+
+    entities = _ENTITIES + [EntitySnapshot("script.abendlauf", "Abendlauf", "script", "off")]
+    house = HouseConversation(pytest.MonkeyPatch(), entities=entities, options=AUTO)
+    steps = [step for step, _name in high] + list(low)
+    if not script_first:
+        steps.reverse()
+    _ha_stub.register_script(house.entity.hass, "script.abendlauf", steps)
+    turn = house.say("Starte das Skript Abendlauf.")
+    assert _written(turn) == set(), turn.speech
+    for step, name in high:
+        target = next(entity for entity in _ENTITIES if entity.entity_id == step["target"]["entity_id"])
+        assert target.friendly_name in turn.speech, (turn.speech, name)
 
 
 # ------------------------------------------------------------ fixed regressions

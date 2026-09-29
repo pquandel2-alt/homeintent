@@ -39,6 +39,7 @@ from .device_ontology import (
     lookup_genus_word,
     negative_phrase,
 )
+from .german_morphology import dative_location_phrase
 from .normalize import german_number
 from .place_model import LEVEL_WORDS, Place, PlaceKind, PlaceLexicon, PlaceMention, build_place_lexicon
 
@@ -616,6 +617,32 @@ def resolve_description(
             candidates = local
             place = source_area
             used_source_area = True
+    elif (
+        place is None
+        and source_area is not None
+        and source_area.kind is PlaceKind.AREA
+        and description.quantity is Quantity.ONE
+        and candidates
+        and not any(source_area.contains(entity) for entity in candidates)
+    ):
+        # The speaker's room limits a command without a place (7.7.1 A5):
+        # nothing fitting there is said, a device elsewhere is only offered,
+        # never chosen silently.
+        here = replace(description, place=source_area)
+        offered = sorted(candidates, key=lambda entity: entity.entity_id)[:3]
+        options = " oder ".join(
+            f"{entity.friendly_name}"
+            + (f" {dative_location_phrase(entity.area_name)}" if entity.area_name else "")
+            for entity in offered
+        )
+        return TargetResolution(
+            ResolutionOutcome.NONE, here, tuple(offered),
+            message=(
+                f"{_none_message(here)} Meinst du {options}? "
+                "Dann sag es bitte mit dem Raum. Ich habe nichts ausgeführt."
+            ),
+            used_source_area=True,
+        )
     candidates.sort(key=lambda entity: entity.entity_id)
     described = replace(description, place=place)
     if not candidates:

@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from functools import partial
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, Literal, Sequence
 
 from homeassistant.components import conversation
@@ -85,7 +85,15 @@ from .nlu.place_model import build_place_lexicon
 from .nlu.device_ontology import analyse_word, lookup_genus_word
 from .nlu.target_resolution import genus_members, hidden_device_text, hidden_name_mentions
 from .nlu.situation_views import answer_situation_view
-from .nlu.utterance_meaning import render_maintain
+from .nlu.utterance_meaning import render_maintain, render_non_executable
+from .nlu.self_correction import (
+    CorrectionKind,
+    analyse_self_correction,
+    render_correction,
+    utterance_fields,
+)
+from .nlu.coordination import expand_coordination
+from .nlu.ellipsis_contract import EllipsisFields, ellipsis_fields, violation
 from .nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from .nlu.action_model import NotificationRecipient, NotificationRecipientKind
 from .notification_request import NotificationRequest
@@ -229,6 +237,50 @@ _COMMAND_ANSWER_TASK_KINDS = frozenset({
 # own docstring for why): a single-match toggle executes immediately, so
 # only an error text is needed here, mirroring the ordinary command path's
 # own ``FAILED_TO_HANDLE`` wording.
+
+
+@dataclass(frozen=True)
+class _TimedFollowup:
+    """A follow-up whose own time must not run now (7.7.1 A3)."""
+
+    payload: Any
+
+
+def _written_entities(payload: Any, entities: Sequence[EntitySnapshot]) -> list[EntitySnapshot]:
+    """The devices a context reading would write to."""
+    plans = []
+    if isinstance(payload, CommandPlan):
+        plans = [item.plan for item in payload.commands if getattr(item, "plan", None) is not None]
+    elif getattr(payload, "plan", None) is not None:
+        plans = [payload.plan]
+    ids: set[str] = set()
+    for plan in plans:
+        value = getattr(plan, "entity_id", None)
+        if isinstance(value, str):
+            ids.add(value)
+        elif isinstance(value, (list, tuple)):
+            ids.update(item for item in value if isinstance(item, str))
+    return [entity for entity in entities if entity.entity_id in ids]
+
+
+_TIMED_PHRASES = {
+    "turn_on": ("Schalte", "ein"), "turn_off": ("Schalte", "aus"),
+    "open_cover": ("Öffne", ""), "close_cover": ("Schließe", ""),
+}
+
+
+def timed_followup_text(payload: Any, text: str, entities: Sequence[EntitySnapshot]) -> str | None:
+    """"Morgen früh wieder an" after the hall light -> a complete time-bound
+    command for the ordinary scheduling path; never an immediate write."""
+    plan = getattr(payload, "plan", None)
+    phrase = _TIMED_PHRASES.get(getattr(plan, "service", ""))
+    written = _written_entities(payload, entities)
+    time = next((item.text for item in utterance_fields(text, entities)[0] if item.kind == "time"), None)
+    if phrase is None or not written or time is None:
+        return None
+    names = " und ".join(entity.friendly_name for entity in written)
+    verb, particle = phrase
+    return f"{verb} {names} {time} {particle}".strip() + "."
 
 
 def _with_session_conversation_id(
@@ -622,6 +674,19 @@ class NluConversationEntity(
                 localized_text = (
                     f"{replacement.group('verb')} {replacement.group('rest')}"
                 )
+        # "A, ich meine B" / "A, halt, B": retraction + replacement is one
+        # structure (7.7.1 A1). Only the corrected command is read further;
+        # an abort or an unclear correction runs nothing.
+        correction = analyse_self_correction(localized_text, entities)
+        if correction.kind in {CorrectionKind.CANCELLED, CorrectionKind.AMBIGUOUS}:
+            response.async_set_speech(render_correction(correction))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        if correction.kind is CorrectionKind.REPLACED:
+            localized_text = correction.text
+        # Shared heads, hyphen ellipsis and a place for all parts (7.7.1 A4).
+        localized_text = expand_coordination(localized_text, entities)
         wake = wake_request(localized_text)
         if wake is not None:
             # "Weck mich um sieben mit Licht": a wake request is a timed
@@ -861,6 +926,14 @@ class NluConversationEntity(
             if handled is not None:
                 return handled
 
+        if language_document.utterance.modality in {Modality.IRREALIS, Modality.DELIBERATION}:
+            # "Hätte ich doch …" / "Ich überlege, ob …" (7.7.1 A2): a past that
+            # did not happen or thinking aloud is never an operation, whatever
+            # router would read the verb.
+            response.async_set_speech(render_non_executable(language_document.utterance.modality))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         if (
             active_dialog is None
             and language_document.utterance.modality is Modality.MAINTAIN
@@ -1926,7 +1999,30 @@ class NluConversationEntity(
                         user_input.text, entities, pending
                     )),
                 )
-                result = self._arbitrate_context_readings(readings)
+                result = self._arbitrate_context_readings(
+                    readings,
+                    contract=(
+                        ellipsis_fields(user_input.text, entities),
+                        entities,
+                        pending.last_entities if pending is not None else (),
+                    ),
+                )
+                if isinstance(result, _TimedFollowup):
+                    timed_text = timed_followup_text(result.payload, user_input.text, entities)
+                    if timed_text is None:
+                        response.async_set_speech(
+                            "Mit der Zeitangabe kann ich den Folgeauftrag nicht sicher bilden. "
+                            "Sag ihn bitte vollständig, zum Beispiel: Schalte das Flurlicht morgen um 7 Uhr ein."
+                        )
+                        return conversation.ConversationResult(
+                            response=response, conversation_id=user_input.conversation_id
+                        )
+                    # The rebuilt sentence names its target itself; it is
+                    # read without the context, so it cannot loop back here.
+                    self._context_store.clear(user_input.conversation_id)
+                    return await self._async_handle_message_inner(
+                        replace(user_input, text=timed_text), chat_log
+                    )
             if result is None and _AUTOMATION_DELETE_RE.search(user_input.text):
                 # V5.28 "Automation Deletion": checked before the query gate
                 # below - "Lösche die Automation für X" also contains the
@@ -2168,9 +2264,31 @@ class NluConversationEntity(
         return [step for step in sequence if isinstance(step, dict)]
 
 
-    def _arbitrate_context_readings(self, readings: Sequence[tuple[str, Any]]) -> Any:
-        """Discourse connections as arbiter candidates (7.7, B3)."""
+    def _arbitrate_context_readings(
+        self,
+        readings: Sequence[tuple[str, Any]],
+        contract: tuple[EllipsisFields, list[EntitySnapshot], Sequence[EntitySnapshot]] | None = None,
+    ) -> Any:
+        """Discourse connections as arbiter candidates (7.7, B3).
+
+        Every writing reading must keep the ellipsis contract (7.7.1 A3): a
+        newly named object, side or time is never replaced by the previous
+        target, and the target set never widens.
+        """
         payloads = [(source, read()) for source, read in readings]
+        if contract is not None:
+            fields, entities, previous = contract
+            timed: Any = None
+            kept: list[tuple[str, Any]] = []
+            for source, payload in payloads:
+                written = _written_entities(payload, entities)
+                reason = violation(fields, written, previous) if written else None
+                if reason == "time" and timed is None:
+                    timed = payload
+                kept.append((source, None if reason else payload))
+            payloads = kept
+            if timed is not None and all(payload is None for _source, payload in payloads):
+                return _TimedFollowup(timed)
         candidates = context_candidates(payloads)
         decision = arbitrate(candidates)
         if decision.writes:

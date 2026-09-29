@@ -47,12 +47,9 @@ def test_dreh_alle_lichter_an(engine, entities):
     assert sorted(result.plan.entity_id) == expected
 
 
-def test_lass_alle_lichter_aus(engine, entities):
-    result = engine.match("lass alle Lichter aus", entities)
-    assert result is not None
-    assert result.plan.service == "turn_off"
-    expected = sorted(e.entity_id for e in entities if e.domain == "light")
-    assert sorted(result.plan.entity_id) == expected
+def test_lass_alle_lichter_aus_keeps_the_state(engine, entities):
+    # 7.7.1 A2: "lass … aus" is maintenance, never an operation.
+    assert engine.match("lass alle Lichter aus", entities) is None
 
 
 def test_alle_lichter_im_buro_room_scoped(engine):

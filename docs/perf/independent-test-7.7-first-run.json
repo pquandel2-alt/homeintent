@@ -1,0 +1,9521 @@
+{
+"note": "Erster Lauf, unverändert (Rohurteile des Prüfgerüsts). Sätze und Antworten bleiben in der Test-Session (unveröffentlichter Korpus).",
+"corpus_sha256": "0f9505e81b8cfa28367e582b1a024e0532a5ab836e09461dcf03b95b277d4b73",
+"corpus_frozen_utc": "2026-09-29T16:39:32Z",
+"raw_result_sha256": "75f29c6d21d81a7a8629b545d0ae9269e1bf4074c0e01d44eac51b6d70460512",
+"homeintent_commit": "4b3f4db",
+"home_assistant": "2026.9.2",
+"python": "3.14.7",
+"cases": [
+{
+"id": "DIRECT-001",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+173
+]
+},
+{
+"id": "DIRECT-002",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+61
+]
+},
+{
+"id": "DIRECT-003",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "DIRECT-004",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "DIRECT-005",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "DIRECT-006",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+66
+]
+},
+{
+"id": "DIRECT-007",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "DIRECT-008",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "DIRECT-009",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "DIRECT-010",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "DIRECT-011",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "DIRECT-012",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+60
+]
+},
+{
+"id": "DIRECT-013",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+114
+]
+},
+{
+"id": "DIRECT-014",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+140
+]
+},
+{
+"id": "DIRECT-015",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-016",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "DIRECT-017",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-018",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-019",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "DIRECT-020",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-021",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+90
+]
+},
+{
+"id": "DIRECT-022",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "DIRECT-023",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+56
+]
+},
+{
+"id": "DIRECT-024",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "DIRECT-025",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "DIRECT-026",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-027",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "DIRECT-028",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "DIRECT-029",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "DIRECT-030",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+37
+]
+},
+{
+"id": "DIRECT-031",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "DIRECT-032",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-033",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "DIRECT-034",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "DIRECT-035",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "DIRECT-036",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "DIRECT-037",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "DIRECT-038",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "DIRECT-039",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "DIRECT-040",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "DIRECT-041",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+54
+]
+},
+{
+"id": "DIRECT-042",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "DIRECT-043",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+85
+]
+},
+{
+"id": "DIRECT-044",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "DIRECT-045",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "DIRECT-046",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+272
+]
+},
+{
+"id": "DIRECT-047",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "DIRECT-048",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "DIRECT-049",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-050",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "DIRECT-051",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "DIRECT-052",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-053",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-054",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+60
+]
+},
+{
+"id": "DIRECT-055",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-056",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "DIRECT-057",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "DIRECT-058",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-059",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+74
+]
+},
+{
+"id": "DIRECT-060",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "DIRECT-061",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "DIRECT-062",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+19
+]
+},
+{
+"id": "DIRECT-063",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "DIRECT-064",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-065",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "DIRECT-066",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "DIRECT-067",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+58
+]
+},
+{
+"id": "DIRECT-068",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+21
+]
+},
+{
+"id": "DIRECT-069",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+117
+]
+},
+{
+"id": "DIRECT-070",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "DIRECT-071",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "DIRECT-072",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+35
+]
+},
+{
+"id": "DIRECT-073",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+32
+]
+},
+{
+"id": "DIRECT-074",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "DIRECT-075",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+102
+]
+},
+{
+"id": "DIRECT-076",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+90
+]
+},
+{
+"id": "DIRECT-077",
+"category": "direct",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+76
+]
+},
+{
+"id": "DIRECT-078",
+"category": "direct",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+82
+]
+},
+{
+"id": "DIRECT-079",
+"category": "direct",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLOQ-001",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "COLLOQ-002",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "COLLOQ-003",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "COLLOQ-004",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+108
+]
+},
+{
+"id": "COLLOQ-005",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+80
+]
+},
+{
+"id": "COLLOQ-006",
+"category": "colloquial",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+26
+]
+},
+{
+"id": "COLLOQ-007",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "COLLOQ-008",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+64
+]
+},
+{
+"id": "COLLOQ-009",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+112
+]
+},
+{
+"id": "COLLOQ-010",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+23
+]
+},
+{
+"id": "COLLOQ-011",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "COLLOQ-012",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+104
+]
+},
+{
+"id": "COLLOQ-013",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+106
+]
+},
+{
+"id": "COLLOQ-014",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "COLLOQ-015",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+42
+]
+},
+{
+"id": "COLLOQ-016",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+100
+]
+},
+{
+"id": "COLLOQ-017",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+64
+]
+},
+{
+"id": "COLLOQ-018",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "COLLOQ-019",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "COLLOQ-020",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+58
+]
+},
+{
+"id": "COLLOQ-021",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+59
+]
+},
+{
+"id": "COLLOQ-022",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+93
+]
+},
+{
+"id": "COLLOQ-023",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "COLLOQ-024",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+19
+]
+},
+{
+"id": "COLLOQ-025",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+51
+]
+},
+{
+"id": "COLLOQ-026",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "COLLOQ-027",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+17
+]
+},
+{
+"id": "COLLOQ-028",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "COLLOQ-029",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLOQ-030",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+70
+]
+},
+{
+"id": "COLLOQ-031",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+72
+]
+},
+{
+"id": "COLLOQ-032",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+65
+]
+},
+{
+"id": "COLLOQ-033",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "COLLOQ-034",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+62
+]
+},
+{
+"id": "COLLOQ-035",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "COLLOQ-036",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "COLLOQ-037",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+99
+]
+},
+{
+"id": "COLLOQ-038",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+16
+]
+},
+{
+"id": "COLLOQ-039",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+76
+]
+},
+{
+"id": "COLLOQ-040",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+72
+]
+},
+{
+"id": "COLLOQ-041",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+77
+]
+},
+{
+"id": "POLITE-001",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+86
+]
+},
+{
+"id": "POLITE-002",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "POLITE-003",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+218
+]
+},
+{
+"id": "POLITE-004",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+92
+]
+},
+{
+"id": "POLITE-005",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "POLITE-006",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "POLITE-007",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+110
+]
+},
+{
+"id": "POLITE-008",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+161
+]
+},
+{
+"id": "POLITE-009",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+57
+]
+},
+{
+"id": "POLITE-010",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+97
+]
+},
+{
+"id": "POLITE-011",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+104
+]
+},
+{
+"id": "POLITE-012",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+107
+]
+},
+{
+"id": "POLITE-013",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "POLITE-014",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+132
+]
+},
+{
+"id": "POLITE-015",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+138
+]
+},
+{
+"id": "POLITE-016",
+"category": "polite",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+67
+]
+},
+{
+"id": "POLITE-017",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+112
+]
+},
+{
+"id": "POLITE-018",
+"category": "polite",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+230
+]
+},
+{
+"id": "POLITE-019",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+140
+]
+},
+{
+"id": "POLITE-020",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+98
+]
+},
+{
+"id": "POLITE-021",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "POLITE-022",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+59
+]
+},
+{
+"id": "POLITE-023",
+"category": "polite",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+145
+]
+},
+{
+"id": "STT-001",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "STT-002",
+"category": "stt",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+18
+]
+},
+{
+"id": "STT-003",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "STT-004",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "STT-005",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "STT-006",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "STT-007",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "STT-008",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "STT-009",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "STT-010",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "STT-011",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "STT-012",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "STT-013",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "STT-014",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "STT-015",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "STT-016",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "STT-017",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "STT-018",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "STT-019",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "STT-020",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "STT-021",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "STT-022",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "STT-023",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "STT-024",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "STT-025",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "STT-026",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+79
+]
+},
+{
+"id": "STT-027",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+124
+]
+},
+{
+"id": "STT-028",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "STT-029",
+"category": "stt",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+19
+]
+},
+{
+"id": "STT-030",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "STT-031",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "STT-032",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "STT-033",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "STT-034",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+74
+]
+},
+{
+"id": "STT-035",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+120
+]
+},
+{
+"id": "STT-036",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+101
+]
+},
+{
+"id": "STT-037",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "STT-038",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+133
+]
+},
+{
+"id": "STT-039",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "STT-040",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "STT-041",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "STT-042",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "STT-043",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+34
+]
+},
+{
+"id": "STT-044",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "STT-045",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "STT-046",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+45
+]
+},
+{
+"id": "STT-047",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "STT-048",
+"category": "stt",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+65
+]
+},
+{
+"id": "STT-049",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "STT-050",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "STT-051",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "STT-052",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+42
+]
+},
+{
+"id": "STT-053",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+113
+]
+},
+{
+"id": "STT-054",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+58
+]
+},
+{
+"id": "STT-055",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+124
+]
+},
+{
+"id": "STT-056",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "STT-057",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "STT-058",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "STT-059",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "STT-060",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "STT-061",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+74
+]
+},
+{
+"id": "STT-062",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+36
+]
+},
+{
+"id": "STT-063",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "STT-064",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "STT-065",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "STT-066",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+31
+]
+},
+{
+"id": "STT-067",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "STT-068",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "STT-069",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "STT-070",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "STT-071",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "STT-072",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+93
+]
+},
+{
+"id": "STT-073",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+78
+]
+},
+{
+"id": "STT-074",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "STT-075",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "STT-076",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "STT-077",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "STT-078",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "STT-079",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "STT-080",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "STT-081",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+109
+]
+},
+{
+"id": "STT-082",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+99
+]
+},
+{
+"id": "STT-083",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+76
+]
+},
+{
+"id": "STT-084",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+68
+]
+},
+{
+"id": "STT-085",
+"category": "stt",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "STT-086",
+"category": "stt",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+135
+]
+},
+{
+"id": "SELFCO-001",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+84
+]
+},
+{
+"id": "SELFCO-002",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+138
+]
+},
+{
+"id": "SELFCO-003",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+91
+]
+},
+{
+"id": "SELFCO-004",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+197
+]
+},
+{
+"id": "SELFCO-005",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+99
+]
+},
+{
+"id": "SELFCO-006",
+"category": "selfcorr",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+37
+]
+},
+{
+"id": "SELFCO-007",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+75
+]
+},
+{
+"id": "SELFCO-008",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "SELFCO-009",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "SELFCO-010",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+82
+]
+},
+{
+"id": "SELFCO-011",
+"category": "selfcorr",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+27
+]
+},
+{
+"id": "SELFCO-012",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+88
+]
+},
+{
+"id": "SELFCO-013",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+94
+]
+},
+{
+"id": "SELFCO-014",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+129
+]
+},
+{
+"id": "SELFCO-015",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+67
+]
+},
+{
+"id": "SELFCO-016",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+91
+]
+},
+{
+"id": "SELFCO-017",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+94
+]
+},
+{
+"id": "SELFCO-018",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "SELFCO-019",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+80
+]
+},
+{
+"id": "SELFCO-020",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+65
+]
+},
+{
+"id": "SELFCO-021",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "SELFCO-022",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "SELFCO-023",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+127
+]
+},
+{
+"id": "SELFCO-024",
+"category": "selfcorr",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+106
+]
+},
+{
+"id": "SELFCO-025",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "SELFCO-026",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+142
+]
+},
+{
+"id": "SELFCO-027",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+69
+]
+},
+{
+"id": "SELFCO-028",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "SELFCO-029",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+53
+]
+},
+{
+"id": "SELFCO-030",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+99
+]
+},
+{
+"id": "NEGATI-001",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "NEGATI-002",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "NEGATI-003",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEGATI-004",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+126
+]
+},
+{
+"id": "NEGATI-005",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "NEGATI-006",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+54
+]
+},
+{
+"id": "NEGATI-007",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEGATI-008",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEGATI-009",
+"category": "negation",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+20
+]
+},
+{
+"id": "NEGATI-010",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+102
+]
+},
+{
+"id": "NEGATI-011",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+75
+]
+},
+{
+"id": "NEGATI-012",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEGATI-013",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+72
+]
+},
+{
+"id": "NEGATI-014",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+78
+]
+},
+{
+"id": "NEGATI-015",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+63
+]
+},
+{
+"id": "NEGATI-016",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+124
+]
+},
+{
+"id": "NEGATI-017",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+111
+]
+},
+{
+"id": "NEGATI-018",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "NEGATI-019",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+13
+]
+},
+{
+"id": "NEGATI-020",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+111
+]
+},
+{
+"id": "NEGATI-021",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+85
+]
+},
+{
+"id": "NEGATI-022",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+51
+]
+},
+{
+"id": "NEGATI-023",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+13
+]
+},
+{
+"id": "NEGATI-024",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+107
+]
+},
+{
+"id": "NEGATI-025",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "NEGATI-026",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+97
+]
+},
+{
+"id": "NEGATI-027",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "NEGATI-028",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEGATI-029",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+61
+]
+},
+{
+"id": "NEGATI-030",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "PAST_H-001",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+92
+]
+},
+{
+"id": "PAST_H-002",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+85
+]
+},
+{
+"id": "PAST_H-003",
+"category": "past_hypo",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+25
+]
+},
+{
+"id": "PAST_H-004",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "PAST_H-005",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+100
+]
+},
+{
+"id": "PAST_H-006",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+102
+]
+},
+{
+"id": "PAST_H-007",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+111
+]
+},
+{
+"id": "PAST_H-008",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+85
+]
+},
+{
+"id": "PAST_H-009",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+97
+]
+},
+{
+"id": "PAST_H-010",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+89
+]
+},
+{
+"id": "PAST_H-011",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "PAST_H-012",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "PAST_H-013",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+116
+]
+},
+{
+"id": "PAST_H-014",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "PAST_H-015",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "PAST_H-016",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+91
+]
+},
+{
+"id": "PAST_H-017",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "PAST_H-018",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+75
+]
+},
+{
+"id": "PAST_H-019",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+330
+]
+},
+{
+"id": "PAST_H-020",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+108
+]
+},
+{
+"id": "PAST_H-021",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+88
+]
+},
+{
+"id": "PAST_H-022",
+"category": "past_hypo",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+28
+]
+},
+{
+"id": "PAST_H-023",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+116
+]
+},
+{
+"id": "PAST_H-024",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "PAST_H-025",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+127
+]
+},
+{
+"id": "PAST_H-026",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+102
+]
+},
+{
+"id": "PAST_H-027",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "PAST_H-028",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+90
+]
+},
+{
+"id": "PAST_H-029",
+"category": "past_hypo",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+22
+]
+},
+{
+"id": "PAST_H-030",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "QUERY_-001",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "QUERY_-002",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "QUERY_-003",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "QUERY_-004",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "QUERY_-005",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "QUERY_-006",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "QUERY_-007",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "QUERY_-008",
+"category": "query_vs_cmd",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+25
+]
+},
+{
+"id": "QUERY_-009",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "QUERY_-010",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "QUERY_-011",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "QUERY_-012",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "QUERY_-013",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "QUERY_-014",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "QUERY_-015",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "QUERY_-016",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "QUERY_-017",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "QUERY_-018",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "QUERY_-019",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "QUERY_-020",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "QUERY_-021",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "QUERY_-022",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "QUERY_-023",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "QUERY_-024",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "QUERY_-025",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "QUERY_-026",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "QUERY_-027",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "QUERY_-028",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "QUERY_-029",
+"category": "query_vs_cmd",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+17
+]
+},
+{
+"id": "QUERY_-030",
+"category": "query_vs_cmd",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+16
+]
+},
+{
+"id": "QUERY_-031",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "QUERY_-032",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "QUERY_-033",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+47
+]
+},
+{
+"id": "QUERY_-034",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "QUERY_-035",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "QUERY_-036",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "QUERY_-037",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "QUERY_-038",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "QUERY_-039",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "QUERY_-040",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "QUERY_-041",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "QUERY_-042",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "QUERY_-043",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "QUERY_-044",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "QUERY_-045",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "QUERY_-046",
+"category": "query_vs_cmd",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+19
+]
+},
+{
+"id": "QUERY_-047",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "QUERY_-048",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "QUERY_-049",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "QUERY_-050",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "QUERY_-051",
+"category": "query_vs_cmd",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+95
+]
+},
+{
+"id": "QUERY_-052",
+"category": "query_vs_cmd",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+83
+]
+},
+{
+"id": "NEEDS-001",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEEDS-002",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "NEEDS-003",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "NEEDS-004",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "NEEDS-005",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+70
+]
+},
+{
+"id": "NEEDS-006",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "NEEDS-007",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-008",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEEDS-009",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "NEEDS-010",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "NEEDS-011",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-012",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+36
+]
+},
+{
+"id": "NEEDS-013",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+51
+]
+},
+{
+"id": "NEEDS-014",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+38
+]
+},
+{
+"id": "NEEDS-015",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+55
+]
+},
+{
+"id": "NEEDS-016",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEEDS-017",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+321
+]
+},
+{
+"id": "NEEDS-018",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "NEEDS-019",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "NEEDS-020",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+64
+]
+},
+{
+"id": "NEEDS-021",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "NEEDS-022",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+80
+]
+},
+{
+"id": "NEEDS-023",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "NEEDS-024",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-025",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "NEEDS-026",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "NEEDS-027",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+83
+]
+},
+{
+"id": "NEEDS-028",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+111
+]
+},
+{
+"id": "NEEDS-029",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEEDS-030",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-031",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "NEEDS-032",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+37
+]
+},
+{
+"id": "NEEDS-033",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+117
+]
+},
+{
+"id": "NEEDS-034",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "NEEDS-035",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "DISCOU-001",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+54,
+21
+]
+},
+{
+"id": "DISCOU-002",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+19
+]
+},
+{
+"id": "DISCOU-003",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+321,
+22
+]
+},
+{
+"id": "DISCOU-004",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+83,
+66
+]
+},
+{
+"id": "DISCOU-005",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+17,
+26
+]
+},
+{
+"id": "DISCOU-006",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+49
+]
+},
+{
+"id": "DISCOU-007",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27,
+23
+]
+},
+{
+"id": "DISCOU-008",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+25,
+23,
+36
+]
+},
+{
+"id": "DISCOU-009",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+20,
+60
+]
+},
+{
+"id": "DISCOU-010",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+18
+]
+},
+{
+"id": "DISCOU-011",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+27
+]
+},
+{
+"id": "DISCOU-012",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+27
+]
+},
+{
+"id": "DISCOU-013",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+25,
+75
+]
+},
+{
+"id": "DISCOU-014",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+27,
+19,
+49
+]
+},
+{
+"id": "DISCOU-015",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+28,
+35
+]
+},
+{
+"id": "DISCOU-016",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+17,
+55
+]
+},
+{
+"id": "DISCOU-017",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+16,
+20,
+31
+]
+},
+{
+"id": "DISCOU-018",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+50
+]
+},
+{
+"id": "DISCOU-019",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+31,
+94
+]
+},
+{
+"id": "DISCOU-020",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+20
+]
+},
+{
+"id": "DISCOU-021",
+"category": "discourse",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+34,
+34
+]
+},
+{
+"id": "DISCOU-022",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+18,
+80
+]
+},
+{
+"id": "DISCOU-023",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+42,
+14
+]
+},
+{
+"id": "DISCOU-024",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18,
+15
+]
+},
+{
+"id": "DISCOU-025",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20,
+25
+]
+},
+{
+"id": "DISCOU-026",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+48
+]
+},
+{
+"id": "DISCOU-027",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+60
+]
+},
+{
+"id": "DISCOU-028",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+20
+]
+},
+{
+"id": "DISCOU-029",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+27,
+16
+]
+},
+{
+"id": "DISCOU-030",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26,
+74
+]
+},
+{
+"id": "DISCOU-031",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+19,
+34
+]
+},
+{
+"id": "DISCOU-032",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21,
+37
+]
+},
+{
+"id": "DISCOU-033",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+39
+]
+},
+{
+"id": "DISCOU-034",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25,
+15
+]
+},
+{
+"id": "DISCOU-035",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+22
+]
+},
+{
+"id": "DISCOU-036",
+"category": "discourse",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+25,
+92
+]
+},
+{
+"id": "DISCOU-037",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+27,
+29,
+28
+]
+},
+{
+"id": "DISCOU-038",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+34,
+16
+]
+},
+{
+"id": "DISCOU-039",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+25,
+317
+]
+},
+{
+"id": "DISCOU-040",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+42,
+44
+]
+},
+{
+"id": "DISCOU-041",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+25,
+59
+]
+},
+{
+"id": "DISCOU-042",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26,
+64
+]
+},
+{
+"id": "DISCOU-043",
+"category": "discourse",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+24,
+41
+]
+},
+{
+"id": "ELLIPS-001",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+54
+]
+},
+{
+"id": "ELLIPS-002",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+56,
+44
+]
+},
+{
+"id": "ELLIPS-003",
+"category": "ellipsis",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+35,
+29
+]
+},
+{
+"id": "ELLIPS-004",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+36,
+22
+]
+},
+{
+"id": "ELLIPS-005",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+69,
+19
+]
+},
+{
+"id": "ELLIPS-006",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "ELLIPS-007",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "ELLIPS-008",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27,
+20
+]
+},
+{
+"id": "ELLIPS-009",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+24
+]
+},
+{
+"id": "ELLIPS-010",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+24,
+49
+]
+},
+{
+"id": "ELLIPS-011",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+22,
+59
+]
+},
+{
+"id": "ELLIPS-012",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+29,
+38
+]
+},
+{
+"id": "ELLIPS-013",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "ELLIPS-014",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "ELLIPS-015",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "ELLIPS-016",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+62
+]
+},
+{
+"id": "ELLIPS-017",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+27
+]
+},
+{
+"id": "ELLIPS-018",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+46,
+46
+]
+},
+{
+"id": "ELLIPS-019",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+19,
+33
+]
+},
+{
+"id": "ELLIPS-020",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30,
+19
+]
+},
+{
+"id": "ELLIPS-021",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+18
+]
+},
+{
+"id": "ELLIPS-022",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "ELLIPS-023",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25,
+25
+]
+},
+{
+"id": "ELLIPS-024",
+"category": "ellipsis",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+25,
+34
+]
+},
+{
+"id": "ELLIPS-025",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25,
+20
+]
+},
+{
+"id": "MULTI-001",
+"category": "multi",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+38
+]
+},
+{
+"id": "MULTI-002",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+112
+]
+},
+{
+"id": "MULTI-003",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "MULTI-004",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+44
+]
+},
+{
+"id": "MULTI-005",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+52
+]
+},
+{
+"id": "MULTI-006",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+38
+]
+},
+{
+"id": "MULTI-007",
+"category": "multi",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+288
+]
+},
+{
+"id": "MULTI-008",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "MULTI-009",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+34
+]
+},
+{
+"id": "MULTI-010",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+187
+]
+},
+{
+"id": "MULTI-011",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "MULTI-012",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "MULTI-013",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+161
+]
+},
+{
+"id": "MULTI-014",
+"category": "multi",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"partial_execution"
+],
+"latency_ms": [
+24
+]
+},
+{
+"id": "MULTI-015",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "MULTI-016",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+51
+]
+},
+{
+"id": "MULTI-017",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+103
+]
+},
+{
+"id": "MULTI-018",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+51
+]
+},
+{
+"id": "MULTI-019",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+105
+]
+},
+{
+"id": "MULTI-020",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+159
+]
+},
+{
+"id": "MULTI-021",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+200
+]
+},
+{
+"id": "MULTI-022",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "MULTI-023",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "MULTI-024",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "MULTI-025",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "OPEN_D-001",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+43,
+23
+]
+},
+{
+"id": "OPEN_D-002",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21,
+21
+]
+},
+{
+"id": "OPEN_D-003",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+27
+]
+},
+{
+"id": "OPEN_D-004",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30,
+36
+]
+},
+{
+"id": "OPEN_D-005",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+14
+]
+},
+{
+"id": "OPEN_D-006",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+16
+]
+},
+{
+"id": "OPEN_D-007",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+14
+]
+},
+{
+"id": "OPEN_D-008",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+50,
+74
+]
+},
+{
+"id": "OPEN_D-009",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+14
+]
+},
+{
+"id": "OPEN_D-010",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29,
+20
+]
+},
+{
+"id": "OPEN_D-011",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+18
+]
+},
+{
+"id": "OPEN_D-012",
+"category": "open_dialog",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+48,
+45
+]
+},
+{
+"id": "OPEN_D-013",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+17
+]
+},
+{
+"id": "OPEN_D-014",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18,
+13
+]
+},
+{
+"id": "OPEN_D-015",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29,
+27
+]
+},
+{
+"id": "OPEN_D-016",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+72,
+50
+]
+},
+{
+"id": "OPEN_D-017",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+34,
+15
+]
+},
+{
+"id": "OPEN_D-018",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32,
+24
+]
+},
+{
+"id": "OPEN_D-019",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+28
+]
+},
+{
+"id": "OPEN_D-020",
+"category": "open_dialog",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+86
+]
+},
+{
+"id": "WORLDM-001",
+"category": "worldmodel",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+27
+]
+},
+{
+"id": "WORLDM-002",
+"category": "worldmodel",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+22,
+18
+]
+},
+{
+"id": "WORLDM-003",
+"category": "worldmodel",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17,
+26
+]
+},
+{
+"id": "WORLDM-004",
+"category": "worldmodel",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+20
+]
+},
+{
+"id": "WORLDM-005",
+"category": "worldmodel",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+78
+]
+},
+{
+"id": "WORLDM-006",
+"category": "worldmodel",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+28,
+20
+]
+},
+{
+"id": "WORLDM-007",
+"category": "worldmodel",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "WORLDM-008",
+"category": "worldmodel",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21,
+23
+]
+},
+{
+"id": "AUTOMA-001",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "AUTOMA-002",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "AUTOMA-003",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "AUTOMA-004",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+34
+]
+},
+{
+"id": "AUTOMA-005",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+92
+]
+},
+{
+"id": "AUTOMA-006",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "AUTOMA-007",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+52
+]
+},
+{
+"id": "AUTOMA-008",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+38
+]
+},
+{
+"id": "AUTOMA-009",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "AUTOMA-010",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "AUTOMA-011",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+112
+]
+},
+{
+"id": "AUTOMA-012",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+184
+]
+},
+{
+"id": "AUTOMA-013",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+153
+]
+},
+{
+"id": "AUTOMA-014",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+223
+]
+},
+{
+"id": "AUTOMA-015",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"automation_missing:handy_anna"
+],
+"latency_ms": [
+32
+]
+},
+{
+"id": "AUTOMA-016",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+329
+]
+},
+{
+"id": "AUTOMA-017",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+158
+]
+},
+{
+"id": "AUTOMA-018",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+141
+]
+},
+{
+"id": "AUTOMA-019",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+162
+]
+},
+{
+"id": "AUTOMA-020",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+125
+]
+},
+{
+"id": "AUTOMA-021",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "AUTOMA-022",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "AUTOMA-023",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+143
+]
+},
+{
+"id": "AUTOMA-024",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+153
+]
+},
+{
+"id": "AUTOMA-025",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "AUTOMA-026",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "AUTOMA-027",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "AUTOMA-028",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "AUTOMA-029",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+584
+]
+},
+{
+"id": "AUTOMA-030",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "AUTOMA-031",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "AUTOMA-032",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "AUTOMA-033",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "AUTOMA-034",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+573
+]
+},
+{
+"id": "AUTOMA-035",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+92
+]
+},
+{
+"id": "AUTOMA-036",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+153
+]
+},
+{
+"id": "AUTOMA-037",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "AUTOMA-038",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+144
+]
+},
+{
+"id": "AUTOMA-039",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+112
+]
+},
+{
+"id": "AUTOMA-040",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "AUTOMA-041",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+80
+]
+},
+{
+"id": "AUTOMA-042",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+71
+]
+},
+{
+"id": "AUTOMA-043",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "AUTOMA-044",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "AUTOMA-045",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+134
+]
+},
+{
+"id": "AUTOMA-046",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+79
+]
+},
+{
+"id": "AUTOMA-047",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+148
+]
+},
+{
+"id": "AUTOMA-048",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "AUTOMA-049",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "AUTOMA-050",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "AUTOMA-051",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "AUTOMA-052",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "AUTOMA-053",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+78
+]
+},
+{
+"id": "AUTOMA-054",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "AUTOMA-055",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+124
+]
+},
+{
+"id": "AUTOMA-056",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+140
+]
+},
+{
+"id": "AUTOMA-057",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+34
+]
+},
+{
+"id": "AUTOMA-058",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "AUTOMA-059",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+47
+]
+},
+{
+"id": "AUTOMA-060",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "AUTOMA-061",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+139
+]
+},
+{
+"id": "AUTOMA-062",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+122
+]
+},
+{
+"id": "AUTOMA-063",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+153
+]
+},
+{
+"id": "TEMPOR-001",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+34
+]
+},
+{
+"id": "TEMPOR-002",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+36
+]
+},
+{
+"id": "TEMPOR-003",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+103
+]
+},
+{
+"id": "TEMPOR-004",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+221
+]
+},
+{
+"id": "TEMPOR-005",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "TEMPOR-006",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+81
+]
+},
+{
+"id": "TEMPOR-007",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "TEMPOR-008",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "TEMPOR-009",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+139
+]
+},
+{
+"id": "TEMPOR-010",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+128
+]
+},
+{
+"id": "TEMPOR-011",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+84
+]
+},
+{
+"id": "TEMPOR-012",
+"category": "temporal",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "TEMPOR-013",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+126
+]
+},
+{
+"id": "TEMPOR-014",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+56
+]
+},
+{
+"id": "TEMPOR-015",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+46
+]
+},
+{
+"id": "TEMPOR-016",
+"category": "temporal",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+104
+]
+},
+{
+"id": "TEMPOR-017",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "TEMPOR-018",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+127
+]
+},
+{
+"id": "TEMPOR-019",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "TEMPOR-020",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+102
+]
+},
+{
+"id": "TEMPOR-021",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+55
+]
+},
+{
+"id": "TEMPOR-022",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "TEMPOR-023",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+162
+]
+},
+{
+"id": "TEMPOR-024",
+"category": "temporal",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+84
+]
+},
+{
+"id": "TEMPOR-025",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "TEMPOR-026",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+35
+]
+},
+{
+"id": "TEMPOR-027",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+117
+]
+},
+{
+"id": "TEMPOR-028",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+130
+]
+},
+{
+"id": "TEMPOR-029",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "TEMPOR-030",
+"category": "temporal",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "CRITIC-001",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "CRITIC-002",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+64
+]
+},
+{
+"id": "CRITIC-003",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "CRITIC-004",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "CRITIC-005",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "CRITIC-006",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "CRITIC-007",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "CRITIC-008",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+98
+]
+},
+{
+"id": "CRITIC-009",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+47
+]
+},
+{
+"id": "CRITIC-010",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+54
+]
+},
+{
+"id": "CRITIC-011",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+53
+]
+},
+{
+"id": "CRITIC-012",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+54
+]
+},
+{
+"id": "CRITIC-013",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+52
+]
+},
+{
+"id": "CRITIC-014",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+113
+]
+},
+{
+"id": "CRITIC-015",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+99
+]
+},
+{
+"id": "CRITIC-016",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+70
+]
+},
+{
+"id": "CRITIC-017",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+53
+]
+},
+{
+"id": "CRITIC-018",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+101
+]
+},
+{
+"id": "CRITIC-019",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+140
+]
+},
+{
+"id": "CRITIC-020",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+103
+]
+},
+{
+"id": "CRITIC-021",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+94
+]
+},
+{
+"id": "CRITIC-022",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+57
+]
+},
+{
+"id": "CRITIC-023",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+75
+]
+},
+{
+"id": "CRITIC-024",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+20
+]
+},
+{
+"id": "CRITIC-025",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+18
+]
+},
+{
+"id": "CRITIC-026",
+"category": "critical",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+17
+]
+},
+{
+"id": "CRITIC-027",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+41
+]
+},
+{
+"id": "CRITIC-028",
+"category": "critical",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+66
+]
+},
+{
+"id": "SCRIPT-001",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "SCRIPT-002",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "SCRIPT-003",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "SCRIPT-004",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "SCRIPT-005",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "SCRIPT-006",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "SCRIPT-007",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21
+]
+},
+{
+"id": "SCRIPT-008",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "SCRIPT-009",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "SCRIPT-010",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "SCRIPT-011",
+"category": "scripts",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+97
+]
+},
+{
+"id": "SCRIPT-012",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "SCRIPT-013",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+79
+]
+},
+{
+"id": "SCRIPT-014",
+"category": "scripts",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "MUTATI-001",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+15
+]
+},
+{
+"id": "MUTATI-002",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17,
+13
+]
+},
+{
+"id": "MUTATI-003",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20,
+13
+]
+},
+{
+"id": "MUTATI-004",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17,
+13
+]
+},
+{
+"id": "MUTATI-005",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+25
+]
+},
+{
+"id": "BINDIN-001",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30,
+15,
+25
+]
+},
+{
+"id": "BINDIN-002",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28,
+15,
+20
+]
+},
+{
+"id": "BINDIN-003",
+"category": "bindings",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+32,
+15,
+103
+]
+},
+{
+"id": "BINDIN-004",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27,
+15,
+13
+]
+},
+{
+"id": "BINDIN-005",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28,
+19,
+61
+]
+},
+{
+"id": "BINDIN-006",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+38,
+15,
+25
+]
+},
+{
+"id": "BINDIN-007",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26,
+20,
+28
+]
+},
+{
+"id": "BINDIN-008",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26,
+20,
+27
+]
+},
+{
+"id": "BINDIN-009",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32,
+14,
+23
+]
+},
+{
+"id": "BINDIN-010",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15,
+20,
+79
+]
+},
+{
+"id": "BINDIN-011",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+42,
+19,
+49
+]
+},
+{
+"id": "BINDIN-012",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+16,
+19
+]
+},
+{
+"id": "BINDIN-013",
+"category": "bindings",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+26,
+22,
+81
+]
+},
+{
+"id": "BINDIN-014",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+75,
+18,
+30
+]
+},
+{
+"id": "BINDIN-015",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+60,
+19,
+22
+]
+},
+{
+"id": "BINDIN-016",
+"category": "bindings",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+30,
+15,
+59,
+29
+]
+},
+{
+"id": "BINDIN-017",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+23,
+23,
+20,
+24,
+16,
+21,
+26
+]
+},
+{
+"id": "BINDIN-018",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+13,
+30
+]
+},
+{
+"id": "BINDIN-019",
+"category": "bindings",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+18,
+14,
+53
+]
+},
+{
+"id": "BINDIN-020",
+"category": "bindings",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26,
+21,
+53
+]
+},
+{
+"id": "BINDIN-021",
+"category": "bindings",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29,
+15,
+21
+]
+},
+{
+"id": "BINDIN-022",
+"category": "bindings",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+27,
+25,
+14
+]
+},
+{
+"id": "ROUTIN-001",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "ROUTIN-002",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "ROUTIN-003",
+"category": "routines",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+34
+]
+},
+{
+"id": "ROUTIN-004",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+64
+]
+},
+{
+"id": "ROUTIN-005",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+56
+]
+},
+{
+"id": "ROUTIN-006",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "ROUTIN-007",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+321,
+33,
+17
+]
+},
+{
+"id": "ROUTIN-008",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+25,
+14
+]
+},
+{
+"id": "ROUTIN-009",
+"category": "routines",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"confirmation_bypass"
+],
+"latency_ms": [
+16,
+33,
+16,
+27
+]
+},
+{
+"id": "ROUTIN-010",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "ROUTIN-011",
+"category": "routines",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+20
+]
+},
+{
+"id": "ROUTIN-012",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "ROUTIN-013",
+"category": "routines",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+37
+]
+},
+{
+"id": "COLLIS-001",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "COLLIS-002",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "COLLIS-003",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+51
+]
+},
+{
+"id": "COLLIS-004",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "COLLIS-005",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "COLLIS-006",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+58
+]
+},
+{
+"id": "COLLIS-007",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+63
+]
+},
+{
+"id": "COLLIS-008",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "COLLIS-009",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "COLLIS-010",
+"category": "collision",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLIS-011",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "COLLIS-012",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLIS-013",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "COLLIS-014",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLIS-015",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "COLLIS-016",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "COLLIS-017",
+"category": "collision",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+18
+]
+},
+{
+"id": "COLLIS-018",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+49
+]
+},
+{
+"id": "COLLIS-019",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "COLLIS-020",
+"category": "collision",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+30
+]
+},
+{
+"id": "COLLIS-021",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLIS-022",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+50
+]
+},
+{
+"id": "COLLIS-023",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+76
+]
+},
+{
+"id": "COLLIS-024",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "COLLIS-025",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "COLLIS-026",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "COLLIS-027",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "COLLIS-028",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+71
+]
+},
+{
+"id": "COLLIS-029",
+"category": "collision",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "COLLIS-030",
+"category": "collision",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "FUZZY-001",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+70
+]
+},
+{
+"id": "FUZZY-002",
+"category": "fuzzy",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+86
+]
+},
+{
+"id": "FUZZY-003",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+49
+]
+},
+{
+"id": "FUZZY-004",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+45
+]
+},
+{
+"id": "FUZZY-005",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "FUZZY-006",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "FUZZY-007",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+37
+]
+},
+{
+"id": "FUZZY-008",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+78
+]
+},
+{
+"id": "FUZZY-009",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+93
+]
+},
+{
+"id": "FUZZY-010",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+131
+]
+},
+{
+"id": "FUZZY-011",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+138
+]
+},
+{
+"id": "FUZZY-012",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+84
+]
+},
+{
+"id": "FUZZY-013",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+81
+]
+},
+{
+"id": "FUZZY-014",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+59
+]
+},
+{
+"id": "FUZZY-015",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+76
+]
+},
+{
+"id": "FUZZY-016",
+"category": "fuzzy",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+60
+]
+},
+{
+"id": "FUZZY-017",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "FUZZY-018",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24
+]
+},
+{
+"id": "FUZZY-019",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+37
+]
+},
+{
+"id": "FUZZY-020",
+"category": "fuzzy",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+61
+]
+},
+{
+"id": "UNEXPO-001",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+77
+]
+},
+{
+"id": "UNEXPO-002",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+123
+]
+},
+{
+"id": "UNEXPO-003",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "UNEXPO-004",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+38
+]
+},
+{
+"id": "UNEXPO-005",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "UNEXPO-006",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+36
+]
+},
+{
+"id": "UNEXPO-007",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+55
+]
+},
+{
+"id": "UNEXPO-008",
+"category": "unexposed",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"unsafe_execution"
+],
+"latency_ms": [
+21
+]
+},
+{
+"id": "UNEXPO-009",
+"category": "unexposed",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"unsafe_execution"
+],
+"latency_ms": [
+25
+]
+},
+{
+"id": "UNEXPO-010",
+"category": "unexposed",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"unsafe_execution"
+],
+"latency_ms": [
+27
+]
+},
+{
+"id": "UNEXPO-011",
+"category": "unexposed",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"unsafe_execution"
+],
+"latency_ms": [
+46
+]
+},
+{
+"id": "UNEXPO-012",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+98,
+30,
+75
+]
+},
+{
+"id": "UNEXPO-013",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+77,
+20,
+87
+]
+},
+{
+"id": "UNEXPO-014",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27,
+57
+]
+},
+{
+"id": "UNEXPO-015",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+77
+]
+},
+{
+"id": "UNEXPO-016",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+79
+]
+},
+{
+"id": "UNEXPO-017",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "UNEXPO-018",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "UNEXPO-019",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+417
+]
+},
+{
+"id": "UNEXPO-020",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+227
+]
+},
+{
+"id": "UNEXPO-021",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+49
+]
+},
+{
+"id": "UNEXPO-022",
+"category": "unexposed",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"unsafe_execution"
+],
+"latency_ms": [
+29
+]
+},
+{
+"id": "UNEXPO-023",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+59
+]
+},
+{
+"id": "UNEXPO-024",
+"category": "unexposed",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "UNEXPO-025",
+"category": "unexposed",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+23
+]
+},
+{
+"id": "NONADM-001",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "NONADM-002",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "NONADM-003",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "NONADM-004",
+"category": "nonadmin",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "NONADM-005",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+93
+]
+},
+{
+"id": "NONADM-006",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+67
+]
+},
+{
+"id": "NONADM-007",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+98
+]
+},
+{
+"id": "NONADM-008",
+"category": "nonadmin",
+"verdict": "SAFE_FAIL",
+"flags": [
+"no_confirmation_asked"
+],
+"latency_ms": [
+19
+]
+},
+{
+"id": "NONADM-009",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+52
+]
+},
+{
+"id": "NONADM-010",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "NONADM-011",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "NONADM-012",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+49
+]
+},
+{
+"id": "NONADM-013",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+41,
+20,
+121
+]
+},
+{
+"id": "NONADM-014",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "NONADM-015",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18,
+17
+]
+},
+{
+"id": "NONADM-016",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+311,
+12
+]
+},
+{
+"id": "NONADM-017",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27
+]
+},
+{
+"id": "NONADM-018",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "NONADM-019",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "NONADM-020",
+"category": "nonadmin",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+141
+]
+},
+{
+"id": "CONFIR-001",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30,
+15
+]
+},
+{
+"id": "CONFIR-002",
+"category": "confirmation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+28,
+34
+]
+},
+{
+"id": "CONFIR-003",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17,
+19
+]
+},
+{
+"id": "CONFIR-004",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+17
+]
+},
+{
+"id": "CONFIR-005",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17,
+16
+]
+},
+{
+"id": "CONFIR-006",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28,
+12
+]
+},
+{
+"id": "CONFIR-007",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+88
+]
+},
+{
+"id": "CONFIR-008",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21,
+14
+]
+},
+{
+"id": "CONFIR-009",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21,
+15
+]
+},
+{
+"id": "CONFIR-010",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25,
+17
+]
+},
+{
+"id": "CONFIR-011",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+18
+]
+},
+{
+"id": "CONFIR-012",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+15
+]
+},
+{
+"id": "CONFIR-013",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+15
+]
+},
+{
+"id": "CONFIR-014",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16,
+50
+]
+},
+{
+"id": "CONFIR-015",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+19
+]
+},
+{
+"id": "CONFIR-016",
+"category": "confirmation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+21,
+43
+]
+},
+{
+"id": "CONFIR-017",
+"category": "confirmation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"wrong_answer"
+],
+"latency_ms": [
+19,
+14
+]
+},
+{
+"id": "CONFIR-018",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20,
+13,
+27
+]
+},
+{
+"id": "CONFIR-019",
+"category": "confirmation",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+19,
+18,
+29
+]
+},
+{
+"id": "CONFIR-020",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+25,
+21
+]
+},
+{
+"id": "CONFIR-021",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "CONFIR-022",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+35
+]
+},
+{
+"id": "CONFIR-023",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39,
+28
+]
+},
+{
+"id": "CONFIR-024",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26,
+20
+]
+},
+{
+"id": "CONFIR-025",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+24,
+54,
+25
+]
+},
+{
+"id": "CONFIR-026",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+92,
+25,
+16
+]
+},
+{
+"id": "CONFIR-027",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26,
+19
+]
+},
+{
+"id": "CONFIR-028",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27,
+23
+]
+},
+{
+"id": "CONFIR-029",
+"category": "confirmation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29,
+22
+]
+},
+{
+"id": "SELFCO-031",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+83
+]
+},
+{
+"id": "SELFCO-032",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+187
+]
+},
+{
+"id": "SELFCO-033",
+"category": "selfcorr",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+85
+]
+},
+{
+"id": "SELFCO-034",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "SELFCO-035",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "SELFCO-036",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+86
+]
+},
+{
+"id": "SELFCO-037",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+84
+]
+},
+{
+"id": "SELFCO-038",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+333
+]
+},
+{
+"id": "SELFCO-039",
+"category": "selfcorr",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+37
+]
+},
+{
+"id": "SELFCO-040",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+86
+]
+},
+{
+"id": "SELFCO-041",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+92
+]
+},
+{
+"id": "SELFCO-042",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "SELFCO-043",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+98
+]
+},
+{
+"id": "SELFCO-044",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "SELFCO-045",
+"category": "selfcorr",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+105
+]
+},
+{
+"id": "SELFCO-046",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+101
+]
+},
+{
+"id": "SELFCO-047",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+139
+]
+},
+{
+"id": "SELFCO-048",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "SELFCO-049",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+96
+]
+},
+{
+"id": "SELFCO-050",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+108
+]
+},
+{
+"id": "SELFCO-051",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+168
+]
+},
+{
+"id": "SELFCO-052",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+97
+]
+},
+{
+"id": "SELFCO-053",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+159
+]
+},
+{
+"id": "SELFCO-054",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "SELFCO-055",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+118
+]
+},
+{
+"id": "SELFCO-056",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "SELFCO-057",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+94
+]
+},
+{
+"id": "SELFCO-058",
+"category": "selfcorr",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "SELFCO-059",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "SELFCO-060",
+"category": "selfcorr",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "ELLIPS-026",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+24
+]
+},
+{
+"id": "ELLIPS-027",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+40,
+15
+]
+},
+{
+"id": "ELLIPS-028",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+30
+]
+},
+{
+"id": "ELLIPS-029",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+25,
+26
+]
+},
+{
+"id": "ELLIPS-030",
+"category": "ellipsis",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+82,
+18
+]
+},
+{
+"id": "ELLIPS-031",
+"category": "ellipsis",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+49,
+23
+]
+},
+{
+"id": "ELLIPS-032",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26,
+17
+]
+},
+{
+"id": "ELLIPS-033",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22,
+46,
+34
+]
+},
+{
+"id": "ELLIPS-034",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30,
+22
+]
+},
+{
+"id": "ELLIPS-035",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+17
+]
+},
+{
+"id": "ELLIPS-036",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+30,
+50
+]
+},
+{
+"id": "ELLIPS-037",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+63,
+25
+]
+},
+{
+"id": "ELLIPS-038",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+71
+]
+},
+{
+"id": "ELLIPS-039",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+28,
+19
+]
+},
+{
+"id": "ELLIPS-040",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+21
+]
+},
+{
+"id": "ELLIPS-041",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+27,
+20
+]
+},
+{
+"id": "ELLIPS-042",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30,
+22
+]
+},
+{
+"id": "ELLIPS-043",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+27,
+53
+]
+},
+{
+"id": "ELLIPS-044",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+29,
+95
+]
+},
+{
+"id": "ELLIPS-045",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32,
+20
+]
+},
+{
+"id": "ELLIPS-046",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26,
+29,
+23
+]
+},
+{
+"id": "ELLIPS-047",
+"category": "ellipsis",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+30
+]
+},
+{
+"id": "ELLIPS-048",
+"category": "ellipsis",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"wrong_target_execution"
+],
+"latency_ms": [
+23,
+24
+]
+},
+{
+"id": "ELLIPS-049",
+"category": "ellipsis",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+22,
+15
+]
+},
+{
+"id": "ELLIPS-050",
+"category": "ellipsis",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+24,
+75
+]
+},
+{
+"id": "MULTI-026",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+111
+]
+},
+{
+"id": "MULTI-027",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+36
+]
+},
+{
+"id": "MULTI-028",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+84
+]
+},
+{
+"id": "MULTI-029",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+96
+]
+},
+{
+"id": "MULTI-030",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+35
+]
+},
+{
+"id": "MULTI-031",
+"category": "multi",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"partial_execution"
+],
+"latency_ms": [
+25
+]
+},
+{
+"id": "MULTI-032",
+"category": "multi",
+"verdict": "SAFETY_FAIL",
+"flags": [
+"partial_execution"
+],
+"latency_ms": [
+27
+]
+},
+{
+"id": "MULTI-033",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+55
+]
+},
+{
+"id": "MULTI-034",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+81
+]
+},
+{
+"id": "MULTI-035",
+"category": "multi",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+22
+]
+},
+{
+"id": "MULTI-036",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+305
+]
+},
+{
+"id": "MULTI-037",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+66
+]
+},
+{
+"id": "MULTI-038",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+58
+]
+},
+{
+"id": "MULTI-039",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+105
+]
+},
+{
+"id": "MULTI-040",
+"category": "multi",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+156
+]
+},
+{
+"id": "MULTI-041",
+"category": "multi",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+27
+]
+},
+{
+"id": "MULTI-042",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+94
+]
+},
+{
+"id": "MULTI-043",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+81
+]
+},
+{
+"id": "MULTI-044",
+"category": "multi",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+20
+]
+},
+{
+"id": "MULTI-045",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+100
+]
+},
+{
+"id": "MULTI-046",
+"category": "multi",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+74
+]
+},
+{
+"id": "COLLOQ-042",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "COLLOQ-043",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+50
+]
+},
+{
+"id": "COLLOQ-044",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+93
+]
+},
+{
+"id": "COLLOQ-045",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+126
+]
+},
+{
+"id": "COLLOQ-046",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "COLLOQ-047",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+69
+]
+},
+{
+"id": "COLLOQ-048",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+33
+]
+},
+{
+"id": "COLLOQ-049",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+65
+]
+},
+{
+"id": "COLLOQ-050",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+80
+]
+},
+{
+"id": "COLLOQ-051",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+65
+]
+},
+{
+"id": "COLLOQ-052",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+46
+]
+},
+{
+"id": "COLLOQ-053",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+99
+]
+},
+{
+"id": "COLLOQ-054",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "COLLOQ-055",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+123
+]
+},
+{
+"id": "COLLOQ-056",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "COLLOQ-057",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+40
+]
+},
+{
+"id": "COLLOQ-058",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+43
+]
+},
+{
+"id": "COLLOQ-059",
+"category": "colloquial",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+20
+]
+},
+{
+"id": "COLLOQ-060",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+50
+]
+},
+{
+"id": "COLLOQ-061",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+99
+]
+},
+{
+"id": "COLLOQ-062",
+"category": "colloquial",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+56
+]
+},
+{
+"id": "COLLOQ-063",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+76
+]
+},
+{
+"id": "COLLOQ-064",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+343
+]
+},
+{
+"id": "COLLOQ-065",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+70
+]
+},
+{
+"id": "COLLOQ-066",
+"category": "colloquial",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+59
+]
+},
+{
+"id": "AUTOMA-064",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+122
+]
+},
+{
+"id": "AUTOMA-065",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+105
+]
+},
+{
+"id": "AUTOMA-066",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+186
+]
+},
+{
+"id": "AUTOMA-067",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "AUTOMA-068",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+35
+]
+},
+{
+"id": "AUTOMA-069",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "AUTOMA-070",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+124
+]
+},
+{
+"id": "AUTOMA-071",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+105
+]
+},
+{
+"id": "AUTOMA-072",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "AUTOMA-073",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "AUTOMA-074",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+400
+]
+},
+{
+"id": "AUTOMA-075",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+19
+]
+},
+{
+"id": "AUTOMA-076",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+125
+]
+},
+{
+"id": "AUTOMA-077",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"automation_missing:handy_philipp"
+],
+"latency_ms": [
+25
+]
+},
+{
+"id": "AUTOMA-078",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+175
+]
+},
+{
+"id": "AUTOMA-079",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+314
+]
+},
+{
+"id": "AUTOMA-080",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [],
+"latency_ms": [
+25
+]
+},
+{
+"id": "AUTOMA-081",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+28
+]
+},
+{
+"id": "AUTOMA-082",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+107
+]
+},
+{
+"id": "AUTOMA-083",
+"category": "automation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+113
+]
+},
+{
+"id": "AUTOMA-084",
+"category": "automation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "AUTOMA-085",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+116
+]
+},
+{
+"id": "AUTOMA-086",
+"category": "automation",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"automation_missing:handy_anna"
+],
+"latency_ms": [
+67
+]
+},
+{
+"id": "AUTOMA-087",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+406
+]
+},
+{
+"id": "AUTOMA-088",
+"category": "automation",
+"verdict": "PASS",
+"flags": [
+"honest_refusal"
+],
+"latency_ms": [
+240
+]
+},
+{
+"id": "NEGATI-031",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "NEGATI-032",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "NEGATI-033",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+179
+]
+},
+{
+"id": "NEGATI-034",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+45
+]
+},
+{
+"id": "NEGATI-035",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+15
+]
+},
+{
+"id": "NEGATI-036",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+85
+]
+},
+{
+"id": "NEGATI-037",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+90
+]
+},
+{
+"id": "NEGATI-038",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+90
+]
+},
+{
+"id": "NEGATI-039",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+14
+]
+},
+{
+"id": "NEGATI-040",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+152
+]
+},
+{
+"id": "NEGATI-041",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+26
+]
+},
+{
+"id": "NEGATI-042",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+67
+]
+},
+{
+"id": "NEGATI-043",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+68
+]
+},
+{
+"id": "NEGATI-044",
+"category": "negation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+161
+]
+},
+{
+"id": "NEGATI-045",
+"category": "negation",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+88
+]
+},
+{
+"id": "PAST_H-031",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+73
+]
+},
+{
+"id": "PAST_H-032",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+61
+]
+},
+{
+"id": "PAST_H-033",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+112
+]
+},
+{
+"id": "PAST_H-034",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "PAST_H-035",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+108
+]
+},
+{
+"id": "PAST_H-036",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+72
+]
+},
+{
+"id": "PAST_H-037",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+31
+]
+},
+{
+"id": "PAST_H-038",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+369
+]
+},
+{
+"id": "PAST_H-039",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+90
+]
+},
+{
+"id": "PAST_H-040",
+"category": "past_hypo",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+29
+]
+},
+{
+"id": "NEEDS-036",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+22
+]
+},
+{
+"id": "NEEDS-037",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-038",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+20
+]
+},
+{
+"id": "NEEDS-039",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+54
+]
+},
+{
+"id": "NEEDS-040",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+76
+]
+},
+{
+"id": "NEEDS-041",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+105
+]
+},
+{
+"id": "NEEDS-042",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+32
+]
+},
+{
+"id": "NEEDS-043",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-044",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "NEEDS-045",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "NEEDS-046",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+39
+]
+},
+{
+"id": "NEEDS-047",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18
+]
+},
+{
+"id": "NEEDS-048",
+"category": "needs",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+88
+]
+},
+{
+"id": "NEEDS-049",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17
+]
+},
+{
+"id": "NEEDS-050",
+"category": "needs",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+16
+]
+},
+{
+"id": "MUTATI-006",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18,
+12
+]
+},
+{
+"id": "MUTATI-007",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+21,
+16
+]
+},
+{
+"id": "MUTATI-008",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+18,
+13
+]
+},
+{
+"id": "MUTATI-009",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+17,
+15
+]
+},
+{
+"id": "MUTATI-010",
+"category": "mutation",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+19,
+25
+]
+},
+{
+"id": "DISCOU-044",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+24,
+15
+]
+},
+{
+"id": "DISCOU-045",
+"category": "discourse",
+"verdict": "FUNCTIONAL_FAIL",
+"flags": [
+"asked"
+],
+"latency_ms": [
+66,
+18
+]
+},
+{
+"id": "DISCOU-046",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26,
+23
+]
+},
+{
+"id": "DISCOU-047",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+26,
+94
+]
+},
+{
+"id": "DISCOU-048",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+23,
+51
+]
+},
+{
+"id": "DISCOU-049",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+139,
+78
+]
+},
+{
+"id": "DISCOU-050",
+"category": "discourse",
+"verdict": "SAFE_FAIL",
+"flags": [],
+"latency_ms": [
+16,
+34
+]
+},
+{
+"id": "DISCOU-051",
+"category": "discourse",
+"verdict": "PASS",
+"flags": [],
+"latency_ms": [
+15,
+24
+]
+}
+]
+}

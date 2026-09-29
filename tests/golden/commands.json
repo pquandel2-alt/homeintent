@@ -309,14 +309,9 @@
   },
   {
     "text": "lass das Küchenlicht aus",
-    "expect_match": true,
-    "plan": {
-      "domain": "homeassistant",
-      "service": "turn_off",
-      "entity_id": "light.kueche",
-      "data": {}
-    },
-    "response_text": "Küchenlicht ausgeschaltet."
+    "expect_match": false,
+    "plan": null,
+    "note": "7.7.1 A2: \"lass … aus\" hält den Zustand (Beibehaltung), keine Operation."
   },
   {
     "text": "mach doch das Flurlicht an",

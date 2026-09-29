@@ -6,7 +6,8 @@
   "7.5.1": 258,
   "7.5.2": 212,
   "7.6.0": 212,
-  "7.7.0": 173
+  "7.7.0": 173,
+  "7.7.1": 173
  },
  "eintraege": [
   {
@@ -3419,6 +3420,104 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_TOKEN_RE::ee5879c938",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_TOKEN_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_tokens::7a42554b9d",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_tokens",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_inflect_like::e1de139db4",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_inflect_like",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_inflect_like::e1de139db4#2",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_inflect_like",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::cf839aab74#2",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::2dd5f47758",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::5cee67b98b",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::5c9f2f134c",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::17d05820af",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::_merge::25ef703b14",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "_merge",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::analyse_self_correction::7534ddabda",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "analyse_self_correction",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::analyse_self_correction::25ef703b14",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "analyse_self_correction",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/self_correction.py::analyse_self_correction::992255d472",
+   "datei": "custom_components/homeintent/nlu/self_correction.py",
+   "bereich": "analyse_self_correction",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/semantic_automation.py::compile_state_predicate::cf839aab74",
    "datei": "custom_components/homeintent/nlu/semantic_automation.py",
    "bereich": "compile_state_predicate",
@@ -3696,6 +3795,13 @@
    "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
    "bereich": "SemanticCommandCompiler.compile",
    "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_compiler.py::SemanticCommandCompiler.compile::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
+   "bereich": "SemanticCommandCompiler.compile",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -4032,6 +4138,34 @@
    "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
    "bereich": "_CONTEXTUAL_FOLLOWUP_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_utterance.py::_PARTICIPLE_RE::fce67b07d4",
+   "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
+   "bereich": "_PARTICIPLE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_utterance.py::is_past_irrealis::53cfdd1299",
+   "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
+   "bereich": "is_past_irrealis",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_utterance.py::is_past_irrealis::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
+   "bereich": "is_past_irrealis",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_utterance.py::is_deliberation::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
+   "bereich": "is_deliberation",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -4757,9 +4891,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 350,
+  "LEXICAL": 365,
   "MORPHOLOGICAL": 38,
-  "STRUCTURAL": 117,
+  "STRUCTURAL": 121,
   "SEMANTIC_SENTENCE_PATTERN": 173
  }
 }

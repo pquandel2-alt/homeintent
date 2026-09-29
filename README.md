@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.7.0** (Architekturabschluss: eine Bedeutung, ein Entscheider, ein Schreibpfad)
+- Aktuelle Version: **7.7.1** (Sicherheit: Selbstkorrektur, Irrealis, Ellipsen, Aufzählungen, Satellitenraum, informierte Bestätigung)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -42,7 +42,45 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
-## Was ist in Version 7.7.0 neu?
+## Was ist in Version 7.7.1 neu?
+
+**Sicherheit nach dem unabhängigen Test 7.7** (1005 blind erstellte Sätze,
+`docs/independent-test-7.7.md`). Dort wurde 15-mal ein harmloses Gerät
+geschaltet, das nach der Satzbedeutung nicht geschaltet werden durfte. Jede
+Ursache ist jetzt eine Regel mit eigener Sicherheitsinvariante
+(Bericht: `docs/umsetzung-7.7.1-7.8.md`):
+
+- **Selbstkorrektur ist Satzstruktur:** „Schalte das Radio aus, ich meine den
+  Fernseher“, „Licht im Kinderzimmer an, halt, im Schlafzimmer“. Ein
+  Korrekturmarker (nein, äh, halt, ich meine, sorry, Moment, also, lieber …)
+  trennt Widerruf und Ersatz. Der Ersatz ersetzt nur die Felder, die er
+  nennt (Ziel, Ort, Seite, Wert, Operation, Zeit). „…, nein, doch nicht“
+  führt nichts aus. Ist die Struktur unklar, fragt HomeIntent mit beiden
+  Lesarten. Der widerrufene Teil wird nie ausgeführt, beide Teile nie.
+- **Irrealis, Abwägung, Beibehaltung:** „Hätte ich doch …“, „Ich hätte …
+  sollen“, „Ich überlege, ob …“ und „Den Fernseher lass bitte aus“ schalten
+  nie. Beibehaltung wird bestätigt („Ich lasse den Fernseher aus“).
+  **Geändert:** „Lass X aus“ schaltet nicht mehr aus, sondern hält den
+  Zustand – wie „Lass X an“ seit 7.3.0.
+- **Ellipsen-Vertrag:** Eine Folgeäußerung übernimmt nur Felder, die sie
+  nicht selbst nennt. „Den rechten runter“ nach dem linken Rollladen fährt
+  den rechten, „Und das Deckenlicht aus“ nie die Stehlampe, „Morgen früh
+  wieder an“ wird ein zeitgebundener Auftrag mit Vorschau, „Oben auch“
+  überträgt die Rolle (Flurlicht → Flurlicht oben) und erweitert nie die
+  Menge.
+- **Aufzählungen ohne stille Teilausführung:** „Garten- und
+  Terrassenlicht“, „Küche und Esszimmer Rollladen“, „…, dann im Keller und
+  in der Waschküche“ werden vollständig gelesen; ein Ort des ersten Teils
+  („Im Wohnzimmer das Licht aus und die Rollläden runter“) gilt für die
+  folgenden Teile.
+- **Satellitenraum hat Vorrang:** Ohne Ortsangabe begrenzt der Raum des
+  Sprachsatelliten die Auswahl. Gibt es dort nichts Passendes, sagt
+  HomeIntent das und bietet das Gerät eines anderen Raums nur an.
+- **Informierte Bestätigung:** Jede Rückfrage zu Skript, Szene, Gruppe oder
+  Routine nennt die Wirkungen ab Risiko HIGH aus dem EffectGraph („Das
+  Skript Schlafen entriegelt dabei Haustürschloss. Soll ich …?“).
+
+## Was war in Version 7.7.0 neu?
 
 **Architekturabschluss.** Das Verhalten bleibt gleich, der Aufbau wird
 eindeutig (Bericht: `docs/architecture-completion-7.7.md`). Jede der Fragen
@@ -2132,7 +2170,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.7.0.json
+  --check docs/perf/corpus-signatures-7.7.1.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

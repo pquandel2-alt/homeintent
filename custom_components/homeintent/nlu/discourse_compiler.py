@@ -186,11 +186,15 @@ def compile_discourse(
     previous_actions, previous_degree = _previous_operation(context)
     if not actions and degree is None and word_set & _REPEAT and previous_degree is not None:
         degree = previous_degree
-    sibling = _side_sibling(words, entities, context)
-    if sibling is not None and not actions and degree is None:
+    sibling = _side_sibling(
+        [word for word in words if word not in operation_words], entities, context
+    )
+    if sibling is not None:
         # "… und den rechten auch" after "den linken Rollladen": the named
-        # partner of the previous device, same operation (7.6.0).
-        actions, degree = previous_actions, previous_degree
+        # partner of the previous device, same operation (7.6.0); "Den
+        # rechten runter" names its own operation (7.7.1 A3).
+        if not actions and degree is None:
+            actions, degree = previous_actions, previous_degree
         if not actions and degree is None:
             return None
         clause = ClauseMeaning(
@@ -220,16 +224,18 @@ def compile_discourse(
     lexicon = build_place_lexicon(entities)
     spoken_places = [mention.place for mention in lexicon.scan(words)]
     if (
-        not has_operation and not descriptions and words[0] == "und"
+        not has_operation and not descriptions and (words[0] == "und" or word_set & _ALSO)
         and len(spoken_places) == 1 and context.last_entities
         and (previous_actions or previous_degree)
     ):
-        # "Und im Bad(?)" after an action: the same operation, same kind of
-        # device, at the new place.
+        # "Und im Bad(?)" / "Oben auch" after an action: the same operation,
+        # same kind of device, at the new place. The set never widens: one
+        # device before is one device now (7.7.1 A3) - the one with the same
+        # role ("Flurlicht" -> "Flurlicht oben") or a question.
         kinds = sorted(entity_genera(context.last_entities[0]) - {"device"})
         if not kinds:
             return None
-        descriptions = (TargetDescription(
+        descriptions = (_role_at_place(context.last_entities, kinds, spoken_places[0], entities) or TargetDescription(
             genera=tuple(kinds), head=kinds[0], place=spoken_places[0],
             quantity=Quantity.ALL if len(context.last_entities) > 1 else Quantity.ONE,
             mass=len(context.last_entities) > 1,
@@ -299,6 +305,72 @@ def compile_discourse(
         temperature=temperature, descriptions=tuple(descriptions),
     )
     return compile_clauses((clause,), document, entities, source_area)
+
+
+def _role_at_place(
+    previous: Sequence[EntitySnapshot],
+    kinds: Sequence[str],
+    place: Place,
+    entities: Sequence[EntitySnapshot],
+) -> TargetDescription | None:
+    """The one device at ``place`` with the role of the previous device.
+
+    "Flurlicht" in the hall -> "Flurlicht oben" in the upper hall: same
+    kind, and its area or name repeats the previous area or name stem.
+    """
+    if len(previous) != 1:
+        return None
+    reference = previous[0]
+    stems = {
+        normalize_for_compare(value).replace(" ", "")
+        for value in (reference.area_name or "", reference.friendly_name)
+        if value
+    }
+    members = [
+        entity for entity in entities
+        if place.contains(entity) and entity_genera(entity) & set(kinds)
+        and entity.entity_id != reference.entity_id
+    ]
+    if len(members) == 1:
+        return TargetDescription(explicit=(members[0],), quantity=Quantity.ALL)
+    role = [
+        entity for entity in members
+        if any(
+            stem and stem in normalize_for_compare(value).replace(" ", "")
+            for stem in stems
+            for value in (entity.area_name or "", entity.friendly_name)
+        )
+    ]
+    if len(role) != 1:
+        # "Küchenlicht" is the room's own light: at the new place the device
+        # named after that room with the same head ("Bürolicht").
+        role = [
+            entity for entity in members
+            if _room_named(entity) and _room_named(reference)
+            and _head_of(entity) == _head_of(reference)
+        ]
+    if len(role) == 1:
+        return TargetDescription(explicit=(role[0],), quantity=Quantity.ALL)
+    return None
+
+
+def _head_of(entity: EntitySnapshot) -> str | None:
+    from .device_ontology import analyse_word
+
+    analysis = analyse_word(normalize_for_compare(entity.friendly_name).replace(" ", ""))
+    return analysis.head if analysis is not None else None
+
+
+def _room_named(entity: EntitySnapshot) -> bool:
+    """"Küchenlicht" in the kitchen: the name is its area plus a kind."""
+    from .device_ontology import analyse_word
+
+    analysis = analyse_word(normalize_for_compare(entity.friendly_name).replace(" ", ""))
+    area = normalize_for_compare(entity.area_name or "").replace(" ", "")
+    if analysis is None or not analysis.modifier or not area:
+        return False
+    stem = analysis.modifier.rstrip("n") if len(analysis.modifier) > 4 else analysis.modifier
+    return area.startswith(stem[: max(4, len(stem) - 1)])
 
 
 def _with_place(description: TargetDescription, place: Place) -> TargetDescription:

@@ -72,6 +72,9 @@ MAINTAIN_PHRASES = [
     "Lass {name} bitte an",
     "Lasst {name} an",
     "Kannst du {name} anlassen?",
+    # 7.7.1 A2: keeping a state off is maintenance as well.
+    "Lass {name} aus",
+    "Lass {name} bitte aus",
 ]
 TURN_OFF_PHRASES = [
     "Mach {name} aus",
@@ -80,7 +83,6 @@ TURN_OFF_PHRASES = [
     "Kannst du {name} ausmachen?",
     "Bitte {name} aus",
     "Dreh {name} aus",
-    "Lass {name} aus",
 ]
 COVER_OPEN_PHRASES = [
     "Öffne {name}",
