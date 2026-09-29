@@ -134,7 +134,12 @@ def compile_need(
     name similarity again.
     """
     if meaning.kind is NeedKind.ROUTINE and meaning.routine is not None:
-        return _routine(meaning.routine, entities, source_text, routine_bindings or {})
+        outcome = _routine(meaning.routine, entities, source_text, routine_bindings or {})
+        if meaning.preparation and not outcome.results and outcome.routine_key is None:
+            # "Mach alles für die Nacht fertig" without any routine: the
+            # goal dialog defines one (7.6.1); nothing is proposed here.
+            return NeedOutcome()
+        return outcome
     local = _at(place, entities)
     kind = meaning.kind
     if kind in {NeedKind.WARMER, NeedKind.COOLER}:

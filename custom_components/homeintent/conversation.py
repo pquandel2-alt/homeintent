@@ -612,6 +612,18 @@ def _with_session_conversation_id(
     return replace(user_input, conversation_id=session_id)
 
 
+_OCCASION_PHRASES = {
+    "schlafengehen": "beim Schlafengehen",
+    "filmabend": "beim Filmabend",
+    "abwesenheit": "bei Abwesenheit",
+}
+
+
+def _occasion_phrase(routine_id: str) -> str:
+    """"beim Schlafengehen" - the occasion with its preposition (7.6.1)."""
+    return _OCCASION_PHRASES.get(routine_id, f"bei „{routine_id}“")
+
+
 def _is_complete_actionable_understanding(
     payload: MatchResult | CommandPlan | None,
 ) -> bool:
@@ -4107,7 +4119,7 @@ class NluConversationEntity(
                     requested_by_user_id=actor_id,
                 )
                 response.async_set_speech(
-                    f"Was soll ich bei {goal.routine_id} erledigen? Ich speichere die Routine erst nach deiner ausdrücklichen Bestätigung."
+                    f"Was soll ich {_occasion_phrase(goal.routine_id)} erledigen? Ich speichere die Routine erst nach deiner ausdrücklichen Bestätigung."
                 )
                 return conversation.ConversationResult(response=response, conversation_id=conversation_id)
             excluded_names = goal.parameters.get("excluded_area_names", ())

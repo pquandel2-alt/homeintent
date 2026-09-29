@@ -176,11 +176,21 @@ _INTENTION = frozenset({
 })
 
 
+_PREPARE_WORDS = frozenset({"mach", "mache", "machst", "bereite", "bereit", "vorbereiten"})
+# Occasion nouns a preparation names ("für die Nacht", "fürs Schlafengehen").
+_OCCASION_WORDS: dict[str, frozenset[str]] = {
+    "sleep": frozenset({"nacht", "schlafengehen", "schlafen", "bett"}),
+    "movie": frozenset({"filmabend", "kinoabend", "film"}),
+    "leave": frozenset({"abwesenheit", "abfahrt", "urlaub"}),
+}
+
+
 @dataclass(frozen=True)
 class NeedMeaning:
     kind: NeedKind
     cue: str
     routine: RoutineConcept | None = None
+    preparation: bool = False
 
 
 def routine_concept_of_compound(word: str) -> RoutineConcept | None:
@@ -232,6 +242,15 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
             if concept.key == "morning" and not word_set & {"aufstehen", "aufgestanden", "wach"}:
                 continue
             return NeedMeaning(NeedKind.ROUTINE, sorted(cues)[0], concept)
+    # Preparing an occasion ("Mach alles für die Nacht fertig", "Bereite
+    # den Filmabend vor"): the same routine concept as announcing it
+    # (7.6.1). Without any bound or discoverable routine the goal dialog
+    # takes over (``NeedMeaning.preparation``).
+    if word_set & _PREPARE_WORDS and word_set & {"fertig", "vorbereiten", "vor", "bereit"}:
+        for concept in ROUTINE_CONCEPTS:
+            occasion = word_set & _OCCASION_WORDS.get(concept.key, frozenset())
+            if occasion:
+                return NeedMeaning(NeedKind.ROUTINE, sorted(occasion)[0], concept, preparation=True)
     if normalized[:2] == ["gute", "nacht"] and len(normalized) <= 3:
         sleep = next(concept for concept in ROUTINE_CONCEPTS if concept.key == "sleep")
         return NeedMeaning(NeedKind.ROUTINE, "nacht", sleep)
