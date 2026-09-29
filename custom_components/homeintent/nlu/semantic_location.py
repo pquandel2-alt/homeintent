@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from ..areas import AreaResolutionStatus, resolve_area_scored
 from ..entities import EntitySnapshot, generate_aliases, normalize_for_compare
-from .place_model import level_is_position
+from .place_model import level_for_keyword, level_is_position
 from ..floors import (
     FloorResolutionStatus,
     FloorResolveStatus,
@@ -216,11 +216,11 @@ def resolve_semantic_location(
             )
             if not known_levels:
                 return None
-            extreme = (
-                max(known_levels)
-                if level.group(0).casefold() == "oben"
-                else min(known_levels)
+            extreme = level_for_keyword(
+                "upper" if level.group(0).casefold() == "oben" else "ground", known_levels
             )
+            if extreme is None:
+                return None
             matching = tuple(
                 floor for floor in world_model.floors if floor.level == extreme
             )

@@ -164,7 +164,9 @@ def test_oben_without_any_floor_data_returns_none(engine, entities):
     assert result is None
 
 
-def test_oben_with_single_floor_house_resolves_that_floor(engine):
+def test_unten_with_single_floor_house_resolves_that_floor(engine):
+    # 7.6.1: one rule for "oben"/"unten" - "oben" needs a level >= 1,
+    # "unten" is the ground floor.
     single_floor = [
         EntitySnapshot(
             "light.a", "A", "light", "off",
@@ -172,7 +174,7 @@ def test_oben_with_single_floor_house_resolves_that_floor(engine):
             floor_id="eg", floor_name="Erdgeschoss", floor_level=0,
         ),
     ]
-    result = engine.match("mach alle Lichter oben an", single_floor)
+    result = engine.match("mach alle Lichter unten an", single_floor)
     assert result is not None
     assert result.plan.entity_id == "light.a"
 

@@ -141,7 +141,7 @@ def resolve_floor_name(name: str, entities: list[EntitySnapshot]) -> FloorResolv
 
 
 def resolve_floor_by_level_keyword(keyword: str, entities: list[EntitySnapshot]) -> FloorResolveResult:
-    """Resolve "oben"/"unten" to the highest/lowest-level floor actually
+    """Resolve "oben"/"unten" to the upper/ground floor actually
     referenced by ``entities`` (v2 plan Phase 28's own example, "alle Lichter
     oben").
 
@@ -157,11 +157,10 @@ def resolve_floor_by_level_keyword(keyword: str, entities: list[EntitySnapshot])
     if not levels:
         return FloorResolveResult(status=FloorResolveStatus.NOT_FOUND)
 
-    if keyword == "up":
-        extreme = max(levels)
-    elif keyword == "down":
-        extreme = min(levels)
-    else:
+    from .nlu.place_model import level_for_keyword
+
+    extreme = level_for_keyword(keyword, levels) if keyword in {"up", "down"} else None
+    if extreme is None:
         return FloorResolveResult(status=FloorResolveStatus.NOT_FOUND)
 
     matching = [f for f in floors if f.level == extreme]

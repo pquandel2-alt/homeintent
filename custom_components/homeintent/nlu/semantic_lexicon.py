@@ -171,11 +171,28 @@ def _remove_shadowed(spans: Iterable[SemanticSpan]) -> tuple[SemanticSpan, ...]:
     return tuple(sorted(selected, key=lambda span: (span.start, span.end, span.kind.value)))
 
 
+def _level_role(text: str, start: int) -> str:
+    from .place_model import level_word_role
+
+    before = [normalize_for_compare(word) for word in _WORD_RE.findall(text[:start])]
+    words = before + [normalize_for_compare(word) for word in _WORD_RE.findall(text[start:])]
+    return level_word_role(words, len(before))
+
+
 def analyse_semantics(text: str) -> SemanticAnalysis:
     """Scan ``text`` once and return order-independent semantic evidence."""
     found: list[SemanticSpan] = []
     for lexeme, pattern in _compiled():
         for match in pattern.finditer(text):
+            if (
+                lexeme.kind in {SemanticKind.STATE, SemanticKind.ACTION}
+                and normalize_for_compare(match.group(0)) in {"oben", "unten"}
+                and _level_role(text, match.start()) == "floor"
+            ):
+                # "Wie viele Rollläden gibt es oben?", "Fahr oben alle
+                # Rollläden runter": the floor, neither position nor
+                # direction - one rule with the place model (7.6.1).
+                continue
             found.append(SemanticSpan(
                 kind=lexeme.kind,
                 value=lexeme.value,

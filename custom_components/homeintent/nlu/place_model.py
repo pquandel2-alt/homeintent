@@ -134,6 +134,59 @@ _DIRECTION_VERBS = frozenset({"nach", "fahr", "fahre", "fahren", "runter", "hoch
 # "Sind alle Rollläden unten?": closing the sentence without a preposition,
 # after a shading kind, "oben"/"unten" is its position, not a floor (7.6.0).
 _POSITIONED_GENERA = frozenset({"shutter", "raffstore", "awning", "curtain", "garage_door"})
+# Only a state question about the position reads it so ("Sind die Rollläden
+# oben?"). Counting, listing and existence ("Wie viele/Welche Rollläden gibt
+# es oben?") and commands keep "oben"/"unten" as the floor (7.6.1).
+_STATE_COPULA = frozenset({"ist", "sind", "steht", "stehen"})
+_INVENTORY_WORDS = frozenset({
+    "gibt", "viele", "wieviele", "welche", "welcher", "welches", "welchen", "hat", "haben",
+})
+
+
+def level_for_keyword(kind: str, levels: Iterable[int]) -> int | None:
+    """The one rule for "oben"/"unten"/"Keller" (7.6.1: shared by all readers).
+
+    ``upper`` ("oben") is the highest level from 1 up, ``ground`` ("unten")
+    level 0, ``basement`` ("Keller") the lowest level below 0. Without such
+    a level the word names no floor (never widened).
+    """
+    known = [level for level in levels]
+    if kind in {"upper", "up"}:
+        return max((level for level in known if level >= 1), default=None)
+    if kind in {"ground", "down"}:
+        return 0 if 0 in known else None
+    if kind == "basement":
+        return min((level for level in known if level < 0), default=None)
+    return None
+
+
+# Particles that already give a movement its direction: next to one of
+# them "oben"/"unten" can only be the floor ("Fahr oben alle Rollläden
+# runter").
+_OTHER_DIRECTIONS = frozenset({
+    "runter", "herunter", "hinunter", "hoch", "rauf", "herauf", "hinauf", "zu", "auf", "ab",
+})
+
+
+def level_word_role(words: Sequence[str], index: int) -> str:
+    """The one reading of "oben"/"unten" at ``words[index]`` (7.6.1).
+
+    ``"direction"`` after "nach" or a movement verb when nothing else gives
+    the direction ("Fahr nach oben"), ``"position"`` in a state question
+    about a shading device ("Sind die Rollläden oben?"), otherwise the
+    ``"floor"`` ("Wie viele Rollläden gibt es oben?", "Fahr oben alle
+    Rollläden runter", "Sind oben alle Rollläden unten?" - first word).
+    """
+    previous = words[index - 1] if index > 0 else ""
+    if previous == "nach":
+        return "direction"
+    if previous in _DIRECTION_VERBS and not any(
+        word in _OTHER_DIRECTIONS for position, word in enumerate(words) if position != index
+    ):
+        return "direction"
+    if _is_position(words, index):
+        return "position"
+    return "floor"
 
 
 def level_is_position(text: str, start: int, end: int) -> bool:
@@ -151,6 +204,9 @@ def _is_position(words: Sequence[str], start: int) -> bool:
     from .device_ontology import analyse_word
 
     if start != len(words) - 1 or (start > 0 and words[start - 1] in _LOCATIVE):
+        return False
+    before = set(words[:start])
+    if not before & _STATE_COPULA or before & _INVENTORY_WORDS:
         return False
     return any(
         (analysis := analyse_word(word)) is not None and set(analysis.genera) & _POSITIONED_GENERA
@@ -183,10 +239,7 @@ class PlaceLexicon:
                 place = self.phrases.get(phrase)
                 if place is None:
                     continue
-                previous = words[start - 1] if start > 0 else ""
-                if phrase in {"oben", "unten"} and (
-                    previous in _DIRECTION_VERBS or _is_position(words, start)
-                ):
+                if phrase in {"oben", "unten"} and level_word_role(words, start) != "floor":
                     continue
                 before = start - 1
                 while before >= 0 and words[before] in _ARTICLES:
@@ -225,15 +278,7 @@ def _level_place(
     if kind == "here":
         return Place(PlaceKind.HERE, "hier")
     levels = {floor_id: level for floor_id, (_, level) in floors.items() if level is not None}
-    # "oben"/"unten"/"Keller" name exactly one floor: the highest, the
-    # ground and the lowest level.  Two floors on the same level make the
-    # word ambiguous and it stays unresolved (never widened).
-    if kind == "upper":
-        extreme = max((level for level in levels.values() if level >= 1), default=None)
-    elif kind == "ground":
-        extreme = 0 if 0 in levels.values() else None
-    else:
-        extreme = min((level for level in levels.values() if level < 0), default=None)
+    extreme = level_for_keyword(kind, levels.values())
     chosen = {floor_id for floor_id, level in levels.items() if level == extreme} if extreme is not None else set()
     if len(chosen) > 1:
         return None
