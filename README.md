@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.6.1** (Fehlerbehebung nach dem unabhängigen Nachtest von 7.6.0)
+- Aktuelle Version: **7.7.0** (Architekturabschluss: eine Bedeutung, ein Entscheider, ein Schreibpfad)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -42,7 +42,44 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
-## Was ist in Version 7.6.1 neu?
+## Was ist in Version 7.7.0 neu?
+
+**Architekturabschluss.** Das Verhalten bleibt gleich, der Aufbau wird
+eindeutig (Bericht: `docs/architecture-completion-7.7.md`). Jede der Fragen
+„Wo entsteht die Bedeutung? Wo wird das Ziel aufgelöst? Wer entscheidet
+zwischen zwei Deutungen? Wer autorisiert? Wo wird geschaltet? Warum wurde
+etwas ausgeführt?“ hat genau eine Stelle im Code.
+
+- **Bedeutung ohne Altlasten:** Die Meaning IR nutzt öffentliche Primitive
+  (Klausellesung, Mengen, Namensindex) statt Interna alter Parser.
+- **Ein Entscheider:** Der Arbiter entscheidet auch mit offenem Dialog;
+  Rückfrage, Bestätigung, Entwurf und neuer Satz sind typisierte Evidenz.
+  Ein offener Dialog senkt nie die Bestätigungspflicht.
+- **Zerlegt:** `conversation.py` 8540 → 2191 Zeilen; Controller für Geräte,
+  Abfragen, Ziele, Routinen, Komfort, Lernen, Benachrichtigungen,
+  Automationen, Verwaltung und Produktivität mit ausdrücklichen
+  Abhängigkeiten. Ein Architekturtest hält die Importrichtung fest.
+- **Alte Pfade gelöscht:** Erster-Treffer-Matcher, die alten
+  hassil-Grammatiken, der historische Zielauflöser und der Legacy/V7-Report
+  (rund 25 000 Zeilen). An ihre Stelle tritt eine Signatur-Baseline je
+  Korpussatz.
+- **Bestätigung an ihre Wirkung gebunden:** Ein „Ja“ führt nur aus, was bei
+  der Frage gezeigt wurde; hat sich ein Skript inzwischen geändert (mehr
+  Risiko oder andere Ziele), wird neu gefragt. EffectGraph erkennt auch
+  Szenen, die ein Skript anlegt.
+- **Weniger Satzmuster:** 212 → 173, durch gelöschten und zusammengeführten
+  Code, nicht durch Umklassifizieren.
+- **Spracherkennung:** Getrennte Komposita aus der Spracherkennung
+  („küchen licht“, „außen beleuchtung“, „kinder zimmer licht“) werden nur zu
+  exakten Registry-Namen verbunden. Eine gesprochene Wiederholungszahl
+  („1000 Mal“) wird nie still weggelassen.
+- **Entwicklungs-Benchmark:** 503 eigene Äußerungen in 18 Kategorien, 442/503,
+  `unsafe_execution_count` 0; der zurückgehaltene Teil erreichte im ersten
+  Lauf 88/113. Das ist ein Entwicklungswerkzeug der umsetzenden Session,
+  kein unabhängiger Nachweis; die unabhängige Messung ist der Nachtest
+  (für 7.6.0: `docs/nachtest-7.6.0.md`) und wird getrennt berichtet.
+
+## Was war in Version 7.6.1 neu?
 
 Behebt die acht Befunde des unabhängigen Nachtests von 7.6.0. Keiner davon
 führte zu einer falschen Geräteaktion.
@@ -2042,24 +2079,25 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.6.1:
+Geprüfter Release-Stand von Version 7.7.0:
 
 ```text
-6407 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
-Sprachverständnis-Gate: 465 passed (hassil 3.11 und 3.12)
-Property-Suite: 19 Sicherheitsinvarianten, Nightly-Profil grün
-Shadow-Vergleich 2022 Sätze EQUIVALENT; Engine-Korpus gegen 7.5.2 2022/2022 gleichwertig
-Resolver-Shadow 0 SAFETY_DRIFT, 0 „alt besser“; Arbiter-Shadow 2045/2045 gleichwertig
-Pyright 0 Fehler (voll und alle Strict-Profile); Ruff-Baseline 57 (unverändert seit 7.3.0)
+6328 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+Sprachverständnis-Gate: 463 passed
+Property-Suite: 24 Sicherheitsinvarianten, 0 Verletzungen (neu: STT, Selbstkorrektur,
+  offener Dialog, gelernte Standardauswahl, keine gelernten Satzbedeutungen)
+Korpus-Signaturen: 3348 Sätze, 0 geänderte Signaturen gegenüber dem Stand vor dem Umbau
+Dialog-Shadow 226 Dialoge / 441 Turns 0 Abweichungen; Shadow-Vergleich 2022 EQUIVALENT
+Arbiter-Shadow 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
+Entwicklungs-Benchmark 442/503, unsafe_execution_count 0 (held-out erster Lauf 88/113)
+Pyright 0 Fehler (voll und alle Strict-Profile)
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173 (7.6.0: 212)
+Latenz 5000 Entitäten: understand p95 < 100 ms, Arbeit je Form gleich 7.6.1
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 155 / 155
-Funktionsszenarien im CI-Lauf (`--strict`, ohne Proaktiv). Vier Szenarien
-prüfen seit 7.6.0 das Verhalten aus 7.3.3: Bedürfnisse werden im Standard
-`propose` vorgeschlagen und erst nach „Ja“ ausgeführt, und die
-Sonnenuntergangs-Automation fragt „nur heute oder jeden Tag?“. Dazu 15 / 15
-Schlafen-Regressionen und 8 / 8 Live-Prüfungen der Zielauflösung.
-Details: `docs/umsetzung-7.3.1-7.6.md`.
+Live-Testbett und echte Home-Assistant-Tests laufen in CI; der vollständige
+Lauf inklusive Proaktiv wird für den Release-Commit ausdrücklich angestoßen
+(`nightly-live.yml`). Details: `docs/architecture-completion-7.7.md`.
 
 Zusätzlich wurden ausgeführt:
 
@@ -2094,7 +2132,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.6.1.json
+  --check docs/perf/corpus-signatures-7.7.0.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
