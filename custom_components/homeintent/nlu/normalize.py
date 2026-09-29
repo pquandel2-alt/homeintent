@@ -224,6 +224,12 @@ _CLITICS = {
     "mach's": "mach das", "machs": "mach das", "mach’s": "mach das",
     "dreh's": "dreh das", "drehs": "dreh das", "schalt's": "schalt das",
     "stell's": "stell das", "gibt's": "gibt es", "gibts": "gibt es",
+    # Preposition + article fused (7.6.1): "fürs Schlafen" is "für das
+    # Schlafen" everywhere. The dative forms "beim"/"zum"/"zur"/"im"/"am"/
+    # "vom" stay: they are the canonical spelling the lexicon already reads.
+    "fürs": "für das", "fuers": "fuer das", "ans": "an das", "ins": "in das",
+    "aufs": "auf das", "übers": "über das", "uebers": "ueber das", "ums": "um das",
+    "durchs": "durch das", "vors": "vor das", "hinters": "hinter das",
 }
 _CLITIC_RE = re.compile(
     r"(?<![\wäöüß'’])(" + "|".join(re.escape(key) for key in sorted(_CLITICS, key=len, reverse=True)) + r")(?![\wäöüß'’])",

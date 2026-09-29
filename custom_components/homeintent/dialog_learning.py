@@ -116,8 +116,8 @@ class PreferenceDraft:
 _PREF_RE = re.compile(
     r"^(?:merke?\s+dir\s*,?\s*(?:dass\s+)?)?(?:"
     r"(?:wenn|sobald)\s+ich\s+(?P<act1>.+?)\s*,?\s+(?:moechte|will|mag|haette\s+gern)\s+ich\s+(?P<body1>.+)"
-    r"|(?:zum|beim|fuers)\s+(?P<act2>\w+)\s+(?:moechte|will|mag)\s+ich\s+(?P<body2>.+)"
-    r"|ich\s+(?:moechte|will|mag)\s+(?:zum|beim|fuers)\s+(?P<act3>\w+)\s+(?P<body3>.+)"
+    r"|(?:zum|beim|fuers|fuer\s+das)\s+(?P<act2>\w+)\s+(?:moechte|will|mag)\s+ich\s+(?P<body2>.+)"
+    r"|ich\s+(?:moechte|will|mag)\s+(?:zum|beim|fuers|fuer\s+das)\s+(?P<act3>\w+)\s+(?P<body3>.+)"
     r")$"
 )
 _PERCENT_RE = re.compile(r"\b(?:auf\s+)?(\d{1,3})\s*(?:prozent|%)")
@@ -164,7 +164,7 @@ def parse_preference_statement(
 
 _PREF_QUESTION_RE = re.compile(
     r"^wie\s+(?:hell|dunkel|warm|laut)\s+(?:moechte|will|mag|habe)\s+ich\s+(?:es\s+)?"
-    r"(?:(?:beim|zum|fuers)\s+)?(?P<act>\w+(?:\s+\w+)?)"
+    r"(?:(?:beim|zum|fuers|fuer\s+das)\s+)?(?P<act>\w+(?:\s+\w+)?)"
 )
 
 
@@ -239,7 +239,7 @@ def is_learned_question(text: str) -> bool:
 
 _FORGET_RE = re.compile(
     r"^(?:bitte\s+)?(?:vergiss|loesche|entferne)\s+(?:bitte\s+)?"
-    r"(?:(?:den\s+namen|das\s+wort|den\s+alias|das\s+makro|das\s+sprachmakro|die\s+standardauswahl(?:\s+fuer)?|meine\s+vorliebe(?:\s+(?:zum|beim|fuers))?)\s+)?"
+    r"(?:(?:den\s+namen|das\s+wort|den\s+alias|das\s+makro|das\s+sprachmakro|die\s+standardauswahl(?:\s+fuer)?|meine\s+vorliebe(?:\s+(?:zum|beim|fuers|fuer\s+das))?)\s+)?"
     r"(?P<rest>.+?)(?:\s+wieder)?$"
 )
 _FORGET_HOW_RE = re.compile(r"^(?:wie|wann)\s+\w+\s+ich\s+(?:es\s+)?(?:beim\s+|zum\s+)?(?P<act>.+?)(?:\s+(?:moechte|will|mag))?$")
