@@ -255,7 +255,9 @@ def test_historical_conversation_uses_yesterday_and_clarifies_multiple(
 def test_temperature_clarification_replies_are_structured(
     reply: str, expected: GoalSemanticChoice
 ):
-    assert ha_conversation._goal_semantic_choice(analyse_language(reply)) is expected
+    import homeintent.controllers.goals as goal_controller
+
+    assert goal_controller._goal_semantic_choice(analyse_language(reply)) is expected
 
 
 def test_temperature_goal_semantic_followup_keeps_goal_and_builds_scheduled_plan(

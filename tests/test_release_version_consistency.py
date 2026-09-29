@@ -14,7 +14,7 @@ def test_current_release_version_is_consistent_across_main_release_surfaces():
     version = manifest["version"]
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    baseline_name = f"v7-shadow-baseline-{version}.json"
+    baseline_name = f"corpus-signatures-{version}.json"
     baseline_path = ROOT / "docs/perf" / baseline_name
 
     assert f"Aktuelle Version: **{version}**" in readme
@@ -23,4 +23,4 @@ def test_current_release_version_is_consistent_across_main_release_surfaces():
     assert baseline_name in workflow
     assert baseline_path.is_file()
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-    assert baseline["project_version"] == version
+    assert len(baseline) > 3000  # one digest per corpus sentence

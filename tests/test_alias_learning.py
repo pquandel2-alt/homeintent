@@ -17,9 +17,10 @@ from homeintent.alias_learning import (  # noqa: E402
     parse_alias_learning,
     remove_alias_rule,
 )
+from homeintent.bindings import BindingKind, BindingScope  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.learning_policy import LearningPolicy  # noqa: E402
-from homeintent.model_registry import LearnedKind, ModelRegistry  # noqa: E402
+from homeintent.model_registry import ModelRegistry  # noqa: E402
 import homeintent.conversation as ha_conversation  # noqa: E402
 from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeassistant.components.conversation import ConversationInput  # noqa: E402
@@ -127,7 +128,12 @@ def test_alias_learning_requires_confirmation_before_persistence(monkeypatch):
         chat_log=None,
     ))
     assert "Gespeichert" in saved.response.speech
-    assert entry.options["custom_aliases"] == "Bürolicht = light.desk"
+    # 7.4.1: one store for everything learned; options stay configuration.
+    assert entry.options == {}
+    (alias,) = agent._runtime_data.bindings.all(BindingKind.ALIAS)
+    assert (alias.data["spoken"], alias.target, alias.scope) == (
+        "Bürolicht", "light.desk", BindingScope.HOUSEHOLD
+    )
 
 
 def test_contextual_preference_is_persistent_and_area_scoped(tmp_path):
@@ -142,16 +148,17 @@ def test_contextual_preference_is_persistent_and_area_scoped(tmp_path):
     )
     assert draft is not None
 
-    asyncio.run(agent._async_confirm_alias_learning(draft, "philipp"))
-    models = asyncio.run(registry.async_list(kind=LearnedKind.PREFERENCE))
-    assert len(models) == 1
-    assert models[0].parameters["entity_id"] == "light.floor"
+    asyncio.run(agent._learning.async_confirm_alias_learning(draft, "philipp"))
+    (alias,) = agent._runtime_data.bindings.all(BindingKind.ALIAS)
+    assert (alias.target, alias.scope, alias.user_id, alias.data["area_id"]) == (
+        "light.floor", BindingScope.USER, "philipp", "living_room"
+    )
     assert "custom_aliases" not in entry.options
 
-    living = asyncio.run(agent._async_apply_confirmed_preferences(
+    living = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         AREA_ENTITIES, area_id="living_room", user_id="philipp"
     ))
-    kitchen = asyncio.run(agent._async_apply_confirmed_preferences(
+    kitchen = asyncio.run(agent._learning.async_apply_confirmed_preferences(
         AREA_ENTITIES, area_id="kitchen", user_id="philipp"
     ))
     assert "Lampe" in next(item for item in living if item.entity_id == "light.floor").aliases

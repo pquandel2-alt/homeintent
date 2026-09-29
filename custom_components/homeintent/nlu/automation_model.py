@@ -69,6 +69,8 @@ class CalendarReference(Enum):
     WEEKDAY = auto()
     DATE = auto()
     NEXT_WORKDAY = auto()
+    # "um 22 Uhr" without any day: the next occurrence (today or tomorrow).
+    NEXT_OCCURRENCE = auto()
 
 
 @dataclass(frozen=True)
@@ -297,7 +299,11 @@ def resolve_calendar_schedule(model: AutomationModel, now: datetime) -> Automati
         raise ValueError("Calendar one-shot automations require exactly one trigger")
 
     today = now.date()
-    if schedule.reference is CalendarReference.TODAY:
+    if schedule.reference is CalendarReference.NEXT_OCCURRENCE:
+        target_date = today
+        if datetime.combine(today, time(schedule.hour, schedule.minute), tzinfo=now.tzinfo) <= now:
+            target_date = today + timedelta(days=1)
+    elif schedule.reference is CalendarReference.TODAY:
         target_date = today
     elif schedule.reference is CalendarReference.TOMORROW:
         target_date = today + timedelta(days=1)

@@ -23,6 +23,9 @@ from .const import (
     CONF_DOCUMENTS_DIRECTORY,
     CONF_DOCUMENTS_ENABLED,
     CONF_MEMORY_ENABLED,
+    CONF_TRACE_DAYS,
+    CONF_TRACE_LIMIT,
+    CONF_TRACE_STORE_TEXT,
     CONF_MEMORY_RETENTION_DAYS,
     CONF_EXPERIENCE_LEARNING_ENABLED,
     CONF_PREDICTIVE_MODELS_ENABLED,
@@ -38,6 +41,8 @@ from .monitor_goal import MonitorGoalRuntime, MonitorGoalStore
 from .nlu.context import ConversationContextStore
 from .profiles import ProfileStore
 from .engine import NluEngine
+from .bindings import BindingStore
+from .execution_trace import DEFAULT_TRACE_DAYS, DEFAULT_TRACE_LIMIT, async_setup_trace
 from .runtime_data import HomeIntentRuntimeData
 from .storage_migration import resolve_storage_path
 from .user_context import UserContextStore
@@ -76,6 +81,7 @@ SERVICE_SET_HOUSEHOLD = "set_household"
 SERVICE_SAVE_ROUTINE = "save_routine"
 SERVICE_SAVE_COMFORT_PROFILE = "save_comfort_profile"
 SERVICE_DELETE_MONITOR_GOAL = "delete_monitor_goal"
+SERVICE_RESET_TEST_STATE = "reset_test_state"
 SERVICE_THERMAL_DEADLINE_CHECKPOINT = "thermal_deadline_checkpoint"
 LEGACY_DOMAIN = "ha_nlu"
 
@@ -244,6 +250,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _queue_learning
     )
     await memory.async_initialize()
+    configured_trace_limit = entry.options.get(CONF_TRACE_LIMIT, DEFAULT_TRACE_LIMIT)
+    configured_trace_days = entry.options.get(CONF_TRACE_DAYS, DEFAULT_TRACE_DAYS)
+    entry.runtime_data.trace, entry.runtime_data.stop_trace = await async_setup_trace(
+        hass,
+        hass.config.path(".storage", "homeintent_trace.json"),
+        limit=configured_trace_limit if isinstance(configured_trace_limit, int) else DEFAULT_TRACE_LIMIT,
+        days=configured_trace_days if isinstance(configured_trace_days, int) else DEFAULT_TRACE_DAYS,
+        store_text=bool(entry.options.get(CONF_TRACE_STORE_TEXT, True)),
+    )
+    entry.runtime_data.bindings = BindingStore(
+        _storage_path(hass, "homeintent_bindings.json", "ha_nlu_bindings.json")
+    )
+    await entry.runtime_data.bindings.async_load()
     await user_contexts.async_load()
     await profile_store.async_load()
     await learning_manager.async_restore_models()
@@ -702,6 +721,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, SERVICE_DELETE_MONITOR_GOAL, _handle_delete_monitor_goal
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_TEST_STATE):
+
+        async def _handle_reset_test_state(call: ServiceCall) -> None:
+            """Make measurement series independent (7.6.0, admin only).
+
+            Forgets discourse, open dialogs and the execution trace; learned
+            bindings only when ``include_bindings`` is set. Timers and lists
+            are Home Assistant entities and are reset there.
+            """
+            await _require_admin_service_call(hass, call)
+            include_bindings = bool(call.data.get("include_bindings", False))
+            summary = {"conversations": 0, "trace_records": 0, "bindings_cleared": 0}
+            for config_entry in hass.config_entries.async_entries(DOMAIN):
+                runtime = getattr(config_entry, "runtime_data", None)
+                if not isinstance(runtime, HomeIntentRuntimeData):
+                    continue
+                summary["conversations"] += runtime.context_store.clear_all()
+                runtime.dialog_manager.clear_all()
+                if runtime.trace is not None:
+                    summary["trace_records"] += len(runtime.trace.store.recent())
+                    runtime.trace.store.clear()
+                    runtime.trace.index.clear()
+                if include_bindings:
+                    await runtime.bindings.async_clear()
+                    summary["bindings_cleared"] += 1
+            _LOGGER.info("HomeIntent test state reset: %s", summary)
+
+        hass.services.async_register(
+            DOMAIN, SERVICE_RESET_TEST_STATE, _handle_reset_test_state
+        )
+
     # Reconcile persistence before expiring missed one-shots. This recovers
     # a crash-interrupted transaction, removes orphan sidecar metadata and
     # repairs category assignments for every known HomeIntent automation.
@@ -740,6 +790,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         entry.runtime_data.learning_tasks.clear()
         await entry.runtime_data.effect_monitor.async_close()
+        if entry.runtime_data.stop_trace is not None:
+            await entry.runtime_data.stop_trace()
+            entry.runtime_data.stop_trace = None
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_DELETE_AUTOMATION):
         hass.services.async_remove(DOMAIN, SERVICE_DELETE_AUTOMATION)
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_RECORD_AUTOMATION_RUN):
@@ -761,6 +814,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_SAVE_ROUTINE,
             SERVICE_SAVE_COMFORT_PROFILE,
             SERVICE_DELETE_MONITOR_GOAL,
+            SERVICE_RESET_TEST_STATE,
         ):
             if hass.services.has_service(DOMAIN, service):
                 hass.services.async_remove(DOMAIN, service)

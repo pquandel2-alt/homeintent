@@ -19,6 +19,7 @@ from ..areas import AreaSnapshot
 from ..automation_summary import AutomationSummary
 from ..entities import EntitySnapshot
 from ..floors import FloorSnapshot
+from ..plan_origin import PlanOrigin
 from ..service_call import ServiceCallPlan
 from .automation_model import AutomationModel, TriggerModel
 from .command import SemanticCommand
@@ -29,6 +30,7 @@ from .primitives import SemanticProperty
 from .semantic_state import SemanticState
 
 if TYPE_CHECKING:
+    from ..service_executor import ConfirmedScope
     from ..alias_learning import AliasLearningDraft
     from ..automation_composition import EventClarification
     from ..automation_wizard import AutomationWizardState
@@ -168,6 +170,13 @@ class PendingServiceConfirmation:
     # A previewed group operation ("Soll ich A, B und C ausschalten?") runs
     # these plans after ``plan`` once the user confirms.
     additional_plans: tuple[ServiceCallPlan, ...] = ()
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+    binding_confirmed: bool = False
+    # (routine concept, entity id): "Ja" also stores this routine binding.
+    binding_offer: tuple[str, str] | None = None
+    # Risk and effective targets the question covered (7.7): an edited
+    # script is not confirmed by the earlier "Ja".
+    scope: ConfirmedScope | None = None
 
 
 @dataclass(frozen=True)
@@ -486,3 +495,10 @@ class ConversationContextStore:
         self._entries.pop(conversation_id, None)
         if self._dialog_listener is not None:
             self._dialog_listener(conversation_id, None)
+
+    def clear_all(self) -> int:
+        """Forget every conversation (test reset, 7.6.0)."""
+        conversation_ids = tuple(self._entries)
+        for conversation_id in conversation_ids:
+            self.clear(conversation_id)
+        return len(conversation_ids)

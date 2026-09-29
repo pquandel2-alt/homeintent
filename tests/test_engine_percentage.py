@@ -390,8 +390,16 @@ def test_bare_number_on_switch_domain_still_returns_none(engine, entities):
     [
         "mach das Unbekanntgerät auf 50 Prozent",  # unknown name
         "mach den Garagentor auf 50 Prozent",  # switch domain has no percent semantics
-        "Rollladen Wohnzimmer auf 50 Prozent",  # missing verb - must not guess
     ],
 )
 def test_unmatched_percentage_returns_none(engine, entities, text):
     assert engine.match(text, entities) is None
+
+
+def test_verbless_target_with_unit_value_is_a_command(engine, entities):
+    # 7.6.0: "<Ziel> auf <Zahl> Prozent" names target, value and unit; the
+    # only reading is "set to", so the short form is a command (no guess).
+    result = engine.match("Rollladen Wohnzimmer auf 50 Prozent", entities)
+    assert result is not None and result.plan is not None
+    assert result.plan.service == "set_cover_position"
+    assert result.plan.data["position"] == 50

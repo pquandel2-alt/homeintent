@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import re
 import sys
@@ -82,7 +83,7 @@ async def _runtime(
             (SEND_MESSAGE_SCHEMA if service == "send_message" else LEGACY_NOTIFY_SCHEMA)(dict(data))
         calls.append((domain, service, dict(data)))
 
-    hass.services.async_call = AsyncMock(side_effect=record)
+    hass.services.async_call = ServiceMock(side_effect=record)
     hass.services.has_service = lambda domain, service: True
     hass.auth = SimpleNamespace(async_get_user=AsyncMock(
         side_effect=lambda user_id: SimpleNamespace(is_admin=user_id == "philipp")))
@@ -231,7 +232,7 @@ def test_voice_and_push_delivery_payloads(tmp_path, monkeypatch, scheduled):
         assert receipt.push_bindings[0].user_id == "philipp"
         assert "entity_id" not in payload["data"]
         # Provider failure is reported, not raised.
-        hass.services.async_call = AsyncMock(side_effect=RuntimeError("down"))
+        hass.services.async_call = ServiceMock(side_effect=RuntimeError("down"))
         failed = await runtime.async_deliver(push)
         assert failed.delivered == () and failed.errors == ("push:RuntimeError",)
         house = OutgoingMessage(

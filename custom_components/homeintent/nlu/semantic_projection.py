@@ -21,7 +21,7 @@ from .composition import CompositionalPlan
 from .constraint_resolver import Constraints, resolve_candidates
 from .domain_operations import INTENT_BY_DOMAIN_ACTION
 from .semantic_catalog import MEASUREMENT_PROPERTY_SPECS, VALUE_INTENT_BY_DOMAIN_PROPERTY
-from .entity_resolution import ResolutionStatus, resolve_entity_scored
+from .entity_resolution import ResolutionStatus, resolve_phrase
 from .entity_resolution import all_mentioned_entities
 from .frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .german_structure import ClauseKind, StructuralRelationKind
@@ -1418,7 +1418,7 @@ def _resolve_exclusions(
 ) -> tuple[tuple[EntitySnapshot, ...], tuple[EntitySnapshot, ...]] | None:
     excluded: dict[str, EntitySnapshot] = {}
     for phrase in phrases:
-        resolution = resolve_entity_scored(
+        resolution = resolve_phrase(
             phrase,
             list(candidates),
             index=(world_model.entity_index if world_model is not None else None),

@@ -55,7 +55,7 @@ from pathlib import Path
 from hassil import Intents, RangeSlotList, RangeType, WildcardSlotList
 
 from .hassil_compat import recognize_aligned
-from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
+from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 from .automation_target_resolver import build_device_class_target, build_named_target
 from .nlu.automation_model import NumericComparator, SunEvent, TriggerTarget
 from .nlu.condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator, TimeComparator, condition_tree_depth
@@ -75,7 +75,7 @@ from .nlu.lexicon import (
 )
 from .nlu.parser import ParseContext
 from .nlu.semantic_automation import compile_state_predicate
-from .parsers import _STATE_NAME_TO_SEMANTIC, _strip_locative_prepositions
+from .parsers import STATE_NAME_TO_SEMANTIC, strip_locative_prepositions
 
 AUTOMATION_CONDITION_DIR = Path(__file__).parent / "intents" / "de" / "automation_condition"
 
@@ -347,9 +347,9 @@ class AutomationConditionParser:
         state_slot = slots.get("state")
         state_verb_slot = slots.get("state_verb")
         if state_slot is not None:
-            semantic_state = _STATE_NAME_TO_SEMANTIC[str(state_slot.value)]
+            semantic_state = STATE_NAME_TO_SEMANTIC[str(state_slot.value)]
         elif state_verb_slot is not None:
-            semantic_state = _STATE_NAME_TO_SEMANTIC[str(state_verb_slot.value)]
+            semantic_state = STATE_NAME_TO_SEMANTIC[str(state_verb_slot.value)]
         else:
             return None  # structurally unreachable - HassStateCondition's grammar always captures one of the two
 
@@ -520,8 +520,8 @@ class AutomationConditionParser:
 
         target = None
         if name_slot is not None:
-            name = _strip_locative_prepositions(str(name_slot.value))
-            resolved = resolve_entity_scored(name, context.entities, domain="person", index=context.index)
+            name = strip_locative_prepositions(str(name_slot.value))
+            resolved = resolve_phrase(name, context.entities, domain="person", index=context.index)
             if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
                 return None
             if resolved.entity.domain != "person":
@@ -540,8 +540,8 @@ class AutomationConditionParser:
         if context.world_model is None:
             return None  # no entity->device mapping available - never guess a device_id
 
-        name = _strip_locative_prepositions(str(name_slot.value))
-        resolved = resolve_entity_scored(name, context.entities, index=context.index)
+        name = strip_locative_prepositions(str(name_slot.value))
+        resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None
         device = context.world_model.device_for_entity(resolved.entity.entity_id)
@@ -559,8 +559,8 @@ class AutomationConditionParser:
         if name_slot is None or raw_state_slot is None:
             return None
 
-        name = _strip_locative_prepositions(str(name_slot.value))
-        resolved = resolve_entity_scored(name, context.entities, index=context.index)
+        name = strip_locative_prepositions(str(name_slot.value))
+        resolved = resolve_phrase(name, context.entities, index=context.index)
         if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
             return None  # not found or ambiguous - never guess
         entity = resolved.entity

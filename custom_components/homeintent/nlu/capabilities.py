@@ -205,3 +205,38 @@ def required_capability_for_property(property: SemanticProperty) -> Capability |
     """The Capability a candidate entity must have to support ``property`` -
     ``None`` for properties with no capability-gating concept (BATTERY)."""
     return _PROPERTY_TO_CAPABILITY.get(property)
+
+
+_ABILITY_PHRASES: tuple[tuple[frozenset[str], str], ...] = (
+    (frozenset({"TURN_ON", "TURN_OFF"}), "ein- und ausschalten"),
+    (frozenset({"BRIGHTNESS"}), "dimmen"),
+    (frozenset({"COLOR"}), "farbig stellen"),
+    (frozenset({"COLOR_TEMPERATURE"}), "in der Lichtfarbe verstellen"),
+    (frozenset({"POSITION"}), "auf eine Position fahren"),
+    (frozenset({"OPEN", "CLOSE"}), "öffnen und schließen"),
+    (frozenset({"TEMPERATURE"}), "auf eine Temperatur stellen"),
+    (frozenset({"HUMIDITY"}), "auf eine Luftfeuchte stellen"),
+    (frozenset({"FAN_SPEED"}), "in der Stufe verstellen"),
+    (frozenset({"SET_VALUE"}), "auf einen Wert stellen"),
+    (frozenset({"SELECT_OPTION"}), "auf eine Option stellen"),
+    (frozenset({"PRESS"}), "auslösen"),
+    (frozenset({"START"}), "starten"),
+    (frozenset({"PAUSE"}), "anhalten"),
+    (frozenset({"DOCK"}), "zur Station schicken"),
+)
+
+
+def describe_abilities(name: str, capabilities: frozenset[str] | set[str]) -> str:
+    """Honest reason from the device's real capabilities (7.3.3):
+    „Flurlicht lässt sich nur ein- und ausschalten.“"""
+    phrases: list[str] = []
+    for needed, phrase in _ABILITY_PHRASES:
+        if needed & set(capabilities) and phrase not in phrases:
+            phrases.append(phrase)
+    if not phrases:
+        return f"{name} kann ich nicht steuern, nur abfragen."
+    if len(phrases) == 1:
+        listed = phrases[0]
+    else:
+        listed = ", ".join(phrases[:-1]) + " und " + phrases[-1]
+    return f"{name} lässt sich nur {listed}."

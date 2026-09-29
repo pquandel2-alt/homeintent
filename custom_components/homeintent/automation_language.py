@@ -383,7 +383,9 @@ _WEEKDAY_RECUR_RE = re.compile(
     re.IGNORECASE,
 )
 _CLOCK_RE = re.compile(
-    r"\bum\s+(?P<hour>\d{1,2}|[a-zäöüß]+)(?::(?P<minute>\d{2}))?(?:\s+uhr)?\b",
+    # "um drei Grad", "um 20 Prozent" are the size of a change (7.6.1).
+    r"\bum\s+(?P<hour>\d{1,2}|[a-zäöüß]+)(?::(?P<minute>\d{2}))?\b(?!\s*(?:grad|prozent|%|°))"
+    r"(?:\s+uhr)?\b",
     re.IGNORECASE,
 )
 # One-shot dates belong to the calendar/reminder routes.

@@ -92,7 +92,7 @@ from .nlu.lexicon import (
 from .nlu.semantic_compiler import canonicalize_exclusion_clause
 from .nlu.meaning import analyse_turn
 from .nlu.parser import ParseContext
-from .parsers import _strip_locative_prepositions
+from .parsers import strip_locative_prepositions
 
 AUTOMATION_ACTION_DIR = Path(__file__).parent / "intents" / "de" / "automation_action"
 
@@ -296,7 +296,7 @@ class AutomationActionParser:
         area_slot = slots.get("area")
         if area_slot is None:
             return None, None
-        area_text = _strip_locative_prepositions(str(area_slot.value))
+        area_text = strip_locative_prepositions(str(area_slot.value))
         if not area_text:
             return None, None
         resolved = resolve_area_scored(area_text, entities)
@@ -344,7 +344,7 @@ class AutomationActionParser:
 
     @staticmethod
     def _build_named_target(name_slot, context: ParseContext) -> TriggerTarget | None:
-        name = _strip_locative_prepositions(str(name_slot.value))
+        name = strip_locative_prepositions(str(name_slot.value))
         if name.strip().lower() in _PRONOUN_WORDS:
             return AutomationActionParser._build_pronoun_target(context)
         resolved = resolve_named_target(name, context.entities)
@@ -425,7 +425,7 @@ class AutomationActionParser:
         exclude_entity_ids: tuple[str, ...] = ()
         name_slot = slots.get("name")
         if name_slot is not None:
-            exclude_name = _strip_locative_prepositions(str(name_slot.value))
+            exclude_name = strip_locative_prepositions(str(name_slot.value))
             resolved = resolve_named_target(exclude_name, context.entities)
             if resolved.status is not ResolutionStatus.RESOLVED or resolved.entity is None:
                 return None  # exclusion target doesn't resolve unambiguously - never guess

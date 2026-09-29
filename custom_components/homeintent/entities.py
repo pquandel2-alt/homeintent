@@ -411,47 +411,18 @@ def _best_name_candidate(
     return best
 
 
-def resolve_entity_scored(
-    name: str,
+def rank_name_candidates(
+    spoken: str,
     entities: list[EntitySnapshot],
     *,
     area_id: str | None = None,
     domain: str | None = None,
     device_class: str | None = None,
     index: EntityIndex | None = None,
-) -> ResolutionResult:
-    """Multi-stage scored entity resolution (v2 plan Phase 6, "Entity
-    Resolver 2.0"): candidate generation + scoring across friendly_name/
-    aliases/entity_id, optional context bonuses (Schritt 3, Context
-    Filtering - only applied when the caller actually knows the area/domain/
-    device_class it's looking for), then ambiguity detection (Schritt 4) on
-    the final ranking.
-
-    ``index`` (World Model Wave 1, building on Phase 23's ``EntityIndex``):
-    an optional prebuilt index (see ``build_entity_index()``) used to narrow
-    the candidate list scanned below via ``by_domain``/``by_area`` *before*
-    scoring runs, for callers that already know the ``domain``/``area_id``
-    they're resolving within and can build one index per conversation turn
-    instead of paying an O(n) scan per resolution call. Omitted (the
-    default): behaves exactly as before, scanning the full ``entities``
-    list - fully backward compatible for every existing caller.
-
-    Caveat: unlike the ``area_id``/``domain`` *bonuses* applied below (which
-    only nudge a candidate's score, never exclude it), the ``index``-based
-    prefilter is a hard filter - an entity outside the requested domain/area
-    is dropped before scoring even runs, so it can never be picked no matter
-    how well its name matches. Every current caller that passes both
-    ``index`` and ``domain``/``area_id`` already only wants matches within
-    that domain/area (see test_entity_index.py's
-    ``test_index_prefilter_matches_full_scan_result`` for a worked example
-    where prefiltering and full-scan agree), but this is a real, documented
-    semantic narrowing versus the index-less path for the pathological case
-    of a strong name match sitting entirely outside the given domain/area -
-    flagged here rather than silently accepted.
-    """
-    spoken = (name or "").strip()
+) -> list[EntityCandidate]:
+    """Name tier of the one target resolution: scored candidates only."""
     if not spoken:
-        return ResolutionResult(status=ResolutionStatus.NOT_FOUND)
+        return []
     spoken_norm = normalize_for_compare(spoken)
 
     candidates: list[EntitySnapshot] = entities
@@ -510,6 +481,13 @@ def resolve_entity_scored(
         if ranked:
             break
 
+    return ranked
+
+
+def assemble_name_resolution(
+    spoken: str, ranked: list[EntityCandidate]
+) -> ResolutionResult:
+    """Status from a ranking: resolved, ambiguous or confirmation needed."""
     if not ranked:
         return ResolutionResult(status=ResolutionStatus.NOT_FOUND)
 
@@ -560,13 +538,15 @@ def resolve_entity(
 ) -> ResolveResult:
     """Resolve a spoken name to an entity within the given entity set.
 
-    Thin, context-free wrapper around ``resolve_entity_scored`` (v2 plan
-    Phase 6) for callers that don't need scores/context bonuses - exact and
+    Thin wrapper around the one target resolution (``resolve_phrase``) for
+    callers that only need the entity - exact and
     normalized-exact matches win outright (their score gap to any
     contains-tier competitor always exceeds the ambiguity margin), duplicate
     names/aliases surface as AMBIGUOUS rather than "first one wins".
     """
-    result = resolve_entity_scored(name, entities, index=index)
+    from .nlu.target_resolution import resolve_phrase  # the one target resolution
+
+    result = resolve_phrase(name, entities, index=index)
     if result.status is ResolutionStatus.RESOLVED:
         return ResolveResult(
             status=ResolveStatus.OK,

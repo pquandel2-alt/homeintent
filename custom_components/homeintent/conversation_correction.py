@@ -8,7 +8,7 @@ from .areas import AreaResolveStatus, resolve_area_name
 from .entities import EntitySnapshot
 from .floors import FloorResolveStatus, resolve_floor_name
 from .nlu.context import ConversationContext
-from .nlu.entity_resolution import ResolutionStatus, resolve_entity_scored
+from .nlu.entity_resolution import ResolutionStatus, resolve_phrase
 from .nlu.frame import AreaReference, SemanticFrame, TargetReference
 from .nlu.normalize import normalize
 from .nlu.parse_outcome import ParseFailureReason, UnderstandingFeedback
@@ -66,6 +66,38 @@ def _canonical_correction(text: str) -> str:
     return text
 
 
+_SIDES = {
+    "links": ("linke", "linken", "linker", "linkes", "links"),
+    "rechts": ("rechte", "rechten", "rechter", "rechtes", "rechts"),
+    "oben": ("obere", "oberen", "oberer", "oberes", "oben"),
+    "unten": ("untere", "unteren", "unterer", "unteres", "unten"),
+    "vorne": ("vordere", "vorderen", "vorderer", "vorderes", "vorne"),
+    "hinten": ("hintere", "hinteren", "hinterer", "hinteres", "hinten"),
+}
+
+
+def sibling_name(spoken: str, previous: EntitySnapshot) -> str | None:
+    """"die rechte" after "Nachttischlampe links" -> "Nachttischlampe rechts".
+
+    Only a bare side word counts, and only when the previous device's own
+    name carries a side word: the sibling is named, never guessed.
+    """
+    words = [word.strip(",.!?").casefold() for word in spoken.split()]
+    words = [word for word in words if word not in {"die", "der", "das", "den", "dem", "andere", "anderen"}]
+    if len(words) != 1:
+        return None
+    wanted = next((side for side, forms in _SIDES.items() if words[0] in forms), None)
+    if wanted is None:
+        return None
+    name_words = previous.friendly_name.split()
+    for index, word in enumerate(name_words):
+        side = next((key for key, forms in _SIDES.items() if word.casefold() in forms), None)
+        if side is not None and side != wanted:
+            replacement = wanted if word.casefold() == side else _SIDES[wanted][_SIDES[side].index(word.casefold())]
+            return " ".join([*name_words[:index], replacement, *name_words[index + 1:]])
+    return None
+
+
 class ConversationCorrectionResolver:
     """Retarget the previous action while retaining its validated meaning."""
 
@@ -99,7 +131,9 @@ class ConversationCorrectionResolver:
             flags=re.IGNORECASE,
         )
         domain = previous.entities[0].domain
-        named = resolve_entity_scored(
+        if len(previous.entities) == 1:
+            location = sibling_name(location, previous.entities[0]) or location
+        named = resolve_phrase(
             location, [entity for entity in entities if entity.domain == domain]
         )
         if named.status is ResolutionStatus.RESOLVED and named.entity is not None:

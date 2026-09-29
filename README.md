@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.3.0** (Sprachverständnis ohne Sprachmodell)
+- Aktuelle Version: **7.7.0** (Architekturabschluss: eine Bedeutung, ein Entscheider, ein Schreibpfad)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,446 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.7.0 neu?
+
+**Architekturabschluss.** Das Verhalten bleibt gleich, der Aufbau wird
+eindeutig (Bericht: `docs/architecture-completion-7.7.md`). Jede der Fragen
+„Wo entsteht die Bedeutung? Wo wird das Ziel aufgelöst? Wer entscheidet
+zwischen zwei Deutungen? Wer autorisiert? Wo wird geschaltet? Warum wurde
+etwas ausgeführt?“ hat genau eine Stelle im Code.
+
+- **Bedeutung ohne Altlasten:** Die Meaning IR nutzt öffentliche Primitive
+  (Klausellesung, Mengen, Namensindex) statt Interna alter Parser.
+- **Ein Entscheider:** Der Arbiter entscheidet auch mit offenem Dialog;
+  Rückfrage, Bestätigung, Entwurf und neuer Satz sind typisierte Evidenz.
+  Ein offener Dialog senkt nie die Bestätigungspflicht.
+- **Zerlegt:** `conversation.py` 8540 → 2191 Zeilen; Controller für Geräte,
+  Abfragen, Ziele, Routinen, Komfort, Lernen, Benachrichtigungen,
+  Automationen, Verwaltung und Produktivität mit ausdrücklichen
+  Abhängigkeiten. Ein Architekturtest hält die Importrichtung fest.
+- **Alte Pfade gelöscht:** Erster-Treffer-Matcher, die alten
+  hassil-Grammatiken, der historische Zielauflöser und der Legacy/V7-Report
+  (rund 25 000 Zeilen). An ihre Stelle tritt eine Signatur-Baseline je
+  Korpussatz.
+- **Bestätigung an ihre Wirkung gebunden:** Ein „Ja“ führt nur aus, was bei
+  der Frage gezeigt wurde; hat sich ein Skript inzwischen geändert (mehr
+  Risiko oder andere Ziele), wird neu gefragt. EffectGraph erkennt auch
+  Szenen, die ein Skript anlegt.
+- **Weniger Satzmuster:** 212 → 173, durch gelöschten und zusammengeführten
+  Code, nicht durch Umklassifizieren.
+- **Spracherkennung:** Getrennte Komposita aus der Spracherkennung
+  („küchen licht“, „außen beleuchtung“, „kinder zimmer licht“) werden nur zu
+  exakten Registry-Namen verbunden. Eine gesprochene Wiederholungszahl
+  („1000 Mal“) wird nie still weggelassen.
+- **Entwicklungs-Benchmark:** 503 eigene Äußerungen in 18 Kategorien, 442/503,
+  `unsafe_execution_count` 0; der zurückgehaltene Teil erreichte im ersten
+  Lauf 88/113. Das ist ein Entwicklungswerkzeug der umsetzenden Session,
+  kein unabhängiger Nachweis; die unabhängige Messung ist der Nachtest
+  (für 7.6.0: `docs/nachtest-7.6.0.md`) und wird getrennt berichtet.
+
+## Was war in Version 7.6.1 neu?
+
+Behebt die acht Befunde des unabhängigen Nachtests von 7.6.0. Keiner davon
+führte zu einer falschen Geräteaktion.
+
+- **Nicht-Admins legen wieder Automationen an** (Regression seit 7.3.2): Das
+  Neuladen der Automationen ist in Home Assistant ein Admin-Dienst. HomeIntent
+  prüft die Berechtigung selbst (`allow_non_admin_automations`) und ruft nur
+  diese Verwaltungsaufrufe im Systemkontext des Turns auf (ohne Benutzer, mit
+  dem Turn als Eltern-Kontext). Gerätewrites laufen weiter mit dem Kontext des
+  sprechenden Benutzers. Ablehnungen von Home Assistant erscheinen nie roh
+  oder englisch.
+- **Namen mit Grußformel:** „Aktiviere Guten Morgen.“ startet die Szene. Wörter
+  eines im Satz genannten Geräte- oder Aliasnamens sind keine Zeitangabe. Die
+  Rückfrage nennt die Gattung („Welche Szene meinst du …“).
+- **Mengen bei relativen Änderungen:** „zwei Grad wärmer“, „um 20 Prozent
+  heller“, „zehn Prozent lauter“, „30 Prozent höher“, „um drei Grad hoch“ –
+  in Ziffern und Worten; Gerätegrenzen gelten. „um drei Grad“ ist keine
+  Uhrzeit mehr.
+- **„oben“/„unten“:** eine Regel für Etage, Richtung und Stellung. Bei „gibt
+  es“, „wie viele“, „welche“ und Befehlen mit Ort ist es die Etage; nur die
+  Zustandsfrage („Sind die Rollläden oben?“) meint die Stellung. „unten“ ist
+  überall das Erdgeschoss.
+- **Nicht freigegebene Geräte** werden so benannt („Saugroboter ist für
+  HomeIntent nicht freigegeben.“, für Admins mit Hinweis, wo man das ändert);
+  ihre Nebenentitäten sind kein Ersatzziel.
+- **Verschmelzungen** („fürs“, „ins“, „ans“, „aufs“ …) gehören zur gemeinsamen
+  Normalisierung.
+- **„Mach alles für die Nacht fertig.“** bietet vorhandene Routinen an wie „Ich
+  gehe schlafen.“; angelegt wird nur, wenn es keine gibt.
+- **Abschwächungspartikel** („Könntest du vielleicht irgendwann mal …“) ändern
+  die höfliche Bitte nicht; eingebettete Fragen bleiben Fragen.
+
+## Was war in Version 7.6.0 neu?
+
+**Generalisierung: Bedeutungsklassen statt einzelner Sätze.** Abschluss des
+Umbaus 7.3.1 – 7.6.0 (Bericht: `docs/umsetzung-7.3.1-7.6.md`).
+
+- **Verbklassen:** anwerfen, anknipsen, anschmeißen, starten („Starte die
+  Kaffeemaschine“), rauf/herauf/„nach oben“, höher/niedriger als Stufe bei
+  Licht, Heizung, Medien und Ventilator; verblose Kurzbefehle mit Wert
+  („Heizung Wohnzimmer auf 22 Grad“, „Rollladen Wohnzimmer auf 50 Prozent“).
+- **Bedürfnisse:** „Ich kann kaum lesen“ (Licht), „Das Radio nervt“
+  (leiser/aus als Vorschlag). Die Wirkung hängt wie bisher von
+  `implicit_action_level` ab.
+- **Situationsfragen:** „irgendwo“, „Steht noch ein Fenster offen?“,
+  „Sind alle Rollläden unten?“ (unten/oben nach einer Beschattung ist eine
+  Position, keine Etage), schwache Batterien ohne Zahl, „Läuft die
+  Waschmaschine noch?“. Existenzantworten nennen die Geräte („Ja,
+  Badezimmerfenster und Küchenfenster sind geöffnet.“), Allantworten die
+  Ausnahmen („Nein, nicht alle … Nicht geöffnet: Rollladen Küche.“).
+- **Diskurs:** „Und den rechten auch.“ wiederholt die letzte Aktion am
+  Gegenstück (links/rechts, oben/unten, vorne/hinten). „Vergiss es“ oder
+  „Lieber nicht“ direkt nach einer Ausführung sagt ehrlich, dass schon
+  ausgeführt wurde, und bietet „Mach das rückgängig“ an („Rückgängig.“
+  genügt); es wird nichts ungefragt zurückgenommen.
+- **Höflichkeit:** „Wärst du so lieb und machst …“, „Es wäre nett, wenn du …
+  ausmachst“, „Kannst du mal eben …“, „Kannst du das Küchenlicht an?“ sind
+  Bitten. Verneinungen und echte Bedingungen bleiben es nicht.
+- **Mehrfachbefehle:** „dort“ im zweiten Teil bindet an den einzigen Ort des
+  vorigen Teils und verhält sich genau wie die ausdrückliche Ortsangabe;
+  bei keinem oder mehreren Orten wird nichts eingesetzt.
+- **Test-Reset:** Der Admin-Dienst `homeintent.reset_test_state` vergisst
+  Gesprächskontext, offene Rückfragen und den Ausführungs-Trace (gelernte
+  Bindungen nur mit `include_bindings`), damit Messreihen unabhängig sind.
+
+**Wert auf ungesehenen Sätzen.** Den unveröffentlichten Korpus kennt dieses
+Repository bewusst nicht. Gemessen wurde mit eigenen Paraphrasen:
+
+| Satz | 7.5.2 | 7.6.0 |
+|---|---|---|
+| Entwicklungskorpus Phase 9 (81 Fälle, `tests/eval/generalisierung_76.json`; an ihm wurde entwickelt) | 57 / 81 (70 %) | 81 / 81 |
+| Zurückgehaltene Paraphrasen (32 Fälle, erst nach den Änderungen geschrieben, nicht nachgebessert) | 14 / 32 (44 %) | **30 / 32 (94 %)** |
+
+Die zwei Fehlschläge im zurückgehaltenen Satz: „Wo ist es am kühlsten?“
+(Synonym zu „am kältesten“ fehlt) und „Ist die Spülmaschine schon fertig?“
+(das Testhaus hat keine Spülmaschine; die Antwort „Ziel nicht gefunden“ ist
+richtig, die Erwartung war falsch).
+
+**Zielwerte des Umbaus 7.3.1 – 7.6.0:**
+
+| Kennzahl | 7.3.0 | Ziel | 7.6.0 |
+| --- | --- | --- | --- |
+| Nicht freigegebene Geräte über Skript/Szene/Gruppe schaltbar | ja | nein | **nein** (Unit + live) |
+| Skript/Szene mit unvollständigem EffectGraph als LOW | ja | nie | **nie** |
+| Dienstaufrufe mit HA-Kontext | 0 / 45 | alle | **45 / 45** (AST-Test) |
+| „Warum ist X angegangen?“ mit belegter Kette | nein | ja | **ja** (VERIFIED/POSSIBLE/UNKNOWN) |
+| Routinewahl über Namensähnlichkeit ohne Bestätigung | ja (Szenen) | nie | **nie** |
+| Geraten statt gefragt (Ort, Einmaligkeit) | vorhanden | 0 | **0** bekannte Fälle |
+| Verletzte Sicherheitsinvarianten (Property-Suite) | – | 0 | **0** (19 Invarianten, Nightly 300 Beispiele) |
+| SAFETY_DRIFT bei jedem Umschalten | – | 0 | **0** |
+| Zielauflösungen im Code | 2 + private | 1 | **1** (`resolve_phrase`, Architekturtest) |
+| `SEMANTIC_SENTENCE_PATTERN`-Regex | nicht gezählt | sinkend | 272 → 258 → **212** (7.6.0: keine neuen) |
+| Gelerntes Wort wirkt in verschiedenen Satzformen | 3 von 4 | ≥ 10 | **10** Befehlsformen + Frage, Zeitauftrag, Verneinung |
+| Unveröffentlichter Korpus | 38 % | ≥ 65 % | hier nicht messbar; eigene ungesehene Paraphrasen 44 % → **94 %** |
+| Funktionsszenarien live | 162/162 | nicht schlechter | 155/155 im CI-Lauf; 4 Szenarien auf Vorschlag + „Ja“ umgestellt |
+| Latenz p95 | < 100 ms | < 100 ms | **< 100 ms** (Benchmarks mit 5000 Entitäten) |
+
+## Was ist in Version 7.5.2 neu?
+
+**Die übrigen Sprachinseln: Listen und Timer, Kalender, Haushaltsfragen,
+Ziele/Prozeduren und Erinnerungen.**
+
+- Mehrwortausdrücke sind Lexikondaten (`nlu/phrases.py`): Phrasen mit
+  Alternativen und Wortstämmen („was steht|ist|fehlt“, „erledig*“) werden
+  auf Wort-Tokens mit Zeichenpositionen geprüft. Namens-, Titel- und
+  Nachrichten-Platzhalter werden über Wortgrenzen bestimmt, nicht über
+  Satzmuster.
+- Umgestellt und die alten Satzmuster gelöscht:
+  - Listen und Timer: Anzeigen, Abhaken, Fülltexte, Beschreibung,
+    Timername, Antwort auf „Wie soll der Timer heißen?“
+  - Kalender: Liste, „Wann ist mein …“, freie Zeit, Zeitfenster,
+    Umbenennen, Dauer ändern, Verschieben, ganztägig, halbe Stunde, Titel
+  - Haushaltsfragen: Uhrzeit, Datum, Anwesenheit, Raumfrage,
+    Hausverbrauch, Durchschnittstemperatur, Solltemperatur, Probleme,
+    Batteriegrenze, Sonne, Wetter, Vorhersage, Szenen und Skripte
+  - Ziele/Prozeduren: speichern, starten, vergessen, auflisten
+  - Erinnerungen: „Sag … Bescheid“, „Benachrichtige …“, Ruhezeiten
+- Shadow je Insel gegen 7.5.1 (alle Korpussätze, alle Satzliterale der
+  Testsuite, erzeugte Inselkorpora), jeweils **0 Abweichungen**:
+
+  | Insel | Sätze | mit Frame |
+  |---|---|---|
+  | Listen/Timer | 5257 | 1931 |
+  | Kalender | 5218 | 178 |
+  | Haushalt | 5214 | 56 |
+  | Ziele | 5200 | 49 |
+  | Erinnerung | 5197 | 19 |
+- SEMANTIC_SENTENCE_PATTERN: 272 (7.5.0) → 258 (7.5.1) → **212** (7.5.2).
+
+## Was ist in Version 7.5.1 neu?
+
+**Bedeutung statt Satzmuster: die ersten zwei Sprachinseln.**
+
+- **Regex-Klassifikation:** Alle 773 Regex-Stellen der Integration sind
+  einmal klassifiziert (`docs/regex-klassifikation.json`, erzeugt von
+  `scripts/regex_inventory.py`). Die Klassen sind LEXICAL, MORPHOLOGICAL,
+  STRUCTURAL und SEMANTIC_SENTENCE_PATTERN. Nur die letzte wird abgebaut und
+  pro Release gezählt: 272 in 7.5.0, **258** in 7.5.1. Ein Test hält die Datei
+  aktuell und verhindert, dass die Zahl steigt.
+- **Verlauf** (`nlu/history_frame.py`): Statistik, Zustandsfragen („wie
+  oft“, „wie lange“, „wann zuletzt“) und Zeiträume werden aus Wörtern und
+  kleinen Lexikontabellen abgeleitet. Die kanonischen Frames
+  (`HistoryQuery`, `StateHistoryQuery`, `ComparativeHistoryQuery`) sind
+  unverändert. Der alte Parser samt Satzmustern ist gelöscht.
+- **Automationsverwaltung** (`nlu/management_frame.py`): Die 16 Arten
+  (anzeigen, erklären, simulieren, duplizieren, pausieren, verschieben …)
+  sind Zeilen einer Frame-Tabelle mit Stichwörtern, Objekt,
+  Namensgrenzen und Parametern. Der alte Parser samt Satzmustern ist
+  gelöscht.
+- **Shadow je Insel** (`scripts/island_shadow.py`): Der alte Code-Stand (Git)
+  und der neue werden auf allen Korpussätzen, allen Satzliteralen der
+  Testsuite und einem erzeugten Inselkorpus verglichen. Ergebnis: Verlauf
+  6069 Sätze (721 mit Frame), Automationsverwaltung 5360 Sätze (209 mit
+  Frame), jeweils 0 Abweichungen.
+
+## Was ist in Version 7.5.0 neu?
+
+**Eine gemeinsame Bedeutungsebene und ein Schiedsrichter statt „wer zuerst passt“.**
+
+- **Bedeutungsebene erweitert, nicht neu gebaut.** `MeaningClause` trägt jetzt
+  neben Sprechakt, Modalität und Polarität auch diese Felder:
+  - Operation, Ziel (Gattung, Ort, Menge, Merkmal, Referenz, ausdrücklich
+    genannte Geräte), Wert
+  - Zeit (jetzt / einmalig / wiederkehrend / später ohne Angabe)
+  - Bedingungen, Ausnahmen
+  - Herkunft (ausdrücklicher Befehl / Bedürfnis)
+  - unerklärter Rest, Evidenz
+
+  `nlu/meaning_ir.ground_meaning` füllt sie aus den vorhandenen Analysen.
+  Es gibt keinen neuen Bedeutungstyp, und die Ebene ruft nie einen Dienst
+  auf.
+- **Arbitration** (`arbitration.py`): Parser, Bedürfnis, Alarmanlage,
+  „kann aus“ und Situationsfragen liefern Kandidaten mit Wirkung, Zielen,
+  Autorität und Rest. Die Regeln:
+  - Ein ausführbarer Kandidat ohne Rest wird ausgeführt.
+  - Kandidaten mit gleicher Wirkung werden zusammengeführt.
+  - Bei Widerspruch entscheidet eindeutige Evidenz: Eine ausdrückliche Frage
+    schlägt einen Befehl, ein ausdrücklich genanntes Gerät schlägt ein
+    Bedürfnis. Sonst wird nachgefragt oder nichts getan.
+  - Mit Rest wird nie ausgeführt.
+  - Zeitgebundenes und Bedingtes wird nie sofort ausgeführt.
+- **Erst Shadow, dann umgeschaltet:** Der Arbiter lief gegen die Kaskade der
+  Konversation über 2052 Sätze (alle Korpora plus neuer Kollisionskorpus
+  mit 30 Sätzen). Ergebnis: 2045/2045 messbare Sätze gleichwertig, 0
+  SAFETY_DRIFT. Umgeschaltet ist die Entscheidung Bedürfnis ↔ Frage. Die
+  übrigen Paare (Automation ↔ zeitversetzter Befehl, Routine ↔ Szenenname)
+  entscheiden im Shadow gleich und werden in 7.5.x Handler für Handler
+  umgestellt. `scripts/arbiter_shadow.py --check` ist ein CI-Schritt.
+- **Nebenbei behoben:** „Mach jetzt das Flurlicht an“ und „Schalte sofort …“
+  wurden bisher nicht ausgeführt („jetzt“ galt als Zeitplanung).
+
+## Was ist in Version 7.4.1 neu?
+
+**HomeIntent lernt die Sprache deines Haushalts – nur nach deinem „Ja“.**
+
+Alles Gelernte liegt im Bindungsspeicher. Es ist ein Baustein der Bedeutung,
+kein fester Satz, und berechtigt zu nichts: Jede Nutzung läuft weiter durch
+Zielauflösung, Validator, EffectGraph und Ausführungsrichtlinie.
+
+- **Unbekannte Wörter werden erfragt.** „Schalte den Zauberkasten aus“ →
+  „Was meinst du mit ‚Zauberkasten‘? 1. … 2. …“. Die Optionen ergeben sich aus
+  Ort und Aktion. Nach der Antwort wird der Befehl ausgeführt, danach fragt
+  HomeIntent: „Soll ich mir ‚Zauberkasten‘ als Namen für die Stehlampe
+  merken?“ Ein Befehl mit unbekanntem Wort wird nie mehr stillschweigend mit
+  dem Gerät der vorigen Frage ergänzt.
+- **Gelernte Namen wirken überall.** Ein gelernter Name wirkt in Befehl,
+  Kurzform, Frage, Mehrfachbefehl, Dimmen, Zeitauftrag, Verneinung,
+  Ausnahme und „lass an“, auch für andere Personen im Haushalt. Er wird als
+  Alias an die Geräte der einen Zielauflösung gehängt.
+- **Standardauswahl aus Rückfragen und Korrekturen.** Beantwortest du dieselbe
+  Rückfrage (dieselben Kandidaten, derselbe Ort) zweimal gleich, fragt
+  HomeIntent einmal, ob das künftig ohne Rückfrage gelten soll. Dasselbe gilt
+  für Korrekturen wie „Nein, ich meinte die rechte“ oder „Nein, die
+  Nachttischlampe rechts“. „Die rechte“ nach „Nachttischlampe links“
+  versteht HomeIntent neu als das Geschwistergerät. Ein ausdrücklich
+  genanntes anderes Gerät hat immer Vorrang. Standardauswahlen gelten pro
+  Person.
+- **Vorlieben werden benutzt.**
+  - Merken: „Wenn ich lese, möchte ich die Stehlampe auf 60 Prozent.“
+  - Abfragen: „Wie hell möchte ich lesen?“
+  - Anwenden: „Ich lese jetzt“ bzw. „Ich will lesen“. Beim ersten Mal kommt
+    eine Vorschau, danach wird direkt ausgeführt.
+  - Löschen: „Vergiss, wie hell ich lesen möchte.“
+- **Sprachmakros.** „Wenn ich ‚Kinoabend‘ sage, dann mach das Wohnzimmer
+  Deckenlicht aus und fahre die Rollläden runter.“ Das wird nach „Ja“ als
+  Satz gespeichert, nicht als Automation. Jeder Aufruf läuft wie ein
+  gesprochener Befehl durch alle Prüfungen; kritische Schritte fragen
+  weiterhin nach.
+- **„Was weißt du über mich?“** zählt Namen, Standardauswahlen, Vorlieben und
+  Makros auf Deutsch auf. Wirkungslose Einträge (Gerät nicht mehr
+  freigegeben) sind markiert. „Vergiss …“ löscht gezielt.
+- **Sicherheit beim Lernen:**
+  - Gespeichert wird nur nach „Ja“.
+  - Es gibt nur freigegebene Ziele; ein entzogenes Ziel macht die Bindung
+    wirkungslos.
+  - Geräte-, Raum- und Gattungsnamen werden nie überschrieben.
+  - Namen für Schlösser, Alarmanlagen, Sirenen, Ventile, Tore und Türen
+    vergeben nur Administratoren.
+  - Namen gelten für den Haushalt, raumbezogene Namen, Standardauswahlen und
+    Vorlieben pro Person.
+- **Deutsche Bezeichnungen.** Gewohnheiten, Modelle und Status erscheinen
+  auf Deutsch („Zuverlässigkeit“, „morgens“, „noch unsicher“). Ist das
+  Gedächtnis ausgeschaltet, sagt HomeIntent, wo man es einschaltet.
+- **Zeitraffer-Test:** Zwei simulierte Wochen Nutzung. Gewohnheiten werden
+  nur vorgeschlagen, es entsteht nie eine Automation, und ein abgelehnter
+  Vorschlag kommt nicht wieder.
+
+## Was ist in Version 7.4.0 neu?
+
+**Eine Zielauflösung für alle Namen.**
+
+- Jede Frage „welches Gerät ist mit diesem Namen gemeint?“ läuft jetzt durch
+  genau eine Funktion, `resolve_phrase` in `nlu/target_resolution.py`. Das
+  betrifft Befehle, Abfragen, Automationen (Auslöser, Bedingungen, Ziele),
+  Korrekturen, Alias-Lernen, Ausnahmen und Schlösser. Die Namensstufe (exakte
+  Namen und Aliasse, Teilnamen, begrenzte Tippfehler-Korrektur) ist aus dem
+  historischen Resolver übernommen. Dazu kommen die Regeln dieses Moduls:
+  - Kandidaten sind nur die freigegebenen Geräte.
+  - Eine Korrektur überschreitet nie die genannte Gerätegattung. Aus
+    „Rollladen Büro“ wird nie mehr das Bürolicht. Ein Gerät, das die Gattung
+    selbst im Namen trägt („Licht Sportraum“ als Schalter), bleibt Kandidat.
+  - Exakte Registry-Namen bleiben maßgeblich.
+  - Mehrdeutigkeit bleibt Mehrdeutigkeit. Nur ein gesprochener Ort engt ein.
+    Für die Rückfrage gibt es eine nummerierte Form („Welches Gerät meinst du:
+    1. …, 2. … oder 3. …?“).
+  - Befehlswörter wie „Automation“, „Skript“ und „Szene“ gelten nicht als
+    Gerätegattung.
+- Umgestellt wurde erst nach einem Shadow-Lauf alt gegen neu bei jedem Aufruf:
+  438 Aufrufe im Korpus, 1743 in der Testsuite, 0 SAFETY_DRIFT, 0 Fälle „alt
+  besser“. Ende-zu-Ende blieben alle 2022 Korpussätze gleichwertig.
+  `scripts/resolver_shadow.py --check` bleibt als CI-Schritt: Der neue
+  Resolver darf nie neue Ziele liefern oder eine Rückfrage weglassen, die der
+  historische gestellt hätte.
+
+## Was ist in Version 7.3.4 neu?
+
+**Sicherheitsnetz für die großen Umbauten.**
+
+- **Generative Sicherheitsinvarianten** (`tests/test_safety_properties.py`,
+  `hypothesis` nur als Testabhängigkeit): Sätze werden aus den Bausteinen des
+  Lexikons zusammengesetzt (Gattungen mit Genus, Plural und Synonymen, Orte des
+  Testhauses, Artikel, Höflichkeit, Negation, Zeit, Nebensätze, Ausnahmen) –
+  keine festen Sätze. 17 Invarianten, jede als eigener Test: Negation, Frage,
+  Vergangenheit und Kontrafaktisches schreiben nie; ein unbekanntes Wort
+  vergrößert nie die Zielmenge; Ziele bleiben in der genannten Gattung;
+  unbekannte Ausnahmen und halb verstandene Mehrfachsätze führen nichts aus;
+  Zeitaufträge laufen nie sofort; Einzahl bei mehreren Treffern fragt nach;
+  indirekte Herkunft ist nie lockerer; das Risiko eines Skripts ist mindestens
+  das seiner stärksten Wirkung; ein unvollständiger EffectGraph ist nie LOW;
+  mehrdeutige Bedeutung, nicht freigegebene Wirkziele und gelernte Bindungen
+  auf solche Ziele schreiben nie. In CI mit festen Seeds, nächtlich mit
+  wechselnden Seeds; Gegenbeispiele werden als feste Regressionen übernommen.
+- **Allgemeiner Shadow-Vergleich** (Erweiterung von
+  `nlu/understanding.py`): Verhaltenssignaturen (Sprechakt, Operation,
+  Gattung/Domäne, Ziele, Ort, Menge, Herkunft, Risiko, Bestätigungspflicht,
+  Plan) und Drift-Klassen `EQUIVALENT`, `REFINEMENT`, `BEHAVIOR_CHANGE`,
+  `SAFETY_DRIFT`. Offline über alle veröffentlichten Korpora
+  (`scripts/shadow_compare.py`, 2022 Sätze; `--check` scheitert bei
+  SAFETY_DRIFT) und optional live (`shadow_mode: log`): ausgeführt wird immer
+  nur die aktive Pipeline, Kandidaten werden nur protokolliert (Satz-Hash,
+  beide Ergebnisse, Drift-Klasse) – sichtbar in den Diagnosedaten und im
+  Learning Center. SAFETY_DRIFT blockiert jedes Umschalten.
+
+## Was ist in Version 7.3.3 neu?
+
+**Gelernte Routinen, vorsichtige Bedürfnisse, nie raten.**
+
+- **Routine-Bindungen.** „Ich gehe schlafen“, „Gute Nacht“, „Filmabend“ oder
+  „Starte die Schlafroutine“ suchen beim ersten Mal nach passenden Skripten und
+  Szenen und **fragen**: „Welche Routine meinst du: Schlafen und Gute Nacht?“
+  bzw. „Meinst du mit schlafen gehen das Skript Gute Nacht?“. Erst nach deiner
+  Wahl oder deinem „Ja“ wird die Zuordnung gespeichert; danach sucht HomeIntent
+  für diesen Anlass nicht mehr nach Namensähnlichkeit. Jede Ausführung prüft
+  trotzdem wieder Freigabe, EffectGraph und Richtlinie; wird die gewählte
+  Routine abgelehnt (z. B. weil sie einen nicht freigegebenen Saugroboter
+  startet), wird auch nichts gespeichert. Ist das gebundene Ziel verschwunden
+  oder nicht mehr freigegeben, führt HomeIntent nichts aus und bietet eine neue
+  Zuordnung an.
+- Per Sprache steuerbar: „Vergiss die Schlafroutine“, „Schlafen ist ab jetzt das
+  Skript Gute Nacht“, „Welche Routine nutzt du für den Filmabend?“. Im Learning
+  Center (Tab Autonomie) sind alle Zuordnungen sichtbar und löschbar.
+- **Implicit Action Policy.** Neue Option `implicit_action_level` (auch im
+  Learning Center einstellbar):
+
+  | Stufe | Bedürfnis („Mir ist kalt“) | abgeleitete Routine |
+  | --- | --- | --- |
+  | `understand_only` | nur Antwort | nur Antwort |
+  | `propose` (**Standard**) | Vorschlag + „Ja“ | Vorschlag + „Ja“ |
+  | `low_risk_auto` | Harmloses direkt, sonst Vorschlag | Vorschlag + „Ja“ |
+  | `bound_routines_auto` | wie `low_risk_auto` | gebundene Routine direkt, wenn unter der Bestätigungsschwelle |
+
+  Eine indirekte Herkunft ist nie lockerer als derselbe ausdrückliche Befehl;
+  NEVER_AUTO gilt unverändert.
+- **Nie raten.**
+  - „hier“/„da“ nur aus dem Bereich des Sprachsatelliten oder einem im Gespräch
+    genannten Ort, sonst „In welchem Raum?“; die Antwort nennt immer den Ort.
+  - „Schalte um 22 Uhr das Licht aus“ ist ein **einmaliger** Auftrag (nächstes
+    22:00). Mit „jeden Tag“, „immer“, „täglich“, „werktags“ … entsteht eine
+    wiederkehrende Automation. Bei Sonnenauf-/-untergang und „wenn es dunkel
+    wird“ ohne solches Wort fragt HomeIntent: „Nur heute oder jeden Tag?“
+  - Ehrliche Begründungen aus den echten Fähigkeiten: „Flurlicht lässt sich nur
+    ein- und ausschalten.“ statt „unterstützt die Aktion nicht“. „Dreh da die
+    Heizung hoch“ nach einer Temperaturfrage erhöht den Sollwert.
+  - „Lass das Licht so, wie es ist“ ändert nichts und sagt das; ein „Ja“ ohne
+    offene Frage wird ehrlich beantwortet.
+
+## Was ist in Version 7.3.2 neu?
+
+**Nachvollziehbar, was HomeIntent ausgelöst hat.**
+
+- **Home-Assistant-Kontext an jedem Dienstaufruf.** Jede Äußerung, die zu einer
+  Ausführung führt, bekommt genau einen HA-`Context` (mit dem sprechenden
+  Benutzer); alle Aufrufe dieser Äußerung – auch Skripte, Undo und
+  Mehrfachbefehle – tragen ihn. Dessen ID ist die `execution_id`. Home
+  Assistant kann Folgeeffekte (Skripte, ausgelöste Automationen) damit der
+  HomeIntent-Aktion und dem Nutzer zuordnen und prüft zusätzlich dessen
+  eigene Entitätsberechtigungen. Proaktive Aktionen und Daueranweisungen laufen
+  mit einem Kontext ohne Benutzer.
+- **Ausführungsprotokoll (ExecutionTrace).** Ein begrenzter Ringspeicher
+  (Standard 500 Ausführungen, 14 Tage, einstellbar) hält je Ausführung Satz
+  (gekürzt oder nur als Hash), Herkunft, Plan, geprüfte Wirkung und Risiko fest
+  – mit gehashter Benutzerkennung wie im Audit. Er verweist auf HA-Daten statt
+  sie zu kopieren.
+- **„Warum ist der Saugroboter angegangen?“** beantwortet HomeIntent aus der
+  Kontextkette von Home Assistant: „Du hast um 22:13 ‚Aktiviere Nachtruhe‘
+  gesagt. Ich habe das Skript Nachtruhe gestartet. Dessen Schritt ‚Saugen
+  starten‘ hat Saugroboter gestartet.“ Auch fremde Ursachen werden genannt,
+  soweit HA sie belegt (Automation X, ausgelöst durch …; Anna in der App).
+  Belegstufen: **belegt** (Kontextkette), **möglich** (nur zeitliche Nähe –
+  immer als Vermutung formuliert) und **unbekannt**. Ohne Beleg gibt es keine
+  erfundene Kausalkette.
+- **Learning Center:** neuer Abschnitt „Was hat HomeIntent ausgelöst?“ im
+  Tab Aktivität (Admins sehen den Haushalt, alle anderen nur eigene
+  Ausführungen).
+- Neue Optionen: `trace_limit`, `trace_days`, `trace_store_text`.
+
+## Was ist in Version 7.3.1 neu?
+
+**Transitive Sicherheit für Skripte, Szenen und Gruppen.** Bisher prüfte
+HomeIntent bei „Aktiviere Nachtruhe.“ nur, ob das Skript selbst freigegeben
+ist – nicht, was es schaltet. Ein realer Vorfall (ein Skript drückte per
+`floor_id` alle Buttons einer Etage; Saugroboter und Brandmelder-Selbsttest
+liefen los) zeigte die Lücke. Jetzt:
+
+- **EffectGraph:** HomeIntent liest Skripte, Szenen, Gruppen und per
+  `automation.trigger` ausgelöste Automationen nur lesend aus und ermittelt
+  alle wirksamen Ziele – über alle Zweige, Verschachtelungen, Geräte-Aktionen
+  und `device_id`/`area_id`/`floor_id`/`label_id` so, wie Home Assistant sie
+  auflöst. Details: [Skripte, Szenen und Gruppen](#skripte-szenen-und-gruppen-transitive-prüfung-seit-731).
+- **Freigabe gilt transitiv:** Schaltet ein Skript ein nicht freigegebenes
+  Gerät, lehnt HomeIntent ab und nennt es – auch ein „Ja“ ändert das nicht.
+- **Risiko = höchste Wirkung:** Ein Schloss im Skript macht das Skript HIGH,
+  eine Alarmanlage CRITICAL; ein reines Lichtskript bleibt LOW.
+- **Nicht prüfbare Schritte** (Vorlagen, `event:`, `shell_command` …) gelten
+  nie als harmlos: Standard ist Ablehnen, neue Option `effect_graph_unknown:
+  confirm` fragt stattdessen nach.
+- **Geprüft wird direkt vor dem Schalten**, auch nach einer Bestätigung.
+- **Abgeleitete Routinen** („Ich gehe schlafen“, „Filmabend“, „Starte die
+  Schlafroutine“) starten nie ohne Bestätigung – auch Szenen nicht.
+- Nach dem Ausführen nennt HomeIntent kurz die geprüfte Wirkung
+  („Schlafen ausgeführt: 2 Rollläden und 2 Lichter.“).
 
 ## Was ist in Version 7.3.0 neu?
 
@@ -1380,6 +1820,52 @@ Ein Alias darf nie auf mehrere Entity-IDs zeigen. Für einen gemeinsamen Namen
 mehrerer Geräte sollte stattdessen eine echte Home-Assistant-Gruppe freigegeben
 werden.
 
+### Skripte, Szenen und Gruppen: transitive Prüfung (seit 7.3.1)
+
+Ein Skript, eine Szene, eine Gruppe oder eine per `automation.trigger`
+ausgelöste Automation schaltet mehr als die eine äußere Entität. HomeIntent
+liest deshalb vor jeder Ausführung ihre Konfiguration nur lesend aus und bildet
+einen **EffectGraph**: alle Aktionen aller Zweige (`if`, `choose`, `parallel`,
+`repeat`, auch die gerade nicht zutreffenden), verschachtelte Skripte und
+Szenen (mit Zyklenschutz, höchstens 8 Ebenen), Gruppenmitglieder,
+Geräte-Aktionen und Ziele über `device_id`, `area_id`, `floor_id` oder
+`label_id` – aufgelöst genau so, wie Home Assistant sie auflöst, und nur in der
+Domäne der Aktion (`button.press` auf eine Etage = alle Buttons dieser Etage).
+
+Für diese **wirksamen Ziele** gelten dieselben Regeln wie für direkte Befehle:
+
+- Ist ein wirksames Ziel nicht für HomeIntent freigegeben, lehnt HomeIntent ab
+  und nennt die Geräte. Eine Bestätigung kann das nicht überstimmen.
+- Nur-Lesen, Nur-Admin und die maximale Zielzahl zählen die wirksamen Ziele.
+- Das Risiko ist das höchste Risiko aller wirksamen Effekte (Schloss im
+  `choose`-Zweig → HIGH, Alarmanlage → CRITICAL).
+- Schritte, deren Wirkung sich nicht statisch bestimmen lässt (Vorlagen im
+  Ziel, `event:`, `python_script`, `shell_command`, `rest_command`, Ziele in
+  Dienstdaten fremder Dienste, unlesbare Konfiguration), gelten nie als LOW.
+  Standard ist Ablehnen (`effect_graph_unknown: deny`); mit `confirm` fragt
+  HomeIntent nach und sagt „Schritt ‚…‘ kann ich nicht prüfen“. Ohne
+  anwesenden Nutzer (Daueranweisung, proaktiv, zeitversetzt) wird immer
+  abgelehnt.
+- Automationen, die durch die Wirkung ausgelöst werden könnten, erscheinen nur
+  als Hinweis („Kann Automation X auslösen“), nicht im Risiko.
+
+Der EffectGraph wird im Executor unmittelbar vor dem Dienstaufruf neu gebaut,
+auch nach einem „Ja“. Ein Skript, das zwischen Rückfrage und Bestätigung
+geändert wurde, wird also mit seinem neuen Inhalt geprüft. Von HomeIntent
+angelegte Automationen, die ein Skript oder eine Szene ausführen, werden beim
+Anlegen geprüft. **Wird das Skript später geändert, prüft HomeIntent die
+Automation nicht erneut**, denn sie läuft in Home Assistant ohne HomeIntent.
+
+Beispiel: „Aktiviere Gute Nacht.“ → „Das Skript „Gute Nacht“ schaltet auch
+Geräte, die für HomeIntent nicht freigegeben sind: Saugroboter Reinigung
+starten und Brandmelder Flur Selbsttest. Der Schritt ‚Rolladen Runterfahren‘
+drückt alle Buttons im Erdgeschoss. Ich habe nichts ausgeführt.“
+
+Routinen, die HomeIntent nur ableitet („Ich gehe schlafen“, „Filmabend“,
+„Starte die Schlafroutine“ für ein Skript namens „Schlafen“), werden nie allein
+wegen Namensähnlichkeit gestartet, auch Szenen nicht: HomeIntent schlägt sie
+vor und wartet auf „Ja“.
+
 ### Benutzergebundene Bestätigungen
 
 Wenn Home Assistant eine Benutzer-ID bereitstellt, kann nur derselbe Benutzer
@@ -1593,21 +2079,25 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.3.0:
+Geprüfter Release-Stand von Version 7.7.0:
 
 ```text
-6034 passed, 12 skipped, 0 failed (mit hassil 3.11 und 3.12)
-16 passed gegen echtes Home Assistant 2026.9.2 (tests_ha)
-90 % Gesamt-Coverage
-76 % Coverage für conversation.py
-Held-out-Automationskorpus (7.2.0): 95,5 % korrekt (317/332), 0 unsichere Ausführungen
-Attribut-Automation im echten Home-Assistant-Core ausgeführt
-(scripts/validate_measurement_automation_ha.py)
+6328 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+Sprachverständnis-Gate: 463 passed
+Property-Suite: 24 Sicherheitsinvarianten, 0 Verletzungen (neu: STT, Selbstkorrektur,
+  offener Dialog, gelernte Standardauswahl, keine gelernten Satzbedeutungen)
+Korpus-Signaturen: 3348 Sätze, 0 geänderte Signaturen gegenüber dem Stand vor dem Umbau
+Dialog-Shadow 226 Dialoge / 441 Turns 0 Abweichungen; Shadow-Vergleich 2022 EQUIVALENT
+Arbiter-Shadow 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
+Entwicklungs-Benchmark 442/503, unsafe_execution_count 0 (held-out erster Lauf 88/113)
+Pyright 0 Fehler (voll und alle Strict-Profile)
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173 (7.6.0: 212)
+Latenz 5000 Entitäten: understand p95 < 100 ms, Arbeit je Form gleich 7.6.1
 ```
 
-Live-Testbett (`sim/`, frisches echtes Home Assistant 2026.9.2): 162 / 162
-Szenarien (davon 36 in der Kategorie „Sprache 7.3“), keine
-HomeIntent-Warnung im Log.
+Live-Testbett und echte Home-Assistant-Tests laufen in CI; der vollständige
+Lauf inklusive Proaktiv wird für den Release-Commit ausdrücklich angestoßen
+(`nightly-live.yml`). Details: `docs/architecture-completion-7.7.md`.
 
 Zusätzlich wurden ausgeführt:
 
@@ -1636,12 +2126,13 @@ folgenden Befehl ausgeführt werden:
 ./scripts/run_language_eval.sh
 ```
 
-Legacy und vollständig kompiliertes V7 lassen sich außerdem ohne
-Serviceausführung über den versionierten Shadow-Report vergleichen:
+Das Verhalten jedes Korpussatzes (Engine-Signatur und Bedeutungs-IR) ist
+ohne Serviceausführung gegen eine versionierte Signatur-Baseline prüfbar;
+eine geänderte Signatur schlägt fehl:
 
 ```bash
-python scripts/v7_shadow_report.py \
-  --check docs/perf/v7-shadow-baseline-7.3.0.json --quiet
+python scripts/corpus_shadow.py \
+  --check docs/perf/corpus-signatures-7.7.0.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

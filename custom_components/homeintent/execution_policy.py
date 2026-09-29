@@ -11,10 +11,23 @@ from .const import (
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
     CONF_CONTROL_USER_IDS,
+    CONF_EFFECT_GRAPH_UNKNOWN,
+    CONF_IMPLICIT_ACTION_LEVEL,
+    DEFAULT_IMPLICIT_ACTION_LEVEL,
+    IMPLICIT_ACTION_LEVELS,
     CONF_MAX_ACTION_TARGETS,
     CONF_READ_ONLY_ENTITIES,
 )
+from .effect_graph import (
+    PlanEffects,
+    composite_targets,
+    describe_followups,
+    describe_unexposed,
+    describe_unknown,
+    is_composite_entity,
+)
 from .entities import EntitySnapshot
+from .plan_origin import UNATTENDED_ORIGINS, PlanOrigin
 from .risk import RiskLevel, classify_service_plan
 from .service_call import ServiceCallPlan
 
@@ -30,6 +43,11 @@ class PolicyDecision:
     outcome: PolicyOutcome
     risk: RiskLevel
     reason: str | None = None
+    # The transitive effect analysis the decision was based on (scripts,
+    # scenes, groups). ``note`` carries hints for previews, e.g. possible
+    # follow-up automations or an unverifiable step that needs confirming.
+    effects: PlanEffects | None = None
+    note: str | None = None
 
 
 _RISK_BY_OPTION = {
@@ -39,6 +57,30 @@ _RISK_BY_OPTION = {
 }
 
 
+def _id_set(options: Mapping[str, object], key: str) -> set[str]:
+    configured = options.get(key, ())
+    return set(configured) if isinstance(configured, (list, tuple, set)) else set()
+
+
+def plan_is_composite(
+    plan: ServiceCallPlan, entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...]
+) -> bool:
+    """Whether a plan activates a script, scene, group or automation."""
+    target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+    attributes = {entity.entity_id: entity.attributes for entity in entities}
+    return bool(composite_targets(
+        plan.domain,
+        plan.service,
+        target_ids,
+        lambda entity_id: (
+            ("member",)
+            if is_composite_entity(entity_id, attributes.get(entity_id))
+            and entity_id.split(".", 1)[0] not in {"script", "scene", "automation"}
+            else None
+        ),
+    ))
+
+
 def evaluate_service_plan(
     plan: ServiceCallPlan,
     entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],
@@ -46,80 +88,132 @@ def evaluate_service_plan(
     *,
     is_admin: bool,
     user_id: str | None = None,
+    effects: PlanEffects | None = None,
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND,
+    attended: bool = True,
+    binding_confirmed: bool = False,
 ) -> PolicyDecision:
-    """Evaluate one already-resolved plan; callers must not bypass it."""
-    risk = classify_service_plan(plan, entities)
+    """Evaluate one already-resolved plan; callers must not bypass it.
+
+    ``effects`` is the transitive effect graph of every script, scene, group
+    or automation the plan activates (``effect_graph.build_plan_effects``).
+    Exposure, read-only, admin-only, target limits and risk apply to the
+    *effective* targets. A composite plan without a graph fails closed.
+    """
     target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
-    configured_users = options.get(CONF_CONTROL_USER_IDS, ())
-    allowed_users = (
-        set(configured_users)
-        if isinstance(configured_users, (list, tuple, set))
-        else set()
-    )
+    if effects is None and plan_is_composite(plan, entities):
+        effects = PlanEffects.unchecked(target_ids)
+    outer_risk = classify_service_plan(plan, entities)
+    risk = outer_risk
+    effect_targets: frozenset[str] = frozenset()
+    if effects is not None:
+        effect_targets = effects.effective_targets
+        for effect in effects.effects:
+            effect_plan = ServiceCallPlan(effect.domain, effect.service, list(effect.entity_ids))
+            risk = max(risk, classify_service_plan(effect_plan, entities))
+    roots = set(effects.roots) if effects is not None else set()
+    effective_ids = {entity_id for entity_id in target_ids if entity_id not in roots} | set(effect_targets)
+    all_ids = set(target_ids) | effective_ids
+
+    def decide(outcome: PolicyOutcome, reason: str | None = None, note: str | None = None) -> PolicyDecision:
+        return PolicyDecision(outcome, risk, reason, effects, note)
+
+    allowed_users = _id_set(options, CONF_CONTROL_USER_IDS)
     if allowed_users and user_id not in allowed_users:
-        return PolicyDecision(
+        return decide(
             PolicyOutcome.DENY,
-            risk,
             "Dieser Benutzer darf HomeIntent nicht zur Gerätesteuerung verwenden.",
         )
-    configured_admin_only = options.get(CONF_ADMIN_ONLY_ENTITIES, ())
-    admin_only_ids = (
-        set(configured_admin_only)
-        if isinstance(configured_admin_only, (list, tuple, set))
-        else set()
-    )
-    if not is_admin and set(target_ids) & admin_only_ids:
-        return PolicyDecision(
+    if effects is not None and effect_targets:
+        exposed = {entity.entity_id for entity in entities}
+        unexposed = sorted(effect_targets - exposed)
+        if unexposed:
+            # The exposure list is the user's configuration: no confirmation
+            # can override it.
+            return decide(PolicyOutcome.DENY, describe_unexposed(effects, unexposed))
+    admin_only_ids = _id_set(options, CONF_ADMIN_ONLY_ENTITIES)
+    if not is_admin and all_ids & admin_only_ids:
+        return decide(
             PolicyOutcome.DENY,
-            risk,
             "Mindestens ein Ziel darf nur von Administratoren gesteuert werden.",
         )
     configured_max = options.get(CONF_MAX_ACTION_TARGETS, 50)
     max_targets = configured_max if isinstance(configured_max, int) else 50
     if max_targets < 1:
         max_targets = 1
-    if len(set(target_ids)) > max_targets:
-        return PolicyDecision(
+    if len(effective_ids or set(target_ids)) > max_targets:
+        return decide(
             PolicyOutcome.DENY,
-            risk,
             f"Diese Aktion betrifft mehr als die erlaubten {max_targets} Ziele.",
         )
-    configured_read_only = options.get(CONF_READ_ONLY_ENTITIES, ())
-    read_only_ids = (
-        set(configured_read_only)
-        if isinstance(configured_read_only, (list, tuple, set))
-        else set()
-    )
-    if set(target_ids) & read_only_ids:
-        return PolicyDecision(
+    read_only_ids = _id_set(options, CONF_READ_ONLY_ENTITIES)
+    if all_ids & read_only_ids:
+        return decide(
             PolicyOutcome.DENY,
-            risk,
             "Mindestens ein Ziel ist in HomeIntent nur zum Lesen freigegeben.",
         )
+    note: str | None = None
+    unknown_needs_confirmation = False
+    if effects is not None and not effects.complete:
+        # Fail closed: an unknown step is never LOW.
+        unknown_text = describe_unknown(effects)
+        mode = str(options.get(CONF_EFFECT_GRAPH_UNKNOWN, "deny"))
+        if not attended or origin in UNATTENDED_ORIGINS or mode != "confirm":
+            return decide(PolicyOutcome.DENY, f"{unknown_text} Ich habe nichts ausgeführt.")
+        risk = max(risk, RiskLevel.HIGH)
+        note = unknown_text
+        unknown_needs_confirmation = True
+    if effects is not None:
+        followups = describe_followups(effects)
+        if followups:
+            note = f"{note} {followups}" if note else followups
     if (
         risk is RiskLevel.CRITICAL
         and user_id is None
     ):
-        return PolicyDecision(
+        return decide(
             PolicyOutcome.DENY,
-            risk,
             "Diese sicherheitskritische Aktion benötigt einen authentifizierten Benutzer.",
+            note,
         )
     if (
         risk is RiskLevel.CRITICAL
         and not is_admin
         and not bool(options.get(CONF_ALLOW_NON_ADMIN_CRITICAL, False))
     ):
-        return PolicyDecision(
+        return decide(
             PolicyOutcome.DENY,
-            risk,
             "Diese sicherheitskritische Aktion ist nur für Administratoren erlaubt.",
+            note,
+        )
+    implicit = origin in {PlanOrigin.IMPLICIT_NEED, PlanOrigin.INFERRED_ROUTINE}
+    level = str(options.get(CONF_IMPLICIT_ACTION_LEVEL, DEFAULT_IMPLICIT_ACTION_LEVEL))
+    if level not in IMPLICIT_ACTION_LEVELS:
+        level = DEFAULT_IMPLICIT_ACTION_LEVEL
+    if implicit and level == "understand_only":
+        return decide(
+            PolicyOutcome.DENY,
+            "Ich habe dich verstanden. Bei indirekten Aussagen führe ich laut "
+            "Einstellung nichts aus; sag mir ausdrücklich, was ich tun soll.",
+            note,
         )
     configured_level = options.get(CONF_CONFIRMATION_LEVEL, "high")
     confirmation_level = _RISK_BY_OPTION.get(str(configured_level), RiskLevel.HIGH)
-    if risk >= confirmation_level:
-        return PolicyDecision(PolicyOutcome.CONFIRM, risk)
-    return PolicyDecision(PolicyOutcome.ALLOW, risk)
+    if risk >= confirmation_level or unknown_needs_confirmation:
+        return decide(PolicyOutcome.CONFIRM, note=note)
+    # Implicit Action Policy (7.3.3): a non-explicit origin is never looser
+    # than the same explicit command; everything below only adds confirmations.
+    if origin is PlanOrigin.IMPLICIT_NEED and not (
+        level in {"low_risk_auto", "bound_routines_auto"} and risk is RiskLevel.LOW
+    ):
+        return decide(PolicyOutcome.CONFIRM, note=note)
+    if origin is PlanOrigin.INFERRED_ROUTINE and not (
+        level == "bound_routines_auto" and binding_confirmed
+    ):
+        # A routine derived from "Ich gehe schlafen" stays a proposal unless
+        # the user confirmed a binding and allowed bound routines to run.
+        return decide(PolicyOutcome.CONFIRM, note=note)
+    return decide(PolicyOutcome.ALLOW, note=note)
 
 
 def validate_automation_action_targets(
@@ -128,8 +222,28 @@ def validate_automation_action_targets(
     *,
     is_admin: bool = True,
     user_id: str | None = None,
+    effects: PlanEffects | None = None,
+    exposed_ids: frozenset[str] | set[str] | None = None,
 ) -> str | None:
-    """Validate the concrete write scope of a confirmed automation."""
+    """Validate the concrete write scope of a confirmed automation.
+
+    ``effects`` is the effect graph of scripts, scenes and groups the
+    automation would run. An automation runs without anyone answering, so
+    an unverifiable step is always refused. The check happens when the
+    automation is created; a script edited later is not re-checked by
+    HomeIntent (documented in the README).
+    """
+    if effects is not None:
+        if effects.effective_targets and exposed_ids is not None:
+            unexposed = sorted(effects.effective_targets - set(exposed_ids))
+            if unexposed:
+                return describe_unexposed(effects, unexposed)
+        if not effects.complete:
+            return f"{describe_unknown(effects)} Die Automation habe ich nicht angelegt."
+        target_ids = frozenset(
+            {item for item in target_ids if item not in set(effects.roots)}
+            | effects.effective_targets
+        )
     configured_users = options.get(CONF_CONTROL_USER_IDS, ())
     allowed_users = (
         set(configured_users)

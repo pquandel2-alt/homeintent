@@ -92,11 +92,15 @@ def test_level_keyword_without_any_floor_data_not_found():
     assert result.status is FloorResolveStatus.NOT_FOUND
 
 
-def test_level_keyword_single_floor_resolves_that_floor():
+def test_level_keyword_single_floor_has_no_upper_floor():
+    # 7.6.1: one rule for "oben"/"unten" (place_model.level_for_keyword):
+    # "oben" is a level >= 1, "unten" the ground floor. A one-storey house
+    # has no "oben"; it is never widened to the only floor.
     entities = [
         EntitySnapshot("light.a", "A", "light", "off", floor_id="eg", floor_name="Erdgeschoss", floor_level=0),
     ]
-    result = resolve_floor_by_level_keyword("up", entities)
+    assert resolve_floor_by_level_keyword("up", entities).status is FloorResolveStatus.NOT_FOUND
+    result = resolve_floor_by_level_keyword("down", entities)
     assert result.status is FloorResolveStatus.OK
     assert result.floor_id == "eg"
 
@@ -116,6 +120,6 @@ def test_level_keyword_ignores_floors_missing_level():
         EntitySnapshot("light.a", "A", "light", "off", floor_id="eg", floor_name="Erdgeschoss", floor_level=0),
         EntitySnapshot("light.b", "B", "light", "off", floor_id="unbekannt", floor_name="Unbekannt", floor_level=None),
     ]
-    result = resolve_floor_by_level_keyword("up", entities)
+    result = resolve_floor_by_level_keyword("down", entities)
     assert result.status is FloorResolveStatus.OK
     assert result.floor_id == "eg"

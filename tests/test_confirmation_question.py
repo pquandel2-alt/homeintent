@@ -18,7 +18,8 @@ import _ha_stub  # noqa: E402
 _ha_stub.install()
 
 import homeintent.conversation as ha_conversation  # noqa: E402
-from homeintent.conversation import NluConversationEntity, _confirmation_question  # noqa: E402
+from homeintent.controllers.replies import confirmation_question as _confirmation_question  # noqa: E402
+from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeassistant.components.conversation import ConversationInput  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402

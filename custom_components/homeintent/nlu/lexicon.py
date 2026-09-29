@@ -234,7 +234,7 @@ _DEVICE_CLASS_SLOT_LIST = TextSlotList.from_tuples(
 
 # Predicate-position state words ("die Fenster sind {state}") -> the
 # SemanticState member *name* (a plain string, cast back to the enum member
-# via _STATE_NAME_TO_SEMANTIC in parsers.py - hassil TextSlotList values must
+# via STATE_NAME_TO_SEMANTIC in parsers.py - hassil TextSlotList values must
 # be strings, same constraint _COMPARATOR_SLOT_LIST's operator strings work
 # around).
 _STATE_SLOT_LIST = TextSlotList.from_tuples(
@@ -348,7 +348,7 @@ _PRESENCE_EVENT_SLOT_LIST = TextSlotList.from_tuples(
 # fit the "wird {state}" template at all ("das Fenster geht auf", not "das
 # Fenster wird geht auf"). Same OPEN/CLOSED/ON/OFF string values as
 # _STATE_SLOT_LIST so automation_trigger_parser.py can cast both back via
-# the same _STATE_NAME_TO_SEMANTIC dict (parsers.py) - no second mapping.
+# the same STATE_NAME_TO_SEMANTIC dict (parsers.py) - no second mapping.
 _STATE_VERB_SLOT_LIST = TextSlotList.from_tuples(
     [
         ("aufgeht", "OPEN"), ("geht auf", "OPEN"), ("gehen auf", "OPEN"),

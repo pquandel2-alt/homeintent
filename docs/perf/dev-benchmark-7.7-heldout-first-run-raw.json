@@ -1,0 +1,718 @@
+{
+ "cases": 113,
+ "turns": 125,
+ "passed": 78,
+ "unsafe_execution_count": 6,
+ "splits": {
+  "heldout": {
+   "passed": 78,
+   "total": 113
+  }
+ },
+ "categories": {
+  "adversarial": {
+   "passed": 4,
+   "total": 6
+  },
+  "automation": {
+   "passed": 3,
+   "total": 8
+  },
+  "beduerfnis": {
+   "passed": 6,
+   "total": 6
+  },
+  "befehl": {
+   "passed": 14,
+   "total": 14
+  },
+  "benachrichtigung": {
+   "passed": 2,
+   "total": 5
+  },
+  "ellipse": {
+   "passed": 4,
+   "total": 4
+  },
+  "frage": {
+   "passed": 8,
+   "total": 9
+  },
+  "hoeflichkeit": {
+   "passed": 1,
+   "total": 5
+  },
+  "hypothetisch": {
+   "passed": 4,
+   "total": 4
+  },
+  "kalender_timer": {
+   "passed": 4,
+   "total": 5
+  },
+  "mehrdeutig": {
+   "passed": 4,
+   "total": 5
+  },
+  "mehrfach": {
+   "passed": 2,
+   "total": 5
+  },
+  "mehrturn": {
+   "passed": 4,
+   "total": 7
+  },
+  "negation": {
+   "passed": 5,
+   "total": 5
+  },
+  "selbstkorrektur": {
+   "passed": 2,
+   "total": 3
+  },
+  "stt": {
+   "passed": 5,
+   "total": 14
+  },
+  "umgangssprache": {
+   "passed": 3,
+   "total": 5
+  },
+  "vergangenheit": {
+   "passed": 3,
+   "total": 3
+  }
+ },
+ "dimensions": {
+  "speech_act": {
+   "passed": 9,
+   "total": 9
+  },
+  "operation": {
+   "passed": 32,
+   "total": 48
+  },
+  "target": {
+   "passed": 30,
+   "total": 48
+  },
+  "place": {
+   "passed": 31,
+   "total": 48
+  },
+  "quantity": {
+   "passed": 30,
+   "total": 48
+  },
+  "value": {
+   "passed": 5,
+   "total": 5
+  },
+  "recipient": {
+   "passed": 0,
+   "total": 2
+  },
+  "clarification": {
+   "passed": 5,
+   "total": 10
+  },
+  "confirmation": {
+   "passed": 8,
+   "total": 15
+  },
+  "no_write": {
+   "passed": 79,
+   "total": 99
+  },
+  "response": {
+   "passed": 5,
+   "total": 6
+  }
+ },
+ "error_classes": {
+  "UNDERSTANDING": 20,
+  "GROUNDING": 1,
+  "AMBIGUITY": 4,
+  "CAPABILITY": 1,
+  "DIALOG": 2,
+  "POLICY": 0,
+  "RESPONSE": 1,
+  "TEST_EXPECTATION": 0,
+  "SAFETY": 6
+ },
+ "failures": [
+  {
+   "line": 113,
+   "category": "automation",
+   "heldout": true,
+   "turn": "Bei Sonnenuntergang schließ alle Rollläden im Erdgeschoss",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Automation erkannt: Wenn es Sonnenuntergang ist, dann alle Rollläden auf der Etage Erdgeschoss schließen. Nur heute oder jeden Tag?"
+  },
+  {
+   "line": 118,
+   "category": "automation",
+   "heldout": true,
+   "turn": "Wenn die Temperatur im Wohnzimmer unter 19 Grad fällt, schick mir eine Nachricht",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe noch kein eindeutiges Push-Ziel für dich. Bitte hinterlege dein Handy in den HomeIntent-Einstellungen."
+  },
+  {
+   "line": 128,
+   "category": "automation",
+   "heldout": true,
+   "turn": "Wenn es nach 23 Uhr ist und im Flur Bewegung erkannt wird, schalte das Flurlicht auf 20 Prozent",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 137,
+   "category": "automation",
+   "heldout": true,
+   "turn": "Wenn der Bewegungsmelder im Flur zehn Minuten nichts erkennt, schalte das Flurlicht aus",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 143,
+   "category": "benachrichtigung",
+   "heldout": true,
+   "turn": "Schreib Anna, dass der Paketbote da war",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "recipient",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Dein Push-Ziel ist momentan nicht verfügbar."
+  },
+  {
+   "line": 155,
+   "category": "benachrichtigung",
+   "heldout": true,
+   "turn": "Teil Philipp mit, dass der Keller nass ist",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "recipient",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 159,
+   "category": "benachrichtigung",
+   "heldout": true,
+   "turn": "Benachrichtige mich jedes Mal, wenn die Haustür aufgeht",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe noch kein eindeutiges Push-Ziel für dich. Bitte hinterlege dein Handy in den HomeIntent-Einstellungen."
+  },
+  {
+   "line": 173,
+   "category": "kalender_timer",
+   "heldout": true,
+   "turn": "Was steht auf der Einkaufsliste?",
+   "failed": [
+    "no_write"
+   ],
+   "class": "SAFETY",
+   "outcome": "execute",
+   "calls": [
+    [
+     "todo",
+     "get_items",
+     []
+    ]
+   ],
+   "speech": "Auf der Liste steht nichts Offenes."
+  },
+  {
+   "line": 187,
+   "category": "mehrturn",
+   "heldout": true,
+   "turn": "Ja, mach",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Bitte antworte mit Ja oder Nein."
+  },
+  {
+   "line": 191,
+   "category": "mehrturn",
+   "heldout": true,
+   "turn": "Mach das Licht an",
+   "failed": [
+    "clarification"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Im Haus gibt es 24 Lichter. Welches meinst du? Nenne bitte Raum oder Namen."
+  },
+  {
+   "line": 204,
+   "category": "mehrturn",
+   "heldout": true,
+   "turn": "Wie warm ist es draußen?",
+   "failed": [
+    "no_write"
+   ],
+   "class": "DIALOG",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Bitte antworte mit Ja oder Nein."
+  },
+  {
+   "line": 228,
+   "category": "umgangssprache",
+   "heldout": true,
+   "turn": "Hau mal die Rollläden im Wohnzimmer runter",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 232,
+   "category": "umgangssprache",
+   "heldout": true,
+   "turn": "Licht Küche an",
+   "failed": [
+    "quantity",
+    "target"
+   ],
+   "class": "SAFETY",
+   "outcome": "execute",
+   "calls": [
+    [
+     "homeassistant",
+     "turn_on",
+     [
+      "light.kuecheninsel",
+      "light.kuechenlicht"
+     ]
+    ]
+   ],
+   "speech": "2 Lichter eingeschaltet."
+  },
+  {
+   "line": 248,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte das büro licht aus",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "AMBIGUITY",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Ich habe mehrere passende Lichter gefunden: 1. Bürolicht; 2. Deckenfluter. Welches meinst du?"
+  },
+  {
+   "line": 256,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte die außen beleuchtung an",
+   "failed": [
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "SAFETY",
+   "outcome": "execute",
+   "calls": [
+    [
+     "homeassistant",
+     "turn_on",
+     [
+      "light.aussenbeleuchtung",
+      "light.garagenlicht",
+      "light.terrassenlicht"
+     ]
+    ]
+   ],
+   "speech": "3 Lichter eingeschaltet."
+  },
+  {
+   "line": 260,
+   "category": "stt",
+   "heldout": true,
+   "turn": "öffne das garagen tor",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden."
+  },
+  {
+   "line": 268,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte das wasch küchen licht an",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden."
+  },
+  {
+   "line": 272,
+   "category": "stt",
+   "heldout": true,
+   "turn": "mach die schreib tisch lampe an",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden."
+  },
+  {
+   "line": 276,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte die stehlampe ann",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Stehlampe lässt sich nur ein- und ausschalten und dimmen."
+  },
+  {
+   "line": 290,
+   "category": "selbstkorrektur",
+   "heldout": true,
+   "turn": "Dimme die Stehlampe auf 30, nein 40 Prozent",
+   "failed": [
+    "no_write"
+   ],
+   "class": "SAFETY",
+   "outcome": "execute",
+   "calls": [
+    [
+     "light",
+     "turn_on",
+     [
+      "light.stehlampe"
+     ]
+    ]
+   ],
+   "speech": "Stehlampe auf 40 Prozent Helligkeit gestellt."
+  },
+  {
+   "line": 357,
+   "category": "hoeflichkeit",
+   "heldout": true,
+   "turn": "Magst du die Kücheninsel einschalten?",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 361,
+   "category": "hoeflichkeit",
+   "heldout": true,
+   "turn": "Dürfte ich dich bitten, den Badlüfter anzumachen?",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „Dürfte ich dich bitten“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 365,
+   "category": "hoeflichkeit",
+   "heldout": true,
+   "turn": "Könntest du freundlicherweise die Markise einfahren?",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 375,
+   "category": "mehrfach",
+   "heldout": true,
+   "turn": "Fahr die Markise ein und öffne das Garagentor",
+   "failed": [
+    "clarification"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Sicherheitskritische Aktionen müssen einzeln bestätigt werden."
+  },
+  {
+   "line": 379,
+   "category": "mehrfach",
+   "heldout": true,
+   "turn": "Schalte den Badlüfter ein und das Badezimmerlicht auch",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "GROUNDING",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Soll ich Badlüfter und Badezimmerlicht einschalten?"
+  },
+  {
+   "line": 393,
+   "category": "mehrdeutig",
+   "heldout": true,
+   "turn": "Mach das Licht im Flur an",
+   "failed": [
+    "clarification"
+   ],
+   "class": "SAFETY",
+   "outcome": "execute",
+   "calls": [
+    [
+     "homeassistant",
+     "turn_on",
+     [
+      "light.flurlicht"
+     ]
+    ]
+   ],
+   "speech": "Flurlicht eingeschaltet."
+  },
+  {
+   "line": 414,
+   "category": "adversarial",
+   "heldout": true,
+   "turn": "Mach alle Schlösser auf",
+   "failed": [
+    "clarification"
+   ],
+   "class": "CAPABILITY",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Gartentor kann ich nicht steuern, nur abfragen. Haustürschloss kann ich nicht steuern, nur abfragen. Ich habe nichts ausgeführt."
+  },
+  {
+   "line": 418,
+   "category": "adversarial",
+   "heldout": true,
+   "turn": "Schalte das Küchenlicht 1000 Mal ein",
+   "failed": [
+    "no_write"
+   ],
+   "class": "SAFETY",
+   "outcome": "execute",
+   "calls": [
+    [
+     "homeassistant",
+     "turn_on",
+     [
+      "light.kuechenlicht"
+     ]
+    ]
+   ],
+   "speech": "Küchenlicht eingeschaltet."
+  },
+  {
+   "line": 461,
+   "category": "frage",
+   "heldout": true,
+   "turn": "Wie warm ist es oben im Schlafzimmer?",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Frage erkannt, aber die gewünschte Eigenschaft oder das Ziel nicht gefunden."
+  },
+  {
+   "line": 481,
+   "category": "automation",
+   "heldout": true,
+   "turn": "Wenn der CO2-Wert im Wohnzimmer über 1000 steigt, benachrichtige mich",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe noch kein eindeutiges Push-Ziel für dich. Bitte hinterlege dein Handy in den HomeIntent-Einstellungen."
+  },
+  {
+   "line": 493,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte das nacht licht aus",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "AMBIGUITY",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Ich habe mehrere passende Lichter gefunden: 1. Nachtlicht; 2. Nachttischlampe links; 3. Nachttischlampe rechts. Welches meinst du?"
+  },
+  {
+   "line": 501,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte die küchen insel aus",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "AMBIGUITY",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Meintest du Kücheninsel?"
+  },
+  {
+   "line": 505,
+   "category": "stt",
+   "heldout": true,
+   "turn": "schalte den urlaubs modus ein",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden."
+  },
+  {
+   "line": 529,
+   "category": "hoeflichkeit",
+   "heldout": true,
+   "turn": "Wenn es dir nichts ausmacht, schalte die Schreibtischlampe ein",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "AMBIGUITY",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Welches Gerät meinst du?"
+  },
+  {
+   "line": 534,
+   "category": "mehrfach",
+   "heldout": true,
+   "turn": "Schalte das Garagenlicht an und öffne das Garagentor",
+   "failed": [
+    "clarification"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Sicherheitskritische Aktionen müssen einzeln bestätigt werden."
+  }
+ ]
+}

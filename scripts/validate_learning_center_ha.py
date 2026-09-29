@@ -39,7 +39,7 @@ def _rejects(schema, payload) -> bool:
 
 def _check_schemas() -> None:
     commands = {handler._ws_command: handler for handler in learning_center_ws._COMMANDS}
-    assert len(commands) == len(learning_center_ws._COMMANDS) == 19, commands
+    assert len(commands) == len(learning_center_ws._COMMANDS) == 24, commands
     assert all(name.startswith("homeintent/learning_center/") for name in commands)
     for name, handler in commands.items():
         schema = handler._ws_schema
@@ -55,6 +55,10 @@ def _check_schemas() -> None:
             base["situation_kind"] = "entry_left_open"
         if name.endswith("models/reset"):
             base["confirm"] = True
+        if name.endswith("bindings/remove"):
+            base["binding_id"] = "binding_x"
+        if name.endswith("settings/implicit_action_level"):
+            base["level"] = "propose"
         schema(base)
         if not _rejects(schema, {**base, "user_id": "someone-else"}):
             raise AssertionError(f"{name} accepted a browser supplied user_id")

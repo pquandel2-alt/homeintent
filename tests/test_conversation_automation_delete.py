@@ -32,13 +32,13 @@ _ha_stub.install()
 
 import homeintent.automation_executor as ha_automation_executor  # noqa: E402
 import homeintent.conversation as ha_conversation  # noqa: E402
-from homeintent.conversation import (  # noqa: E402
-    AUTOMATION_CREATED_TEXT,
+from homeintent.controllers.automation_management import (  # noqa: E402
     AUTOMATION_DELETED_TEXT,
     AUTOMATION_DELETION_CANCELLED_TEXT,
     AUTOMATION_DELETION_CONFIRMATION_UNCLEAR_TEXT,
-    NluConversationEntity,
 )
+from homeintent.controllers.automations import AUTOMATION_CREATED_TEXT  # noqa: E402
+from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeassistant.components.conversation import ConversationInput  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402

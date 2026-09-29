@@ -27,6 +27,8 @@ __all__ = (
     "NeedKind",
     "NeedMeaning",
     "ROUTINE_CONCEPTS",
+    "routine_concept_by_key",
+    "routine_concept_of_compound",
     "RoutineConcept",
     "interpret_need",
 )
@@ -71,6 +73,8 @@ NEED_WORDS: Mapping[str, NeedKind] = {
     "dunstig": NeedKind.VENTILATE, "beschlagen": NeedKind.VENTILATE,
     # sound
     "laut": NeedKind.QUIETER, "droehnt": NeedKind.QUIETER,
+    # A device that disturbs (7.6.0): "Das Radio nervt" -> quieter or off, asked.
+    "nervt": NeedKind.QUIETER, "stoert": NeedKind.QUIETER, "nerven": NeedKind.QUIETER,
     "leise": NeedKind.LOUDER,
 }
 # "Ich sehe/höre nichts": perception verb + negative object -> need.
@@ -78,7 +82,12 @@ _PERCEPTION_NEEDS: Mapping[str, NeedKind] = {
     "sehe": NeedKind.BRIGHTER, "seh": NeedKind.BRIGHTER, "sieht": NeedKind.BRIGHTER,
     "hoere": NeedKind.LOUDER, "hoer": NeedKind.LOUDER, "versteh": NeedKind.LOUDER,
     "verstehe": NeedKind.LOUDER,
+    # "Ich kann kaum lesen / nichts erkennen" (7.6.0).
+    "lesen": NeedKind.BRIGHTER, "erkennen": NeedKind.BRIGHTER, "sehen": NeedKind.BRIGHTER,
+    "hoeren": NeedKind.LOUDER, "verstehen": NeedKind.LOUDER,
 }
+# Adverbs that make a following perception verb a need ("kaum lesen").
+_HARDLY = frozenset({"kaum", "nichts", "nix", "schlecht", "schwer"})
 _NOTHING = frozenset({"nichts", "nix", "kaum", "wenig"})
 # A wish for more of a sensation: "etwas mehr Wärme", "mehr Licht".
 _MORE_WORDS = frozenset({"mehr"})
@@ -167,11 +176,37 @@ _INTENTION = frozenset({
 })
 
 
+_PREPARE_WORDS = frozenset({"mach", "mache", "machst", "bereite", "bereit", "vorbereiten"})
+# Occasion nouns a preparation names ("für die Nacht", "fürs Schlafengehen").
+_OCCASION_WORDS: dict[str, frozenset[str]] = {
+    "sleep": frozenset({"nacht", "schlafengehen", "schlafen", "bett"}),
+    "movie": frozenset({"filmabend", "kinoabend", "film"}),
+    "leave": frozenset({"abwesenheit", "abfahrt", "urlaub"}),
+}
+
+
 @dataclass(frozen=True)
 class NeedMeaning:
     kind: NeedKind
     cue: str
     routine: RoutineConcept | None = None
+    preparation: bool = False
+
+
+def routine_concept_of_compound(word: str) -> RoutineConcept | None:
+    """„Schlafroutine“, „Nachtroutine“, „Filmroutine“ name a routine concept."""
+    folded = normalize_for_compare(word)
+    if not folded.endswith("routine") or len(folded) <= len("routine"):
+        return None
+    prefix = folded[: -len("routine")].rstrip("s")
+    for concept in ROUTINE_CONCEPTS:
+        if any(prefix.startswith(stem) for stem in concept.names) or prefix in concept.cues:
+            return concept
+    return None
+
+
+def routine_concept_by_key(key: str) -> RoutineConcept | None:
+    return next((concept for concept in ROUTINE_CONCEPTS if concept.key == key), None)
 
 
 def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeaning | None:
@@ -184,6 +219,11 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
         # Negated, concessive, conditional or reported sensations and
         # memory instructions do not state a present need.
         return None
+    # A routine named by its concept ("Starte die Schlafroutine").
+    for word in normalized:
+        concept = routine_concept_of_compound(word)
+        if concept is not None:
+            return NeedMeaning(NeedKind.ROUTINE, word, concept)
     # Routine concepts: first-person announcement + concept cue.
     first_person = bool(word_set & {"ich", "wir", "bin", "sind"}) or (
         len(normalized) >= 2 and normalized[:2] in (["gute", "nacht"],)
@@ -202,12 +242,23 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
             if concept.key == "morning" and not word_set & {"aufstehen", "aufgestanden", "wach"}:
                 continue
             return NeedMeaning(NeedKind.ROUTINE, sorted(cues)[0], concept)
+    # Preparing an occasion ("Mach alles für die Nacht fertig", "Bereite
+    # den Filmabend vor"): the same routine concept as announcing it
+    # (7.6.1). Without any bound or discoverable routine the goal dialog
+    # takes over (``NeedMeaning.preparation``).
+    if word_set & _PREPARE_WORDS and word_set & {"fertig", "vorbereiten", "vor", "bereit"}:
+        for concept in ROUTINE_CONCEPTS:
+            occasion = word_set & _OCCASION_WORDS.get(concept.key, frozenset())
+            if occasion:
+                return NeedMeaning(NeedKind.ROUTINE, sorted(occasion)[0], concept, preparation=True)
     if normalized[:2] == ["gute", "nacht"] and len(normalized) <= 3:
         sleep = next(concept for concept in ROUTINE_CONCEPTS if concept.key == "sleep")
         return NeedMeaning(NeedKind.ROUTINE, "nacht", sleep)
     # Perception: "ich sehe nichts", "man hört kaum was".
     for index, word in enumerate(normalized):
         if word in _PERCEPTION_NEEDS and any(item in _NOTHING for item in normalized[index + 1:index + 4]):
+            return NeedMeaning(_PERCEPTION_NEEDS[word], word)
+        if word in _PERCEPTION_NEEDS and any(item in _HARDLY for item in normalized[max(0, index - 2):index]):
             return NeedMeaning(_PERCEPTION_NEEDS[word], word)
     # Wish for more: "ich hätte gern etwas mehr Wärme im Bad".
     for index, word in enumerate(normalized):
@@ -223,7 +274,7 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
             continue
         if kind in {NeedKind.GLARE} or word.endswith(("e", "t", "en")) and word in {
             "friere", "frieren", "friert", "froestelt", "froestele", "bibbere", "zittere",
-            "schwitze", "schwitzen", "schwitzt", "droehnt",
+            "schwitze", "schwitzen", "schwitzt", "droehnt", "nervt", "stoert", "nerven",
         }:
             return NeedMeaning(kind, word)
         if not has_frame:

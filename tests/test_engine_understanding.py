@@ -43,29 +43,6 @@ def test_percentage_capability_is_v7_authoritative_after_shadow_gate(engine, ent
     assert outcome.payload.plan.service == "set_cover_position"
 
 
-def test_real_shadow_comparison_is_read_only_and_semantically_equal(engine, entities):
-    comparison = engine.compare_understanding_pipelines(
-        "Schalte das Flurlicht ein", entities
-    )
-
-    assert comparison.equivalent
-    assert comparison.authoritative.payload is not None
-    assert comparison.candidate.payload is not None
-
-
-def test_shared_predicate_shadow_comparison_is_semantically_equal(engine):
-    entities = [
-        EntitySnapshot("light.kueche", "Küchenlicht", "light", "on"),
-        EntitySnapshot("light.flur", "Flurlicht", "light", "on"),
-    ]
-    comparison = engine.compare_understanding_pipelines(
-        "Schalte Küchenlicht und Flurlicht aus", entities
-    )
-
-    assert comparison.equivalent
-    assert comparison.candidate.payload is not None
-
-
 def test_named_state_query_is_v7_authoritative(engine):
     entities = [EntitySnapshot("light.kueche", "Küchenlicht", "light", "off")]
 

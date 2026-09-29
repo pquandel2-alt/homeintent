@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from hassil import Intents
 
@@ -55,11 +55,7 @@ from .nlu.entity_resolution import (
     resolve_mentioned_target,
 )
 from .nlu.entity_clarification import render_candidate_question
-from .nlu.composition import (
-    build_compositional_plan,
-    independent_predicate_clauses,
-    project_target,
-)
+from .nlu.composition import independent_predicate_clauses
 from .nlu.command import SemanticCommand, build_semantic_command
 from .nlu.context import ConversationContext
 from .nlu.discourse import ReferenceStatus, current_discourse_group, resolve_reference
@@ -68,10 +64,13 @@ from .nlu.degree_semantics import extract_degree
 from .nlu.frame import AreaReference, Quantifier, SemanticFrame, TargetReference
 from .nlu.primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .nlu.normalize import normalize
+from .nlu.group_feedback import group_percentage_feedback
 from .nlu.device_ontology import analyse_word
 from .nlu.ontology_compiler import compile_ontology_command, compile_release
 from .nlu.discourse_compiler import compile_discourse
-from .nlu.need_compiler import compile_need
+from .nlu.need_compiler import compile_need, proposal_from_reason, routine_named_explicitly
+from .nlu.capabilities import describe_abilities
+from .plan_origin import PlanOrigin
 from .nlu.need_semantics import interpret_need
 from .nlu.place_model import PlaceKind, build_place_lexicon
 from .nlu.language_frontend import LanguageDocument, analyse_language, tokenize_language
@@ -119,7 +118,6 @@ from .nlu.semantic_interpreter import InterpreterResult, SemanticInterpreter
 from .nlu.repair_semantics import repaired_temporal_command
 from .nlu.temporal_semantics import TemporalKind
 from .nlu.semantic_projection import project_independent_predicates
-from .nlu.meaning import SemanticTurn, analyse_turn
 from .nlu.semantic_utterance import (
     ClauseRole,
     Modality,
@@ -130,22 +128,14 @@ from .nlu.semantic_utterance import (
     is_contextual_followup,
 )
 from .nlu.understanding import (
-    ShadowComparison,
     UnderstandingAuthority,
     UnderstandingEvidence,
     UnderstandingKind,
     UnderstandingOutcome,
-    compare_outcomes,
 )
 from .nlu.understanding_context import UnderstandingContext
-from .nlu.verb_state_query import (
-    match_contextual_verb_state_query,
-    match_verb_state_query,
-)
-from .nlu.semantic_location import (
-    resolve_coordinated_locations,
-    resolve_semantic_location,
-)
+from .nlu.verb_state_query import match_contextual_verb_state_query
+from .nlu.semantic_location import resolve_semantic_location
 from .nlu.query_followup_compiler import compile_query_followup
 from .nlu.validator import validate_command
 from .automation_action_parser import AutomationActionParser
@@ -158,6 +148,7 @@ from .automation_notification import (
 from .notification_language import NotificationClause, parse_notification_clause
 from .nlu.action_model import NotificationRecipientKind
 from .automation_condition_parser import AutomationConditionParser, split_on_top_level_and
+from .nlu.locative import has_locative_cue
 from .nlu.automation_shell_normalization import strip_automation_shell
 from .calendar_automation import parse_calendar_automation_draft
 from .automation_trigger_parser import _AUTOMATION_TRIGGER_RE, AutomationTriggerParser
@@ -191,21 +182,11 @@ from .nlu.condition_model import (
     LogicalOperator,
 )
 from .parsers import (
-    AreaQueryParser,
     AutomationDeleteMatch,
     AutomationDeleteParser,
     AutomationQueryParser,
     AutomationToggleMatch,
     AutomationToggleParser,
-    ClimateExtendedParser,
-    ComparisonQueryParser,
-    FanExtendedParser,
-    LightExtendedParser,
-    PercentageParser,
-    QuantifierParser,
-    SingleTargetParser,
-    StateQueryParser,
-    TemporalParser,
 )
 from .service_call import (
     ACTION_OPPOSITES,
@@ -221,6 +202,7 @@ from .service_call import (
 from .nlu.automation_operations import describe_registered_operation, describe_registered_result
 from .world_model import WorldModel
 from .nlu.word_cues import has_word
+from .nlu.phrases import words as phrase_words
 
 _RESPONSE_GENERATOR = ResponseGenerator()
 
@@ -246,19 +228,6 @@ def _nlu_error_for_outcome(outcome: UnderstandingOutcome[Any]) -> NluError:
     )
 
 INTENTS_DIR = Path(__file__).parent / "intents" / "de"
-QUANTIFIERS_DIR = INTENTS_DIR / "quantifiers"
-PERCENTAGE_DIR = INTENTS_DIR / "percentage"
-LIGHT_EXTENDED_DIR = INTENTS_DIR / "light_extended"
-FAN_EXTENDED_DIR = INTENTS_DIR / "fan_extended"
-CLIMATE_EXTENDED_DIR = INTENTS_DIR / "climate_extended"
-CONTEXT_FOLLOWUP_DIR = INTENTS_DIR / "context_followup"
-REFERENCE_DIR = INTENTS_DIR / "reference"
-COMPARISON_QUERY_DIR = INTENTS_DIR / "comparison_query"
-TEMPORAL_DIR = INTENTS_DIR / "temporal"
-AREA_QUERY_DIR = INTENTS_DIR / "area_query"
-QUERY_FOLLOWUP_DIR = INTENTS_DIR / "query_followup"
-STATE_QUERY_DIR = INTENTS_DIR / "state_query"
-COMMAND_FOLLOWUP_DIR = INTENTS_DIR / "command_followup"
 AUTOMATION_TRIGGER_DIR = INTENTS_DIR / "automation_trigger"
 AUTOMATION_CONDITION_DIR = INTENTS_DIR / "automation_condition"
 AUTOMATION_ACTION_DIR = INTENTS_DIR / "automation_action"
@@ -267,93 +236,6 @@ AUTOMATION_DELETE_DIR = INTENTS_DIR / "automation_delete"
 AUTOMATION_TOGGLE_DIR = INTENTS_DIR / "automation_toggle"
 RELATIVE_TIME_DIR = INTENTS_DIR / "relative_time"
 
-# Sentences containing a temporal-modifier keyword ("Minute(n)"/"Stunde(n)"/
-# "Uhr"/"morgen früh"/"heute Abend"/...) are routed to TemporalParser's
-# separately-compiled grammar (HomeIntent plan V4.7, "Temporal Expressions")
-# - checked *first*, before _QUANTIFIER_RE below: "mach das Licht in fünf
-# Minuten aus"/"... um acht Uhr an" contain "fünf"/"acht", which
-# _QUANTIFIER_RE also matches (its spelled-out count-word list), and would
-# otherwise misroute these to QuantifierParser's unrelated grammar - same
-# "one keyword, one dedicated grammar, checked before anything it could
-# collide with" reasoning _COMPARISON_QUERY_RE's own comment documents.
-_TEMPORAL_RE = re.compile(
-    r"\b(minuten?|stunden?|uhr)\b|\b(morgen früh|heute abend|morgen abend|heute früh)\b", re.IGNORECASE
-)
-
-# Sentences containing "welche" *and* an actual comparator word are routed
-# to ComparisonQueryParser's separately-compiled grammar (HomeIntent plan
-# V4.6, "Comparisons", query-filter half) - checked *first*, before every
-# other regex below: a sentence like "welche Heizungen sind unter 20 Grad"
-# also contains "Grad" (would otherwise match _CLIMATE_EXTENDED_RE) and
-# "welche Lichter sind mindestens 50 Prozent" also contains "Prozent" (would
-# otherwise match _PERCENT_RE) - both would be structurally swallowed by the
-# wrong grammar if checked after those, same "one keyword, one dedicated
-# grammar, checked before anything it could collide with" reasoning
-# _LIGHT_EXTENDED_RE's own comment documents for its position ahead of
-# _PERCENT_RE.
-#
-# Requiring a comparator word (not just "welche" alone) is V4.2's fix for a
-# real misroute: a bare "welche" sentence with no comparator (e.g. "Welche
-# Fenster sind noch geöffnet?") was being swallowed here too and then
-# structurally could never match ComparisonQueryParser's comparator+percent/
-# temperature-only grammar, so it fell all the way through to "not
-# understood" - it belongs to _STATE_QUERY_RE below instead. The comparator
-# vocabulary mirrors parsers.py's _COMPARATOR_SLOT_LIST (kept in sync by
-# hand - not re-derived here, since that list is built at import time from
-# tuples, not a bare word list this regex could read directly). "heller
-# als"/"dunkler als"/"mehr als"/"weniger als" (V4.2 spec gap #5) require the
-# literal "als" alongside "heller"/"dunkler", so this can't collide with
-# _LIGHT_EXTENDED_RE's bare "heller"/"dunkler" keywords below - and this
-# regex is checked first regardless, same precedent already documented.
-_COMPARISON_QUERY_RE = re.compile(
-    r"(?=.*\bwelch\w*\b)(?=.*\b(mindestens|höchstens|nicht höher als|über|unter|"
-    r"heller als|dunkler als|mehr als|weniger als)\b)",
-    re.IGNORECASE,
-)
-
-# Sentences combining a query-trigger word ("welche"/"wie viele"/"ist"/
-# "sind") *and* a state word (predicate form: offen/geöffnet/zu/geschlossen/
-# an/aus/eingeschaltet/ausgeschaltet - or attributive/adjective form:
-# offene/geöffnete/geschlossene/eingeschaltete/angeschaltete/ausgeschaltete,
-# since German inflects the same word differently in "die Fenster sind
-# offen" vs. "gibt es offene Fenster") are routed to StateQueryParser's
-# separately-compiled grammar (HomeIntent V4.2, "Semantic Query & State
-# Resolution") - checked immediately after _COMPARISON_QUERY_RE, since a
-# "welche"-sentence without a comparator word (e.g. "Welche Fenster sind
-# noch geöffnet?") falls through the now-narrowed regex above and needs
-# somewhere else to land. Requiring *both* words (not just the state word
-# alone) keeps this from swallowing plain on/off commands ("Schalte das
-# Licht aus" has "aus" but none of the trigger words). Verified empirically
-# (this session) against every existing intent YAML: no sentence combines a
-# trigger word with a state word today, so this can't misroute an existing
-# match.
-#
-# "gibt es" is handled as its own unconditional alternative (no state word
-# required): HassExistsQuery's grammar explicitly supports a bare existence
-# question with no state word at all ("gibt es Fenster im Keller?"), so
-# requiring a state word here would make that sentence structurally
-# unreachable by any parser. Safe to route "gibt es" unconditionally -
-# grepped empirically (this session): no other intent YAML uses the phrase
-# "gibt es" anywhere, so this can't misroute an existing match.
-_STATE_QUERY_RE = re.compile(
-    r"\bgibt es\b"
-    r"|\bhaben wir\b.*\b(offen\w*|geöffnet\w*|geschlossen\w*|eingeschaltet\w*|ausgeschaltet\w*)\b"
-    r"|\b(?:läuft|laeuft)\b"
-    r"|\bwas\s+macht\b"
-    r"|\bwelchen\b.*\b(zustand|status)\b"
-    r"|\b(wie|zeige)\b.*\b(zustand|status)\b"
-    r"|\b(wo|in welchen räumen|welche räume haben|was ist)\b.*"
-    r"\b(offen|geöffnet|zu|geschlossen|an|aus|eingeschaltet|ausgeschaltet|"
-    r"hochgefahren|runtergefahren|heruntergefahren|oben|unten)\b"
-    r"|\bwas ist der\b.*\b(zustand|status)\b"
-    r"|\bwelche\b.*\bsind\b"
-    r"|\b(welcher|welche|welches|wie viele|ist|sind)\b.*"
-    r"\b(offen|geöffnet|offene|geöffnete|zu|geschlossen|geschlossene|"
-    r"an|aus|eingeschaltet|angeschaltet|ausgeschaltet|"
-    r"hochgefahren|runtergefahren|heruntergefahren|oben|unten|"
-    r"eingeschaltete|angeschaltete|ausgeschaltete)\b",
-    re.IGNORECASE,
-)
 
 # Intents NluEngine.match_query_followup() will continue with a fresh
 # area/floor ("Und in der Küche?", "Und oben?") - HassGetState (original,
@@ -454,92 +336,6 @@ def _weekday_number(day: str) -> int:
         "freitag": 4, "samstag": 5, "sonntag": 6,
     }.get(day, 0)
 
-# Sentences containing "alle"/"beide[n/r]"/"nur"/a count word are routed to
-# QuantifierParser's separately-compiled grammar rather than mixed into the
-# {name}-wildcard grammar above - hassil's recognize() would otherwise
-# structurally match both grammars for the same sentence and silently pick
-# whichever comes first in file/sentence order. The count-word list (v2 plan
-# Phase 29, "Natural Quantifiers") mirrors parsers.py's _COUNT_SLOT_LIST -
-# "nur"/count-only sentences like "nur die Wohnzimmerlampen an" or "mach die
-# drei Lichter an" contain neither "alle" nor "beide[n/r]", so without this
-# they'd never even reach QuantifierParser. Same reasoning applies to
-# "oben"/"unten" (HomeIntent plan V4.3, "Implicit Targets" - "Mach oben die
-# Lichter aus." has no {quantifier} word at all, only {level}) - added here
-# for the same "or this sentence never reaches QuantifierParser" reason.
-# An area-scoped phrase with a plural article/domain ("die Rollläden im
-# Esszimmer", "die Lichter in der Küche") is likewise an unambiguous group
-# request even without the redundant word "alle".  The article is part of
-# this gate deliberately: "den Rollladen im Büro" remains a singular target.
-_QUANTIFIER_RE = re.compile(
-    r"\b(alle|beide[nr]?|nur|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|oben|unten)\b"
-    r"|\bdie\s+(?:lichter|lampen|steckdosen|rol{2,3}[aä]den|rollos|ventilatoren)\b"
-    r"(?=.*\b(?:in der|in dem|im|am|beim)\b)"
-    r"|(?=.*\b(?:in der|in dem|im|am|beim)\b.*\bdie\s+"
-    r"(?:lichter|lampen|steckdosen|rol{2,3}[aä]den|rollos|ventilatoren)\b)",
-    re.IGNORECASE,
-)
-
-# "Welche {attribute} zeigt {name} [Sensor]?" / "Was zeigt {name} [Sensor]
-# an?" (v4.1.2 live gap, screenshot IMG_3105) is plain HassGetState -
-# SingleTargetParser's default grammar (query.yaml) - but "welche Temperatur
-# zeigt der Außentemperatur Sensor" also contains the standalone word
-# "temperatur", which would otherwise match _CLIMATE_EXTENDED_RE below and
-# misroute it to ClimateExtendedParser's unrelated "wärmer/kälter" grammar
-# (that parser has no "zeigt" sentence, so it would return None). "zeigt" is
-# unique to this HassGetState sentence family - grepped empirically, no
-# other intent YAML uses it - so routing on it unconditionally, before
-# _CLIMATE_EXTENDED_RE, can't misroute an existing match.
-_GET_STATE_ZEIGT_RE = re.compile(r"\bzeigt\b", re.IGNORECASE)
-
-# Sentences containing a brightness-adjust or colour/colour-temperature
-# keyword are routed to LightExtendedParser's separately-compiled grammar
-# (v2 plan Phase 14). Checked *before* _PERCENT_RE below: "mach das Licht 20
-# Prozent heller" contains both "Prozent" and "heller" and must not fall
-# into PercentageParser's absolute {name}/{percent} grammar.
-_LIGHT_EXTENDED_RE = re.compile(
-    r"\b(heller|dunkler|rot|grün|blau|gelb|orange|lila|violett|weiß|pink|rosa|türkis|cyan|(?:warm|neutral|tageslicht|kalt)wei(?:ß|ss))\b",
-    re.IGNORECASE,
-)
-
-# Sentences containing a fan-speed keyword are routed to FanExtendedParser's
-# separately-compiled grammar (v2 plan Phase 16) - same reasoning as the
-# other dedicated grammars above: "auf Stufe 3" would otherwise collide with
-# nothing existing (no overlap with prozent/quantifier/color keywords), but
-# keeping it as its own grammar/parser follows the same one-parser-per-
-# vocabulary precedent LightExtendedParser already established.
-_FAN_EXTENDED_RE = re.compile(r"\b(stufe|schneller|langsamer)\b", re.IGNORECASE)
-
-# Sentences containing a climate-temperature keyword are routed to
-# ClimateExtendedParser's separately-compiled grammar (v2 plan Phase 17) -
-# same reasoning as the other dedicated grammars above. "temperatur" is safe
-# as a standalone \b-bounded word here: it never matches inside compound
-# words like "Außentemperatur" (query.yaml), since there's no boundary
-# between "Außen" and "temperatur".
-_CLIMATE_EXTENDED_RE = re.compile(r"\b(grad|wärmer|kälter|temperatur)\b", re.IGNORECASE)
-
-# "und"-joined sentences ("Mach das Licht an und fahr die Rollläden hoch.")
-# are split into independent sub-commands (HomeIntent plan V4.8, "Multi-Step
-# Commands") *before* any other routing below - each segment is re-fed
-# through the exact same single-command ``match()`` pipeline (own parser
-# selection, own entity resolution, own validation), so a multi-step
-# sentence gets zero bespoke grammar of its own. No existing intent YAML
-# uses the word "und" (grepped empirically before adding this), so this
-# split can never misfire on an existing single-command sentence.
-_AND_SPLIT_RE = re.compile(r"\s+(?:und|außerdem)\s+", re.IGNORECASE)
-
-# "ist es" (a state query with no {name} at all, only a room - "wie warm
-# ist es im Wohnzimmer") routes to AreaQueryParser's separately-compiled
-# grammar (HomeIntent plan V4.9, "Cross-Sentence References", first-turn
-# half) instead of falling through to SingleTargetParser's default below -
-# query.yaml's own name-based sentence never contains the literal "ist es"
-# (it's "ist [die|der|das] {name}"), grepped empirically before adding this,
-# same "one keyword, one dedicated grammar" precedent every regex above
-# already follows.
-_AREA_QUERY_RE = re.compile(
-    r"\bist\s+es\b|\bwie\s+hoch\s+ist\s+die\s+temperatur\b|"
-    r"\bwelche\s+temperatur\s+hat\b",
-    re.IGNORECASE,
-)
 
 # "automation(en)"/"was schaltet"/"was steuert"/"warum ist"/"warum geht"
 # routes to AutomationQueryParser's separately-compiled grammar (HomeIntent
@@ -598,11 +394,6 @@ _REPEAT_COUNTS = {
     "sieben": 7, "acht": 8, "neun": 9, "zehn": 10,
 }
 
-_UNSAFE_DIRECT_COMMAND_MODIFIER_RE = re.compile(
-    r"\b(?:nicht(?!\s+(?:höher|hoeher|niedriger|mehr|weniger)\s+als\b)|"
-    r"kein\w*|ohne|vielleicht|normalerweise|gestern)\b",
-    re.I,
-)
 
 def _clarification_question(clarification: ClarificationRequest) -> str:
     return render_candidate_question(clarification.candidates)
@@ -648,6 +439,17 @@ class MatchResult:
     # es keinen Ventilator."). Never executable; spoken instead of the
     # generic "nicht verstanden".
     failure_text: str | None = None
+    # Where the plan came from (explicit command, need, inferred routine);
+    # read only by the execution policy.
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+    # Question form of an implicit need's action ("Soll ich …?"), used when
+    # the policy turns it into a proposal (implicit_action_level).
+    proposal_text: str | None = None
+    # Routine binding (7.3.3): concept key, whether the target comes from a
+    # confirmed binding, and the candidates a choice or "Ja" would bind.
+    routine_key: str | None = None
+    binding_confirmed: bool = False
+    routine_candidates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -678,6 +480,42 @@ class CommandPlan:
     # Group operations over several device kinds or many targets are
     # previewed first; the plan runs only after an explicit "Ja".
     confirmation_text: str | None = None
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND
+    proposal_text: str | None = None
+    routine_key: str | None = None
+    binding_confirmed: bool = False
+    routine_candidates: tuple[str, ...] = ()
+
+
+def _mark_inferred_routines(
+    payload: "MatchResult | CommandPlan | None",
+    text: str,
+    entities: list[EntitySnapshot],
+) -> "MatchResult | CommandPlan | None":
+    """Scripts/scenes found by name similarity become inferred routines."""
+    by_id = {entity.entity_id: entity for entity in entities}
+
+    def mark(result: MatchResult) -> MatchResult:
+        plan = result.plan
+        if plan is None or result.origin is not PlanOrigin.EXPLICIT_COMMAND:
+            return result
+        target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+        routines = [
+            by_id[entity_id] for entity_id in target_ids
+            if entity_id.split(".", 1)[0] in {"script", "scene"} and entity_id in by_id
+        ]
+        if routines and not all(routine_named_explicitly(text, entity) for entity in routines):
+            return replace(result, origin=PlanOrigin.INFERRED_ROUTINE)
+        return result
+
+    if isinstance(payload, MatchResult):
+        return mark(payload)
+    if isinstance(payload, CommandPlan):
+        commands = tuple(mark(item) for item in payload.commands)
+        if all(new is old for new, old in zip(commands, payload.commands)):
+            return payload
+        return replace(payload, commands=commands, origin=PlanOrigin.INFERRED_ROUTINE)
+    return payload
 
 
 # Sentinel: the genus model proved the legacy reading incomplete.
@@ -820,6 +658,33 @@ _SAY_REQUEST_RE = re.compile(
 
 # A polite modal request ("..., kannst du mir dann Bescheid sagen?") is a
 # request even though it is phrased as a question; wh-questions never are.
+_REPETITION_WORDS = frozenset({"mal", "male"})
+_COUNT_WORDS = frozenset({
+    "zwei", "drei", "vier", "fuenf", "sechs", "sieben", "acht", "neun", "zehn",
+    "zwanzig", "hundert", "tausend",
+})
+
+
+def _repetition_count(text: str) -> str | None:
+    """The spoken repetition count ("1000 Mal", "drei Mal"), if any."""
+    tokens = phrase_words(text)
+    for number, following in zip(tokens, tokens[1:]):
+        if following.key in _REPETITION_WORDS and (
+            number.key.isdigit() or number.key in _COUNT_WORDS
+        ):
+            return text[number.start:following.end]
+    return None
+
+
+def _writes(payload: object) -> bool:
+    commands = getattr(payload, "commands", None)
+    if commands is not None:
+        return any(command.plan is not None for command in commands)
+    return getattr(payload, "plan", None) is not None
+
+
+# "Nein, ich meinte …" / "gemeint war …" before a corrected name or place.
+_MEANT_PREFIX_RE = re.compile(r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+", re.IGNORECASE)
 _MODAL_REQUEST_RE = re.compile(
     r"\b(?:kannst|könntest|koenntest|würdest|wuerdest)\s+du\s+(?:\S+\s+){0,4}?"
     r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden)\b",
@@ -862,9 +727,9 @@ def _ambiguous_kind_question(
             continue
         resolution = resolve_description(description, entities)
         if resolution.outcome is ResolutionOutcome.AMBIGUOUS and 1 < len(resolution.entities) <= 8:
-            names = [entity.friendly_name for entity in resolution.entities]
-            listed = ", ".join(names[:-1]) + " oder " + names[-1]
-            return f"Welches Gerät meinst du: {listed}? Ich habe nichts ausgeführt."
+            from .nlu.entity_clarification import which_question
+
+            return f"{which_question(resolution.entities)} Ich habe nichts ausgeführt."
     return None
 
 
@@ -892,20 +757,6 @@ class NluEngine:
 
     def __init__(
         self,
-        intents_dir: Path = INTENTS_DIR,
-        quantifiers_dir: Path = QUANTIFIERS_DIR,
-        percentage_dir: Path = PERCENTAGE_DIR,
-        light_extended_dir: Path = LIGHT_EXTENDED_DIR,
-        fan_extended_dir: Path = FAN_EXTENDED_DIR,
-        climate_extended_dir: Path = CLIMATE_EXTENDED_DIR,
-        context_followup_dir: Path = CONTEXT_FOLLOWUP_DIR,
-        reference_dir: Path = REFERENCE_DIR,
-        comparison_query_dir: Path = COMPARISON_QUERY_DIR,
-        temporal_dir: Path = TEMPORAL_DIR,
-        area_query_dir: Path = AREA_QUERY_DIR,
-        query_followup_dir: Path = QUERY_FOLLOWUP_DIR,
-        state_query_dir: Path = STATE_QUERY_DIR,
-        command_followup_dir: Path = COMMAND_FOLLOWUP_DIR,
         automation_trigger_dir: Path = AUTOMATION_TRIGGER_DIR,
         automation_condition_dir: Path = AUTOMATION_CONDITION_DIR,
         automation_action_dir: Path = AUTOMATION_ACTION_DIR,
@@ -914,22 +765,6 @@ class NluEngine:
         automation_toggle_dir: Path = AUTOMATION_TOGGLE_DIR,
         relative_time_dir: Path = RELATIVE_TIME_DIR,
     ) -> None:
-        # Direct device/query language is compiled natively by V8. Keep the
-        # historical grammar locations only for the explicit read-only
-        # shadow report; production startup no longer loads those grammars.
-        self._shadow_parser_specs: dict[str, tuple[Path, type[Any]]] = {
-            "single": (intents_dir, SingleTargetParser),
-            "quantifier": (quantifiers_dir, QuantifierParser),
-            "percentage": (percentage_dir, PercentageParser),
-            "light": (light_extended_dir, LightExtendedParser),
-            "fan": (fan_extended_dir, FanExtendedParser),
-            "climate": (climate_extended_dir, ClimateExtendedParser),
-            "comparison": (comparison_query_dir, ComparisonQueryParser),
-            "temporal": (temporal_dir, TemporalParser),
-            "area": (area_query_dir, AreaQueryParser),
-            "state": (state_query_dir, StateQueryParser),
-        }
-        self._shadow_parsers: dict[str, Any] = {}
 
         automation_trigger_yaml_files = sorted(automation_trigger_dir.glob("*.yaml"))
         if not automation_trigger_yaml_files:
@@ -987,21 +822,6 @@ class NluEngine:
         self._contextual_property_resolver = ContextualPropertyResolver()
         self._conversation_correction_resolver = ConversationCorrectionResolver()
 
-    @property
-    def _single_parser(self):
-        """Test/shadow compatibility handle; never touched by production routing."""
-        return self._get_shadow_parser("single")
-
-    @property
-    def _quantifier_parser(self):
-        """Test/shadow compatibility handle; never touched by production routing."""
-        return self._get_shadow_parser("quantifier")
-
-    @property
-    def _percentage_parser(self):
-        """Test/shadow compatibility handle; never touched by production routing."""
-        return self._get_shadow_parser("percentage")
-
     def match_correction_followup(
         self,
         text: str,
@@ -1022,226 +842,48 @@ class NluEngine:
             )
         return self._build_match_result(outcome, entities, context)
 
-    def _select_shadow_parser(self, text: str):
-        """Select a historical parser for the read-only shadow audit only."""
-        if _TEMPORAL_RE.search(text):
-            key = "temporal"
-        elif _COMPARISON_QUERY_RE.search(text):
-            key = "comparison"
-        elif _STATE_QUERY_RE.search(text):
-            key = "state"
-        elif _GET_STATE_ZEIGT_RE.search(text):
-            key = "single"
-        elif _LIGHT_EXTENDED_RE.search(text):
-            key = "light"
-        elif _FAN_EXTENDED_RE.search(text):
-            key = "fan"
-        # The location-temperature vocabulary is narrower than the general
-        # climate keyword gate (which also contains "Temperatur"). Route
-        # these questions first so they cannot be mistaken for a setpoint
-        # command.
-        elif _AREA_QUERY_RE.search(text):
-            key = "area"
-        elif _CLIMATE_EXTENDED_RE.search(text):
-            key = "climate"
-        elif _PERCENT_RE.search(text) or _BARE_PERCENT_RE.search(text) or _HALF_POSITION_RE.search(text):
-            key = "percentage"
-        elif _QUANTIFIER_RE.search(text):
-            key = "quantifier"
-        else:
-            key = "single"
-        return self._get_shadow_parser(key)
-
-    def _get_shadow_parser(self, key: str):
-        """Lazily load one parser solely for compatibility diagnostics."""
-        parser = self._shadow_parsers.get(key)
-        if parser is not None:
-            return parser
-        directory, parser_type = self._shadow_parser_specs[key]
-        yaml_files = sorted(directory.glob("*.yaml"))
-        if not yaml_files:
-            raise FileNotFoundError(f"No shadow intent YAML files found in {directory}")
-        parser = parser_type(Intents.from_files(yaml_files))
-        self._shadow_parsers[key] = parser
-        return parser
 
     def match(
         self,
         text: str,
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
-        *,
-        _compatibility_first: bool = False,
     ) -> MatchResult | CommandPlan | None:
-        """Compatibility API backed by the canonical V8 understanding path.
-
-        ``_compatibility_first`` is private and exists solely for the
-        read-only regression report. Production callers can no longer enter
-        a first-match parser through this long-standing public method.
-        """
-        if _compatibility_first:
-            return self._legacy_shadow_match(text, entities, world_model)
+        """Compatibility API: the payload of the canonical ``understand``."""
         return self.understand(text, entities, world_model).payload
 
-    def _legacy_shadow_match(
+
+    def understand(
         self,
         text: str,
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
-    ) -> MatchResult | CommandPlan | None:
-        """Historical matcher retained only for read-only divergence audits."""
-        turn = analyse_turn(text)
-        utterance = turn.utterance
-        if utterance.speech_act is SpeechAct.QUERY:
-            verb_answer = match_verb_state_query(
-                text, entities, turn.temporal_perspective
-            )
-            if verb_answer is not None:
-                return MatchResult(
-                    plan=None,
-                    response_text=verb_answer.response_text,
-                    context_entities=verb_answer.entities,
-                    context_predicate=verb_answer.predicate,
-                    explanation_text=verb_answer.explanation_text,
-                )
-        # Trigger/condition clauses belong to the automation composer and
-        # must never degrade into an immediate direct command. Likewise, a
-        # hypothetical/uncertain or explicitly negated command is not a safe
-        # service call. This one discourse gate protects every parser below.
-        if utterance.speech_act is SpeechAct.AUTOMATION or (
-            utterance.speech_act is SpeechAct.COMMAND
-            and not utterance.safe_to_execute_directly
-        ):
-            return None
-        coordinated_targets = self._match_coordinated_named_targets(
-            text, entities, world_model, turn
+        document: LanguageDocument | None = None,
+        *,
+        context: UnderstandingContext | None = None,
+    ) -> UnderstandingOutcome[MatchResult | CommandPlan]:
+        """Canonical result of one direct turn, with the plan's origin set."""
+        outcome = self._understand(
+            text, entities, world_model, document, context=context
         )
-        if coordinated_targets is not None:
-            return coordinated_targets
-        # An explicit exception is a safety boundary: only the compiler that
-        # resolves and subtracts every named exclusion may accept it.  Never
-        # fall through to a broader legacy group grammar that could silently
-        # execute the command for all entities, including the exception.
-        if has_exclusion_clause(turn.normalized_text):
-            exclusion_result = SemanticCommandCompiler.compile(
-                turn.normalized_text,
-                entities,
-                world_model,
-                turn.semantic_analysis,
-            )
-            if isinstance(exclusion_result, ParseResult):
-                return self._build_match_result(exclusion_result, entities)
-            if isinstance(exclusion_result, ClarificationRequest):
-                return MatchResult(
-                    plan=None,
-                    response_text=_clarification_question(exclusion_result),
-                    clarification=exclusion_result,
-                )
-            return None
-        segments = [segment for segment in _AND_SPLIT_RE.split(text) if segment.strip()]
-        if len(segments) > 1:
-            # ``und`` can connect two commands, but it can also coordinate
-            # locations or exclusions inside one command. Let the shared
-            # semantic compiler prove the latter interpretation before the
-            # established atomic multi-command path splits the utterance.
-            normalized_whole = normalize(text)
-            is_single_coordinated_meaning = (
-                re.search(r"\b(?:außer|ausser|mit\s+ausnahme\s+von)\b", normalized_whole, re.I)
-                is not None
-                or resolve_coordinated_locations(
-                    normalized_whole, entities, world_model
-                ) is not None
-            )
-            if is_single_coordinated_meaning:
-                whole_analysis = analyse_semantics(normalized_whole)
-                whole_result = (
-                    SemanticQueryCompiler.compile(
-                        normalized_whole, entities, world_model, whole_analysis
-                    )
-                    if utterance.speech_act is SpeechAct.QUERY
-                    else None
-                )
-                if whole_result is None and utterance.speech_act is not SpeechAct.QUERY:
-                    whole_result = SemanticCommandCompiler.compile(
-                        normalized_whole, entities, world_model, whole_analysis
-                    )
-                if isinstance(whole_result, ParseResult):
-                    return self._build_match_result(whole_result, entities)
-                if isinstance(whole_result, ClarificationRequest):
-                    return MatchResult(
-                        plan=None,
-                        response_text=_clarification_question(whole_result),
-                        clarification=whole_result,
-                    )
-            multi = self._match_multi(segments, entities, world_model)
-            if (
-                utterance.speech_act is SpeechAct.QUERY
-                and multi is not None
-                and any(command.plan is not None for command in multi.commands)
-            ):
-                return None
-            return multi
+        payload = outcome.payload
+        repeated = _repetition_count(text) if _writes(payload) else None
+        if repeated is not None:
+            # "Schalte das Licht 1000 Mal ein": the count is an instruction
+            # the plan would silently drop. Never execute a reduced command.
+            return replace(outcome, payload=MatchResult(
+                plan=None,
+                response_text=(
+                    f"Wiederholtes Schalten („{repeated}“) führe ich nicht aus. "
+                    "Ich habe nichts ausgeführt."
+                ),
+            ))
+        marked = _mark_inferred_routines(payload, text, entities)
+        if marked is payload:
+            return outcome
+        return replace(outcome, payload=marked)
 
-        text = turn.normalized_text
-        semantic_analysis = turn.semantic_analysis
-        if (
-            semantic_analysis.values(SemanticKind.COMMAND_MARKER)
-            and _UNSAFE_DIRECT_COMMAND_MODIFIER_RE.search(text)
-        ):
-            return None
-        semantic_query = (
-            SemanticQueryCompiler.compile(
-                text, entities, world_model, semantic_analysis
-            )
-            if utterance.speech_act is SpeechAct.QUERY
-            else None
-        )
-        if semantic_query is None:
-            location_query = self._location_property_query_parser.parse(
-                text, entities, semantic_analysis
-            )
-            if isinstance(location_query, LocationQueryFeedback):
-                return None
-            if location_query is not None:
-                return self._build_match_result(location_query, entities)
-        parse_context = create_parse_context(entities, world_model=world_model)
-        result = self._select_shadow_parser(text).parse(text, parse_context)
-        if (
-            utterance.speech_act is SpeechAct.QUERY
-            and isinstance(result, ParseResult)
-            and result.frame.intent not in QUERY_INTENTS
-        ):
-            result = None
-        if isinstance(result, ClarificationRequest):
-            if utterance.speech_act is SpeechAct.QUERY:
-                result = None
-            else:
-                semantic_result = SemanticCommandCompiler.compile(
-                    text, entities, world_model, semantic_analysis
-                )
-                if isinstance(semantic_result, ParseResult):
-                    result = semantic_result
-        if result is None:
-            result = (
-                semantic_query
-                if semantic_query is not None
-                else SemanticQueryCompiler.compile(
-                    text, entities, world_model, semantic_analysis
-                )
-                if utterance.speech_act is SpeechAct.QUERY
-                else SemanticCommandCompiler.compile(
-                    text, entities, world_model, semantic_analysis
-                )
-            )
-        if result is None:
-            return None
-        if isinstance(result, ClarificationRequest):
-            return MatchResult(
-                plan=None, response_text=_clarification_question(result), clarification=result,
-            )
-        return self._build_match_result(result, entities)
-
-    def understand(
+    def _understand(
         self,
         text: str,
         entities: list[EntitySnapshot],
@@ -1275,9 +917,7 @@ class NluEngine:
             context=context,
         )
         v7_result = self._interpreted_match_result(interpreted, entities)
-        if v7_result is None and not supplied_document and re.search(
-            r"\b(?:im|in\s+der|in\s+dem|am|beim)\b", text, re.I
-        ):
+        if v7_result is None and not supplied_document and has_locative_cue(text):
             expanded_document = analyse_language(text, entities)
             if any(
                 variant.source == "registry_compound"
@@ -1402,6 +1042,7 @@ class NluEngine:
         *,
         source_area_id: str | None = None,
         context_area_id: str | None = None,
+        routine_bindings: Mapping[str, str] | None = None,
     ) -> MatchResult | CommandPlan | None:
         """Ground a need statement ("Mir ist kalt") in operations.
 
@@ -1413,9 +1054,6 @@ class NluEngine:
         if utterance.speech_act in {
             SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION, SpeechAct.CORRECTION,
         } or utterance.modality is Modality.HYPOTHETICAL:
-            return None
-        actions = document.semantics.values(SemanticKind.ACTION) - {"close"}
-        if utterance.speech_act is SpeechAct.COMMAND and actions:
             return None
         words = [token.canonical for token in document.tokens if token.is_word]
         meaning = interpret_need(
@@ -1435,9 +1073,23 @@ class NluEngine:
                     place = lexicon.place_for_area(area_id)
                     if place is not None:
                         break
-        outcome = compile_need(meaning, entities, place, document.source_text)
+        if place is None and any(mention.place.kind is PlaceKind.HERE for mention in mentions):
+            # "hier"/"da" only from the satellite's area or a place named in
+            # the conversation; never guessed from the house (7.3.3, S6).
+            return MatchResult(
+                plan=None,
+                response_text="In welchem Raum? Ohne Sprachsatellit weiß ich nicht, wo „hier“ ist.",
+            )
+        outcome = compile_need(
+            meaning, entities, place, document.source_text, routine_bindings=routine_bindings
+        )
+        routine = {
+            "routine_key": outcome.routine_key,
+            "binding_confirmed": outcome.bound,
+            "routine_candidates": tuple(item.entity_id for item in outcome.candidates),
+        }
         if outcome.message is not None and not outcome.results:
-            return MatchResult(plan=None, response_text=outcome.message)
+            return MatchResult(plan=None, response_text=outcome.message, **routine)
         rendered: list[MatchResult] = []
         for parsed in outcome.results:
             item = self._build_match_result(parsed, entities)
@@ -1446,14 +1098,26 @@ class NluEngine:
             rendered.append(item)
         if not rendered:
             return None
+        proposal = proposal_from_reason(outcome.reason)
+        rendered = [replace(item, origin=outcome.origin, **routine) for item in rendered]
         if outcome.confirm is not None:
-            return CommandPlan(tuple(rendered), confirmation_text=outcome.confirm)
+            return CommandPlan(
+                tuple(rendered), confirmation_text=outcome.confirm, origin=outcome.origin,
+                **routine,
+            )
         if len(rendered) == 1:
-            return replace(rendered[0], response_text=outcome.reason or rendered[0].response_text)
+            return replace(
+                rendered[0],
+                response_text=outcome.reason or rendered[0].response_text,
+                proposal_text=proposal,
+            )
         first, *rest = rendered
         return CommandPlan(
             (replace(first, response_text=outcome.reason or first.response_text),
-             *(replace(item, response_text="") for item in rest))
+             *(replace(item, response_text="") for item in rest)),
+            origin=outcome.origin,
+            proposal_text=proposal,
+            **routine,
         )
 
     def understand_release(
@@ -1753,62 +1417,6 @@ class NluEngine:
                 changed_ids.update(ids)
         return CommandPlan(tuple(results))
 
-    def compare_understanding_pipelines(
-        self,
-        text: str,
-        entities: list[EntitySnapshot],
-        world_model: WorldModel | None = None,
-        document: LanguageDocument | None = None,
-    ) -> ShadowComparison:
-        """Compare legacy and fully compiled V8 without executing either.
-
-        This explicit diagnostic entry point keeps the production
-        ``understand()`` fast: registry resolution and semantic compilation
-        are only forced for the shadow side when a caller asks for a report.
-        Both payloads are immutable plans or read-only answers; neither path
-        invokes a Home Assistant service.
-        """
-        document = document or analyse_language(text, entities)
-        interpreted = SemanticInterpreter.interpret(
-            document,
-            entities,
-            world_model,
-            compile_result=True,
-            resolve_registry=True,
-        )
-        legacy_result = self._legacy_shadow_match(text, entities, world_model)
-        v7_result = self._interpreted_match_result(interpreted, entities)
-        if (
-            document.utterance.speech_act is SpeechAct.COMMAND
-            and not document.utterance.safe_to_execute_directly
-        ):
-            legacy_result = None
-            v7_result = None
-        legacy_outcome = self._direct_understanding_outcome(
-            text,
-            document,
-            interpreted,
-            legacy_result,
-            entities,
-            (
-                UnderstandingAuthority.LEGACY
-                if legacy_result is not None
-                else UnderstandingAuthority.NONE
-            ),
-        )
-        v7_outcome = self._direct_understanding_outcome(
-            text,
-            document,
-            interpreted,
-            v7_result,
-            entities,
-            (
-                UnderstandingAuthority.LEGACY_SHADOW
-                if v7_result is not None
-                else UnderstandingAuthority.NONE
-            ),
-        )
-        return compare_outcomes(legacy_outcome, v7_outcome)  # type: ignore[arg-type]
 
     def _interpreted_match_result(
         self,
@@ -2182,29 +1790,6 @@ class NluEngine:
             route="automation_no_match",
         )
 
-    def _match_coordinated_named_targets(
-        self,
-        text: str,
-        entities: list[EntitySnapshot],
-        world_model: WorldModel | None,
-        turn: SemanticTurn,
-    ) -> CommandPlan | None:
-        """Distribute one direct action over explicitly coordinated names."""
-        plan = build_compositional_plan(
-            turn,
-            entities,
-            index=(world_model.entity_index if world_model is not None else None),
-        )
-        if plan is None:
-            return None
-        rendered: list[MatchResult] = []
-        for selected in plan.targets:
-            candidate = project_target(plan, selected)
-            result = self._legacy_shadow_match(candidate, entities, world_model)
-            if not isinstance(result, MatchResult) or result.plan is None:
-                return None
-            rendered.append(result)
-        return CommandPlan(tuple(rendered))
 
     def failure_feedback(self, text: str, entities: list[EntitySnapshot] | None = None) -> str | None:
         """Best-effort explanation after every deterministic parser failed."""
@@ -2251,11 +1836,7 @@ class NluEngine:
                 or _BARE_PERCENT_RE.search(normalized)
                 or _HALF_POSITION_RE.search(normalized)
             ):
-                percentage_parser = self._get_shadow_parser("percentage")
-                percentage_feedback = percentage_parser.failure_feedback(
-                    normalized,
-                    create_parse_context(entities),
-                )
+                percentage_feedback = group_percentage_feedback(normalized, entities)
                 if percentage_feedback is not None:
                     return percentage_feedback
         if _AUTOMATION_TRIGGER_RE.search(text):
@@ -2264,7 +1845,7 @@ class NluEngine:
                 "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen.",
             )
         if re.search(
-            r"\b(schalte|mach|fahre|öffne|schließe|stelle|setze|starte|aktiviere|drehe)\b",
+            r"\b(schalte|mach|fahre?|öffne|schließe|stelle?|setze|starte|aktiviere|drehe?|dimme?)\b",
             text,
             re.IGNORECASE,
         ):
@@ -2311,11 +1892,12 @@ class NluEngine:
                         {"entity_ids": tuple(entity.entity_id for entity in candidates)},
                     )
             if mentioned:
-                names = ", ".join(entity.friendly_name for entity in mentioned)
                 return UnderstandingFeedback(
                     ParseFailureReason.UNSUPPORTED_CAPABILITY,
-                    f"Ich habe {names} gefunden, aber die gewünschte Funktion "
-                    "ist für diese Geräte nicht eindeutig unterstützt.",
+                    " ".join(
+                        describe_abilities(entity.friendly_name, entity.capabilities)
+                        for entity in mentioned[:3]
+                    ),
                     {"entity_ids": tuple(entity.entity_id for entity in mentioned)},
                 )
             return UnderstandingFeedback(
@@ -2332,70 +1914,6 @@ class NluEngine:
             )
         return None
 
-    def _match_multi(
-        self, segments: list[str], entities: list[EntitySnapshot], world_model: WorldModel | None = None
-    ) -> CommandPlan | None:
-        """Match every "und"-joined segment independently, through the exact
-        same ``match()`` entry point (recursive - a segment never contains
-        "und" itself once split, so this always bottoms out in the
-        single-command branch above). See ``CommandPlan``'s docstring for
-        the "validate everything first, execute nothing on any failure"
-        contract this enforces by only ever returning a fully-populated
-        ``CommandPlan`` or ``None``, never something in between.
-        """
-        results: list[MatchResult] = []
-        for segment in segments:
-            result = self._legacy_shadow_match(segment, entities, world_model)
-            if (
-                result is None
-                and results
-                and results[-1].command is not None
-                and results[-1].plan is not None
-            ):
-                previous = results[-1].command
-                # The splitter removes the conjunction. Re-add only its
-                # discourse role and let the established follow-up grammar
-                # prove whether this fragment can inherit the prior action.
-                result = self.match_command_followup(
-                    f"und {segment.strip()}",
-                    entities,
-                    ConversationContext(
-                        last_command=previous,
-                        last_entities=previous.entities,
-                        last_area=previous.area,
-                        pending_clarification=None,
-                    ),
-                )
-            if (
-                not isinstance(result, MatchResult)
-                or result.clarification is not None
-                or result.command is None
-            ):
-                return None
-            results.append(result)
-        actionable_commands = tuple(
-            result.command
-            for result in results
-            if result.plan is not None and result.command is not None
-        )
-        query_commands = tuple(
-            result.command
-            for result in results
-            if result.plan is None and result.command is not None
-        )
-        action_ids = {
-            entity.entity_id
-            for command in actionable_commands
-            for entity in command.entities
-        }
-        query_ids = {
-            entity.entity_id
-            for command in query_commands
-            for entity in command.entities
-        }
-        if action_ids & query_ids:
-            return None
-        return CommandPlan(commands=tuple(results))
 
     def match_followup(self, text: str, context: ConversationContext | None) -> MatchResult | None:
         """Complete an elliptical follow-up sentence that omits its own
@@ -3076,13 +2594,11 @@ class NluEngine:
             return None
 
         normalized = normalize(text)
-        correction = re.match(
-            r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+(?P<location>.+?)[?.!]*$",
-            normalized,
-            re.IGNORECASE,
-        )
-        if correction is not None:
-            normalized = f"Und im {correction.group('location').strip()}?"
+        meant = _MEANT_PREFIX_RE.match(normalized)
+        meant_rest = normalized[meant.end():] if meant is not None else ""
+        if meant_rest:
+            location = meant_rest.rstrip("?.!") or meant_rest[:1]
+            normalized = f"Und im {location.strip()}?"
         else:
             natural = re.match(
                 r"^wie\s+sieht\s+es\s+(?P<location>oben|unten|(?:im|in der|in dem)\s+.+?)\s+aus[?.!]*$",
@@ -4201,10 +3717,6 @@ class NluEngine:
         self._relative_time_command_parser.decompose(
             "in fünf Minuten schalte das Licht ein"
         )
-        # understanding_feedback() consults the percentage grammar for
-        # explanations during a live turn; load its YAML here, off the event
-        # loop, instead of lazily inside the turn (F18).
-        self._get_shadow_parser("percentage")
 
     def match_immediate_notification(self, text: str) -> NotificationClause | None:
         """An explicit notification to be sent *now* ("Schick mir eine
@@ -4825,12 +4337,7 @@ class NluEngine:
         were found: selecting one thermostat must retain the 22-degree value.
         """
         normalized = normalize(reply_text)
-        normalized = re.sub(
-            r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+",
-            "",
-            normalized,
-            flags=re.IGNORECASE,
-        ).strip()
+        normalized = _MEANT_PREFIX_RE.sub("", normalized).strip()
 
         name_resolved = resolve_entity(normalized, list(clarification.candidates))
         entity = name_resolved.entity if name_resolved.status is ResolveStatus.OK else None
@@ -4846,6 +4353,16 @@ class NluEngine:
             return None
 
         matched = [entity]
+        pending_parameters = dict(clarification.pending_parameters)
+        if "relative_step" in pending_parameters:
+            # "um 20 Prozent runter" asked which cover: the step applies to
+            # the chosen device's current position (7.6.1).
+            from .nlu.ontology_compiler import apply_relative_step
+
+            stepped = apply_relative_step(entity, float(str(pending_parameters["relative_step"])))
+            if stepped is None or stepped[0] != (clarification.pending_intent,):
+                return None
+            pending_parameters = dict(stepped[1])
         spec = INTENTS.get(clarification.pending_intent)
         if spec is not None:
             area = (
@@ -4863,7 +4380,7 @@ class NluEngine:
                             domain=entity.domain,
                         ),
                         area=area,
-                        parameters=dict(clarification.pending_parameters),
+                        parameters=pending_parameters,
                         source_text=reply_text,
                     ),
                     resolved_entities=matched,
@@ -4892,7 +4409,7 @@ class NluEngine:
                             domain=entity.domain,
                         ),
                         area=area,
-                        parameters=dict(clarification.pending_parameters),
+                        parameters=pending_parameters,
                         source_text=reply_text,
                     ),
                     resolved_entities=matched,

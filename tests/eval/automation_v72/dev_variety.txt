@@ -43,8 +43,8 @@ auto: num(fan.schlafzimmer).fan_percentage==25 => notify(me) :: Sag mir Bescheid
 auto: time=19:00 => notify(me) :: Schick mir täglich um 19 Uhr eine Nachricht.
 auto: time=08:30 ; if: weekday=sat,sun => notify(me) :: Benachrichtige mich am Wochenende um 8:30 Uhr.
 auto: time=07:00 ; if: weekday=fri => notify(me) :: Schick mir jeden Freitag um 7 Uhr eine Nachricht.
-auto: sun=sunset+30 => notify(me) :: Sag mir 30 Minuten nach Sonnenuntergang Bescheid.
-auto: sun=sunrise => notify(me) :: Schick mir zum Sonnenaufgang eine Nachricht.
+auto: sun=sunset+30 => notify(me) :: Sag mir 30 Minuten nach Sonnenuntergang Bescheid. >> Jeden Tag.
+auto: sun=sunrise => notify(me) :: Schick mir zum Sonnenaufgang eine Nachricht. >> Jeden Tag.
 ## presence_more
 auto: arrive(person.julia) => notify(me) :: Gib mir Bescheid, sobald Julia heimkommt.
 auto: leave(person.philipp) => notify(me) :: Schick mir eine Nachricht, wenn ich weggehe.

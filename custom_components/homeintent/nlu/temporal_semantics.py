@@ -95,6 +95,12 @@ def analyse_temporal_semantics(
             # Device directions ("nach oben fahren") and the presence
             # phrase "nach Hause" are not temporal AFTER scopes.
             relation = None
+        if word == "vor" and all(
+            not getattr(token, "is_word", True) for token in tokens[index + 1:]
+        ):
+            # Sentence-final "vor" is the particle of a separable verb
+            # ("Bereite den Filmabend vor"), never "before" (7.6.1).
+            relation = None
         if (
             word == "bis"
             and index + 1 < len(words)

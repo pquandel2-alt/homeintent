@@ -24,6 +24,12 @@
           "custom_aliases": "Zusätzliche Sprach-Aliase (Alias = entity.id, eine Regel pro Zeile)",
           "confirmation_level": "Ab welcher Risikostufe bestätigen",
           "max_action_targets": "Maximale Ziele pro Aktion",
+          "effect_graph_unknown": "Skript-/Szenenschritt, dessen Wirkung nicht prüfbar ist (deny: ablehnen, confirm: nur mit Bestätigung)",
+          "shadow_mode": "Shadow-Vergleich neuer Sprachpfade (off: aus, log: nur protokollieren, nie ausführen)",
+          "implicit_action_level": "Indirekte Aussagen und abgeleitete Routinen (understand_only: nur verstehen, propose: vorschlagen, low_risk_auto: harmlose direkt, bound_routines_auto: auch gebundene Routinen direkt)",
+          "trace_limit": "Ausführungsprotokoll: gespeicherte Ausführungen",
+          "trace_days": "Ausführungsprotokoll: Aufbewahrung in Tagen",
+          "trace_store_text": "Ausführungsprotokoll: gekürzten Satz speichern (aus: nur Hash)",
           "allow_non_admin_critical": "Kritische Aktionen für authentifizierte Nicht-Administratoren erlauben",
           "allow_non_admin_automations": "Automationserstellung für Nicht-Administratoren erlauben",
           "context_ttl_seconds": "Dialogkontext in Sekunden",
@@ -133,6 +139,11 @@
     "delete_monitor_goal": {
       "name": "Monitor-Ziel löschen",
       "description": "Löscht ein persistentes HomeIntent-Monitor-Ziel anhand seiner Goal-ID."
+    },
+    "reset_test_state": {
+      "name": "Testzustand zurücksetzen",
+      "description": "Nur für Administratoren: vergisst Gesprächskontext, offene Rückfragen und den Ausführungs-Trace; gelernte Bindungen nur auf Wunsch.",
+      "fields": {"include_bindings": {"name": "Gelernte Bindungen löschen", "description": "Löscht auch bestätigte Routinen, Aliasse und Standardauswahlen."}}
     }
   },
   "issues": {

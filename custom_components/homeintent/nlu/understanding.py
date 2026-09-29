@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Generic, Mapping, Sequence, TypeVar, cast
+from typing import Callable, Generic, Mapping, Sequence, TypeVar, cast
 
 from .parse_outcome import ParseFailureReason
 from .semantic_utterance import SpeechAct
@@ -308,3 +308,239 @@ def _payload_signature(payload: object | None) -> object | None:
         tuple(getattr(entity, "entity_id", None) for entity in entities),
         getattr(payload, "response_text", None),
     )
+
+
+# ---------------------------------------------------------------------------
+# General shadow infrastructure (7.3.4): behaviour signatures and drift.
+#
+# ``compare_outcomes`` above compares two understanding outcomes structurally.
+# The functions below compare the *behaviour* two pipelines would cause, so
+# every migration (target resolution, arbitration, language islands) is
+# judged by one rule set.  A candidate never executes anything: it only
+# produces a payload whose signature is logged.
+
+
+class DriftClass(Enum):
+    """Result of comparing an active and a candidate behaviour."""
+
+    EQUIVALENT = auto()
+    REFINEMENT = auto()  # same effect, different reasoning/wording
+    BEHAVIOR_CHANGE = auto()  # different effect within the same kind of device
+    SAFETY_DRIFT = auto()  # other kind/domain, more targets, lower risk,
+    # dropped confirmation, or a write where the active pipeline wrote nothing
+
+
+@dataclass(frozen=True)
+class BehaviorSignature:
+    """What a payload would do; no parser internals, no Home Assistant."""
+
+    speech_act: str = ""
+    writes: bool = False
+    operations: frozenset[str] = frozenset()
+    domains: frozenset[str] = frozenset()
+    genera: frozenset[str] = frozenset()
+    targets: frozenset[str] = frozenset()
+    place: str | None = None
+    quantity: int = 0
+    origin: str = "explicit_command"
+    risk: int = 0
+    confirmation: bool = False
+    plan: tuple[object, ...] = ()
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "speech_act": self.speech_act,
+            "writes": self.writes,
+            "operations": sorted(self.operations),
+            "domains": sorted(self.domains),
+            "genera": sorted(self.genera),
+            "targets": sorted(self.targets),
+            "place": self.place,
+            "quantity": self.quantity,
+            "origin": self.origin,
+            "risk": self.risk,
+            "confirmation": self.confirmation,
+        }
+
+
+def _plans_of(payload: object | None) -> list[object]:
+    if payload is None:
+        return []
+    commands = getattr(payload, "commands", None)
+    if commands is not None:
+        return [plan for item in commands if (plan := getattr(item, "plan", None)) is not None]
+    plan = getattr(payload, "plan", None)
+    return [plan] if plan is not None else []
+
+
+def behavior_signature(
+    payload: object | None,
+    *,
+    speech_act: str = "",
+    place: str | None = None,
+    genera: frozenset[str] = frozenset(),
+    risk_of: "Callable[[object], int] | None" = None,
+    confirmation_of: "Callable[[object], bool] | None" = None,
+    detail: str = "",
+) -> BehaviorSignature:
+    """Behaviour of a ``MatchResult``/``CommandPlan``-like payload.
+
+    ``risk_of``/``confirmation_of`` are injected by the caller (they need the
+    risk classification and policy, which this module must not import).
+    """
+    plans = _plans_of(payload)
+    targets: set[str] = set()
+    operations: set[str] = set()
+    domains: set[str] = set()
+    frozen: list[object] = []
+    for plan in plans:
+        raw = getattr(plan, "entity_id", ())
+        ids = (raw,) if isinstance(raw, str) else tuple(cast(Sequence[str], raw))
+        targets.update(ids)
+        domains.update(item.split(".", 1)[0] for item in ids)
+        operations.add(f"{getattr(plan, 'domain', '')}.{getattr(plan, 'service', '')}")
+        frozen.append(_payload_signature_plan(plan))
+    origin = getattr(payload, "origin", None)
+    origin_value = str(getattr(origin, "value", origin or "explicit_command"))
+    return BehaviorSignature(
+        speech_act=speech_act,
+        writes=bool(plans),
+        operations=frozenset(operations),
+        domains=frozenset(domains),
+        genera=genera,
+        targets=frozenset(targets),
+        place=place,
+        quantity=len(targets),
+        origin=origin_value,
+        risk=max((risk_of(plan) for plan in plans), default=0) if risk_of else 0,
+        confirmation=(
+            any(confirmation_of(plan) for plan in plans) if confirmation_of else False
+        ) or bool(getattr(payload, "confirmation_text", None)),
+        plan=tuple(frozen),
+        detail=detail,
+    )
+
+
+def _payload_signature_plan(plan: object) -> object:
+    return (
+        getattr(plan, "domain", None),
+        getattr(plan, "service", None),
+        _freeze(getattr(plan, "entity_id", None)),
+        _freeze(getattr(plan, "data", {})),
+    )
+
+
+def classify_drift(
+    active: BehaviorSignature, candidate: BehaviorSignature
+) -> tuple[DriftClass, tuple[str, ...]]:
+    """Classify how the candidate's behaviour differs from the active one."""
+    reasons: list[str] = []
+    if candidate.writes and not active.writes:
+        reasons.append("write_instead_of_non_write")
+    if candidate.writes and active.writes:
+        if not candidate.targets <= active.targets:
+            reasons.append("more_or_other_targets")
+        if not candidate.domains <= active.domains:
+            reasons.append("domain_change")
+        if active.genera and candidate.genera and not candidate.genera & active.genera:
+            reasons.append("genus_change")
+        if candidate.risk < active.risk:
+            reasons.append("lower_risk")
+        if active.confirmation and not candidate.confirmation:
+            reasons.append("confirmation_dropped")
+    if reasons:
+        return DriftClass.SAFETY_DRIFT, tuple(reasons)
+    same_effect = (
+        candidate.writes == active.writes
+        and candidate.plan == active.plan
+        and candidate.confirmation == active.confirmation
+        and candidate.risk == active.risk
+    )
+    if same_effect and candidate.speech_act == active.speech_act and candidate.detail == active.detail:
+        return DriftClass.EQUIVALENT, ()
+    if same_effect:
+        return DriftClass.REFINEMENT, ("same_effect_different_reasoning",)
+    changes: list[str] = []
+    if candidate.writes != active.writes:
+        changes.append("non_write_instead_of_write")
+    if candidate.plan != active.plan:
+        changes.append("different_plan")
+    if candidate.confirmation != active.confirmation:
+        changes.append("confirmation_added")
+    if candidate.risk != active.risk:
+        changes.append("higher_risk")
+    return DriftClass.BEHAVIOR_CHANGE, tuple(changes)
+
+
+@dataclass(frozen=True)
+class ShadowRecord:
+    text_hash: str
+    source: str
+    drift: DriftClass
+    reasons: tuple[str, ...]
+    active: BehaviorSignature
+    candidate: BehaviorSignature
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "text_hash": self.text_hash,
+            "source": self.source,
+            "drift": self.drift.name,
+            "reasons": list(self.reasons),
+            "active": self.active.to_dict(),
+            "candidate": self.candidate.to_dict(),
+        }
+
+
+def text_hash(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(" ".join(text.split()).casefold().encode()).hexdigest()[:12]
+
+
+@dataclass
+class ShadowReport:
+    """Offline (CI) or live comparison of one candidate against the active pipeline."""
+
+    name: str
+    records: list[ShadowRecord] = field(default_factory=lambda: cast(list[ShadowRecord], []))
+    limit: int | None = None
+
+    def add(
+        self, text: str, active: BehaviorSignature, candidate: BehaviorSignature, *, source: str = ""
+    ) -> ShadowRecord:
+        drift, reasons = classify_drift(active, candidate)
+        record = ShadowRecord(text_hash(text), source, drift, reasons, active, candidate)
+        self.records.append(record)
+        if self.limit is not None and len(self.records) > self.limit:
+            del self.records[: len(self.records) - self.limit]
+        return record
+
+    def counts(self) -> dict[str, int]:
+        result = {item.name: 0 for item in DriftClass}
+        for record in self.records:
+            result[record.drift.name] += 1
+        return result
+
+    @property
+    def safety_drift(self) -> tuple[ShadowRecord, ...]:
+        return tuple(record for record in self.records if record.drift is DriftClass.SAFETY_DRIFT)
+
+    @property
+    def switch_allowed(self) -> bool:
+        """SAFETY_DRIFT blocks every switch-over."""
+        return not self.safety_drift
+
+    def to_dict(self, *, examples: int = 20) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "total": len(self.records),
+            "counts": self.counts(),
+            "switch_allowed": self.switch_allowed,
+            "safety_drift": [record.to_dict() for record in self.safety_drift[:examples]],
+            "behavior_changes": [
+                record.to_dict() for record in self.records
+                if record.drift is DriftClass.BEHAVIOR_CHANGE
+            ][:examples],
+        }

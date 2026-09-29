@@ -369,13 +369,13 @@ def test_scenario_8_ui_forget_is_immediately_visible_to_voice(tmp_path, monkeypa
         await learn_reliability(env, successes=6, failures=0)
         agent = _voice_agent(env, monkeypatch)
         before = await _say(agent, "Was hast du gelernt?")
-        assert "reliability" in before
+        assert "Zuverlässigkeit" in before
         assert before.endswith("im HomeIntent Learning Center.")
         ref = model_ref("reliability:LIGHT_TURN_ON:light.kitchen")
         result, error = await env.call(ADMIN, "models/forget", ref=ref)
         assert error is None and result["forgotten"]
         after = await _say(agent, "Was hast du gelernt?", conversation_id="lc2")
-        assert "reliability" not in after
+        assert "Zuverlässigkeit" not in after
         # Retained old evidence cannot resurrect the model immediately.
         await env.manager.async_observe_goal_run(goal_run("late", user_id=None, at=NOW - timedelta(hours=3)))
         assert await env.registry.async_get("reliability:LIGHT_TURN_ON:light.kitchen") is None

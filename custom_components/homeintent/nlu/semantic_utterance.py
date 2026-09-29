@@ -9,10 +9,11 @@ analysis here only identifies the kind and safety shape of an utterance.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import Mapping
 
-from .normalize import normalize
+from .normalize import is_polite_request, normalize
 from .semantic_catalog import (
     ACTION_EXPRESSIONS,
     COMMAND_MARKER_EXPRESSIONS,
@@ -63,11 +64,50 @@ class ClauseRole(Enum):
     ACTION = auto()
 
 
+class TimeKind(Enum):
+    """When a clause is meant to take effect (7.5.0)."""
+
+    NOW = auto()
+    ONCE = auto()  # a later, one-time moment
+    RECURRING = auto()
+    UNSPECIFIED = auto()  # later, once or recurring not said
+
+
+@dataclass(frozen=True)
+class TargetMeaning:
+    """Registry-free description of what a clause is about (7.5.0)."""
+
+    genera: tuple[str, ...] = ()
+    place: str | None = None
+    quantity: str = "ONE"
+    features: frozenset[str] = frozenset()
+    reference: str | None = None  # "es", "dort", "die andere" ...
+    explicit: tuple[str, ...] = ()  # entity ids named by registry name
+
+
 @dataclass(frozen=True)
 class MeaningClause:
+    """One clause of the shared, HA-free meaning layer.
+
+    ``text``/``role``/``connector`` are the historic shape; since 7.5.0 the
+    clause also carries its grounded meaning (filled by
+    ``nlu.meaning_ir.ground_meaning``). Domain models (``SemanticFrame``,
+    ``CommandPlan``, ``AutomationModel``, needs, goals) are derived from it;
+    the IR itself never calls a service.
+    """
+
     text: str
     role: ClauseRole
     connector: str | None = None
+    operation: frozenset[str] = frozenset()
+    targets: tuple[TargetMeaning, ...] = ()
+    value: Mapping[str, object] = field(default_factory=dict)
+    time: TimeKind = TimeKind.NOW
+    conditions: tuple[str, ...] = ()
+    exceptions: tuple[str, ...] = ()
+    origin: str | None = None
+    residue: tuple[str, ...] = ()
+    evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -409,7 +449,7 @@ def analyse_utterance(text: str) -> SemanticUtterance:
         # Natural-shell normalization intentionally removes constructions
         # such as "ich hätte gerne".  Modality is discourse information, so
         # classify it from both original and normalized text.
-        modality=_modality(f"{text} {normalized}"),
+        modality=Modality.POLITE if is_polite_request(text) else _modality(f"{text} {normalized}"),
         polarity=(Polarity.NEGATIVE if _NEGATION_RE.search(normalized) else Polarity.POSITIVE),
         clauses=_clauses(normalized, speech_act),
     )

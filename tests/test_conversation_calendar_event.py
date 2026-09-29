@@ -15,7 +15,7 @@ import _ha_stub  # noqa: E402
 _ha_stub.install()
 
 import homeintent.conversation as ha_conversation  # noqa: E402
-import homeintent.management_dialogs as management_dialogs  # noqa: E402
+import homeintent.controllers.productivity as management_dialogs  # noqa: E402
 from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeintent.calendar_management import CalendarEventSummary  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402

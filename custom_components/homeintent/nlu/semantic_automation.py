@@ -11,9 +11,9 @@ from .semantic_lexicon import SemanticKind, analyse_semantics
 from .semantic_location import resolve_semantic_location
 from .semantic_state import SemanticState
 from ..entities import normalize_for_compare
+from .locative import has_locative_cue
 
 
-_LOCATION_CUE_RE = re.compile(r"\b(?:im|in\s+der|in\s+dem|am|beim)\s+", re.I)
 
 
 def compile_state_predicate(
@@ -55,7 +55,7 @@ def compile_state_predicate(
         return None
 
     location = resolve_semantic_location(text, context.entities)
-    if location is None and _LOCATION_CUE_RE.search(text):
+    if location is None and has_locative_cue(text, followed=True):
         return None
     location_text = location[0] if location else None
     area_id = location[1] if location else None

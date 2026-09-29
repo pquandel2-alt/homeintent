@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from ..areas import AreaResolutionStatus, resolve_area_scored
 from ..entities import EntitySnapshot, generate_aliases, normalize_for_compare
+from .place_model import level_for_keyword, level_is_position
 from ..floors import (
     FloorResolutionStatus,
     FloorResolveStatus,
@@ -16,6 +17,7 @@ from ..floors import (
     resolve_floor_scored,
 )
 from .word_cues import has_word
+from .locative import has_locative_cue
 
 if TYPE_CHECKING:
     from ..world_model import WorldModel
@@ -98,7 +100,7 @@ def _inside_entity_name(
 
 def has_explicit_location_cue(text: str, entities: list[EntitySnapshot]) -> bool:
     """Whether text contains a locative or standalone level direction."""
-    if re.search(r"\b(?:im|in\s+der|in\s+dem|am|beim)\s+", text, re.I):
+    if has_locative_cue(text, followed=True):
         return True
     return any(
         not _inside_entity_name(text, match.start(), match.end(), entities)
@@ -191,7 +193,8 @@ def resolve_semantic_location(
     level = next(
         (
             match for match in _LEVEL_CUE_RE.finditer(text)
-            if not _inside_entity_name(
+            if not level_is_position(text, match.start(), match.end())
+            and not _inside_entity_name(
                 text,
                 match.start(),
                 match.end(),
@@ -214,11 +217,11 @@ def resolve_semantic_location(
             )
             if not known_levels:
                 return None
-            extreme = (
-                max(known_levels)
-                if level.group(0).casefold() == "oben"
-                else min(known_levels)
+            extreme = level_for_keyword(
+                "upper" if level.group(0).casefold() == "oben" else "ground", known_levels
             )
+            if extreme is None:
+                return None
             matching = tuple(
                 floor for floor in world_model.floors if floor.level == extreme
             )

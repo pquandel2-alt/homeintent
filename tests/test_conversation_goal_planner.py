@@ -323,7 +323,9 @@ def test_slow_plan_verification_answers_at_once_and_reports_only_failure(
     from datetime import timedelta
 
     entity._runtime_data.effect_monitor.timeout = timedelta(milliseconds=300)
-    monkeypatch.setattr(ha_conversation, "_PLAN_REPLY_BUDGET_SECONDS", 0.05)
+    import homeintent.controllers.goals as goal_controller
+
+    monkeypatch.setattr(goal_controller, "_PLAN_REPLY_BUDGET_SECONDS", 0.05)
     # The lights never report "off": verification must fail in the background.
     monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: LIGHTS)
 

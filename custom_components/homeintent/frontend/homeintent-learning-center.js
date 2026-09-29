@@ -267,6 +267,27 @@ const STRINGS = {
     to: (name) => `→ ${name}`,
     toYou: "→ dich",
     activityEmpty: "Noch keine proaktive Aktivität aufgezeichnet.",
+    bindingsTitle: "Gelernte Zuordnungen",
+    bindingsEmpty: "Noch keine bestätigten Zuordnungen. HomeIntent speichert sie erst nach deinem „Ja“.",
+    bindingState: { valid: "aktiv", not_exposed: "wirkungslos: Ziel nicht freigegeben", target_missing: "wirkungslos: Ziel fehlt" },
+    bindingScope: { household: "Haushalt", user: "nur für dich" },
+    bindingUses: (n) => (n === 1 ? "1-mal genutzt" : `${n}-mal genutzt`),
+    bindingRemove: "Vergessen",
+    implicitTitle: "Indirekte Aussagen und abgeleitete Routinen",
+    implicitLevels: {
+      understand_only: "Nur verstehen, nichts ausführen",
+      propose: "Vorschlagen und nachfragen (Standard)",
+      low_risk_auto: "Harmloses direkt ausführen, sonst nachfragen",
+      bound_routines_auto: "Zusätzlich bestätigte Routinen direkt ausführen",
+    },
+    shadowTitle: "Shadow-Vergleich neuer Sprachpfade",
+    shadowOff: "Shadow-Modus ist aus.",
+    shadowRow: (name, total, safety) => `${name}: ${total} Vergleiche, ${safety} Sicherheitsabweichungen`,
+    tracesTitle: "Was hat HomeIntent ausgelöst?",
+    tracesEmpty: "HomeIntent hat noch nichts ausgelöst.",
+    tracesUnattended: "ohne Rückfrage (Daueranweisung oder proaktiv)",
+    tracesVia: (via, step) => (step ? `über ${via}, Schritt „${step}“` : `über ${via}`),
+    tracesFollowups: "Kann ausgelöst haben:",
     loadMore: "Weitere laden",
     tombstonesTitle: "Vergessen & unterdrückt",
     tombstonesShow: "Anzeigen",
@@ -496,6 +517,27 @@ const STRINGS = {
     to: (name) => `→ ${name}`,
     toYou: "→ you",
     activityEmpty: "No proactive activity recorded yet.",
+    bindingsTitle: "Learned bindings",
+    bindingsEmpty: "No confirmed bindings yet. HomeIntent stores them only after your “yes”.",
+    bindingState: { valid: "active", not_exposed: "inactive: target not exposed", target_missing: "inactive: target missing" },
+    bindingScope: { household: "household", user: "only you" },
+    bindingUses: (n) => (n === 1 ? "used once" : `used ${n} times`),
+    bindingRemove: "Forget",
+    implicitTitle: "Implicit statements and inferred routines",
+    implicitLevels: {
+      understand_only: "Only understand, never act",
+      propose: "Propose and ask (default)",
+      low_risk_auto: "Run harmless actions directly, otherwise ask",
+      bound_routines_auto: "Also run confirmed routines directly",
+    },
+    shadowTitle: "Shadow comparison of new language paths",
+    shadowOff: "Shadow mode is off.",
+    shadowRow: (name, total, safety) => `${name}: ${total} comparisons, ${safety} safety drifts`,
+    tracesTitle: "What did HomeIntent trigger?",
+    tracesEmpty: "HomeIntent has not triggered anything yet.",
+    tracesUnattended: "without asking (standing permission or proactive)",
+    tracesVia: (via, step) => (step ? `via ${via}, step “${step}”` : `via ${via}`),
+    tracesFollowups: "May have triggered:",
     loadMore: "Load more",
     tombstonesTitle: "Forgotten & suppressed",
     tombstonesShow: "Show",
@@ -573,6 +615,9 @@ class HomeIntentLearningCenter extends HTMLElement {
     this._mutes = null;
     this._history = null;
     this._historyCursor = null;
+    this._traces = null;
+    this._bindings = null;
+    this._shadow = null;
     this._tombstones = null;
     this._error = null;
     this._toast = null;
@@ -785,14 +830,23 @@ class HomeIntentLearningCenter extends HTMLElement {
           }
         }
       } else if (view.tab === "autonomy") {
-        const [permissions, mutes] = await Promise.all([this._call("permissions/list"), this._call("mutes/list")]);
+        const [permissions, mutes, bindings] = await Promise.all([
+          this._call("permissions/list"), this._call("mutes/list"),
+          this._call("bindings/list").catch(() => null),
+        ]);
         this._permissions = permissions.permissions;
         this._features = permissions.features;
         this._mutes = mutes.mutes;
+        this._bindings = bindings;
       } else if (view.tab === "activity") {
-        const history = await this._call("history/list", { limit: 40 });
+        const [history, traces] = await Promise.all([
+          this._call("history/list", { limit: 40 }),
+          this._call("traces/list", { limit: 40 }).catch(() => ({ traces: [] })),
+        ]);
+        this._shadow = await this._call("shadow/report").catch(() => null);
         this._history = history.records;
         this._historyCursor = history.next_cursor;
+        this._traces = traces.traces || [];
       }
       this._error = null;
     } catch (err) {
@@ -1236,6 +1290,8 @@ class HomeIntentLearningCenter extends HTMLElement {
     else for (const permission of permissions) permissionSection.appendChild(this._permissionCard(permission));
     wrap.appendChild(permissionSection);
 
+    if (this._bindings) wrap.appendChild(this._bindingSection());
+
     const muteSection = h("section", { class: "card" }, h("h2", null, "🔕 ", t.mutesTitle));
     const mutes = this._mutes || [];
     if (!mutes.length) muteSection.appendChild(h("p", { class: "muted" }, t.mutesEmpty));
@@ -1285,9 +1341,66 @@ class HomeIntentLearningCenter extends HTMLElement {
       }) }, p.revoke) : null);
   }
 
+  _traceSection() {
+    const t = this.t;
+    const traces = this._traces || [];
+    const section = h("section", { class: "card" }, h("h2", null, t.tracesTitle));
+    if (!traces.length) { section.appendChild(h("p", { class: "muted" }, t.tracesEmpty)); return section; }
+    const list = h("ol", { class: "timeline" });
+    for (const trace of traces) {
+      const effects = (trace.effects || []).slice(0, 8).map((effect) => h("li", { class: "small wrap" },
+        effect.label, effect.via ? ` (${t.tracesVia(effect.via, effect.step)})` : ""));
+      list.appendChild(h("li", { class: "timeline-item" },
+        h("div", { class: "muted small" }, this._date(trace.timestamp)),
+        h("div", { class: "strong wrap" }, trace.utterance ? `„${trace.utterance}“` : (trace.targets || []).join(", ")),
+        trace.user_present ? null : h("div", { class: "small muted" }, t.tracesUnattended),
+        h("div", { class: "wrap" }, (trace.targets || []).join(", ")),
+        effects.length ? h("ul", { class: "sequence" }, effects) : null,
+        (trace.possible_followups || []).length
+          ? h("div", { class: "small muted wrap" }, `${t.tracesFollowups} ${trace.possible_followups.join(", ")}`) : null));
+    }
+    section.appendChild(list);
+    return section;
+  }
+
+  _bindingSection() {
+    const t = this.t;
+    const data = this._bindings;
+    const section = h("section", { class: "card span" }, h("h2", null, "🔗 ", t.bindingsTitle));
+    const level = data.implicit_action_level;
+    section.appendChild(h("h3", null, t.implicitTitle));
+    if (data.can_change_level) {
+      const select = h("select", { class: "select", "aria-label": t.implicitTitle,
+        onchange: (event) => this._mutate("settings/implicit_action_level", { level: event.target.value }, t.implicitLevels[event.target.value]) },
+        (data.implicit_action_levels || []).map((value) => h("option", value === level ? { value, selected: "" } : { value }, t.implicitLevels[value] || value)));
+      section.appendChild(h("div", { class: "entry-select" }, select));
+    } else {
+      section.appendChild(h("p", null, t.implicitLevels[level] || level));
+    }
+    const bindings = data.bindings || [];
+    if (!bindings.length) section.appendChild(h("p", { class: "muted" }, t.bindingsEmpty));
+    for (const binding of bindings) {
+      section.appendChild(h("div", { class: "sub-card" },
+        h("div", { class: "strong wrap" }, `${binding.kind_label}: „${binding.key_label}“ → ${binding.target_label}`),
+        h("div", { class: "muted small" }, `${t.bindingScope[binding.scope] || binding.scope} · ${t.bindingUses(binding.uses)} · ${t.bindingState[binding.state] || binding.state}`),
+        binding.can_remove ? h("button", { class: "button danger", onclick: () => this._mutate("bindings/remove", { binding_id: binding.binding_id }, t.bindingRemove) }, t.bindingRemove) : null));
+    }
+    return section;
+  }
+
   _activity() {
     const t = this.t;
     const wrap = h("div", { class: "stack" });
+    if (this._traces !== null) wrap.appendChild(this._traceSection());
+    if (this._shadow) {
+      const shadow = h("section", { class: "card" }, h("h2", null, t.shadowTitle));
+      const reports = Object.values(this._shadow.reports || {});
+      if (this._shadow.shadow_mode !== "log" && !reports.length) shadow.appendChild(h("p", { class: "muted" }, t.shadowOff));
+      for (const report of reports) {
+        shadow.appendChild(h("div", { class: "small wrap" }, t.shadowRow(report.name, report.total, report.counts.SAFETY_DRIFT)));
+      }
+      wrap.appendChild(shadow);
+    }
     const records = this._history;
     if (records === null) { wrap.appendChild(h("p", { class: "muted" }, t.loading)); return wrap; }
     if (!records.length) { wrap.appendChild(h("section", { class: "card" }, h("p", { class: "muted" }, t.activityEmpty))); return wrap; }

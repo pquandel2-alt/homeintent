@@ -24,6 +24,12 @@
           "custom_aliases": "Additional spoken aliases (Alias = entity.id, one per line)",
           "confirmation_level": "Confirmation risk threshold",
           "max_action_targets": "Maximum targets per action",
+          "effect_graph_unknown": "Script/scene step whose effect cannot be verified (deny: refuse, confirm: only with confirmation)",
+          "shadow_mode": "Shadow comparison of new language paths (off, log: record only, never execute)",
+          "implicit_action_level": "Implicit needs and inferred routines (understand_only, propose, low_risk_auto, bound_routines_auto)",
+          "trace_limit": "Execution trace: number of stored executions",
+          "trace_days": "Execution trace: retention in days",
+          "trace_store_text": "Execution trace: keep a shortened utterance (off: hash only)",
           "allow_non_admin_critical": "Allow critical actions for authenticated non-admin users",
           "allow_non_admin_automations": "Allow non-admin users to create automations",
           "context_ttl_seconds": "Conversation context in seconds",
@@ -120,6 +126,11 @@
     "delete_monitor_goal": {
       "name": "Delete monitor goal",
       "description": "Deletes a persistent HomeIntent monitor goal by goal ID."
+    },
+    "reset_test_state": {
+      "name": "Reset test state",
+      "description": "Administrators only: forgets conversation context, open questions and the execution trace; learned bindings only on request.",
+      "fields": {"include_bindings": {"name": "Clear learned bindings", "description": "Also deletes confirmed routines, aliases and default choices."}}
     }
   },
   "issues": {

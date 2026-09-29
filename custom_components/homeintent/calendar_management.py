@@ -9,6 +9,7 @@ from enum import Enum, auto
 from typing import Any, Mapping
 
 from .calendar_event import select_calendar
+from .nlu.phrases import Span, Word, find, has, words
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.language_frontend import LanguageDocument
 
@@ -48,47 +49,159 @@ class CalendarEventSummary:
 
 
 _CALENDAR_CUE_RE = re.compile(r"\b(?:kalender|\w*termin\w*)\b", re.I)
-_LIST_RE = re.compile(
-    r"\b(?:was\s+(?:steht|ist)|welche\s+termine|was\s+habe\s+ich|"
-    r"zeig\w*\s+(?:mir\s+)?(?:meine\s+)?termine|wann\s+ist)\b",
-    re.I,
-)
 _DELETE_RE = re.compile(r"\b(?:lösch\w*|loesch\w*|entfern\w*|sag\w*\s+.*\bab)\b", re.I)
 _RESCHEDULE_RE = re.compile(r"\b(?:verschieb\w*|verleg\w*)\b", re.I)
 _WEEKEND_RE = re.compile(r"\b(?:am|dieses|kommendes|nächstes|naechstes)?\s*wochenende\b", re.I)
 _WEEK_RE = re.compile(r"\b(?:diese|kommende|nächste|naechste)\s+woche\b", re.I)
-_TITLE_RE = re.compile(
-    r"\bwann\s+ist\s+(?:mein(?:e|en|er|es)?\s+)?(.+?)(?:termin)?\s*[?!.,]*$",
-    re.I,
-)
 _NEW_TIME_RE = re.compile(r"\bauf\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\b", re.I)
-_AVAILABILITY_RE = re.compile(
-    r"\b(?:habe|hab)\s+ich\b.*\b(?:zeit|frei)\b|\bbin\s+ich\b.*\bfrei\b",
-    re.I,
-)
-_TIME_WINDOW_RE = re.compile(
-    r"\b(?:von|zwischen)\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\s+"
-    r"(?:bis|und)\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\b",
-    re.I,
-)
-_RENAME_RE = re.compile(
-    r"\bbenenn\w*\s+(?:den\s+)?termin\s+(?P<old>.+?)\s+(?:in|zu)\s+(?P<new>.+?)\s+um\b",
-    re.I,
-)
-_CHANGE_DURATION_RE = re.compile(
-    r"\b(?:aender\w*|änder\w*)\s+(?:die\s+)?dauer\s+(?:vom|von dem)\s+termin\s+"
-    r"(?P<title>.+?)\s+auf\s+(?P<count>\d+)\s*(?P<unit>minuten?|stunden?)\b",
-    re.I,
-)
 _TARGET_DATE_RE = re.compile(
     r"\bauf\s+(?P<date>heute|morgen|übermorgen|uebermorgen|am\s+\d{1,2}\.\d{1,2}\.(?:\d{2,4})?)\b",
     re.I,
 )
-_MOVE_TITLE_RE = re.compile(
-    r"\b(?:verschieb\w*|verleg\w*)\s+(?:den\s+)?(?:kalender)?termin\s+(.+?)\s+auf\b",
-    re.I,
-)
 _ANY_NEW_TIME_RE = re.compile(r"\b(?:auf|um)\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\b", re.I)
+
+
+# Language island "Kalender" (7.5.2): cue phrases and name slots are lexicon
+# data on word tokens (``nlu.phrases``), not sentence patterns.
+_LIST_PHRASES = (
+    "was steht|ist", "welche termine", "was habe ich", "zeig* mir meine termine",
+    "zeig* mir termine", "zeig* meine termine", "zeig* termine", "wann ist",
+)
+_MY = frozenset({"mein", "meine", "meinen", "meiner", "meines"})
+
+
+def _is_list_request(text: str) -> bool:
+    return has(words(text), *_LIST_PHRASES)
+
+
+def _asks_availability(text: str) -> bool:
+    """"Habe ich … Zeit/frei", "Bin ich … frei"."""
+    tokens = words(text)
+    for index in range(len(tokens) - 1):
+        first, second = tokens[index].key, tokens[index + 1].key
+        later = [token.key for token in tokens[index + 2:]]
+        if first in {"habe", "hab"} and second == "ich" and ({"zeit", "frei"} & set(later)):
+            return True
+        if first == "bin" and second == "ich" and "frei" in later:
+            return True
+    return False
+
+
+def _clock_of(token: Word) -> tuple[int, int] | None:
+    match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?", token.key)
+    return (int(match.group(1)), int(match.group(2) or 0)) if match else None
+
+
+def _time_window(text: str) -> tuple[int, int, int, int] | None:
+    """"von 9 bis 11 Uhr", "zwischen 14 und 16 Uhr"."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if token.key not in {"von", "zwischen"} or index + 1 >= len(tokens):
+            continue
+        first = _clock_of(tokens[index + 1])
+        cursor = index + 2
+        if cursor < len(tokens) and tokens[cursor].key == "uhr":
+            cursor += 1
+        if first is None or cursor + 1 >= len(tokens) or tokens[cursor].key not in {"bis", "und"}:
+            continue
+        second = _clock_of(tokens[cursor + 1])
+        if second is None:
+            continue
+        return first[0], first[1], second[0], second[1]
+    return None
+
+
+def _title_after_when(text: str) -> str | None:
+    """"Wann ist mein Zahnarzttermin?" -> "Zahnarzt"."""
+    stripped = text.strip()
+    tokens = words(stripped)
+    found = find(tokens, ("wann ist",))
+    if found is None:
+        return None
+    index = found[0] + 2
+    if index < len(tokens) and tokens[index].key in _MY and index + 1 < len(tokens):
+        index += 1
+    if index >= len(tokens):
+        return None
+    value = stripped[tokens[index].start:].rstrip(" ?!.,")
+    if value.casefold().endswith("termin") and len(value) > len("termin"):
+        value = value[: -len("termin")]
+    value = re.sub(r"\btermin\b$", "", value, flags=re.I).strip(" .,!?:;")
+    return value or None
+
+
+def _rename(text: str) -> Span | None:
+    """"Benenne den Termin X in Y um" -> old/new."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if not token.key.startswith("benenn"):
+            continue
+        cursor = index + 1
+        if cursor < len(tokens) and tokens[cursor].key == "den":
+            cursor += 1
+        if cursor >= len(tokens) or tokens[cursor].key != "termin":
+            continue
+        old_start = cursor + 1
+        for middle in range(old_start + 1, len(tokens)):
+            if tokens[middle].key not in {"in", "zu"}:
+                continue
+            for last in range(middle + 2, len(tokens)):
+                if tokens[last].key == "um":
+                    old = text[tokens[old_start].start:tokens[middle - 1].end]
+                    new = text[tokens[middle + 1].start:tokens[last - 1].end]
+                    return Span(token.start, tokens[last].end, named={"old": old, "new": new})
+    return None
+
+
+def _change_duration(text: str) -> Span | None:
+    """"Ändere die Dauer vom Termin X auf 2 Stunden"."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if not token.key.startswith("aender"):
+            continue
+        cursor = index + 1
+        if cursor < len(tokens) and tokens[cursor].key == "die":
+            cursor += 1
+        if cursor >= len(tokens) or tokens[cursor].key != "dauer":
+            continue
+        cursor += 1
+        if cursor < len(tokens) and tokens[cursor].key == "vom":
+            cursor += 1
+        elif cursor + 1 < len(tokens) and tokens[cursor].key == "von" and tokens[cursor + 1].key == "dem":
+            cursor += 2
+        else:
+            continue
+        if cursor >= len(tokens) or tokens[cursor].key != "termin":
+            continue
+        title_start = cursor + 1
+        for auf in range(title_start + 1, len(tokens) - 2):
+            if tokens[auf].key != "auf" or not tokens[auf + 1].key.isdigit():
+                continue
+            unit = tokens[auf + 2].key
+            if unit in {"minute", "minuten", "stunde", "stunden"}:
+                title = text[tokens[title_start].start:tokens[auf - 1].end]
+                return Span(
+                    token.start, tokens[auf + 2].end,
+                    named={"title": title, "count": tokens[auf + 1].key, "unit": tokens[auf + 2].text},
+                )
+    return None
+
+
+def _moved_title(text: str) -> str | None:
+    """"Verschiebe den (Kalender)Termin X auf …" -> X."""
+    tokens = words(text)
+    for index, token in enumerate(tokens):
+        if not (token.key.startswith("verschieb") or token.key.startswith("verleg")):
+            continue
+        cursor = index + 1
+        if cursor < len(tokens) and tokens[cursor].key == "den":
+            cursor += 1
+        if cursor >= len(tokens) or tokens[cursor].key not in {"termin", "kalendertermin"}:
+            continue
+        for auf in range(cursor + 2, len(tokens)):
+            if tokens[auf].key == "auf":
+                return text[tokens[cursor + 1].start:tokens[auf - 1].end]
+    return None
 
 
 def _day_range(value: date, now: datetime) -> tuple[datetime, datetime]:
@@ -122,11 +235,7 @@ def _range_from_text(text: str, now: datetime) -> tuple[datetime, datetime]:
 
 
 def _title_filter(text: str) -> str | None:
-    match = _TITLE_RE.search(text.strip())
-    if match is None:
-        return None
-    title = re.sub(r"\btermin\b$", "", match.group(1), flags=re.I).strip(" .,!?:;")
-    return title or None
+    return _title_after_when(text)
 
 
 def _mutation_title_filter(text: str) -> str | None:
@@ -155,15 +264,15 @@ def parse_calendar_management(
         text = document.source_text
     if re.search(r"\b(?:auftrag|automation)\b|(?:bedingung|auslöser|ausloeser|trigger)", text, re.I):
         return None
-    rename_match = _RENAME_RE.search(text)
-    duration_match = _CHANGE_DURATION_RE.search(text)
+    rename_match = _rename(text)
+    duration_match = _change_duration(text)
     has_mutation = (
         _DELETE_RE.search(text) is not None
         or _RESCHEDULE_RE.search(text) is not None
         or rename_match is not None
         or duration_match is not None
     )
-    availability = _AVAILABILITY_RE.search(text) is not None
+    availability = _asks_availability(text)
     if _CALENDAR_CUE_RE.search(text) is None and not has_mutation and not availability:
         return None
     kind: CalendarManagementKind | None = None
@@ -175,7 +284,7 @@ def parse_calendar_management(
         kind = CalendarManagementKind.DELETE
     elif _RESCHEDULE_RE.search(text):
         kind = CalendarManagementKind.RESCHEDULE
-    elif _LIST_RE.search(text):
+    elif _is_list_request(text):
         kind = CalendarManagementKind.FIND if re.search(r"\bwann\s+ist\b", text, re.I) else CalendarManagementKind.LIST
     if kind is None:
         return None
@@ -191,10 +300,9 @@ def parse_calendar_management(
         # The date after "auf" is the destination, not a lookup constraint.
         start, end = now, now + timedelta(days=366)
     if kind is CalendarManagementKind.AVAILABILITY:
-        window = _TIME_WINDOW_RE.search(text)
+        window = _time_window(text)
         if window is not None:
-            start_hour, start_minute = int(window.group(1)), int(window.group(2) or 0)
-            end_hour, end_minute = int(window.group(3)), int(window.group(4) or 0)
+            start_hour, start_minute, end_hour, end_minute = window
             if 0 <= start_hour <= 23 and 0 <= end_hour <= 23 and start_minute < 60 and end_minute < 60:
                 requested_date = _date_from_text(text, now) or now.date()
                 start = datetime.combine(requested_date, time(start_hour, start_minute), tzinfo=now.tzinfo)
@@ -206,15 +314,15 @@ def parse_calendar_management(
             hour, minute = int(match.group(1)), int(match.group(2) or 0)
             if 0 <= hour <= 23 and 0 <= minute <= 59:
                 new_start = time(hour, minute)
-    move_match = _MOVE_TITLE_RE.search(text)
+    moved_title = _moved_title(text)
     if rename_match is not None:
         title_filter = rename_match.group("old").strip()
     elif duration_match is not None:
         title_filter = duration_match.group("title").strip()
     elif kind in {CalendarManagementKind.DELETE, CalendarManagementKind.RESCHEDULE}:
         title_filter = (
-            move_match.group(1).strip()
-            if move_match is not None
+            moved_title.strip()
+            if moved_title is not None
             else _mutation_title_filter(text)
         )
     else:

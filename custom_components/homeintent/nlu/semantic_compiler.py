@@ -26,7 +26,14 @@ from ..entities import (
 )
 from ..name_similarity import bounded_name_similarity
 from ..world_model import WorldModel
-from .degree_semantics import extract_degree
+from .degree_semantics import (
+    FULL_POSITION_RE,
+    TEMPERATURE_VALUE_RE,
+    ZERO_POSITION_RE,
+    extract_degree,
+    percent_value,
+    temperature_value,
+)
 from .constraint_resolver import Constraints, resolve_candidates
 from .entity_resolution import (
     ResolutionStatus,
@@ -34,7 +41,7 @@ from .entity_resolution import (
     mentioned_entities,
     rank_semantic_targets,
     resolve_entity,
-    resolve_entity_scored,
+    resolve_phrase,
     resolve_mentioned_target,
 )
 from .frame import (
@@ -86,6 +93,8 @@ from .semantic_state import (
 )
 from .semantic_utterance import SpeechAct, analyse_utterance
 from .word_cues import has_word
+from .locative import has_locative_cue
+from .locative import drop_locative_prepositions
 
 
 def _device_class_targets(
@@ -122,7 +131,6 @@ _QUESTION_RE = re.compile(
     r"^\s*(?:wer|was|wie|welch\w*|wo|wann|warum|wieso|ist|sind|hat|haben|gibt)\b",
     re.IGNORECASE,
 )
-_LOCATION_CUE_RE = re.compile(r"\b(?:im|in\s+der|in\s+dem|am|beim)\s+", re.I)
 _LEVEL_CUE_RE = re.compile(r"(?<!nach\s)\b(?:oben|unten)\b", re.I)
 _PLURAL_RE = re.compile(
     r"\b(?:lichter|lampen|leuchten|steckdosen|rollläden|rolläden|"
@@ -139,20 +147,7 @@ _COUNT_WORDS = {
 }
 _COUNT_RE = re.compile(r"\b(" + "|".join(_COUNT_WORDS) + r"|[2-9]|10)\b", re.I)
 _ORDERED_SUBSET_RE = re.compile(r"\b(?:erste\w*|letzte\w*)\b", re.I)
-_HALF_RE = re.compile(r"\b(?:halb|halbe(?:r|n)?|hälfte|zur\s+hälfte)\b", re.I)
-_ZERO_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:runter|herunter|zu)\b", re.I)
-_HUNDRED_RE = re.compile(r"\b(?:komplett|ganz|vollständig)\s+(?:hoch|auf)\b", re.I)
-_PERCENT_RE = re.compile(
-    r"(?:\bauf\s+(?P<after>100|[1-9]?\d)\b|"
-    r"\b(?P<unit>100|[1-9]?\d)\s*(?:prozent|%)\b)", re.I
-)
 _ANY_PERCENT_RE = re.compile(r"\b(?P<value>\d+)\s*(?:prozent|%)\b", re.I)
-_FIFTY_PERCENT_RE = re.compile(r"\bfünfzig\s+prozent\b", re.I)
-_TEMPERATURE_RE = re.compile(
-    r"\bauf\s+(?:(?:mindestens|höchstens|nicht\s+höher\s+als|über|unter)\s+)?"
-    r"(?P<value>-?\d{1,2}(?:[,.]\d)?)\s*(?:grad|°\s*c|°c)\b",
-    re.I,
-)
 _DIRECTIVE_RE = re.compile(
     r"\b(?:bitte|soll(?:st|en|t)?|möchte|will|kannste|könntest|koenntest|"
     r"würdest|wuerdest|würde\s+gern|würd\s+gern|wuerd\s+gern)\b", re.I
@@ -525,7 +520,7 @@ def _compile_comparison_query(
     ):
         return None
     location = resolve_semantic_location(text, entities, world_model)
-    if _LOCATION_CUE_RE.search(text) is not None and location is None:
+    if has_locative_cue(text, followed=True) and location is None:
         return None
     area_id = location[1] if location else None
     floor_id = location[2] if location else None
@@ -704,27 +699,6 @@ def _quantity(text: str) -> Quantifier | None:
     if _ALL_RE.search(text) or _PLURAL_RE.search(text):
         return Quantifier("all")
     return None
-
-
-def _percent(text: str) -> int | None:
-    if _HALF_RE.search(text):
-        return 50
-    if _ZERO_RE.search(text):
-        return 0
-    if _HUNDRED_RE.search(text):
-        return 100
-    if _FIFTY_PERCENT_RE.search(text):
-        return 50
-    match = _PERCENT_RE.search(text)
-    return int(match.group("after") or match.group("unit")) if match else None
-
-
-def _temperature(text: str) -> float | None:
-    match = _TEMPERATURE_RE.search(text)
-    if match is None:
-        return None
-    value = float(match.group("value").replace(",", "."))
-    return value if 5 <= value <= 30 else None
 
 
 def canonicalize_exclusion_clause(text: str) -> str:
@@ -1040,7 +1014,7 @@ def _compile_lock_by_name_part(
     ]
     if not words:
         return None
-    resolution = resolve_entity_scored(" ".join(words), locks)
+    resolution = resolve_phrase(" ".join(words), locks)
     if resolution.status is not ResolutionStatus.RESOLVED or resolution.entity is None:
         return None
     entity = resolution.entity
@@ -1406,7 +1380,7 @@ class SemanticCommandCompiler:
         spoken_percent = _ANY_PERCENT_RE.search(positive_text)
         if spoken_percent is not None and int(spoken_percent.group("value")) > 100:
             return None
-        spoken_temperature = _TEMPERATURE_RE.search(positive_text)
+        spoken_temperature = TEMPERATURE_VALUE_RE.search(positive_text)
         if spoken_temperature is not None and not (
             5
             <= float(spoken_temperature.group("value").replace(",", "."))
@@ -1419,11 +1393,9 @@ class SemanticCommandCompiler:
             if isinstance(value, str)
         )
         whole_home = whole_home_phrase(positive_text, entities, world_model)
-        resolution_text = re.sub(
-            r"\b(?:im|in\s+der|in\s+dem)\s+",
-            "",
+        resolution_text = drop_locative_prepositions(
             positive_text.replace(whole_home, " ") if whole_home else positive_text,
-            flags=re.I,
+            spoken=frozenset({"im", "in der", "in dem"}),
         )
         quantity = _quantity(positive_text)
         if quantity is None and whole_home is not None and not mentioned_entities(
@@ -1469,7 +1441,7 @@ class SemanticCommandCompiler:
         if (
             location is not None
             and len(explicit) == 1
-            and _LOCATION_CUE_RE.search(positive_text) is None
+            and not has_locative_cue(positive_text, followed=True)
             and normalize_for_compare(location[0])
             in normalize_for_compare(explicit[0].friendly_name).split()
         ):
@@ -1499,14 +1471,14 @@ class SemanticCommandCompiler:
             and has_explicit_location_cue(positive_text, entities)
         ):
             return None
-        temperature = _temperature(positive_text)
+        temperature = temperature_value(positive_text)
         # ``auf 22 Grad`` and ``auf 22 Prozent`` share the same numeric
         # preposition.  The explicit temperature unit owns the value and
         # prevents the bare-percentage shorthand from creating a second
         # intent.
-        percent = None if temperature is not None else _percent(positive_text)
+        percent = None if temperature is not None else percent_value(positive_text)
         if spoken_percent is None and (
-            _ZERO_RE.search(positive_text) or _HUNDRED_RE.search(positive_text)
+            ZERO_POSITION_RE.search(positive_text) or FULL_POSITION_RE.search(positive_text)
         ):
             # ``ganz auf/zu`` is the ordinary endpoint operation, not a
             # competing set-position interpretation.
@@ -1710,7 +1682,7 @@ class SemanticCommandCompiler:
             # dynamic vocabulary and therefore stay part of the check.
             registry_texts.extend(exclusion_names)
         if _has_unexplained_meaning(analysis, registry_texts):
-            fuzzy = resolve_entity_scored(
+            fuzzy = resolve_phrase(
                 " ".join(analysis.unexplained_tokens),
                 [entity for entity in entities if entity.domain == domain],
                 area_id=facts.area_id,
@@ -1849,7 +1821,8 @@ class SemanticQueryCompiler:
         device_query = _compile_device_query(text, entities, analysis, world_model)
         if device_query is not None:
             return device_query
-        if re.search(r"^\s*wie\s+hoch\s+ist\b", text, re.I) is None:
+        asks_how_high = re.search(r"^\s*wie\s+hoch\s+ist\b", text, re.I) is not None
+        if not asks_how_high:
             entity_state_query = _compile_entity_state_query(
                 text, entities, analysis, world_model
             )
@@ -1883,7 +1856,7 @@ class SemanticQueryCompiler:
             )
             if inferred_measurement is not None:
                 return inferred_measurement
-            if re.search(r"^\s*wie\s+hoch\s+ist\b", text, re.I):
+            if asks_how_high:
                 named_high = mentioned_entities(
                     text,
                     entities,
@@ -2029,7 +2002,7 @@ class SemanticQueryCompiler:
             else location or resolve_semantic_location(text, entities, world_model)
         )
         locations = coordinated_locations or ((location,) if location else ())
-        has_location_cue = _LOCATION_CUE_RE.search(text) is not None
+        has_location_cue = has_locative_cue(text, followed=True)
         if has_location_cue and not locations:
             return None
         # Unknown modifiers may materially change a question (for example

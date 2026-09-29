@@ -74,6 +74,8 @@ _PROPERTY_WORDS = frozenset({
     "fortschritt", "progress", "restzeit", "verbleibend", "remaining",
     "dauer", "duration", "fertigstellungszeit", "programmende", "endzeit",
     "completion", "time", "power", "leistung", "energie", "verbrauch",
+    # "Waschmaschine fertig um" names the same appliance (7.6.0).
+    "fertig", "um", "ende",
 })
 _UNAVAILABLE = frozenset({"", "unknown", "unavailable", "none", "null"})
 

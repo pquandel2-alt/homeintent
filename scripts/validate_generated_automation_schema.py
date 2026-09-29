@@ -145,7 +145,7 @@ class _RecordingServices:
     def has_service(self, domain: str, service: str) -> bool:
         return (domain, service) in {("notify", "send_message"), ("notify", "mobile_app_iphone")}
 
-    async def async_call(self, domain, service, data, blocking=False) -> None:
+    async def async_call(self, domain, service, data, blocking=False, context=None) -> None:
         self.calls.append((domain, service, dict(data)))
 
 

@@ -12,7 +12,11 @@ from __future__ import annotations
 DOMAIN_EXPRESSIONS: dict[str, tuple[str, ...]] = {
     "light": (r"licht(?:er)?", r"lamp(?:e|en)", r"leucht(?:e|en)", r"beleuchtung"),
     "switch": (r"schalter", r"steckdos(?:e|en)"),
-    "cover": (r"rol{1,3}[aä]d(?:e|en)", r"rollos?", r"jalousie(?:n)?"),
+    # Every shading genus (7.6.1: "Kannst du die Markise einfahren?").
+    "cover": (
+        r"rol{1,3}[aä]d(?:e|en)", r"rollos?", r"jalousie(?:n)?", r"markisen?",
+        r"raffstores?", r"vorh[aä]nge?",
+    ),
     "fan": (r"ventilator(?:en)?", r"lüfter"),
     "climate": (r"heizung(?:en)?", r"thermostat(?:e)?"),
     "script": (r"skript(?:e)?",),
@@ -88,12 +92,16 @@ COMMAND_MARKER_EXPRESSIONS: tuple[str, ...] = (
     r"verriegl(?:e|st|t)", r"entriegl(?:e|st|t)",
     r"(?:auf|ab)?sperr(?:e|en|st|t)?",
     r"(?:auf|ab)schließ(?:e|en|est|t)?",
+    # Verb class "einschalten" (7.6.0): colloquial members.
+    r"(?:an)?wirf", r"(?:an)?werf(?:e|en|t)?", r"(?:an)?knips(?:e|en|t)?",
+    r"(?:an)?schmeiß(?:e|en|t)?", r"(?:an)?schmeiss(?:e|en|t)?",
 )
 
 
 ACTION_EXPRESSIONS: dict[str, tuple[str, ...]] = {
     "open": (
-        r"hoch", r"oben", r"offen", r"hochfahr(?:e|en)?", r"hochgefahren",
+        r"hoch", r"oben", r"offen", r"rauf", r"herauf", r"nach\s+oben",
+        r"raufmach(?:e|en|st|t)?", r"rauffahr(?:e|en)?", r"hochfahr(?:e|en)?", r"hochgefahren",
         r"öffn(?:e|en|est|et)?", r"mach(?:e|en|st|t)?(?:\s+\w+){1,8}\s+auf",
         r"aufmach(?:e|en|st|t)?", r"hochmach(?:e|en|st|t)?", r"hochzieh(?:e|en|st|t)?",
         r"zieh(?:e|en|st|t)?(?:\s+\w+){1,8}\s+hoch",
@@ -108,6 +116,7 @@ ACTION_EXPRESSIONS: dict[str, tuple[str, ...]] = {
         r"herunterfahr(?:e|en)?", r"geschlossen", r"schließ(?:e|en|est|et)?",
         r"zumach(?:e|en|st|t)?", r"mach(?:e|en|st|t)?\s+(?:es\s+)?zu",
         r"runtermach(?:e|en|st|t)?", r"runterzieh(?:e|en|st|t)?", r"einfahr(?:e|en|st|t)?",
+        r"runterlass(?:e|en|t)?", r"herunterlass(?:e|en|t)?",
         r"zieh(?:e|en|st|t)?(?:\s+\w+){1,8}\s+runter",
         r"fahr(?:e|en|st|t)?(?:\s+\w+){1,8}\s+ein(?=\s*[.!?]*\s*$)",
         r"zu(?!\s+öffn)",
@@ -115,6 +124,9 @@ ACTION_EXPRESSIONS: dict[str, tuple[str, ...]] = {
     "turn_on": (
         r"an", r"ein", r"anmach(?:e|en|st|t)?", r"einschalt(?:e|en|st|t)?",
         r"eingeschaltet", r"aktivier(?:e|en|st|t)?",
+        # Verb class "einschalten" (7.6.0): anwerfen, anknipsen, anschmeißen.
+        r"anwerf(?:e|en|st|t)?", r"angeworfen", r"anknips(?:e|en|t)?", r"angeknipst",
+        r"anschmeiß(?:e|en|t)?", r"anschmeiss(?:e|en|t)?",
     ),
     "turn_off": (
         r"aus", r"ausmach(?:e|en|st|t)?", r"ausschalt(?:e|en|st|t)?",
@@ -160,6 +172,8 @@ INTENT_BY_DOMAIN_ACTION: dict[tuple[str, str], str] = {
     **{(domain, "turn_on"): "HassTurnOn" for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
     **{(domain, "turn_off"): "HassTurnOff" for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
     **{(domain, "toggle"): "HassToggle" for domain in ("light", "switch", "fan", "climate", "humidifier", "input_boolean")},
+    # "Starte die Kaffeemaschine": starting a switched appliance switches it on.
+    **{(domain, "start"): "HassTurnOn" for domain in ("switch", "fan", "humidifier", "input_boolean")},
     ("cover", "open"): "HassOpenCover",
     ("cover", "close"): "HassCloseCover",
     ("script", "start"): "HassRunScript",

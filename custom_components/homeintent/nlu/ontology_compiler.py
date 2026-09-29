@@ -28,18 +28,18 @@ from typing import Sequence
 from ..areas import AreaSnapshot
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..service_call import REGISTERED_OPERATION_INTENT
+from .clause_reading import FILLER_WORDS, ClauseMeaning, read_clauses, read_operation
 from .degree_semantics import extract_degree
-from .device_ontology import GENERA, analyse_word, entity_genera, genus
+from .device_ontology import GENERA, entity_genera, genus
 from .frame import AreaReference, Quantifier, SemanticFrame, TargetReference
-from .german_structure import ClauseKind
 from .language_frontend import tokenize_language
 from .normalize import normalize
+from .entity_clarification import which_question
 from .parser import ClarificationRequest, ParseResult
 from .place_model import Place, PlaceKind, build_place_lexicon
 from .primitives import SemanticAction, SemanticDirection, SemanticProperty
 from .semantic_catalog import (
     DEGREE_OPERATIONS,
-    DEGREE_WORDS,
     GROUP_PREVIEW_THRESHOLD,
     ONTOLOGY_OPERATIONS,
     COLOR_TEMPERATURE_WORDS,
@@ -48,18 +48,15 @@ from .semantic_catalog import (
     TIME_BOUND_WORDS,
     OperationTarget,
 )
-from .semantic_compiler import _percent, _temperature
-from .semantic_lexicon import SemanticKind, analyse_semantics
 from .target_resolution import (
     Quantity,
     ResolutionOutcome,
     TargetDescription,
     TargetResolution,
-    _name_index,
+    name_index,
     describe_with_residue,
     resolve_description,
 )
-from .utterance_meaning import segment_clauses
 
 __all__ = ("OntologyCommand", "compile_ontology_command", "compile_release")
 
@@ -86,35 +83,10 @@ _PROPERTY = {
     "volume": SemanticProperty.VOLUME,
     "speed": SemanticProperty.FAN_SPEED,
 }
-_FILLER_WORDS = frozenset({
-    "etwas", "bisschen", "ein", "wenig", "bitte", "mal", "prozent", "grad",
-    "noch", "mehr", "viel", "deutlich", "ganz", "wieder", "sofort", "jetzt",
-    "gleich", "kurz", "schnell", "auch", "dann", "danach", "anschliessend",
-})
 _MAX_CLARIFICATION_CANDIDATES = 8
 _EVERYDAY_GENERA = frozenset(item.key for item in GENERA if item.in_everything)
 # Kinds that "alles" never switches silently; they are named in the preview.
 _KEPT_BY_EVERYTHING_DOMAINS = frozenset({"climate", "lock", "alarm_control_panel", "water_heater", "valve"})
-
-
-@dataclass(frozen=True)
-class ClauseMeaning:
-    """Operation and targets of one coordinated clause."""
-
-    text: str
-    actions: frozenset[str]
-    degree: tuple[str, int] | None
-    percent: int | None
-    temperature: float | None
-    descriptions: tuple[TargetDescription, ...]
-    residue: tuple[str, ...] = ()
-
-    @property
-    def has_operation(self) -> bool:
-        return bool(
-            self.actions or self.degree or self.percent is not None
-            or self.temperature is not None
-        )
 
 
 @dataclass(frozen=True)
@@ -131,220 +103,6 @@ class OntologyCommand:
     @property
     def executable(self) -> bool:
         return bool(self.results) and self.clarification is None and self.message is None
-
-
-def _operation_words(analysis_text: str) -> tuple[frozenset[str], frozenset[str]]:
-    """ACTION values and the words that expressed an operation."""
-    analysis = analyse_semantics(analysis_text)
-    actions: set[str] = set()
-    words: set[str] = set()
-    for span in analysis.spans:
-        if span.kind not in {SemanticKind.ACTION, SemanticKind.COMMAND_MARKER}:
-            continue
-        parts = normalize_for_compare(span.text).split()
-        if span.kind is SemanticKind.ACTION:
-            actions.add(str(span.value))
-        # Discontinuous verb frames ("mach ... auf") only own their first
-        # and last word; the object in between stays a target.
-        words.update({parts[0], parts[-1]} if len(parts) > 1 else set(parts))
-    return frozenset(actions), frozenset(words)
-
-
-_PLACE_GLUE_WORDS = frozenset({
-    "im", "in", "der", "dem", "den", "die", "das", "am", "an", "aus", "ein", "zu",
-    "auf", "hoch", "runter", "bitte", "auch",
-})
-_SUBORDINATING_OR_EXCEPTING = frozenset({
-    "dass", "ob", "wo", "wohin", "woher", "weil", "damit", "obwohl", "nachdem",
-    "bevor", "welche", "welcher", "welches", "dessen", "deren", "ausser",
-    "ausnahme", "ausgenommen", "sondern", "stattdessen", "nachricht",
-    "benachrichtigung", "nachrichten",
-})
-_NON_COORDINATE_CLAUSES = frozenset({
-    ClauseKind.RELATIVE, ClauseKind.REPAIR, ClauseKind.EXCLUSION,
-    ClauseKind.CONDITION, ClauseKind.TEMPORAL,
-})
-
-
-def _clause_meanings(
-    document: object, entities: Sequence[EntitySnapshot]
-) -> tuple[ClauseMeaning, ...]:
-    structure = getattr(document, "structure")
-    if any(clause.kind in _NON_COORDINATE_CLAUSES for clause in structure.clauses):
-        # Repairs ("äh nein, das Wohnzimmerlicht"), relative restrictions
-        # (", die noch an sind"), exclusions and conditions have their own
-        # dedicated semantics; this compiler only composes coordination.
-        return ()
-    # The normalized surface has shells and fillers removed ("Wäre es
-    # möglich, ..." -> "bitte ...") while keeping every meaning word.
-    source = getattr(getattr(document, "utterance"), "normalized_text")
-    tokens = tokenize_language(source)
-    words = [token.canonical for token in tokens if token.is_word]
-    if any(word in _SUBORDINATING_OR_EXCEPTING for word in words):
-        # Subordinate content ("…, dass das Essen fertig ist"), relational
-        # clauses ("…, wo ein Fenster offen steht") and exceptions ("mit
-        # Ausnahme von") belong to their dedicated compilers.
-        return ()
-    lexicon = build_place_lexicon(entities)
-    names = _name_index(entities)
-    meanings: list[ClauseMeaning] = []
-    ranges: list[tuple[int, int]] = []
-    for start, end in segment_clauses(tokens):
-        words_here = [token.canonical for token in tokens[start:end] if token.is_word]
-        place_words = {
-            word for mention in lexicon.scan(words_here)
-            for word in words_here[mention.token_start:mention.token_end]
-        }
-        if ranges and words_here and all(
-            word in place_words or word in _PLACE_GLUE_WORDS for word in words_here
-        ):
-            # "in Küche und Flur aus": a coordinated place, not a clause.
-            ranges[-1] = (ranges[-1][0], end)
-            continue
-        ranges.append((start, end))
-    # "Schalte in Küche | und Flur alle Lichter aus": a leading segment that
-    # ends in a place and holds no device word coordinates its place with
-    # the next segment.
-    joined: list[tuple[int, int]] = []
-    for start, end in ranges:
-        if joined:
-            previous_start, previous_end = joined[-1]
-            previous_words = [
-                token.canonical for token in tokens[previous_start:previous_end] if token.is_word
-            ]
-            mentions = lexicon.scan(previous_words)
-            if (
-                mentions
-                and mentions[-1].token_end == len(previous_words)
-                and not any(analyse_word(word) is not None for word in previous_words)
-                and not _operation_words(normalize(" ".join(previous_words)))[0]
-            ):
-                joined[-1] = (previous_start, end)
-                continue
-        joined.append((start, end))
-    ranges = joined
-    for start, end in ranges:
-        clause_tokens = tokens[start:end]
-        if not any(token.is_word for token in clause_tokens):
-            continue
-        text = source[clause_tokens[0].start:clause_tokens[-1].end]
-        normalized = normalize(text)
-        actions, operation_words = _operation_words(normalized)
-        degree_words = [
-            DEGREE_WORDS[token.canonical]
-            for token in clause_tokens
-            if token.canonical in DEGREE_WORDS
-        ]
-        degree = degree_words[0] if len(set(degree_words)) == 1 else None
-        temperature = _temperature(normalized)
-        percent = None if temperature is not None else _percent(normalized)
-        spoken_values = [
-            int(clause_tokens[index].canonical)
-            for index in range(len(clause_tokens) - 1)
-            if clause_tokens[index].is_number
-            and clause_tokens[index].canonical.isdigit()
-            and clause_tokens[index + 1].canonical in {"prozent", "%"}
-        ]
-        if any(value > 100 for value in spoken_values):
-            return ()
-        if degree is not None and percent is not None and "%" not in text and "prozent" not in normalized.casefold():
-            percent = None
-        words_here = [token.canonical for token in clause_tokens if token.is_word]
-        if (
-            "ein" in words_here
-            and any(word.startswith("stell") for word in words_here)
-            and percent is None and temperature is None and degree is None
-        ):
-            # "Stelle die Heizung ein" asks to configure a value, it does not
-            # mean "switch on" (existing contract F11).
-            return ()
-        ignore = frozenset(operation_words | _FILLER_WORDS | frozenset(DEGREE_WORDS))
-        descriptions, residue = describe_with_residue(
-            clause_tokens, entities, lexicon=lexicon, ignore=ignore, names=names
-        )
-        if residue:
-            # An unexplained content word may change the meaning entirely;
-            # never execute around it.  The clause is kept (with its
-            # residue) so a multi-clause turn can name the part it did not
-            # understand instead of silently dropping it (finding S3).
-            meanings.append(ClauseMeaning(
-                text=text, actions=actions, degree=degree, percent=percent,
-                temperature=temperature, descriptions=descriptions,
-                residue=residue,
-            ))
-            continue
-        genera_here = {key for item in descriptions for key in item.genera}
-        if (
-            actions in (frozenset({"open"}), frozenset({"close"}))
-            and degree is None
-            and any(word.startswith("dreh") for word in words_here)
-            and genera_here and not genera_here & _MOVABLE_GENERA
-        ):
-            # "Dreh die Heizung hoch", "Dreh das Radio runter": turning a
-            # control up or down changes the device's scalar property.
-            properties = {_GENUS_PROPERTY.get(key) for key in genera_here}
-            if len(properties) == 1 and None not in properties:
-                degree = (next(iter(properties)) or "", 1 if actions == {"open"} else -1)
-                actions = frozenset()
-        if (
-            not actions and degree is None and percent is None and temperature is None
-            and any(word.startswith("mach") for word in words_here)
-            and any(item.mass and "light" in item.genera for item in descriptions)
-            and not any(
-                words_here[index + 1] in {"licht", "beleuchtung"}
-                for index, word in enumerate(words_here[:-1])
-                if word in {"das", "die", "dem", "den"}
-            )
-        ):
-            # Only the article-less collocation "Licht machen" means switching
-            # on; "Mach das Licht" lacks its particle and stays unclear.
-            # "Mach (mal) Licht im Flur": making light is switching it on.
-            actions = frozenset({"turn_on"})
-        meanings.append(ClauseMeaning(
-            text=text,
-            actions=actions,
-            degree=degree,
-            percent=percent,
-            temperature=temperature,
-            descriptions=descriptions,
-        ))
-    # Coordinated objects share the following predicate:
-    # "Mach das Licht und die Heizung aus" -> both clauses operate "aus".
-    merged: list[ClauseMeaning] = []
-    carried: list[TargetDescription] = []
-    for meaning in meanings:
-        if meaning.residue and not meaning.has_operation:
-            merged.append(meaning)
-            continue
-        if not meaning.has_operation:
-            if meaning.descriptions:
-                carried.extend(meaning.descriptions)
-                continue
-            continue
-        if carried:
-            meaning = ClauseMeaning(
-                meaning.text, meaning.actions, meaning.degree, meaning.percent,
-                meaning.temperature, (*carried, *meaning.descriptions),
-                meaning.residue,
-            )
-            carried = []
-        merged.append(meaning)
-    if carried and merged:
-        last = merged[-1]
-        merged[-1] = ClauseMeaning(
-            last.text, last.actions, last.degree, last.percent, last.temperature,
-            (*last.descriptions, *carried), last.residue,
-        )
-    return tuple(merged)
-
-
-# Genera that physically move ("hoch" opens them); every other genus turned
-# "hoch"/"runter" changes its scalar property instead.
-_MOVABLE_GENERA = frozenset({"shutter", "raffstore", "awning", "curtain", "garage_door", "window", "door", "valve"})
-_GENUS_PROPERTY = {
-    "heating": "temperature", "light": "brightness", "media": "volume", "tv": "volume",
-    "radio": "volume", "music": "volume", "fan": "speed",
-}
 
 
 def _within_reported_range(entity: EntitySnapshot, temperature: float) -> bool:
@@ -372,8 +130,16 @@ def _operation_for(domain: str, clause: ClauseMeaning) -> tuple[OperationTarget,
         if operation is None:
             return None
         parameters: dict[str, object] = {}
+        adjustment = extract_degree(normalize(clause.text))
         if operation[0] in {"HassLightBrighten", "HassLightDim"}:
-            parameters["step_percent"] = extract_degree(clause.text).light_percent
+            parameters["step_percent"] = adjustment.light_percent
+        elif operation[0] in {"HassClimateIncreaseTemperature", "HassClimateDecreaseTemperature"}:
+            parameters["step"] = adjustment.climate_degrees
+        elif domain in {"cover", "media_player"} and (
+            domain == "cover" or adjustment.amount is not None
+        ):
+            # A spoken step from the current value; built per device.
+            parameters["relative_step"] = direction * adjustment.percent_step
         return operation, parameters
     candidates = {
         ONTOLOGY_OPERATIONS[(domain, action)]
@@ -454,6 +220,46 @@ def _build_result(
     )
 
 
+def _relative_results(
+    clause: ClauseMeaning,
+    domain: str,
+    members: tuple[EntitySnapshot, ...],
+    step: float,
+    source_text: str,
+    area: AreaReference | None,
+) -> list[ParseResult] | None:
+    """A spoken step from each device's current value (7.6.1).
+
+    Volume and cover position have no relative service with an amount;
+    the new absolute value is current ± step, bounded by the device range.
+    An unknown current value is never guessed.
+    """
+    results: list[ParseResult] = []
+    for entity in members:
+        stepped = apply_relative_step(entity, step)
+        if stepped is None:
+            return None
+        results.append(_build_result(clause, (entity,), stepped[0], stepped[1], source_text, area))
+    return results
+
+
+def apply_relative_step(
+    entity: EntitySnapshot, step: float
+) -> tuple[OperationTarget, dict[str, object]] | None:
+    """Current volume/position ± step (percent points), bounded to 0-100."""
+    attribute, scale = (
+        ("volume_level", 100.0) if entity.domain == "media_player" else ("current_position", 1.0)
+    )
+    try:
+        current = float(entity.attributes[attribute]) * scale
+    except (KeyError, TypeError, ValueError):
+        return None
+    target = max(0.0, min(100.0, current + step))
+    if entity.domain == "media_player":
+        return ("svc", "media_player", "volume_set"), {"volume_level": round(target / 100.0, 2)}
+    return ("HassSetPercentage",), {"percent": int(round(target))}
+
+
 def _names(entities: Sequence[EntitySnapshot]) -> str:
     labels = [entity.friendly_name for entity in entities]
     if len(labels) <= 1:
@@ -482,12 +288,12 @@ def _option_command(
         return None
     value_text = source[value_tokens[0].start:value_tokens[-1].end]
     value_key = normalize_for_compare(value_text)
-    if not value_key or value_key in _FILLER_WORDS:
+    if not value_key or value_key in FILLER_WORDS:
         return None
     lexicon = build_place_lexicon(entities)
     descriptions, _residue = describe_with_residue(
         tokens[:split], entities, lexicon=lexicon,
-        ignore=frozenset(_operation_words(normalize(source[:tokens[split].start]))[1] | _FILLER_WORDS),
+        ignore=frozenset(read_operation(normalize(source[:tokens[split].start]))[1] | FILLER_WORDS),
     )
     if len(descriptions) != 1:
         return None
@@ -558,8 +364,8 @@ def _tone_command(
     lexicon = build_place_lexicon(entities)
     descriptions, residue = describe_with_residue(
         target_tokens, entities, lexicon=lexicon,
-        ignore=frozenset(_operation_words(normalize(source))[1] | _FILLER_WORDS | {"auf"}),
-        names=_name_index(entities),
+        ignore=frozenset(read_operation(normalize(source))[1] | FILLER_WORDS | {"auf"}),
+        names=name_index(entities),
     )
     if residue or len(descriptions) != 1:
         return None
@@ -628,7 +434,7 @@ def _with_exceptions(
     )
     if compiled is None or not compiled.executable:
         return None
-    index = _name_index(entities)
+    index = name_index(entities)
     targets = {entity.entity_id for result in compiled.results for entity in result.resolved_entities}
     excluded: set[str] = set()
     for name in names:
@@ -675,10 +481,10 @@ def compile_ontology_command(
     tone = _tone_command(document, entities, source_area)
     if tone is not None:
         return tone
-    clauses = _clause_meanings(document, entities)
+    clauses = read_clauses(document, entities)
     if not clauses:
         return None
-    return _compile_clauses(clauses, document, entities, source_area)
+    return compile_clauses(clauses, document, entities, source_area)
 
 
 def compile_release(
@@ -693,7 +499,7 @@ def compile_release(
     tokens = tokenize_language(object_text)
     descriptions, residue = describe_with_residue(
         tokens, entities, lexicon=build_place_lexicon(entities),
-        ignore=_FILLER_WORDS, names=_name_index(entities),
+        ignore=FILLER_WORDS, names=name_index(entities),
     )
     if not descriptions:
         return None
@@ -701,10 +507,10 @@ def compile_release(
         text=object_text, actions=frozenset({action}), degree=None, percent=None,
         temperature=None, descriptions=descriptions, residue=residue,
     )
-    return _compile_clauses((clause,), document, entities, source_area)
+    return compile_clauses((clause,), document, entities, source_area)
 
 
-def _compile_clauses(
+def compile_clauses(
     clauses: Sequence[ClauseMeaning],
     document: object,
     entities: Sequence[EntitySnapshot],
@@ -804,9 +610,8 @@ def _compile_clauses(
                         "service_data": {k: v for k, v in operation[1].items() if k == "volume_level"},
                     }
                 if len({entity.domain for entity in resolution.entities}) != 1 or len(clauses) > 1:
-                    names = _names(resolution.entities)
                     return OntologyCommand(
-                        message=f"Welches Gerät meinst du: {names}?",
+                        message=which_question(tuple(resolution.entities)),
                         clauses=len(clauses),
                     )
                 return OntologyCommand(
@@ -859,10 +664,19 @@ def _compile_clauses(
                     if place is not None and place.kind is PlaceKind.AREA and len(place.area_ids) == 1
                     else None
                 )
-                results.append(_build_result(
-                    clause, tuple(members), operation[0], operation[1],
-                    getattr(document, "source_text"), area,
-                ))
+                if "relative_step" in operation[1]:
+                    stepped = _relative_results(
+                        clause, domain, tuple(members), float(str(operation[1]["relative_step"])),
+                        getattr(document, "source_text"), area,
+                    )
+                    if stepped is None:
+                        return None
+                    results.extend(stepped)
+                else:
+                    results.append(_build_result(
+                        clause, tuple(members), operation[0], operation[1],
+                        getattr(document, "source_text"), area,
+                    ))
                 domains_seen.add(domain)
                 total_targets += len(members)
     if not results:

@@ -17,6 +17,7 @@ task #70's explicit requirement for the executor's tests.
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import json
 import sys
@@ -57,7 +58,7 @@ def _make_hass(config_dir: str = "/config") -> MagicMock:
         return func(*args)
 
     hass.async_add_executor_job = AsyncMock(side_effect=_run_in_executor)
-    hass.services.async_call = AsyncMock()
+    hass.services.async_call = ServiceMock()
     return hass
 
 
@@ -311,7 +312,7 @@ def test_cleanup_removes_expired_scheduled_once_but_keeps_future_and_ordinary():
 
 def test_a_reload_failure_rolls_back_the_automations_yaml_write():
     hass = _make_hass()
-    hass.services.async_call = AsyncMock(side_effect=RuntimeError("reload failed"))
+    hass.services.async_call = ServiceMock(side_effect=RuntimeError("reload failed"))
     with (
         patch.object(automation_executor.yaml_util, "load_yaml", return_value=[]),
         patch.object(automation_executor.yaml_util, "dump", return_value="dumped-yaml") as dump_mock,
@@ -362,7 +363,7 @@ def test_a_metadata_save_failure_rolls_back_the_yaml_write_and_reloads_again():
 
 def test_a_second_reload_failure_during_rollback_still_surfaces_the_original_error():
     hass = _make_hass()
-    hass.services.async_call = AsyncMock(side_effect=[None, RuntimeError("reload #2 also failed")])
+    hass.services.async_call = ServiceMock(side_effect=[None, RuntimeError("reload #2 also failed")])
     with (
         patch.object(automation_executor.yaml_util, "load_yaml", return_value=[]),
         patch.object(automation_executor.yaml_util, "dump", return_value="dumped-yaml"),
@@ -457,7 +458,7 @@ def test_delete_automation_removes_the_metadata_entry():
 
 def test_a_delete_reload_failure_rolls_back_the_automations_yaml_write():
     hass = _make_hass()
-    hass.services.async_call = AsyncMock(side_effect=RuntimeError("reload failed"))
+    hass.services.async_call = ServiceMock(side_effect=RuntimeError("reload failed"))
     with (
         patch.object(
             automation_executor.yaml_util,
@@ -560,7 +561,7 @@ def test_disable_automation_raises_value_error_when_the_id_is_not_found():
 
 def test_a_disable_reload_failure_rolls_back_the_automations_yaml_write():
     hass = _make_hass()
-    hass.services.async_call = AsyncMock(side_effect=RuntimeError("reload failed"))
+    hass.services.async_call = ServiceMock(side_effect=RuntimeError("reload failed"))
     with (
         patch.object(
             automation_executor.yaml_util,
@@ -585,7 +586,7 @@ def test_a_disable_reload_failure_rolls_back_the_automations_yaml_write():
 
 def test_an_enable_reload_failure_rolls_back_the_automations_yaml_write():
     hass = _make_hass()
-    hass.services.async_call = AsyncMock(side_effect=RuntimeError("reload failed"))
+    hass.services.async_call = ServiceMock(side_effect=RuntimeError("reload failed"))
     disabled = {**EXISTING_AUTOMATION, "initial_state": False}
     with (
         patch.object(automation_executor.yaml_util, "load_yaml", return_value=[disabled]),

@@ -20,6 +20,7 @@ from .frame import Quantifier, SemanticFrame, TargetReference
 from .parser import ParseResult
 from .primitives import SemanticAction, SemanticProperty
 from .word_cues import has_phrase, has_word
+from .locative import names_place_after_locative
 
 
 _SET_CUE = re.compile(r"\b(?:stell\w*|setz\w*|regel\w*|änder\w*|aender\w*|(?:aus)?wähl\w*|(?:aus)?waehl\w*)\b", re.I)
@@ -96,11 +97,8 @@ def climate_in_named_area(text: str, entities: list[EntitySnapshot]) -> EntitySn
     candidates = [
         entity for entity in entities
         if entity.domain == "climate"
-        and any(
-            name and re.search(
-                rf"\b(?:im|in\s+der|in\s+dem|am|beim)\s+{re.escape(normalize_for_compare(name))}\b", key
-            )
-            for name in (entity.area_name, *entity.area_aliases)
+        and names_place_after_locative(
+            key, [normalize_for_compare(name) for name in (entity.area_name, *entity.area_aliases) if name]
         )
     ]
     return candidates[0] if len(candidates) == 1 else None

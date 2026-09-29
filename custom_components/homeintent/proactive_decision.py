@@ -10,6 +10,7 @@ from .agent_action_policy import validate_agent_service_plan
 from .agent_event import AgentMode
 from .entities import EntitySnapshot
 from .execution_policy import PolicyOutcome, evaluate_service_plan
+from .plan_origin import PlanOrigin
 from .risk import RiskLevel
 from .service_call import ServiceCallPlan
 from .situation import EventQuality, NormalizedEvent, Situation, SituationSeverity
@@ -60,8 +61,12 @@ class ProactiveDecisionEngine:
             return ProactiveDecision(True, AgentMode.INFORM, channels, "Eine Information reicht aus.")
         if error := validate_agent_service_plan(proposed_action):
             return ProactiveDecision(True, AgentMode.INFORM, channels, error)
+        # Pure decision: without an effect graph a script, scene or group
+        # fails closed here; the executor re-checks with the real graph.
         policy = evaluate_service_plan(
-            proposed_action, entities, options, is_admin=False, user_id=None
+            proposed_action, entities, options, is_admin=False, user_id=None,
+            origin=PlanOrigin.PROACTIVE_PROPOSAL,
+            attended=requested_mode is not AgentMode.AUTO,
         )
         if policy.outcome is PolicyOutcome.DENY:
             return ProactiveDecision(True, AgentMode.INFORM, channels, policy.reason or "Aktion nicht erlaubt.")

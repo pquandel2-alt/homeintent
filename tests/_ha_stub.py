@@ -37,6 +37,26 @@ from typing import Any, Callable
 from unittest.mock import AsyncMock
 
 
+class ServiceMock(AsyncMock):
+    """``hass.services.async_call`` double that records the HA ``Context``
+    separately (``.contexts``) instead of in the call arguments.
+
+    Since 7.3.2 every HomeIntent service call passes ``context=``; existing
+    tests keep asserting domain/service/data/targets unchanged, while the
+    context itself is verified by ``tests/test_execution_trace.py``.
+    """
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        context = kwargs.pop("context", None)
+        contexts = self.__dict__.setdefault("_contexts", [])
+        contexts.append(context)
+        return super().__call__(*args, **kwargs)
+
+    @property
+    def contexts(self) -> list[Any]:
+        return self.__dict__.setdefault("_contexts", [])
+
+
 def install() -> None:
     if "homeassistant" in sys.modules:
         return  # already installed (or the real package is present)
@@ -158,7 +178,7 @@ def install() -> None:
         the same way HA itself would dispatch a real service call."""
 
         def __init__(self) -> None:
-            self.async_call = AsyncMock()
+            self.async_call = ServiceMock()
             self._handlers: dict[tuple[str, str], Callable[..., Any]] = {}
 
         def async_register(self, domain: str, service: str, handler: Callable[..., Any], schema: Any = None) -> None:
@@ -204,6 +224,22 @@ def install() -> None:
         setattr(func, "_hass_callback", True)
         return func
 
+    class Context:
+        """Stand-in for ``homeassistant.core.Context`` (id, user_id, parent_id)."""
+
+        def __init__(
+            self, user_id: str | None = None, parent_id: str | None = None, id: str | None = None
+        ) -> None:
+            import uuid
+
+            self.id = id or uuid.uuid4().hex
+            self.user_id = user_id
+            self.parent_id = parent_id
+
+        def __repr__(self) -> str:
+            return f"Context(id={self.id!r}, user_id={self.user_id!r}, parent_id={self.parent_id!r})"
+
+    core.Context = Context
     core.HomeAssistant = HomeAssistant
     core.callback = callback
     core.State = State
@@ -506,3 +542,88 @@ def install() -> None:
     sys.modules["homeassistant.helpers.intent"] = helpers_intent
     sys.modules["homeassistant.helpers.issue_registry"] = helpers_issue_registry
     sys.modules["homeassistant.helpers.start"] = helpers_start
+
+    # --- homeassistant.helpers.target (EffectGraph target expansion) ------
+    helpers_target = types.ModuleType("homeassistant.helpers.target")
+
+    class TargetSelection:
+        def __init__(self, config: dict[str, Any]) -> None:
+            self.config = dict(config)
+
+    def async_extract_referenced_entity_ids(
+        hass: Any, selection: Any, expand_group: bool = True
+    ) -> Any:
+        """Expands area/floor/device/label ids from ``hass.data`` index
+        ``"_stub_target_index"``: {(key, id): {entity_id, ...}}."""
+        index = hass.data.get("_stub_target_index", {})
+        found: set[str] = set()
+        for key, value in selection.config.items():
+            if key == "entity_id":
+                continue
+            for item in value if isinstance(value, (list, tuple, set)) else [value]:
+                found.update(index.get((key, item), set()))
+        return types.SimpleNamespace(referenced=set(), indirectly_referenced=found)
+
+    helpers_target.TargetSelection = TargetSelection
+    helpers_target.async_extract_referenced_entity_ids = async_extract_referenced_entity_ids
+    helpers.target = helpers_target
+    sys.modules["homeassistant.helpers.target"] = helpers_target
+
+
+class FakeEntityComponent:
+    """Stand-in for ``hass.data["script"|"scene"|"automation"]`` so the
+    read-only EffectGraph can read script/scene/automation configuration."""
+
+    def __init__(self) -> None:
+        self.entities: dict[str, Any] = {}
+
+    def get_entity(self, entity_id: str) -> Any:
+        return self.entities.get(entity_id)
+
+
+def register_script(hass: Any, entity_id: str, sequence: list[dict[str, Any]]) -> None:
+    component = hass.data.setdefault("script", FakeEntityComponent())
+    component.entities[entity_id] = types.SimpleNamespace(
+        script=types.SimpleNamespace(sequence=sequence), raw_config={"sequence": sequence}
+    )
+
+
+def register_scene(hass: Any, entity_id: str, states: dict[str, Any]) -> None:
+    component = hass.data.setdefault("scene", FakeEntityComponent())
+    component.entities[entity_id] = types.SimpleNamespace(
+        scene_config=types.SimpleNamespace(states=states)
+    )
+
+
+def register_automation(hass: Any, entity_id: str, actions: list[dict[str, Any]]) -> None:
+    component = hass.data.setdefault("automation", FakeEntityComponent())
+    component.entities[entity_id] = types.SimpleNamespace(
+        action_script=types.SimpleNamespace(sequence=actions)
+    )
+
+
+def register_target_index(hass: Any, entities: Any) -> None:
+    """area_id/floor_id -> entity ids, as HA's target helper would expand."""
+    index: dict[tuple[str, str], set[str]] = hass.data.setdefault("_stub_target_index", {})
+    for entity in entities:
+        if getattr(entity, "area_id", None):
+            index.setdefault(("area_id", entity.area_id), set()).add(entity.entity_id)
+        if getattr(entity, "floor_id", None):
+            index.setdefault(("floor_id", entity.floor_id), set()).add(entity.entity_id)
+
+
+def register_sim_config(hass: Any, entities: Any) -> None:
+    """Load the versioned test-house scripts and scenes (``sim/config``)."""
+    import yaml
+
+    config_dir = Path(__file__).parent.parent / "sim" / "config"
+    scripts = yaml.safe_load((config_dir / "scripts.yaml").read_text(encoding="utf-8")) or {}
+    for object_id, config in scripts.items():
+        register_script(hass, f"script.{object_id}", list(config.get("sequence") or []))
+    scenes = yaml.safe_load((config_dir / "scenes.yaml").read_text(encoding="utf-8")) or []
+    names = {getattr(entity, "friendly_name", None): entity.entity_id for entity in entities}
+    for scene in scenes:
+        entity_id = names.get(scene.get("name"))
+        if entity_id is not None:
+            register_scene(hass, entity_id, dict(scene.get("entities") or {}))
+    register_target_index(hass, entities)

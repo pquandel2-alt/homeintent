@@ -16,6 +16,7 @@ instead of stubbed.
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import sys
 from dataclasses import replace
@@ -38,6 +39,7 @@ from homeintent.automation_management import (  # noqa: E402
     AutomationManagementRequest,
 )
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.bindings import BindingKind  # noqa: E402
 from homeintent.dialog_manager import DialogTaskKind  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.nlu.context import (  # noqa: E402
@@ -364,7 +366,7 @@ def test_multi_command_runtime_failure_stops_remaining_actions(monkeypatch):
     entity = _make_entity(
         monkeypatch, [FLUR_LICHT_OFF, KUECHE_LICHT, third]
     )
-    entity.hass.services.async_call = AsyncMock(
+    entity.hass.services.async_call = ServiceMock(
         side_effect=[None, RuntimeError("second failed"), None]
     )
 
@@ -954,7 +956,7 @@ def test_service_call_exception_produces_clean_failed_to_handle_response(monkeyp
     intent recognition" (the broadened ``except Exception`` in
     conversation.py's two service-call sites)."""
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
-    entity.hass.services.async_call = AsyncMock(side_effect=RuntimeError("boom"))
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("boom"))
 
     result = _run(entity, "Schalte das Flurlicht ein")
 
@@ -1005,7 +1007,7 @@ def test_service_confirmation_retries_declines_and_executes(monkeypatch):
 
 def test_confirmed_service_failure_is_reported_without_success(monkeypatch):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
-    entity.hass.services.async_call = AsyncMock(side_effect=RuntimeError("confirm boom"))
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("confirm boom"))
     _store_confirmation(entity, "confirm-failure")
 
     result = _run(entity, "ja", "confirm-failure")
@@ -1050,7 +1052,7 @@ def test_undo_reports_empty_context_then_reverses_last_light_action(monkeypatch)
 def test_undo_service_failure_is_cleanly_reported(monkeypatch):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
     _run(entity, "Schalte das Flurlicht ein", "undo-failure")
-    entity.hass.services.async_call = AsyncMock(side_effect=RuntimeError("undo boom"))
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("undo boom"))
 
     result = _run(entity, "Mach das rückgängig", "undo-failure")
 
@@ -1123,7 +1125,7 @@ def test_automation_management_failure_is_logged(monkeypatch, caplog):
     )
 
     result = asyncio.run(
-        entity._async_handle_automation_management_confirmation(
+        entity._management.async_handle_management_confirmation(
             user_input, response, pending
         )
     )
@@ -1185,7 +1187,12 @@ def test_alias_confirmation_payload_is_owned_by_central_dialog_manager(monkeypat
     assert "ausdrücklich bestätigt" in explanation.response.speech
     assert "Gespeichert" in result.response.speech
     assert entity._runtime_data.dialog_manager.active("native-alias") is None
-    updater.assert_called_once()
+    # 7.4.1: learned aliases live in the one bindings store, not in options.
+    updater.assert_not_called()
+    aliases = entity._runtime_data.bindings.all(BindingKind.ALIAS)
+    assert [(item.data["spoken"], item.target) for item in aliases] == [
+        ("Orientierungslicht", FLUR_LICHT_OFF.entity_id)
+    ]
     entity.hass.services.async_call.assert_not_awaited()
 
 

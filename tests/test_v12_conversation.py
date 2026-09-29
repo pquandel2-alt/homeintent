@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 from datetime import timedelta
 from pathlib import Path
@@ -247,7 +248,7 @@ def test_timer_expiry_is_announced_exactly_once(tmp_path):
     async def record(domain, service, data, blocking=False):
         calls.append((domain, service))
 
-    hass.services.async_call = AsyncMock(side_effect=record)
+    hass.services.async_call = ServiceMock(side_effect=record)
     tasks: list = []
     hass.async_create_task = lambda coro, name=None: tasks.append(coro)
     entry = ConfigEntry()

@@ -45,6 +45,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 
+from .shadow_runtime import CONF_SHADOW_MODE, SHADOW_MODES
 from .const import (
     CONF_ATTENTION_BUDGET_ENABLED,
     CONF_CRITICAL_MULTI_CHANNEL_ENABLED,
@@ -77,6 +78,12 @@ from .const import (
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
+    CONF_EFFECT_GRAPH_UNKNOWN,
+    CONF_IMPLICIT_ACTION_LEVEL,
+    IMPLICIT_ACTION_LEVELS,
+    CONF_TRACE_DAYS,
+    CONF_TRACE_LIMIT,
+    CONF_TRACE_STORE_TEXT,
     CONF_CONTEXT_TTL_SECONDS,
     CONF_BANTER_LEVEL,
     CONF_CONTROL_USER_IDS,
@@ -281,6 +288,30 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_MAX_ACTION_TARGETS,
                         default=defaults.get(CONF_MAX_ACTION_TARGETS, 50),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
+                    vol.Optional(
+                        CONF_EFFECT_GRAPH_UNKNOWN,
+                        default=defaults.get(CONF_EFFECT_GRAPH_UNKNOWN, "deny"),
+                    ): vol.In(("deny", "confirm")),
+                    vol.Optional(
+                        CONF_IMPLICIT_ACTION_LEVEL,
+                        default=defaults.get(CONF_IMPLICIT_ACTION_LEVEL, "propose"),
+                    ): vol.In(IMPLICIT_ACTION_LEVELS),
+                    vol.Optional(
+                        CONF_SHADOW_MODE,
+                        default=defaults.get(CONF_SHADOW_MODE, "off"),
+                    ): vol.In(SHADOW_MODES),
+                    vol.Optional(
+                        CONF_TRACE_LIMIT,
+                        default=defaults.get(CONF_TRACE_LIMIT, 500),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=5000)),
+                    vol.Optional(
+                        CONF_TRACE_DAYS,
+                        default=defaults.get(CONF_TRACE_DAYS, 14),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=90)),
+                    vol.Optional(
+                        CONF_TRACE_STORE_TEXT,
+                        default=defaults.get(CONF_TRACE_STORE_TEXT, True),
+                    ): bool,
                     vol.Optional(
                         CONF_ALLOW_NON_ADMIN_CRITICAL,
                         default=defaults.get(CONF_ALLOW_NON_ADMIN_CRITICAL, False),

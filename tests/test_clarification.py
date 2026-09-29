@@ -8,7 +8,6 @@ it, and NluEngine.resolve_clarification() completing it from the user's reply.
 from __future__ import annotations
 
 from homeintent.entities import EntitySnapshot
-from homeintent.nlu.parser import ClarificationRequest, ParseContext
 from homeintent.nlu.response import NluError
 
 LIGHT_BUERO_1 = EntitySnapshot(
@@ -23,15 +22,6 @@ LIGHT_BUERO_2 = EntitySnapshot(
     capabilities=frozenset({"TURN_ON", "TURN_OFF"}),
 )
 TIED_LIGHTS = [LIGHT_BUERO_1, LIGHT_BUERO_2]
-
-
-def test_single_target_parser_returns_clarification_on_tied_names(engine):
-    context = ParseContext(entities=TIED_LIGHTS)
-    result = engine._single_parser.parse("Mach das Bürolicht an", context)
-    assert isinstance(result, ClarificationRequest)
-    assert result.pending_intent == "HassTurnOn"
-    assert result.pending_target == "Bürolicht"
-    assert sorted(c.entity_id for c in result.candidates) == ["light.buerolicht_1", "light.buerolicht_2"]
 
 
 def test_match_surfaces_clarification_instead_of_none(engine):

@@ -80,6 +80,7 @@ from .room_presence import (
 )
 from .runtime_data import HomeIntentRuntimeData
 from .service_call import ServiceCallPlan
+from .plan_origin import PlanOrigin
 from .service_executor import async_execute_service_plan
 from .situation_detection import (
     DetectionSignal,
@@ -90,6 +91,7 @@ from .situation_detection import (
     parse_habit_sequence,
 )
 from .user_context import BindingStatus
+from .execution_context import call_context
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -525,6 +527,7 @@ class ProactiveRuntime:
                     {"title": message.title, "message": message.text,
                      "notification_id": "homeintent_v12_critical"},
                     blocking=True,
+                    context=call_context(),
                 )
                 delivered.append(CommunicationChannel.PUSH)
             except Exception as err:  # noqa: BLE001
@@ -631,12 +634,18 @@ class ProactiveRuntime:
         self, plan: ServiceCallPlan, fresh: list[EntitySnapshot], confirmed: bool,
         user_id: str | None, is_admin: bool,
     ) -> Any:
+        # An explicit "Ja" to a proposal is attended; a standing permission
+        # acts without anyone answering right now.
         return await async_execute_service_plan(
             self._hass, plan, fresh, self._entry.options,
             is_admin=is_admin, user_id=user_id, confirmed=confirmed,
             audit_trail=self._data.audit_trail,
             audit_actor_id=f"proactive:{user_id or 'permission'}",
             effect_monitor=self._data.effect_monitor,
+            origin=(
+                PlanOrigin.PROACTIVE_PROPOSAL if confirmed else PlanOrigin.STANDING_PERMISSION
+            ),
+            attended=confirmed,
         )
 
     async def _async_verify(self, entity_id: str, expected: str) -> bool:

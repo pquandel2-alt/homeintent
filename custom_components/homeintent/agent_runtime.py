@@ -33,7 +33,10 @@ from .nlu.automation_confirmation import ConfirmationReply, classify_confirmatio
 from .risk import RiskLevel
 from .runtime_data import HomeIntentRuntimeData
 from .service_call import ServiceCallPlan
+from .effect_graph import build_plan_effects
+from .plan_origin import PlanOrigin
 from .service_executor import async_execute_service_plan
+from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -202,6 +205,9 @@ class ProactiveAgentRuntime:
                 self._entry.options,
                 is_admin=False,
                 user_id=None,
+                effects=build_plan_effects(self._hass, action),
+                origin=PlanOrigin.PROACTIVE_PROPOSAL,
+                attended=False,
             )
             if (
                 not bool(self._entry.options.get(CONF_AGENT_AUTO_ENABLED, True))
@@ -226,6 +232,8 @@ class ProactiveAgentRuntime:
                     audit_trail=self._runtime_data.audit_trail,
                     audit_actor_id="proactive-agent",
                     effect_monitor=self._runtime_data.effect_monitor,
+                    origin=PlanOrigin.PROACTIVE_PROPOSAL,
+                    attended=False,
                 )
                 event = replace(
                     event,
@@ -426,6 +434,7 @@ class ProactiveAgentRuntime:
                     "trigger",
                     {"entity_id": automation_entity_id, "skip_condition": False},
                     blocking=True,
+                    context=call_context(),
                 )
             except Exception as err:  # noqa: BLE001
                 await self._store.async_save(
@@ -474,6 +483,7 @@ class ProactiveAgentRuntime:
             audit_trail=self._runtime_data.audit_trail,
             audit_actor_id=user_id or "proactive-agent",
             effect_monitor=self._runtime_data.effect_monitor,
+            origin=PlanOrigin.PROACTIVE_PROPOSAL,
         )
         updated = replace(
             event,

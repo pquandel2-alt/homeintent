@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from functools import lru_cache
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..name_similarity import edit_distance
@@ -29,9 +29,10 @@ from .semantic_utterance import (
     SpeechAct,
     analyse_utterance,
 )
-from .temporal_semantics import TemporalExpression, analyse_temporal_semantics
+from .temporal_semantics import TemporalKind, TemporalExpression, analyse_temporal_semantics
 from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
 from .word_cues import has_word
+from .locative import has_locative_cue
 
 
 _TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
@@ -40,7 +41,6 @@ _ELLIPTICAL_DIRECTIVE_RE = re.compile(
     r"\b(?:bitte|soll(?:st|en|t)?|möchte|moechte|will|gern|gerne)\b", re.I
 )
 _COPULA_RE = re.compile(r"\b(?:ist|sind|war|waren|bleibt|bleiben)\b", re.I)
-_LOCATION_CUE_RE = re.compile(r"\b(?:im|in\s+der|in\s+dem|am|beim)\b", re.I)
 _SPELLING_FORMS = {
     normalize_for_compare(item): item
     for item in sorted(CANONICAL_SPELLING_FORMS, key=lambda value: ("ae" in value or "oe" in value or "ue" in value, value))
@@ -186,6 +186,37 @@ def _has_registry_mention(text: str, entities: tuple[EntitySnapshot, ...]) -> bo
     )
 
 
+def registry_name_spans(
+    tokens: Sequence[LanguageToken], entities: Iterable[EntitySnapshot]
+) -> tuple[tuple[int, int], ...]:
+    """Token ranges that spell an exposed multi-word name or alias exactly.
+
+    Words inside such a name belong to the name ("Guten Morgen", "Gute
+    Nacht"): they are neither greeting nor time. Single-word names never
+    shadow a word, so "morgen" before a device named "Morgen" stays time.
+    """
+    words = [(index, token.canonical) for index, token in enumerate(tokens) if token.is_word]
+    if len(words) < 2:
+        return ()
+    keys = [key for _index, key in words]
+    present = set(keys)
+    spans: set[tuple[int, int]] = set()
+    for entity in entities:
+        for name in (entity.friendly_name, *entity.aliases):
+            parts = normalize_for_compare(name).split()
+            if len(parts) < 2 or parts[0] not in present:
+                continue
+            width = len(parts)
+            for start in range(len(keys) - width + 1):
+                if keys[start:start + width] == parts:
+                    spans.add((words[start][0], words[start + width - 1][0] + 1))
+    return tuple(sorted(spans))
+
+
+def _inside_name(item: TemporalExpression, spans: Sequence[tuple[int, int]]) -> bool:
+    return any(start <= item.token_start and item.token_end <= end for start, end in spans)
+
+
 @lru_cache(maxsize=2048)
 def _unique_spelling_correction(spoken: str) -> str | None:
     """Return the sole one-edit vocabulary match for a normalized token.
@@ -285,6 +316,46 @@ def _has_near_negation(
     return False
 
 
+def bind_coordinated_deixis(text: str, entities: Iterable[EntitySnapshot]) -> str:
+    """"Licht im Bad an und den Lüfter dort auch": "dort" is the earlier place (7.6.0).
+
+    Pure wording: only when the part before "und" names exactly one place
+    with a preposition, its spoken phrase replaces the deictic word in a
+    later conjunct. Nothing is resolved or guessed here.
+    """
+    lowered = text.casefold()
+    if "dort" not in lowered or " und " not in lowered:
+        return text
+    from .place_model import PlaceKind, build_place_lexicon
+
+    tokens = [token for token in tokenize_language(text) if token.is_word]
+    keys = [token.canonical for token in tokens]
+    if "und" not in keys:
+        return text
+    deictic = next(
+        (index for index in range(keys.index("und") + 1, len(keys)) if keys[index] == "dort"),
+        None,
+    )
+    if deictic is None:
+        return text
+    conjunction = max(index for index in range(deictic) if keys[index] == "und")
+    mentions = [
+        mention
+        for mention in build_place_lexicon(tuple(entities)).scan(keys[:conjunction])
+        if mention.explicit_preposition and mention.place.kind in {PlaceKind.AREA, PlaceKind.FLOOR}
+    ]
+    if len(mentions) != 1:
+        return text
+    mention = mentions[0]
+    first = mention.token_start
+    while first > 0 and keys[first - 1] in {"der", "dem", "den", "die", "das"}:
+        first -= 1
+    first -= 1  # the preposition itself
+    phrase = text[tokens[first].start:tokens[mention.token_end - 1].end]
+    target = tokens[deictic]
+    return text[:target.start] + phrase + text[target.end:]
+
+
 def analyse_language(
     text: str,
     entities: Iterable[EntitySnapshot] = (),
@@ -293,6 +364,8 @@ def analyse_language(
     include_registry_compounds: bool = True,
 ) -> LanguageDocument:
     """Build one immutable language document without discarding input."""
+    entity_tuple = tuple(entities)
+    text = bind_coordinated_deixis(text, entity_tuple)
     normalized = normalize(text)
     variants: list[TextVariant] = [TextVariant(text, "original")]
     if normalized != text:
@@ -300,8 +373,7 @@ def analyse_language(
     canonical = _orthographic_variant(text)
     if canonical not in {variant.text for variant in variants}:
         variants.append(TextVariant(canonical, "orthographic", 0.2))
-    entity_tuple = tuple(entities)
-    if include_registry_compounds and _LOCATION_CUE_RE.search(text):
+    if include_registry_compounds and has_locative_cue(text):
         for candidate in _registry_compound_variants(text, entity_tuple):
             if candidate not in {variant.text for variant in variants}:
                 variants.append(TextVariant(candidate, "registry_compound", 0.15))
@@ -432,9 +504,15 @@ def analyse_language(
             for word in re.findall(r"[\wäöüß]+", utterance.normalized_text)
         ]
         after_auf = words[words.index("auf") + 1:] if "auf" in words else []
+        # "Heizung Wohnzimmer auf 22 Grad": a number with its unit closing
+        # the sentence is the value of a verbless setting (7.6.0).
+        unit_value = (
+            len(after_auf) == 2 and after_auf[0].isdigit() and after_auf[1] in {"grad", "prozent"}
+        )
         if "auf" in words and after_auf and (
             _ELLIPTICAL_DIRECTIVE_RE.search(utterance.normalized_text)
             or not any(word.isdigit() for word in after_auf)
+            or unit_value
         ) and (
             _has_registry_mention(" ".join(words[:words.index("auf")]), entity_tuple)
             or any(analyse_word(word) is not None for word in words[:words.index("auf")])
@@ -472,6 +550,7 @@ def analyse_language(
     if _has_near_negation(text, entity_tuple) and not explicit_unmute:
         utterance = replace(utterance, polarity=Polarity.NEGATIVE)
     tokens = tokenize_language(text)
+    name_spans = registry_name_spans(tokens, entity_tuple)
     structure = analyse_german_structure(tokens)
     maintain, _clause_ranges = maintain_frames(text, tokens)
     if maintain and all(frame is not None for frame in maintain):
@@ -500,7 +579,12 @@ def analyse_language(
         utterance=utterance,
         semantics=semantics,
         structure=structure,
-        temporal=analyse_temporal_semantics(tokens),
+        # "jetzt"/"sofort" say what every plain command means; they are no
+        # scheduling and must not block the direct path (7.5.0).
+        temporal=tuple(
+            item for item in analyse_temporal_semantics(tokens)
+            if item.kind is not TemporalKind.NOW and not _inside_name(item, name_spans)
+        ),
         maintain=maintain,
         release=(
             release_frame(text, tokens)

@@ -124,7 +124,9 @@ async def async_get_config_entry_diagnostics(
             for step in run.steps
             for verification in step.verification
         )
+    shadow = getattr(runtime_data, "shadow", None)
     return {
+        "shadow": shadow.summary() if shadow is not None else {},
         "domain": DOMAIN,
         "entry_version": entry.version,
         "selection_mode": "explicit" if selected is not None else "assist_exposure",

@@ -407,6 +407,10 @@ DEGREE_WORDS: dict[str, tuple[str, int]] = {
     "leiser": ("volume", -1),
     "schneller": ("speed", 1),
     "langsamer": ("speed", -1),
+    # Direction without a property (7.6.0): the genus decides what rises.
+    "hoeher": ("level", 1),
+    "niedriger": ("level", -1),
+    "tiefer": ("level", -1),
 }
 DEGREE_OPERATIONS: dict[tuple[str, str, int], OperationTarget] = {
     ("light", "brightness", 1): ("HassLightBrighten",),
@@ -417,6 +421,18 @@ DEGREE_OPERATIONS: dict[tuple[str, str, int], OperationTarget] = {
     ("media_player", "volume", -1): ("svc", "media_player", "volume_down"),
     ("fan", "speed", 1): ("HassFanIncreaseSpeed",),
     ("fan", "speed", -1): ("HassFanDecreaseSpeed",),
+    ("light", "level", 1): ("HassLightBrighten",),
+    ("light", "level", -1): ("HassLightDim",),
+    ("climate", "level", 1): ("HassClimateIncreaseTemperature",),
+    ("climate", "level", -1): ("HassClimateDecreaseTemperature",),
+    ("media_player", "level", 1): ("svc", "media_player", "volume_up"),
+    ("media_player", "level", -1): ("svc", "media_player", "volume_down"),
+    # "Fahr den Rollladen 30 Prozent höher" (7.6.1): a position step from
+    # the current position, compiled per cover.
+    ("cover", "level", 1): ("HassSetPercentage",),
+    ("cover", "level", -1): ("HassSetPercentage",),
+    ("fan", "level", 1): ("HassFanIncreaseSpeed",),
+    ("fan", "level", -1): ("HassFanDecreaseSpeed",),
 }
 # Genus implied by a property when the sentence names only a place.
 PROPERTY_GENUS: dict[str, str] = {

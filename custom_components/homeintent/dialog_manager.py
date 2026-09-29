@@ -34,6 +34,10 @@ class DialogTaskKind(StrEnum):
     PROACTIVE_CLARIFICATION = "proactive_clarification"
     STANDING_PERMISSION_CONFIRMATION = "standing_permission_confirmation"
     PROACTIVE_MUTE_CONFIRMATION = "proactive_mute_confirmation"
+    ROUTINE_BINDING = "routine_binding"
+    RECURRENCE_CHOICE = "recurrence_choice"
+    LEARNING_OFFER = "learning_offer"
+    UNKNOWN_WORD = "unknown_word"
 
 
 class DialogPriority(IntEnum):
@@ -79,6 +83,10 @@ class DialogManager:
     def __init__(self, *, ttl_seconds: int = 120) -> None:
         self.ttl = timedelta(seconds=max(10, ttl_seconds))
         self._tasks: dict[str, dict[str, DialogTask]] = {}
+
+    def clear_all(self) -> None:
+        """Drop every open dialog task (test reset, 7.6.0)."""
+        self._tasks.clear()
 
     def add(self, conversation_id: str, task: DialogTask) -> None:
         self._tasks.setdefault(conversation_id, {})[task.task_id] = task

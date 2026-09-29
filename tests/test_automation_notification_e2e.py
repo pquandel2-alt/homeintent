@@ -34,7 +34,8 @@ import homeintent.conversation as ha_conversation  # noqa: E402
 from _automation_world import AMBIGUOUS_WORLD, IPHONE, USER, WORLD  # noqa: E402
 from _notify_sink import NotifySink  # noqa: E402
 from homeintent.const import CONF_AGENT_NOTIFY_TARGETS  # noqa: E402
-from homeintent.conversation import AUTOMATION_CREATED_TEXT, NluConversationEntity  # noqa: E402
+from homeintent.controllers.automations import AUTOMATION_CREATED_TEXT  # noqa: E402
+from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeintent.user_context import (  # noqa: E402
     NotificationTarget,
     NotificationTargetKind,

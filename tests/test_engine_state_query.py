@@ -124,7 +124,7 @@ def test_all_rolladen_question_answers_no_if_one_is_down(engine):
     )
 
     assert result is not None
-    assert result.response_text == "Nein, nicht alle Rollläden sind geöffnet."
+    assert result.response_text == "Nein, nicht alle Rollläden sind geöffnet. Nicht geöffnet: Rollladen Küche."
 
 
 def test_room_possessive_window_question_never_resolves_to_another_device(engine):
@@ -178,7 +178,7 @@ def test_exists_query_common_wordings(engine):
         result = engine.match(question, [FENSTER_KELLER, FENSTER_BAD])
         assert result is not None, question
         assert result.plan is None
-        assert result.response_text == "Ja, es gibt 1 Fenster."
+        assert result.response_text == "Ja, Fenster Keller ist geöffnet."
 
 
 def test_negative_existence_query(engine):
@@ -440,7 +440,7 @@ def test_check_state_ambiguous_name_returns_none(engine):
 def test_exists_query_true_with_state_filter(engine):
     result = engine.match("gibt es offene Fenster", WINDOWS)
     assert result is not None
-    assert result.response_text == "Ja, es gibt 1 Fenster."
+    assert result.response_text == "Ja, Fenster Keller ist geöffnet."
 
 
 def test_exists_query_false_with_state_filter(engine):
@@ -465,7 +465,7 @@ def test_exists_query_device_class_before_area_word_order(engine):
     # "gibt es im Keller Fenster" (area before device_class).
     result = engine.match("gibt es geschlossene Fenster im Bad", WINDOWS)
     assert result is not None
-    assert result.response_text == "Ja, es gibt 1 Fenster."
+    assert result.response_text == "Ja, Fenster Bad ist geschlossen."
 
 
 def test_exists_query_area_scoped_false(engine):
@@ -479,13 +479,13 @@ def test_exists_query_noch_filler_word(engine):
     # had no "[noch]" while HassStateQuery/HassCheckState already did.
     result = engine.match("gibt es noch offene Fenster", WINDOWS)
     assert result is not None
-    assert result.response_text == "Ja, es gibt 1 Fenster."
+    assert result.response_text == "Ja, Fenster Keller ist geöffnet."
 
 
 def test_exists_query_denn_filler_word(engine):
     result = engine.match("gibt es denn offene Fenster", WINDOWS)
     assert result is not None
-    assert result.response_text == "Ja, es gibt 1 Fenster."
+    assert result.response_text == "Ja, Fenster Keller ist geöffnet."
 
 
 def test_exists_query_ist_ein_word_order(engine):
@@ -495,7 +495,7 @@ def test_exists_query_ist_ein_word_order(engine):
     result = engine.match("ist ein Fenster offen", WINDOWS)
     assert result is not None
     assert result.frame.intent == "HassExistsQuery"
-    assert result.response_text == "Ja, es gibt 1 Fenster."
+    assert result.response_text == "Ja, Fenster Keller ist geöffnet."
 
 
 def test_exists_query_ist_ein_area_scoped_word_order(engine):
@@ -640,7 +640,7 @@ def test_check_state_end_to_end_response_comes_from_response_generator(engine):
 def test_exists_query_end_to_end_response_comes_from_response_generator(engine):
     result = engine.match("gibt es offene Fenster", WINDOWS)
     assert result is not None
-    assert result.response_text == "Ja, es gibt 1 Fenster."
+    assert result.response_text == "Ja, Fenster Keller ist geöffnet."
 
 
 # --- Phase 7 (HomeIntent v4.2.1 plan): frame.parameters["query_command"] --

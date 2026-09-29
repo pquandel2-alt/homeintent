@@ -504,6 +504,8 @@ def _render_notification_preview(
         sentence += "."  # a quoted message already carries its own full stop
     if model.once and not one_shot_time:
         sentence += " Diese Automation wird nach der ersten Ausführung automatisch gelöscht."
+    elif model.max_runs == 1:
+        sentence += " Diese Automation läuft nur einmal und wird danach automatisch gelöscht."
     elif model.max_runs is not None:
         sentence += (
             f" Diese Automation wird nach {model.max_runs} Ausführungen automatisch gelöscht."
@@ -572,6 +574,8 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
     sentence = f"{sentence}, dann {action_text}."
     if model.once:
         sentence = f"{sentence} Diese Automation wird nach der ersten Ausführung automatisch gelöscht."
+    elif model.max_runs == 1:
+        sentence = f"{sentence} Diese Automation läuft nur einmal und wird danach automatisch gelöscht."
     elif model.max_runs is not None:
         sentence = (
             f"{sentence} Diese Automation wird nach {model.max_runs} "

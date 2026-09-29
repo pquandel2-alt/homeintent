@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from _ha_stub import ServiceMock  # noqa: E402
 import asyncio
 import sys
 from datetime import datetime
@@ -151,7 +152,7 @@ def test_ambiguous_list_is_selected_in_followup(monkeypatch):
 
 def test_list_query_uses_get_items_response(monkeypatch):
     agent = _entity(monkeypatch, [SHOPPING])
-    agent.hass.services.async_call = AsyncMock(return_value={
+    agent.hass.services.async_call = ServiceMock(return_value={
         SHOPPING.entity_id: {"items": [
             {"summary": "Milch", "status": "needs_action"},
             {"summary": "Brot", "status": "completed"},
@@ -253,7 +254,7 @@ def test_timer_service_and_status(monkeypatch):
 
 def test_clear_completed_requires_confirmation_and_executes_after_yes(monkeypatch):
     agent = _entity(monkeypatch, [SHOPPING])
-    agent.hass.services.async_call = AsyncMock(side_effect=[
+    agent.hass.services.async_call = ServiceMock(side_effect=[
         {SHOPPING.entity_id: {"items": [
             {"uid": "done-1", "summary": "Brot", "status": "completed"},
         ]}},
@@ -288,12 +289,12 @@ def test_todo_complete_and_remove_resolve_stable_uids(monkeypatch):
         {"uid": "milk-1", "summary": "[Hoch] Milch", "status": "needs_action"},
         {"uid": "bread-1", "summary": "Brot", "status": "needs_action"},
     ]}}
-    agent.hass.services.async_call = AsyncMock(side_effect=[items, None, items, None])
+    agent.hass.services.async_call = ServiceMock(side_effect=[items, None, items, None])
 
-    completed = asyncio.run(agent._async_execute_todo(TodoRequest(
+    completed = asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
         TodoOperation.COMPLETE, items=("Milch",), entity_id=SHOPPING.entity_id
     )))
-    removed = asyncio.run(agent._async_execute_todo(TodoRequest(
+    removed = asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
         TodoOperation.REMOVE, items=("Brot",), entity_id=SHOPPING.entity_id
     )))
 
@@ -322,12 +323,12 @@ def test_todo_mutation_refuses_unknown_duplicate_or_unstable_items(
     monkeypatch, items, spoken, message
 ):
     agent = _entity(monkeypatch, [SHOPPING])
-    agent.hass.services.async_call = AsyncMock(return_value={
+    agent.hass.services.async_call = ServiceMock(return_value={
         SHOPPING.entity_id: {"items": items}
     })
 
     with pytest.raises(ValueError, match=message):
-        asyncio.run(agent._async_execute_todo(TodoRequest(
+        asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
             TodoOperation.REMOVE, items=(spoken,), entity_id=SHOPPING.entity_id
         )))
 
@@ -338,9 +339,9 @@ def test_todo_move_preserves_metadata_then_removes_source(monkeypatch):
         "uid": "report-1", "summary": "Bericht", "status": "needs_action",
         "due_date": "2026-09-01", "description": "Prüfen",
     }]}}
-    agent.hass.services.async_call = AsyncMock(side_effect=[source, None, None])
+    agent.hass.services.async_call = ServiceMock(side_effect=[source, None, None])
 
-    speech = asyncio.run(agent._async_execute_todo(TodoRequest(
+    speech = asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
         TodoOperation.MOVE,
         items=("Bericht",),
         entity_id=SHOPPING.entity_id,
@@ -359,7 +360,7 @@ def test_todo_move_requires_destination_before_any_service(monkeypatch):
     agent = _entity(monkeypatch, [SHOPPING])
 
     with pytest.raises(ValueError, match="Zielliste"):
-        asyncio.run(agent._async_execute_todo(TodoRequest(
+        asyncio.run(agent._productivity.async_execute_todo(TodoRequest(
             TodoOperation.MOVE, items=("Milch",), entity_id=SHOPPING.entity_id
         )))
     agent.hass.services.async_call.assert_not_awaited()
@@ -367,7 +368,7 @@ def test_todo_move_requires_destination_before_any_service(monkeypatch):
 
 def test_productivity_service_failure_is_cleanly_reported(monkeypatch):
     agent = _entity(monkeypatch, [SHOPPING])
-    agent.hass.services.async_call = AsyncMock(side_effect=RuntimeError("todo down"))
+    agent.hass.services.async_call = ServiceMock(side_effect=RuntimeError("todo down"))
 
     result = _run(agent, "Füge Milch zur Einkaufsliste hinzu")
 
@@ -450,7 +451,7 @@ def test_list_follow_up_continues_on_the_last_used_list(monkeypatch):
     entity = NluConversationEntity(ConfigEntry())
     entity.hass = HomeAssistant()
     monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: [SHOPPING, WORK])
-    entity.hass.services.async_call = AsyncMock(return_value={
+    entity.hass.services.async_call = ServiceMock(return_value={
         "todo.einkauf": {"items": [
             {"summary": "Milch", "uid": "1", "status": "needs_action"},
             {"summary": "Brot", "uid": "2", "status": "needs_action"},

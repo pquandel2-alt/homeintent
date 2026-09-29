@@ -29,13 +29,14 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Iterable, Mapping, Sequence
 
-from ..entities import EntitySnapshot, normalize_for_compare
-from ..name_similarity import edit_distance
+from .capabilities import describe_abilities
+from ..entities import EntitySnapshot, ResolutionResult, normalize_for_compare
 from .device_ontology import (
     GENERA,
     analyse_word,
     entity_genera,
     genus,
+    lookup_genus_word,
     negative_phrase,
 )
 from .normalize import german_number
@@ -173,7 +174,7 @@ class _NameIndex:
 _NAME_INDEX_CACHE: dict[int, tuple[tuple[object, ...], "_NameIndex"]] = {}
 
 
-def _name_index(entities: Sequence[EntitySnapshot]) -> _NameIndex:
+def name_index(entities: Sequence[EntitySnapshot]) -> _NameIndex:
     """Registry name/alias phrase index, cached per exact name content."""
     signature = tuple((entity.entity_id, entity.friendly_name, entity.aliases) for entity in entities)
     key = hash(signature)
@@ -278,7 +279,7 @@ def describe_with_residue(
 ) -> tuple[tuple[TargetDescription, ...], tuple[str, ...]]:
     """Descriptions plus every word nothing explained (the residue)."""
     lexicon = lexicon or build_place_lexicon(entities)
-    names = names or _name_index(entities)
+    names = names or name_index(entities)
     words, positions = _words_of(tokens)
     taken = [False] * len(words)
 
@@ -625,13 +626,20 @@ def resolve_description(
             names = sorted(entity.friendly_name for entity in present)
             listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
             sensors = all(entity.domain in {"binary_sensor", "sensor"} for entity in present)
-            reason = (
-                "kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht"
-                if sensors else "unterstützen diese Aktion nicht"
-            )
+            if sensors:
+                sentence = f"{listed} kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht."
+            elif len(present) == 1:
+                # The actual reason from the device's capabilities, never a
+                # blanket "unterstützt die Aktion nicht" (7.3.3).
+                sentence = describe_abilities(present[0].friendly_name, present[0].capabilities)
+            else:
+                sentence = " ".join(
+                    describe_abilities(entity.friendly_name, entity.capabilities)
+                    for entity in sorted(present, key=lambda item: item.friendly_name)[:3]
+                )
             return TargetResolution(
                 ResolutionOutcome.NONE, described,
-                message=f"{listed} {reason}. Ich habe nichts ausgeführt.",
+                message=f"{sentence} Ich habe nichts ausgeführt.",
             )
         return TargetResolution(
             ResolutionOutcome.NONE,
@@ -718,37 +726,248 @@ def resolve_text_target(
     )
 
 
-def closest_genus_word(word: str, *, max_distance: int = 2) -> tuple[str, ...]:
-    """Genus-internal spelling repair: only forms of the *same* genus.
-
-    Returns the genus keys whose own surface forms are within
-    ``max_distance`` edits of ``word``.  A correction therefore never jumps
-    between kinds of devices (never "Wassermelder" -> "Bewegungsmelder").
-    """
-    from .device_ontology import _form_index  # local: private data index
-
-    normalized = normalize_for_compare(word)
-    scored = sorted(
-        (edit_distance(normalized, form), keys)
-        for form, keys in _form_index().items()
-        if abs(len(form) - len(normalized)) <= max_distance and len(form) >= 5
-    )
-    if not scored or scored[0][0] > max_distance:
-        return ()
-    best = scored[0][0]
-    found: list[str] = []
-    for distance, keys in scored:
-        if distance != best:
-            break
-        for key in keys:
-            if key not in found:
-                found.append(key)
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class DescribedTarget:
     """Convenience bundle for callers that also want the place lexicon."""
 
     resolutions: tuple[TargetResolution, ...]
     lexicon: PlaceLexicon = field(repr=False, default=None)  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# The one target resolution for name phrases (7.4.0).
+#
+# Every "which device is meant by this phrase" question goes through
+# ``resolve_phrase``: the scored name tier (exact names/aliases, contains,
+# bounded fuzzy correction - moved here from the historic resolver) plus the
+# rules of this module:
+#   * only the entities passed in (the exposed ones) are candidates;
+#   * a correction never crosses class boundaries: when the phrase names a
+#     device kind ("die Leuchte im Bad"), contains/fuzzy candidates of other
+#     domains are dropped; exact registry names always stay authoritative;
+#   * ambiguity stays ambiguity (``AMBIGUOUS``) - a spoken place narrows it,
+#     nothing else does; the caller asks a numbered question
+#     (``numbered_question``);
+#   * learned bindings (aliases, default choices) are applied here and only
+#     here (``BINDING_HOOKS``, filled from 7.4.1 on).
+
+
+# Words that name what the *command* creates or runs ("eine Automation für
+# die Haustür"), not the kind of device meant - never a class boundary.
+_META_DOMAINS = frozenset({"automation", "script", "scene"})
+
+
+def _phrase_genera(words: Sequence[str]) -> frozenset[str]:
+    """Device genus keys the phrase names (meta words excluded)."""
+    keys: set[str] = set()
+    for word in words:
+        for key in lookup_genus_word(word):
+            kinds = set(genus(key).domains)
+            if kinds and not kinds <= _META_DOMAINS:
+                keys.add(key)
+    return frozenset(keys)
+
+
+def _phrase_domains(words: Sequence[str]) -> frozenset[str] | None:
+    """Device domains the phrase's genus words allow (``None``: no genus)."""
+    domains: set[str] = set()
+    for key in _phrase_genera(words):
+        domains |= set(genus(key).domains)
+    return frozenset(domains) if domains else None
+
+
+def _within_kind(entity: EntitySnapshot, kinds: frozenset[str], keys: frozenset[str]) -> bool:
+    """The entity is of the named kind by domain or by its own name/class
+    (a switch named "Licht Sportraum" is a light)."""
+    if entity.domain in kinds or keys & entity_genera(entity):
+        return True
+    for name in (entity.friendly_name, *entity.aliases):
+        for word in normalize_for_compare(name).replace("-", " ").split():
+            analysis = analyse_word(word)
+            if analysis is not None and keys & set(analysis.genera):
+                return True
+    return False
+
+
+def resolve_phrase(
+    name: str,
+    entities: Sequence[EntitySnapshot],
+    *,
+    area_id: str | None = None,
+    domain: str | None = None,
+    device_class: str | None = None,
+    index: object | None = None,
+) -> ResolutionResult:
+    """Resolve a spoken name phrase to exposed entities (single entry point)."""
+    from ..entities import (
+        EntityMatchSource,
+        ResolutionStatus,
+        assemble_name_resolution,
+        rank_name_candidates,
+    )
+
+    spoken = (name or "").strip()
+    entity_list = list(entities)
+    ranked = rank_name_candidates(
+        spoken, entity_list, area_id=area_id, domain=domain,
+        device_class=device_class, index=index,  # type: ignore[arg-type]
+    )
+    words = normalize_for_compare(spoken).replace("-", " ").split()
+    keys = _phrase_genera(words)
+    kinds = _phrase_domains(words)
+    if kinds is not None and ranked:
+        loose = {EntityMatchSource.CONTAINS, EntityMatchSource.FUZZY}
+        ranked = [
+            item for item in ranked
+            if item.source not in loose or _within_kind(item.entity, kinds, keys)
+        ]
+    result = assemble_name_resolution(spoken, ranked)
+    if result.status is ResolutionStatus.AMBIGUOUS and len(words) > 1:
+        mentions = build_place_lexicon(entity_list).scan(words)
+        places = [mention.place for mention in mentions if mention.place.kind is not PlaceKind.HERE]
+        if places:
+            narrowed = [item for item in ranked if places[0].contains(item.entity)]
+            if narrowed and len(narrowed) < len(ranked):
+                result = assemble_name_resolution(spoken, narrowed)
+    return result
+
+
+def numbered_question(candidates: Sequence[EntitySnapshot], *, noun: str = "Gerät") -> str:
+    """"Welches Gerät meinst du: 1. …, 2. … oder 3. …?"."""
+    items = [f"{index}. {entity.friendly_name}" for index, entity in enumerate(candidates, 1)]
+    listed = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " oder " + items[-1]
+    article = "Welche" if noun in {"Routine", "Automation", "Szene"} else "Welches"
+    return f"{article} {noun} meinst du: {listed}?"
+
+
+# ---------------------------------------------------------------------------
+# Learned bindings (7.4.1) - applied here and only here.
+
+
+def apply_alias_bindings(
+    entities: Sequence[EntitySnapshot], bindings: Iterable[object]
+) -> list[EntitySnapshot]:
+    """Add confirmed household/personal aliases to the exposed snapshots.
+
+    An alias is a lexicon entry of the one target resolution: once attached
+    to the snapshot it works in every sentence form, question, time command,
+    push sentence and multi-command. A binding whose target is not among
+    ``entities`` (removed or no longer exposed) is simply inert.
+    """
+    from ..bindings import BindingKind
+
+    extra: dict[str, list[str]] = {}
+    for binding in bindings:
+        if getattr(binding, "kind", None) is not BindingKind.ALIAS:
+            continue
+        spoken = str(getattr(binding, "data", {}).get("spoken") or getattr(binding, "key"))
+        extra.setdefault(str(getattr(binding, "target")), []).append(spoken)
+    if not extra:
+        return list(entities)
+    return [
+        replace(entity, aliases=tuple(dict.fromkeys((*entity.aliases, *extra[entity.entity_id]))))
+        if entity.entity_id in extra else entity
+        for entity in entities
+    ]
+
+
+def default_choice_for(
+    candidates: Sequence[EntitySnapshot],
+    area_id: str | None,
+    bindings: Iterable[object],
+) -> EntitySnapshot | None:
+    """The confirmed default choice for exactly this question, if any.
+
+    The key is the offered candidate set × place, so only a candidate the
+    clarification itself offered can be chosen: a default choice never adds
+    a target, and the resulting command still runs through validator,
+    EffectGraph and policy.
+    """
+    from ..bindings import BindingKind, normalize_key
+
+    ids = sorted(entity.entity_id for entity in candidates)
+    keys = {
+        normalize_key(f"{'|'.join(ids)} @ {area_id or 'ueberall'}"),
+        normalize_key(f"{'|'.join(ids)} @ ueberall"),
+    }
+    by_id = {entity.entity_id: entity for entity in candidates}
+    for binding in bindings:
+        if (
+            getattr(binding, "kind", None) is BindingKind.DEFAULT_CHOICE
+            and getattr(binding, "key") in keys
+            and getattr(binding, "target") in by_id
+        ):
+            return by_id[str(getattr(binding, "target"))]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Devices that exist in Home Assistant but are not exposed (7.6.1).
+
+
+def _name_words(text: str) -> list[str]:
+    folded = normalize_for_compare(text)
+    return "".join(char if char.isalnum() else " " for char in folded).split()
+
+
+def hidden_name_mentions(
+    text: str,
+    exposed: Sequence[EntitySnapshot],
+    hidden: Iterable[tuple[str, str]],
+) -> tuple[str, ...]:
+    """Names of non-exposed devices spoken in ``text``.
+
+    ``hidden`` holds ``(domain, friendly name)`` of entities Home Assistant
+    knows but HomeIntent may not use. A hidden name counts only when it is
+    spoken as whole words, outside every exposed name ("Kaffeemaschine
+    entkalken" is the exposed button, not the hidden machine), and when no
+    exposed entity carries the same name. A single genus word ("Licht")
+    only counts when no exposed device of that genus exists, so it never
+    shadows an ordinary genus reference. Nothing here resolves a target:
+    the result only explains why nothing is done - side entities of a
+    hidden device never become its substitute.
+    """
+    words = _name_words(text)
+    if not words:
+        return ()
+    exposed_keys: set[tuple[str, ...]] = set()
+    for entity in exposed:
+        for name in (entity.friendly_name, *entity.aliases):
+            key = tuple(_name_words(name))
+            if key:
+                exposed_keys.add(key)
+    covered = [False] * len(words)
+    for key in exposed_keys:
+        width = len(key)
+        for start in range(len(words) - width + 1):
+            if tuple(words[start:start + width]) == key:
+                for index in range(start, start + width):
+                    covered[index] = True
+    present = set(words)
+    found: list[str] = []
+    for _domain, name in hidden:
+        key = tuple(_name_words(name))
+        if not key or key[0] not in present or key in exposed_keys or name in found:
+            continue
+        if len(key) == 1:
+            analysis = analyse_word(key[0])
+            if analysis is not None and any(
+                set(analysis.genera) & set(entity_genera(entity)) for entity in exposed
+            ):
+                continue
+        width = len(key)
+        if any(
+            tuple(words[start:start + width]) == key
+            and not any(covered[start:start + width])
+            for start in range(len(words) - width + 1)
+        ):
+            found.append(name)
+    return tuple(found)
+
+
+def hidden_device_text(names: Sequence[str], *, admin_hint: str | None = None) -> str:
+    """"Saugroboter ist für HomeIntent nicht freigegeben." (+ where to change it)."""
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
+    verb = "ist" if len(names) == 1 else "sind"
+    text = f"{listed} {verb} für HomeIntent nicht freigegeben."
+    return f"{text} {admin_hint}" if admin_hint else text

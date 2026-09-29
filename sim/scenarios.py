@@ -421,8 +421,10 @@ S("auto-numeric", "Automationen", "Temperatur unter 18 Grad → Heizung Büro 21
   set_("sensor.temperatur_keller", 11.2, settle=2),
   check(state={"light.kellerlicht": "on"}))
 S("auto-sun", "Automationen", "Bei Sonnenuntergang Außenbeleuchtung ein",
-  say("Bei Sonnenuntergang schalte die Außenbeleuchtung ein.", no_calls=True),
-  say(YES, settle=3))
+  # 7.3.3: ohne Wiederholungsmarker fragt HomeIntent „nur heute oder jeden Tag?“
+  say("Bei Sonnenuntergang schalte die Außenbeleuchtung ein.", no_calls=True, any=["jeden tag"]),
+  say("Jeden Tag.", no_calls=True, any=["erstellt werden"]),
+  say(YES, settle=3, any=["erstellt"]))
 S("auto-recurring", "Automationen", "Jeden Werktag um 7 Uhr Küchenlicht ein",
   say("Jeden Werktag um 7 Uhr schalte das Küchenlicht ein.", no_calls=True),
   say(YES, settle=3))
@@ -621,8 +623,9 @@ S("s73-s5-indoor-superlative", L73, "S5: Superlativ ohne Außenbezug vergleicht 
   say("Welcher Raum ist am wärmsten?", no_calls=True, none=["garten", "außen"]))
 S("s73-s6-too-bright", L73, "S6: „zu hell“ wirkt statt Werte vorzulesen",
   service("light.turn_on", {"entity_id": "light.stehlampe", "brightness_pct": 80}),
-  say("Im Wohnzimmer ist es mir zu hell.", none=["lux"],
-      any=["gedimmt", "dunkler", "heruntergefahren", "geschlossen", "gestellt", "gesenkt"]))
+  # 7.3.3: Bedürfnisse werden im Standard „propose“ vorgeschlagen, „Ja“ führt aus.
+  say("Im Wohnzimmer ist es mir zu hell.", none=["lux"], no_calls=True, any=["soll ich"]),
+  say(YES, any=["gedimmt", "dunkler", "heruntergefahren", "geschlossen", "gestellt", "gesenkt"]))
 S("s73-s7-detector-kind", L73, "S7: Meldergattung bleibt erhalten (Rauch ≠ Bewegung)",
   say("Benachrichtige mich, wenn der Rauchmelder auslöst.", any=["rauchmelder"], none=["bewegungsmelder"]),
   say("Nein."))
@@ -663,9 +666,11 @@ S("s73-1-three-lamps", L73, "§1: Zahl + Gattung + Raum",
       calls=["light.buerolicht:turn_on", "light.schreibtischlampe:turn_on", "light.deckenfluter_buero:turn_on"]))
 # §2 Bedürfnisse
 S("s73-2-freezing", L73, "§2: „Ich friere“ am Satelliten",
-  say("Ich friere.", device="Kinderzimmer", calls=["climate.heizung_kinderzimmer:set_temperature"]))
+  say("Ich friere.", device="Kinderzimmer", no_calls=True, any=["soll ich"]),
+  say(YES, device="Kinderzimmer", calls=["climate.heizung_kinderzimmer:set_temperature"]))
 S("s73-2-stale-air", L73, "§2: muffige Luft → Lüfter des Raums",
-  say("Hier ist es muffig.", device="Badezimmer", calls=["fan.badluefter:turn_on"]))
+  say("Hier ist es muffig.", device="Badezimmer", no_calls=True, any=["soll ich"]),
+  say(YES, device="Badezimmer", calls=["fan.badluefter:turn_on"]))
 # §3 Situationssichten
 S("s73-3-still-on", L73, "§3: noch an je Etage",
   say("Ist im Erdgeschoss noch etwas an?", type="query_answer", no_calls=True, any=["küchenradio"]))

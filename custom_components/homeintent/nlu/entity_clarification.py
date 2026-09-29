@@ -25,6 +25,24 @@ _DOMAIN_LABELS = {
     "timer": ("Timer", "Welchen meinst du?"),
     "calendar": ("Kalender", "Welchen meinst du?"),
 }
+# Singular genus for "Welche Szene meinst du: …?" (7.6.1).
+_DOMAIN_SINGULAR = {
+    "light": ("Welches", "Licht"),
+    "switch": ("Welchen", "Schalter"),
+    "cover": ("Welchen", "Rollladen"),
+    "fan": ("Welchen", "Ventilator"),
+    "climate": ("Welche", "Heizung"),
+    "sensor": ("Welchen", "Sensor"),
+    "media_player": ("Welches", "Mediengerät"),
+    "script": ("Welches", "Skript"),
+    "vacuum": ("Welchen", "Saugroboter"),
+    "scene": ("Welche", "Szene"),
+    "todo": ("Welche", "Liste"),
+    "timer": ("Welchen", "Timer"),
+    "calendar": ("Welchen", "Kalender"),
+    "automation": ("Welche", "Automation"),
+    "lock": ("Welches", "Schloss"),
+}
 _CANCEL_RE = re.compile(
     r"^\s*(?:nein|abbrechen|abbruch|(?:keins|keine|keiner)(?:\s+davon)?|"
     r"nichts|vergiss es|lass es)\s*[.!?]*$",
@@ -100,6 +118,19 @@ def candidate_labels(
         if normalize_for_compare(labels[index]) in duplicate_labels:
             labels[index] += f" ({candidate.entity_id})"
     return tuple(labels)
+
+
+def which_question(candidates: tuple[EntitySnapshot, ...] | list[EntitySnapshot]) -> str:
+    """"Welche Szene meinst du: A, B oder C?" - the genus when all share it."""
+    names = [candidate.friendly_name for candidate in candidates]
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " oder " + names[-1]
+    domains = {candidate.domain for candidate in candidates}
+    article, noun = (
+        _DOMAIN_SINGULAR.get(next(iter(domains)), ("Welches", "Gerät"))
+        if len(domains) == 1
+        else ("Welches", "Gerät")
+    )
+    return f"{article} {noun} meinst du: {listed}?"
 
 
 def render_candidate_question(candidates: tuple[EntitySnapshot, ...]) -> str:

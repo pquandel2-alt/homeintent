@@ -16,16 +16,16 @@ from ..entities import (
     normalize_for_compare,
     resolve_entities_by_domain,
     resolve_entity,
-    resolve_entity_scored,
     generate_aliases,
 )
 from ..entity_scope import resolve_entity_scope
 from .semantic_catalog import DOMAIN_WORDS
+from .target_resolution import resolve_phrase
 
 __all__ = (
     "ResolutionResult", "ResolutionStatus", "ResolveResult", "ResolveStatus",
     "all_mentioned_entities", "mentioned_entities", "resolve_entities_by_domain", "resolve_entity",
-    "resolve_entity_scored", "resolve_mentioned_target", "resolve_named_target",
+    "resolve_phrase", "resolve_mentioned_target", "resolve_named_target",
     "resolve_query_targets", "rank_semantic_targets", "RankedTarget",
 )
 
@@ -203,7 +203,7 @@ def rank_semantic_targets(
                 and (area_id is None or entity.area_id == area_id)
                 and (floor_id is None or entity.floor_id == floor_id)
             ]
-            resolved = resolve_entity_scored(
+            resolved = resolve_phrase(
                 residual,
                 scoped_pool,
                 area_id=area_id,
@@ -319,7 +319,7 @@ def resolve_named_target(
         if allowed_domains is None
         else [entity for entity in entities if entity.domain in allowed_domains]
     )
-    return resolve_entity_scored(name.strip(), candidates)
+    return resolve_phrase(name.strip(), candidates)
 
 
 def resolve_mentioned_target(

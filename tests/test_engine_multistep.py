@@ -107,27 +107,3 @@ def test_plain_sentence_without_und_still_returns_single_match_result(engine):
     assert isinstance(result, MatchResult)
     assert not isinstance(result, CommandPlan)
     assert result.plan.service == "turn_on"
-
-
-def test_second_clause_can_inherit_the_first_action_for_a_new_area(engine):
-    bedroom = EntitySnapshot(
-        "light.schlafzimmer", "Schlafzimmerlicht", "light", "off",
-        area_id="schlafzimmer", area_name="Schlafzimmer",
-        capabilities=frozenset({"TURN_ON", "TURN_OFF"}),
-    )
-    living = EntitySnapshot(
-        "light.wohnzimmer", "Wohnzimmerlicht", "light", "off",
-        area_id="wohnzimmer", area_name="Wohnzimmer",
-        capabilities=frozenset({"TURN_ON", "TURN_OFF"}),
-    )
-
-    result = engine._match_multi(
-        ["Mach das Wohnzimmerlicht an", "im Schlafzimmer auch"],
-        [living, bedroom],
-    )
-
-    assert isinstance(result, CommandPlan)
-    assert [command.plan.entity_id for command in result.commands] == [
-        "light.wohnzimmer", "light.schlafzimmer",
-    ]
-    assert all(command.plan.service == "turn_on" for command in result.commands)
