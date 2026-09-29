@@ -1,5 +1,7 @@
 # Auftrag: HomeIntent 7.6.1 – Befunde aus dem Nachtest von 7.6.0 beheben
 
+> **Ersetzt durch [`PROMPT_7.6.1-7.7.md`](PROMPT_7.6.1-7.7.md)** (Teil A enthält alle Punkte dieser Datei). Bitte nur noch diese Datei umsetzen.
+
 Repository `pquandel2-alt/homeintent`. Basis ist **7.6.0**, Branch
 `claude/homeintent-sprachverstaendnis-phases-6feab4`, Commit `ce9e9e6`. Arbeite dort weiter oder
 auf einem eigenen Branch davon. Der Nachtestbericht liegt in `docs/nachtest-7.6.0.md` im Branch
