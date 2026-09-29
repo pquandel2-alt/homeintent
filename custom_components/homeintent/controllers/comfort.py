@@ -8,7 +8,6 @@ and document answers only read. From ``conversation.py``.
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import replace
 from typing import Any, Callable, Protocol
 
@@ -42,6 +41,7 @@ from ..profiles import ComfortProfile
 from ..security_control import conversation_user_id, user_is_admin
 from ..service_call import ServiceCallPlan
 from ..service_executor import async_execute_service_plan
+from ..nlu.dialog_meta import MetaQuestion, meta_questions
 
 
 class ComfortRuntime(Protocol):
@@ -237,12 +237,12 @@ class ComfortController:
             and active.kind is DialogTaskKind.MISSING_SLOT
             and active.task_id == "comfort-missing-action"
         ):
-            normalized = language_document.normalized_text.casefold()
-            if re.search(r"\bwarum\s+fragst\s+du\b", normalized):
+            asked = meta_questions(language_document.normalized_text)
+            if MetaQuestion.WHY_ASKING in asked:
                 response.async_set_speech(manager.explain(conversation_id))
-            elif re.search(r"\bwas\s+hast\s+du\s+verstanden\b", normalized):
+            elif MetaQuestion.UNDERSTOOD in asked:
                 response.async_set_speech(manager.understood(conversation_id))
-            elif re.search(r"\b(?:abbrechen|vergiss\s+es|lass\s+das)\b", normalized):
+            elif MetaQuestion.CANCEL in asked:
                 manager.cancel(conversation_id)
                 response.async_set_speech("In Ordnung. Ich ändere nichts.")
             else:

@@ -18,7 +18,6 @@ from typing import Mapping, Sequence
 from ..entities import EntitySnapshot, format_spoken_number, normalize_for_compare
 from .device_ontology import entity_genera
 from .frame import Quantifier, SemanticFrame, TargetReference
-from .german_morphology import dative_location_phrase
 from .grounded_answer import join_german
 from .need_semantics import NeedKind, NeedMeaning, RoutineConcept
 from .parser import ParseResult
@@ -113,10 +112,6 @@ def _heating(entities: Sequence[EntitySnapshot]) -> list[EntitySnapshot]:
         entity for entity in entities
         if entity.domain == "climate" and "TEMPERATURE" in entity.capabilities
     ]
-
-
-def _needs_place(kind: NeedKind) -> bool:
-    return kind is not NeedKind.ROUTINE
 
 
 def compile_need(
@@ -404,5 +399,3 @@ def _routine(
     )
 
 
-def need_place_phrase(place: Place | None) -> str:
-    return dative_location_phrase(place.name) if place is not None else "im Haus"

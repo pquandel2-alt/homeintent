@@ -529,13 +529,3 @@ def negative_phrase(key: str, *, plural: bool = False) -> str:
     return f"{article} {item.singular}"
 
 
-def definite_phrase(key: str, *, plural: bool = False, case: str = "nom") -> str:
-    item = _BY_KEY[key]
-    if plural:
-        return f"die {item.plural}"
-    article = {
-        ("nom", Gender.MASCULINE): "der", ("nom", Gender.FEMININE): "die",
-        ("nom", Gender.NEUTER): "das", ("acc", Gender.MASCULINE): "den",
-        ("acc", Gender.FEMININE): "die", ("acc", Gender.NEUTER): "das",
-    }[(case, item.gender)]
-    return f"{article} {item.singular}"

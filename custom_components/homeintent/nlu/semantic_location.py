@@ -17,6 +17,7 @@ from ..floors import (
     resolve_floor_scored,
 )
 from .word_cues import has_word
+from .locative import has_locative_cue
 
 if TYPE_CHECKING:
     from ..world_model import WorldModel
@@ -99,7 +100,7 @@ def _inside_entity_name(
 
 def has_explicit_location_cue(text: str, entities: list[EntitySnapshot]) -> bool:
     """Whether text contains a locative or standalone level direction."""
-    if re.search(r"\b(?:im|in\s+der|in\s+dem|am|beim)\s+", text, re.I):
+    if has_locative_cue(text, followed=True):
         return True
     return any(
         not _inside_entity_name(text, match.start(), match.end(), entities)

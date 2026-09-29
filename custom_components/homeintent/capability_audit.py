@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from dataclasses import dataclass
 
@@ -11,6 +10,7 @@ from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.language_frontend import LanguageDocument
 from .nlu.semantic_utterance import SpeechAct
 from .query_target import mentioned_entities
+from .nlu.phrases import has, words
 
 
 CONTROL_DOMAINS = frozenset({
@@ -104,11 +104,8 @@ def match_capability_audit_query(
     )
     audit = audit_capabilities(entities)
 
-    if re.search(
-        r"\b(?:ist\s+homeintent\s+bereit|pruefe\s+homeintent|homeintent\s+status|"
-        r"wie\s+ist\s+der\s+homeintent\s+status)\b",
-        key,
-    ):
+    tokens = words(key)
+    if has(tokens, "ist homeintent bereit", "pruefe homeintent", "homeintent status"):
         return _answer(
             f"HomeIntent sieht {audit.selected_count} freigegebene Entities: "
             f"{len(audit.controllable)} steuerbar, {len(audit.readable)} lesbar und "
@@ -117,12 +114,13 @@ def match_capability_audit_query(
             "zu noch nicht unterstützten Domänen."
         )
 
-    if re.search(r"\bwelche\s+geraete\s+haben\s+keinen\s+(?:bereich|raum)\b", key):
+    if has(tokens, "welche geraete haben keinen bereich|raum"):
         return _answer("Ohne Bereich: " + _names(audit.missing_area) + ".")
 
-    if re.search(
-        r"\bwelche\s+geraete\s+(?:kannst\s+du|kann\s+homeintent)\s+(?:steuern|bedienen)\b",
-        key,
+    if has(
+        tokens,
+        "welche geraete kannst du steuern|bedienen",
+        "welche geraete kann homeintent steuern|bedienen",
     ):
         counts = Counter(entity.domain for entity in audit.controllable)
         groups = [
@@ -133,14 +131,15 @@ def match_capability_audit_query(
             "Steuerbar: " + (", ".join(groups) if groups else "keine Geräte") + "."
         )
 
-    if re.search(
-        r"\bwelche\s+geraete\s+(?:kannst\s+du|kann\s+homeintent)\s+nicht\s+"
-        r"(?:steuern|bedienen|unterstuetzen)\b",
-        key,
-    ) or re.search(r"\bwelche\s+geraete\s+werden\s+nicht\s+unterstuetzt\b", key):
+    if has(
+        tokens,
+        "welche geraete kannst du nicht steuern|bedienen|unterstuetzen",
+        "welche geraete kann homeintent nicht steuern|bedienen|unterstuetzen",
+        "welche geraete werden nicht unterstuetzt",
+    ):
         return _answer("Noch nicht steuerbar: " + _names(audit.unsupported) + ".")
 
-    if re.search(r"\bwarum\s+(?:kannst\s+du|kann\s+homeintent)\b", key):
+    if has(tokens, "warum kannst du", "warum kann homeintent"):
         targets = mentioned_entities(text, entities)
         if len(targets) > 1:
             return _answer("Welches Gerät meinst du?")

@@ -148,6 +148,7 @@ from .automation_notification import (
 from .notification_language import NotificationClause, parse_notification_clause
 from .nlu.action_model import NotificationRecipientKind
 from .automation_condition_parser import AutomationConditionParser, split_on_top_level_and
+from .nlu.locative import has_locative_cue
 from .nlu.automation_shell_normalization import strip_automation_shell
 from .calendar_automation import parse_calendar_automation_draft
 from .automation_trigger_parser import _AUTOMATION_TRIGGER_RE, AutomationTriggerParser
@@ -234,93 +235,6 @@ AUTOMATION_DELETE_DIR = INTENTS_DIR / "automation_delete"
 AUTOMATION_TOGGLE_DIR = INTENTS_DIR / "automation_toggle"
 RELATIVE_TIME_DIR = INTENTS_DIR / "relative_time"
 
-# Sentences containing a temporal-modifier keyword ("Minute(n)"/"Stunde(n)"/
-# "Uhr"/"morgen früh"/"heute Abend"/...) are routed to TemporalParser's
-# separately-compiled grammar (HomeIntent plan V4.7, "Temporal Expressions")
-# - checked *first*, before _QUANTIFIER_RE below: "mach das Licht in fünf
-# Minuten aus"/"... um acht Uhr an" contain "fünf"/"acht", which
-# _QUANTIFIER_RE also matches (its spelled-out count-word list), and would
-# otherwise misroute these to QuantifierParser's unrelated grammar - same
-# "one keyword, one dedicated grammar, checked before anything it could
-# collide with" reasoning _COMPARISON_QUERY_RE's own comment documents.
-_TEMPORAL_RE = re.compile(
-    r"\b(minuten?|stunden?|uhr)\b|\b(morgen früh|heute abend|morgen abend|heute früh)\b", re.IGNORECASE
-)
-
-# Sentences containing "welche" *and* an actual comparator word are routed
-# to ComparisonQueryParser's separately-compiled grammar (HomeIntent plan
-# V4.6, "Comparisons", query-filter half) - checked *first*, before every
-# other regex below: a sentence like "welche Heizungen sind unter 20 Grad"
-# also contains "Grad" (would otherwise match _CLIMATE_EXTENDED_RE) and
-# "welche Lichter sind mindestens 50 Prozent" also contains "Prozent" (would
-# otherwise match _PERCENT_RE) - both would be structurally swallowed by the
-# wrong grammar if checked after those, same "one keyword, one dedicated
-# grammar, checked before anything it could collide with" reasoning
-# _LIGHT_EXTENDED_RE's own comment documents for its position ahead of
-# _PERCENT_RE.
-#
-# Requiring a comparator word (not just "welche" alone) is V4.2's fix for a
-# real misroute: a bare "welche" sentence with no comparator (e.g. "Welche
-# Fenster sind noch geöffnet?") was being swallowed here too and then
-# structurally could never match ComparisonQueryParser's comparator+percent/
-# temperature-only grammar, so it fell all the way through to "not
-# understood" - it belongs to _STATE_QUERY_RE below instead. The comparator
-# vocabulary mirrors parsers.py's _COMPARATOR_SLOT_LIST (kept in sync by
-# hand - not re-derived here, since that list is built at import time from
-# tuples, not a bare word list this regex could read directly). "heller
-# als"/"dunkler als"/"mehr als"/"weniger als" (V4.2 spec gap #5) require the
-# literal "als" alongside "heller"/"dunkler", so this can't collide with
-# _LIGHT_EXTENDED_RE's bare "heller"/"dunkler" keywords below - and this
-# regex is checked first regardless, same precedent already documented.
-_COMPARISON_QUERY_RE = re.compile(
-    r"(?=.*\bwelch\w*\b)(?=.*\b(mindestens|höchstens|nicht höher als|über|unter|"
-    r"heller als|dunkler als|mehr als|weniger als)\b)",
-    re.IGNORECASE,
-)
-
-# Sentences combining a query-trigger word ("welche"/"wie viele"/"ist"/
-# "sind") *and* a state word (predicate form: offen/geöffnet/zu/geschlossen/
-# an/aus/eingeschaltet/ausgeschaltet - or attributive/adjective form:
-# offene/geöffnete/geschlossene/eingeschaltete/angeschaltete/ausgeschaltete,
-# since German inflects the same word differently in "die Fenster sind
-# offen" vs. "gibt es offene Fenster") are routed to StateQueryParser's
-# separately-compiled grammar (HomeIntent V4.2, "Semantic Query & State
-# Resolution") - checked immediately after _COMPARISON_QUERY_RE, since a
-# "welche"-sentence without a comparator word (e.g. "Welche Fenster sind
-# noch geöffnet?") falls through the now-narrowed regex above and needs
-# somewhere else to land. Requiring *both* words (not just the state word
-# alone) keeps this from swallowing plain on/off commands ("Schalte das
-# Licht aus" has "aus" but none of the trigger words). Verified empirically
-# (this session) against every existing intent YAML: no sentence combines a
-# trigger word with a state word today, so this can't misroute an existing
-# match.
-#
-# "gibt es" is handled as its own unconditional alternative (no state word
-# required): HassExistsQuery's grammar explicitly supports a bare existence
-# question with no state word at all ("gibt es Fenster im Keller?"), so
-# requiring a state word here would make that sentence structurally
-# unreachable by any parser. Safe to route "gibt es" unconditionally -
-# grepped empirically (this session): no other intent YAML uses the phrase
-# "gibt es" anywhere, so this can't misroute an existing match.
-_STATE_QUERY_RE = re.compile(
-    r"\bgibt es\b"
-    r"|\bhaben wir\b.*\b(offen\w*|geöffnet\w*|geschlossen\w*|eingeschaltet\w*|ausgeschaltet\w*)\b"
-    r"|\b(?:läuft|laeuft)\b"
-    r"|\bwas\s+macht\b"
-    r"|\bwelchen\b.*\b(zustand|status)\b"
-    r"|\b(wie|zeige)\b.*\b(zustand|status)\b"
-    r"|\b(wo|in welchen räumen|welche räume haben|was ist)\b.*"
-    r"\b(offen|geöffnet|zu|geschlossen|an|aus|eingeschaltet|ausgeschaltet|"
-    r"hochgefahren|runtergefahren|heruntergefahren|oben|unten)\b"
-    r"|\bwas ist der\b.*\b(zustand|status)\b"
-    r"|\bwelche\b.*\bsind\b"
-    r"|\b(welcher|welche|welches|wie viele|ist|sind)\b.*"
-    r"\b(offen|geöffnet|offene|geöffnete|zu|geschlossen|geschlossene|"
-    r"an|aus|eingeschaltet|angeschaltet|ausgeschaltet|"
-    r"hochgefahren|runtergefahren|heruntergefahren|oben|unten|"
-    r"eingeschaltete|angeschaltete|ausgeschaltete)\b",
-    re.IGNORECASE,
-)
 
 # Intents NluEngine.match_query_followup() will continue with a fresh
 # area/floor ("Und in der Küche?", "Und oben?") - HassGetState (original,
@@ -421,92 +335,6 @@ def _weekday_number(day: str) -> int:
         "freitag": 4, "samstag": 5, "sonntag": 6,
     }.get(day, 0)
 
-# Sentences containing "alle"/"beide[n/r]"/"nur"/a count word are routed to
-# QuantifierParser's separately-compiled grammar rather than mixed into the
-# {name}-wildcard grammar above - hassil's recognize() would otherwise
-# structurally match both grammars for the same sentence and silently pick
-# whichever comes first in file/sentence order. The count-word list (v2 plan
-# Phase 29, "Natural Quantifiers") mirrors parsers.py's _COUNT_SLOT_LIST -
-# "nur"/count-only sentences like "nur die Wohnzimmerlampen an" or "mach die
-# drei Lichter an" contain neither "alle" nor "beide[n/r]", so without this
-# they'd never even reach QuantifierParser. Same reasoning applies to
-# "oben"/"unten" (HomeIntent plan V4.3, "Implicit Targets" - "Mach oben die
-# Lichter aus." has no {quantifier} word at all, only {level}) - added here
-# for the same "or this sentence never reaches QuantifierParser" reason.
-# An area-scoped phrase with a plural article/domain ("die Rollläden im
-# Esszimmer", "die Lichter in der Küche") is likewise an unambiguous group
-# request even without the redundant word "alle".  The article is part of
-# this gate deliberately: "den Rollladen im Büro" remains a singular target.
-_QUANTIFIER_RE = re.compile(
-    r"\b(alle|beide[nr]?|nur|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|oben|unten)\b"
-    r"|\bdie\s+(?:lichter|lampen|steckdosen|rol{2,3}[aä]den|rollos|ventilatoren)\b"
-    r"(?=.*\b(?:in der|in dem|im|am|beim)\b)"
-    r"|(?=.*\b(?:in der|in dem|im|am|beim)\b.*\bdie\s+"
-    r"(?:lichter|lampen|steckdosen|rol{2,3}[aä]den|rollos|ventilatoren)\b)",
-    re.IGNORECASE,
-)
-
-# "Welche {attribute} zeigt {name} [Sensor]?" / "Was zeigt {name} [Sensor]
-# an?" (v4.1.2 live gap, screenshot IMG_3105) is plain HassGetState -
-# SingleTargetParser's default grammar (query.yaml) - but "welche Temperatur
-# zeigt der Außentemperatur Sensor" also contains the standalone word
-# "temperatur", which would otherwise match _CLIMATE_EXTENDED_RE below and
-# misroute it to ClimateExtendedParser's unrelated "wärmer/kälter" grammar
-# (that parser has no "zeigt" sentence, so it would return None). "zeigt" is
-# unique to this HassGetState sentence family - grepped empirically, no
-# other intent YAML uses it - so routing on it unconditionally, before
-# _CLIMATE_EXTENDED_RE, can't misroute an existing match.
-_GET_STATE_ZEIGT_RE = re.compile(r"\bzeigt\b", re.IGNORECASE)
-
-# Sentences containing a brightness-adjust or colour/colour-temperature
-# keyword are routed to LightExtendedParser's separately-compiled grammar
-# (v2 plan Phase 14). Checked *before* _PERCENT_RE below: "mach das Licht 20
-# Prozent heller" contains both "Prozent" and "heller" and must not fall
-# into PercentageParser's absolute {name}/{percent} grammar.
-_LIGHT_EXTENDED_RE = re.compile(
-    r"\b(heller|dunkler|rot|grün|blau|gelb|orange|lila|violett|weiß|pink|rosa|türkis|cyan|(?:warm|neutral|tageslicht|kalt)wei(?:ß|ss))\b",
-    re.IGNORECASE,
-)
-
-# Sentences containing a fan-speed keyword are routed to FanExtendedParser's
-# separately-compiled grammar (v2 plan Phase 16) - same reasoning as the
-# other dedicated grammars above: "auf Stufe 3" would otherwise collide with
-# nothing existing (no overlap with prozent/quantifier/color keywords), but
-# keeping it as its own grammar/parser follows the same one-parser-per-
-# vocabulary precedent LightExtendedParser already established.
-_FAN_EXTENDED_RE = re.compile(r"\b(stufe|schneller|langsamer)\b", re.IGNORECASE)
-
-# Sentences containing a climate-temperature keyword are routed to
-# ClimateExtendedParser's separately-compiled grammar (v2 plan Phase 17) -
-# same reasoning as the other dedicated grammars above. "temperatur" is safe
-# as a standalone \b-bounded word here: it never matches inside compound
-# words like "Außentemperatur" (query.yaml), since there's no boundary
-# between "Außen" and "temperatur".
-_CLIMATE_EXTENDED_RE = re.compile(r"\b(grad|wärmer|kälter|temperatur)\b", re.IGNORECASE)
-
-# "und"-joined sentences ("Mach das Licht an und fahr die Rollläden hoch.")
-# are split into independent sub-commands (HomeIntent plan V4.8, "Multi-Step
-# Commands") *before* any other routing below - each segment is re-fed
-# through the exact same single-command ``match()`` pipeline (own parser
-# selection, own entity resolution, own validation), so a multi-step
-# sentence gets zero bespoke grammar of its own. No existing intent YAML
-# uses the word "und" (grepped empirically before adding this), so this
-# split can never misfire on an existing single-command sentence.
-_AND_SPLIT_RE = re.compile(r"\s+(?:und|außerdem)\s+", re.IGNORECASE)
-
-# "ist es" (a state query with no {name} at all, only a room - "wie warm
-# ist es im Wohnzimmer") routes to AreaQueryParser's separately-compiled
-# grammar (HomeIntent plan V4.9, "Cross-Sentence References", first-turn
-# half) instead of falling through to SingleTargetParser's default below -
-# query.yaml's own name-based sentence never contains the literal "ist es"
-# (it's "ist [die|der|das] {name}"), grepped empirically before adding this,
-# same "one keyword, one dedicated grammar" precedent every regex above
-# already follows.
-_AREA_QUERY_RE = re.compile(
-    r"\bist\s+es\b|\bwie\s+hoch\s+ist\s+die\s+temperatur\b|"
-    r"\bwelche\s+temperatur\s+hat\b",
-    re.IGNORECASE,
-)
 
 # "automation(en)"/"was schaltet"/"was steuert"/"warum ist"/"warum geht"
 # routes to AutomationQueryParser's separately-compiled grammar (HomeIntent
@@ -565,11 +393,6 @@ _REPEAT_COUNTS = {
     "sieben": 7, "acht": 8, "neun": 9, "zehn": 10,
 }
 
-_UNSAFE_DIRECT_COMMAND_MODIFIER_RE = re.compile(
-    r"\b(?:nicht(?!\s+(?:höher|hoeher|niedriger|mehr|weniger)\s+als\b)|"
-    r"kein\w*|ohne|vielleicht|normalerweise|gestern)\b",
-    re.I,
-)
 
 def _clarification_question(clarification: ClarificationRequest) -> str:
     return render_candidate_question(clarification.candidates)
@@ -834,6 +657,8 @@ _SAY_REQUEST_RE = re.compile(
 
 # A polite modal request ("..., kannst du mir dann Bescheid sagen?") is a
 # request even though it is phrased as a question; wh-questions never are.
+# "Nein, ich meinte …" / "gemeint war …" before a corrected name or place.
+_MEANT_PREFIX_RE = re.compile(r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+", re.IGNORECASE)
 _MODAL_REQUEST_RE = re.compile(
     r"\b(?:kannst|könntest|koenntest|würdest|wuerdest)\s+du\s+(?:\S+\s+){0,4}?"
     r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden)\b",
@@ -1055,9 +880,7 @@ class NluEngine:
             context=context,
         )
         v7_result = self._interpreted_match_result(interpreted, entities)
-        if v7_result is None and not supplied_document and re.search(
-            r"\b(?:im|in\s+der|in\s+dem|am|beim)\b", text, re.I
-        ):
+        if v7_result is None and not supplied_document and has_locative_cue(text):
             expanded_document = analyse_language(text, entities)
             if any(
                 variant.source == "registry_compound"
@@ -2734,13 +2557,11 @@ class NluEngine:
             return None
 
         normalized = normalize(text)
-        correction = re.match(
-            r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+(?P<location>.+?)[?.!]*$",
-            normalized,
-            re.IGNORECASE,
-        )
-        if correction is not None:
-            normalized = f"Und im {correction.group('location').strip()}?"
+        meant = _MEANT_PREFIX_RE.match(normalized)
+        meant_rest = normalized[meant.end():] if meant is not None else ""
+        if meant_rest:
+            location = meant_rest.rstrip("?.!") or meant_rest[:1]
+            normalized = f"Und im {location.strip()}?"
         else:
             natural = re.match(
                 r"^wie\s+sieht\s+es\s+(?P<location>oben|unten|(?:im|in der|in dem)\s+.+?)\s+aus[?.!]*$",
@@ -4479,12 +4300,7 @@ class NluEngine:
         were found: selecting one thermostat must retain the 22-degree value.
         """
         normalized = normalize(reply_text)
-        normalized = re.sub(
-            r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+",
-            "",
-            normalized,
-            flags=re.IGNORECASE,
-        ).strip()
+        normalized = _MEANT_PREFIX_RE.sub("", normalized).strip()
 
         name_resolved = resolve_entity(normalized, list(clarification.candidates))
         entity = name_resolved.entity if name_resolved.status is ResolveStatus.OK else None

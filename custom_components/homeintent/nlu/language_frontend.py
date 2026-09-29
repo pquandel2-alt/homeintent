@@ -32,6 +32,7 @@ from .semantic_utterance import (
 from .temporal_semantics import TemporalKind, TemporalExpression, analyse_temporal_semantics
 from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
 from .word_cues import has_word
+from .locative import has_locative_cue
 
 
 _TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
@@ -40,7 +41,6 @@ _ELLIPTICAL_DIRECTIVE_RE = re.compile(
     r"\b(?:bitte|soll(?:st|en|t)?|möchte|moechte|will|gern|gerne)\b", re.I
 )
 _COPULA_RE = re.compile(r"\b(?:ist|sind|war|waren|bleibt|bleiben)\b", re.I)
-_LOCATION_CUE_RE = re.compile(r"\b(?:im|in\s+der|in\s+dem|am|beim)\b", re.I)
 _SPELLING_FORMS = {
     normalize_for_compare(item): item
     for item in sorted(CANONICAL_SPELLING_FORMS, key=lambda value: ("ae" in value or "oe" in value or "ue" in value, value))
@@ -373,7 +373,7 @@ def analyse_language(
     canonical = _orthographic_variant(text)
     if canonical not in {variant.text for variant in variants}:
         variants.append(TextVariant(canonical, "orthographic", 0.2))
-    if include_registry_compounds and _LOCATION_CUE_RE.search(text):
+    if include_registry_compounds and has_locative_cue(text):
         for candidate in _registry_compound_variants(text, entity_tuple):
             if candidate not in {variant.text for variant in variants}:
                 variants.append(TextVariant(candidate, "registry_compound", 0.15))

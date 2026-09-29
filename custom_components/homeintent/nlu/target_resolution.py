@@ -31,7 +31,6 @@ from typing import Iterable, Mapping, Sequence
 
 from .capabilities import describe_abilities
 from ..entities import EntitySnapshot, ResolutionResult, normalize_for_compare
-from ..name_similarity import edit_distance
 from .device_ontology import (
     GENERA,
     analyse_word,
@@ -725,34 +724,6 @@ def resolve_text_target(
         resolve_description(item, entities, source_area=source_area)
         for item in describe_targets(tokens, entities, lexicon=lexicon, ignore=ignore)
     )
-
-
-def closest_genus_word(word: str, *, max_distance: int = 2) -> tuple[str, ...]:
-    """Genus-internal spelling repair: only forms of the *same* genus.
-
-    Returns the genus keys whose own surface forms are within
-    ``max_distance`` edits of ``word``.  A correction therefore never jumps
-    between kinds of devices (never "Wassermelder" -> "Bewegungsmelder").
-    """
-    from .device_ontology import genus_form_index
-
-    normalized = normalize_for_compare(word)
-    scored = sorted(
-        (edit_distance(normalized, form), keys)
-        for form, keys in genus_form_index().items()
-        if abs(len(form) - len(normalized)) <= max_distance and len(form) >= 5
-    )
-    if not scored or scored[0][0] > max_distance:
-        return ()
-    best = scored[0][0]
-    found: list[str] = []
-    for distance, keys in scored:
-        if distance != best:
-            break
-        for key in keys:
-            if key not in found:
-                found.append(key)
-    return tuple(found)
 
 
 @dataclass(frozen=True)

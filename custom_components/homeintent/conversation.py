@@ -148,6 +148,7 @@ from .conversation_learning import DialogLearningMixin, is_known_device_word
 from .nlu.meaning_ir import is_deferred
 from .controllers.comfort import ComfortController
 from .controllers.devices import DeviceController
+from .nlu.dialog_meta import MetaQuestion, meta_questions
 from .controllers.learning import LearningController
 from .controllers.routines import RoutineController, RoutineSelection
 from .controllers.goals import GoalController
@@ -774,11 +775,9 @@ class NluConversationEntity(
         if active_dialog is not None or active_task is not None:
             normalized_meta = language_document.normalized_text.casefold()
             actor_id = conversation_user_id(user_input)
+            asked = meta_questions(normalized_meta)
             is_meta_turn = bool(
-                re.search(
-                    r"\b(?:was\s+hast\s+du\s+verstanden|warum\s+fragst\s+du)\b",
-                    normalized_meta,
-                )
+                asked & {MetaQuestion.UNDERSTOOD, MetaQuestion.WHY_ASKING}
                 or _UNIVERSAL_CANCEL_RE.fullmatch(normalized_meta)
             )
             if (
@@ -794,12 +793,12 @@ class NluConversationEntity(
                     response=response,
                     conversation_id=user_input.conversation_id,
                 )
-            if re.search(r"\bwas\s+hast\s+du\s+verstanden\b", normalized_meta):
+            if MetaQuestion.UNDERSTOOD in asked:
                 response.async_set_speech(manager.understood(user_input.conversation_id))
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            if re.search(r"\bwarum\s+fragst\s+du\b", normalized_meta):
+            if MetaQuestion.WHY_ASKING in asked:
                 response.async_set_speech(manager.explain(user_input.conversation_id))
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id

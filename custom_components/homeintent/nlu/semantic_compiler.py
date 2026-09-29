@@ -93,6 +93,8 @@ from .semantic_state import (
 )
 from .semantic_utterance import SpeechAct, analyse_utterance
 from .word_cues import has_word
+from .locative import has_locative_cue
+from .locative import drop_locative_prepositions
 
 
 def _device_class_targets(
@@ -129,7 +131,6 @@ _QUESTION_RE = re.compile(
     r"^\s*(?:wer|was|wie|welch\w*|wo|wann|warum|wieso|ist|sind|hat|haben|gibt)\b",
     re.IGNORECASE,
 )
-_LOCATION_CUE_RE = re.compile(r"\b(?:im|in\s+der|in\s+dem|am|beim)\s+", re.I)
 _LEVEL_CUE_RE = re.compile(r"(?<!nach\s)\b(?:oben|unten)\b", re.I)
 _PLURAL_RE = re.compile(
     r"\b(?:lichter|lampen|leuchten|steckdosen|rollläden|rolläden|"
@@ -519,7 +520,7 @@ def _compile_comparison_query(
     ):
         return None
     location = resolve_semantic_location(text, entities, world_model)
-    if _LOCATION_CUE_RE.search(text) is not None and location is None:
+    if has_locative_cue(text, followed=True) and location is None:
         return None
     area_id = location[1] if location else None
     floor_id = location[2] if location else None
@@ -1392,11 +1393,9 @@ class SemanticCommandCompiler:
             if isinstance(value, str)
         )
         whole_home = whole_home_phrase(positive_text, entities, world_model)
-        resolution_text = re.sub(
-            r"\b(?:im|in\s+der|in\s+dem)\s+",
-            "",
+        resolution_text = drop_locative_prepositions(
             positive_text.replace(whole_home, " ") if whole_home else positive_text,
-            flags=re.I,
+            spoken=frozenset({"im", "in der", "in dem"}),
         )
         quantity = _quantity(positive_text)
         if quantity is None and whole_home is not None and not mentioned_entities(
@@ -1442,7 +1441,7 @@ class SemanticCommandCompiler:
         if (
             location is not None
             and len(explicit) == 1
-            and _LOCATION_CUE_RE.search(positive_text) is None
+            and not has_locative_cue(positive_text, followed=True)
             and normalize_for_compare(location[0])
             in normalize_for_compare(explicit[0].friendly_name).split()
         ):
@@ -1822,7 +1821,8 @@ class SemanticQueryCompiler:
         device_query = _compile_device_query(text, entities, analysis, world_model)
         if device_query is not None:
             return device_query
-        if re.search(r"^\s*wie\s+hoch\s+ist\b", text, re.I) is None:
+        asks_how_high = re.search(r"^\s*wie\s+hoch\s+ist\b", text, re.I) is not None
+        if not asks_how_high:
             entity_state_query = _compile_entity_state_query(
                 text, entities, analysis, world_model
             )
@@ -1856,7 +1856,7 @@ class SemanticQueryCompiler:
             )
             if inferred_measurement is not None:
                 return inferred_measurement
-            if re.search(r"^\s*wie\s+hoch\s+ist\b", text, re.I):
+            if asks_how_high:
                 named_high = mentioned_entities(
                     text,
                     entities,
@@ -2002,7 +2002,7 @@ class SemanticQueryCompiler:
             else location or resolve_semantic_location(text, entities, world_model)
         )
         locations = coordinated_locations or ((location,) if location else ())
-        has_location_cue = _LOCATION_CUE_RE.search(text) is not None
+        has_location_cue = has_locative_cue(text, followed=True)
         if has_location_cue and not locations:
             return None
         # Unknown modifiers may materially change a question (for example

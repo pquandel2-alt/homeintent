@@ -70,12 +70,6 @@ def _find_activity(text: str) -> Activity | None:
     return found[0] if len(found) == 1 else None
 
 
-_ANNOUNCE_RE = re.compile(
-    r"^(?:so\s+)?(?:ich\s+(?:will|moechte|werde|gehe|fange\s+an\s+zu)?\s*)?"
-    r"(?P<rest>.+?)(?:\s+(?:jetzt|gleich|nun|mal|ein\s+bisschen|etwas))*$"
-)
-
-
 def parse_activity_announcement(text: str) -> str | None:
     """"Ich lese jetzt." / "Ich will lesen." / "Ich schaue jetzt fern." -> key.
 

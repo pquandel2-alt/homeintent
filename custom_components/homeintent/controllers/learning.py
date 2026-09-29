@@ -59,6 +59,7 @@ from ..nlu.language_frontend import LanguageDocument
 from ..profiles import RoutineDefinition
 from ..routine_intent import interpret_routine_feedback
 from ..security_control import conversation_user_id, user_is_admin
+from ..nlu.dialog_meta import MetaQuestion, meta_questions
 
 
 class LearningRuntime(Protocol):
@@ -508,12 +509,12 @@ class LearningController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=conversation_id
                 )
-            normalized = language_document.normalized_text.casefold()
-            if re.search(r"\bwas\s+hast\s+du\s+verstanden\b", normalized):
+            asked = meta_questions(language_document.normalized_text)
+            if MetaQuestion.UNDERSTOOD in asked:
                 response.async_set_speech(manager.understood(conversation_id))
-            elif re.search(r"\bwarum\s+fragst\s+du\b", normalized):
+            elif MetaQuestion.WHY_ASKING in asked:
                 response.async_set_speech(manager.explain(conversation_id))
-            elif re.search(r"\b(?:abbrechen|vergiss\s+es|lass\s+das)\b", normalized):
+            elif MetaQuestion.CANCEL in asked:
                 manager.cancel(conversation_id)
                 response.async_set_speech("In Ordnung. Ich speichere und lösche nichts.")
             else:

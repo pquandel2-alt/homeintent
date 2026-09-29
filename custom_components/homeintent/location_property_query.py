@@ -19,6 +19,7 @@ from .nlu.semantic_lexicon import (
     analyse_semantics,
 )
 from .nlu.semantic_location import resolve_location_name, resolve_semantic_location
+from .nlu.locative import has_locative_cue
 
 
 @dataclass(frozen=True)
@@ -229,7 +230,7 @@ class LocationPropertyQueryParser:
         explicit_location = bool(
             semantic_request is not None
             or
-            re.search(r"\b(?:im|in der|in dem|am|beim)\b", text, re.IGNORECASE)
+            has_locative_cue(text)
             or re.search(r"\bhat\s+(?:der|die|das)\b", text, re.IGNORECASE)
             or re.match(rf"^(?:{_PROPERTY_WORDS})\b", text, re.IGNORECASE)
         )

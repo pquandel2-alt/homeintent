@@ -32,6 +32,7 @@ from .nlu.query_command import (
 )
 from .nlu.query_executor import QueryExecutor
 from .nlu.semantic_state import SemanticState
+from .nlu.locative import strip_locative_prepositions
 
 
 # The {name} wildcard captures everything between the fixed template words,
@@ -42,14 +43,6 @@ from .nlu.semantic_state import SemanticState
 # contains-match (or misses an exact match it should have hit). Stripping
 # is safe: none of these words plausibly appear as part of a real entity
 # name, only as connective glue in a spoken sentence.
-_LOCATIVE_PREPOSITIONS = re.compile(r"\b(in der|in dem|im|am|beim)\b", re.IGNORECASE)
-
-
-def strip_locative_prepositions(name: str) -> str:
-    without_prepositions = _LOCATIVE_PREPOSITIONS.sub(" ", name)
-    return re.sub(r"\s+", " ", without_prepositions).strip()
-
-
 # _DEVICE_CLASS_SLOT_LIST/_STATE_SLOT_LIST/_STATE_ADJ_SLOT_LIST now live in
 # nlu/lexicon.py (V6.3, "Semantic Lexicon") - imported above. Predicate-
 # position {state} values are the SemanticState member *name* (a plain
