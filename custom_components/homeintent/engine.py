@@ -202,6 +202,7 @@ from .service_call import (
 from .nlu.automation_operations import describe_registered_operation, describe_registered_result
 from .world_model import WorldModel
 from .nlu.word_cues import has_word
+from .nlu.phrases import words as phrase_words
 
 _RESPONSE_GENERATOR = ResponseGenerator()
 
@@ -664,14 +665,14 @@ _COUNT_WORDS = frozenset({
 })
 
 
-def _repetition_count(document: LanguageDocument) -> str | None:
+def _repetition_count(text: str) -> str | None:
     """The spoken repetition count ("1000 Mal", "drei Mal"), if any."""
-    words = [token for token in document.tokens if token.is_word or token.is_number]
-    for number, following in zip(words, words[1:]):
-        if following.canonical in _REPETITION_WORDS and (
-            number.is_number or number.canonical in _COUNT_WORDS
+    tokens = phrase_words(text)
+    for number, following in zip(tokens, tokens[1:]):
+        if following.key in _REPETITION_WORDS and (
+            number.key.isdigit() or number.key in _COUNT_WORDS
         ):
-            return document.source_text[number.start:following.end]
+            return text[number.start:following.end]
     return None
 
 
@@ -866,9 +867,7 @@ class NluEngine:
             text, entities, world_model, document, context=context
         )
         payload = outcome.payload
-        repeated = _repetition_count(document or analyse_language(
-            text, entities, include_registry_compounds=False
-        )) if _writes(payload) else None
+        repeated = _repetition_count(text) if _writes(payload) else None
         if repeated is not None:
             # "Schalte das Licht 1000 Mal ein": the count is an instruction
             # the plan would silently drop. Never execute a reduced command.

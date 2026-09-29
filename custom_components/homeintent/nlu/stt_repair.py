@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from functools import lru_cache
 
 from ..entities import EntitySnapshot, normalize_for_compare
 from .domain_operations import DOMAIN_WORDS
@@ -32,19 +33,29 @@ _FUNCTION_WORDS = frozenset({
 
 def _vocabulary(entities: Iterable[EntitySnapshot]) -> tuple[frozenset[str], frozenset[str]]:
     """(single registry/vocabulary words, spoken multi-word registry names)."""
-    words: set[str] = {normalize_for_compare(word) for words in DOMAIN_WORDS.values() for word in words}
-    words.update(normalize_for_compare(word) for word in CANONICAL_SPELLING_FORMS)
-    phrases: set[str] = set()
-    for entity in entities:
+    names = frozenset(
+        name
+        for entity in entities
         for name in (
             entity.friendly_name, *entity.aliases, entity.area_name or "",
             *entity.area_aliases, entity.floor_name or "",
-        ):
-            key = normalize_for_compare(name).replace("-", " ")
-            parts = key.split()
-            words.update(part for part in parts if len(part) >= _MIN_JOINED)
-            if len(parts) > 1:
-                phrases.add(" ".join(parts))
+        )
+        if name
+    )
+    return _vocabulary_of(names)
+
+
+@lru_cache(maxsize=4)
+def _vocabulary_of(names: frozenset[str]) -> tuple[frozenset[str], frozenset[str]]:
+    """Built once per set of registry names (the registry rarely changes)."""
+    words: set[str] = {normalize_for_compare(word) for words in DOMAIN_WORDS.values() for word in words}
+    words.update(normalize_for_compare(word) for word in CANONICAL_SPELLING_FORMS)
+    phrases: set[str] = set()
+    for name in names:
+        parts = normalize_for_compare(name).replace("-", " ").split()
+        words.update(part for part in parts if len(part) >= _MIN_JOINED)
+        if len(parts) > 1:
+            phrases.add(" ".join(parts))
     return frozenset(words), frozenset(phrases)
 
 

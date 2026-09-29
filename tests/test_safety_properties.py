@@ -509,6 +509,145 @@ def _ids(data: dict) -> list[str]:
     return [raw] if isinstance(raw, str) else list(raw)
 
 
+# ------------------------------------------------------------ 7.7 B9: STT, self-corrections, dialog state
+_ACTION_BY_DOMAIN = {
+    "light": ("Schalte {name} ein.", "schalte {name} ein"),
+    "fan": ("Schalte {name} ein.", "schalte {name} ein"),
+    "input_boolean": ("Schalte {name} ein.", "schalte {name} ein"),
+    "cover": ("Öffne {name}.", "öffne {name}"),
+    "lock": ("Schließe {name} auf.", "schließe {name} auf"),
+}
+_COMPOUND_NAMES = sorted(
+    (entity.entity_id, entity.friendly_name) for entity in _ENTITIES
+    if entity.domain in _ACTION_BY_DOMAIN and " " not in entity.friendly_name
+    and "-" not in entity.friendly_name and len(entity.friendly_name) >= 9
+)
+
+
+def _written(turn) -> set[str]:
+    return {
+        entity for domain, service, data in turn.calls
+        if (domain, service) not in READ_SERVICES for entity in _ids(data)
+    }
+
+
+@given(st.sampled_from(_COMPOUND_NAMES), st.integers(min_value=3, max_value=6),
+       st.sampled_from(["", "äh ", "ähm "]), st.booleans())
+def test_stt_variant_never_changes_the_safety_form(named, cut, filler, split):
+    """Lower case, no punctuation, a filler and a split compound - as Home
+    Assistant's speech recognition delivers it - never write more than the
+    typed sentence, and never write where the typed sentence asks first."""
+    entity_id, name = named
+    domain = entity_id.split(".")[0]
+    typed_frame, spoken_frame = _ACTION_BY_DOMAIN[domain]
+    spoken_name = name.casefold()
+    if split:
+        cut = min(cut, len(spoken_name) - 3)
+        spoken_name = f"{spoken_name[:cut]} {spoken_name[cut:]}"
+    typed = say(typed_frame.format(name=name))
+    spoken = say(filler + spoken_frame.format(name=spoken_name))
+    assert _written(spoken) <= _written(typed), (spoken.text, spoken.speech)
+    if not _written(typed):
+        assert _written(spoken) == set(), (spoken.text, spoken.speech)
+
+
+_LIGHT_NAMES = sorted(
+    (entity.entity_id, entity.friendly_name) for entity in _ENTITIES
+    if entity.domain == "light" and " " not in entity.friendly_name and "-" not in entity.friendly_name
+)
+_SELF_CORRECTIONS = st.sampled_from([
+    "Schalte {a} ein, äh nein, {b}.",
+    "Mach {a} an, nein, {b}.",
+    "Schalte {a} an, ach nein, {b}.",
+    "Mach {a}, äh, {b} an.",
+    "Schalte {a}, ich meine {b}, ein.",
+    "Mach {a} an, nein, doch lieber {b}.",
+])
+
+
+@given(st.sampled_from(_LIGHT_NAMES), st.sampled_from(_LIGHT_NAMES), _SELF_CORRECTIONS)
+def test_self_correction_never_executes_the_retracted_part(first, second, frame):
+    """"A, äh nein, B": never A, never both; B only when the correction
+    analysis carries it, otherwise a question."""
+    assume(first != second)
+    (first_id, first_name), (second_id, second_name) = first, second
+    turn = say(frame.format(a=first_name, b=second_name))
+    written = _written(turn)
+    assert first_id not in written, (turn.text, turn.speech)
+    assert written <= {second_id}, (turn.text, turn.speech)
+
+
+_DIALOG_OPENERS = st.sampled_from([
+    "Mach das Licht an.",  # clarification: which light
+    "Mir ist kalt.",  # need: which room
+    "Wenn die Haustür aufgeht, schalte das Flurlicht an.",  # automation draft
+    "Öffne das Garagentor.",  # pending safety confirmation for another device
+    "Schalte die Nachttischlampe ein.",  # candidate question
+])
+_CRITICAL_COMMANDS = st.sampled_from([
+    "Schließe das Haustürschloss auf.",
+    "Sperr das Gartentor auf.",
+    "Öffne das Garagentor.",
+    "Schließ die Haustür auf.",
+])
+
+
+@given(_DIALOG_OPENERS, _CRITICAL_COMMANDS)
+def test_open_dialog_never_lowers_the_confirmation_duty(opener, critical):
+    """Whatever dialog is open, a critical command on the next turn still
+    asks before it writes; the open state is evidence, not authorisation."""
+    house = _house()
+    _COUNTER[0] += 1
+    house.conversation_id = f"prop-dialog-{_COUNTER[0]}"
+    house.say(opener)
+    turn = house.say(critical)
+    assert _written(turn) == set(), (opener, critical, turn.speech)
+
+
+@given(st.sampled_from(["Schließe das Schloss auf.", "Sperr das Schloss auf.", "Mach das Schloss auf."]))
+def test_learned_default_choice_never_bypasses_confirmation(sentence):
+    """A learned standard pick between two locks resolves the target, never
+    the confirmation duty of unlocking it."""
+    import asyncio
+    from datetime import datetime
+
+    from homeintent.bindings import BindingKind, BindingScope, normalize_key
+
+    house = HouseConversation(pytest.MonkeyPatch(), options=AUTO)
+    key = normalize_key("lock.gartentor_schloss|lock.haustuerschloss @ ueberall")
+    asyncio.run(house.entity._runtime_data.bindings.async_bind(
+        BindingKind.DEFAULT_CHOICE, key, "lock.haustuerschloss",
+        confirmed=True, scope=BindingScope.USER, user_id="admin", now=datetime(2026, 9, 28),
+    ))
+    turn = house.say(sentence)
+    assert _written(turn) == set(), (sentence, turn.speech)
+
+
+def test_habit_learning_never_learns_what_a_sentence_means():
+    """V11 learns habits, times and reaction times - never "this unknown
+    sentence probably means X": its model kinds carry no language, and the
+    habit learner never imports language understanding."""
+    import ast
+
+    from homeintent.model_registry import LearnedKind
+
+    assert {kind.value for kind in LearnedKind} == {
+        "fact", "preference", "thermal_model", "effect_timing", "reliability",
+        "habit", "duration", "energy", "battery_trend",
+    }
+    root = Path(__file__).parent.parent / "custom_components" / "homeintent"
+    for module in ("learning_manager", "habit_discovery", "experience", "experience_store", "model_registry"):
+        tree = ast.parse((root / f"{module}.py").read_text(encoding="utf-8"))
+        imported = {
+            node.module or "" for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+        }
+        assert not any(
+            name.startswith(("nlu", "engine", "parsers", "conversation", "arbitration"))
+            for name in imported
+        ), (module, imported)
+
+
 # ------------------------------------------------------------ fixed regressions
 # Counterexamples from nightly runs are pinned here (sentence, forbidden writes).
 REGRESSIONS: list[str] = []
