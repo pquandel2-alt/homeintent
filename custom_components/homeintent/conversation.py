@@ -15,15 +15,12 @@ default conversation agent does it.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import re
-import secrets
-import uuid
 from functools import partial
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Literal, Mapping, Sequence
 
 from homeassistant.components import conversation
@@ -34,41 +31,17 @@ from homeassistant.helpers import device_registry as dr, intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .automation_grounding import looks_like_selection_reply
 from .automation_executor import AutomationExecutor
 from .alias_learning import (
     AliasLearningDraft,
     parse_alias_learning,
 )
 from .agent_action_policy import validate_agent_service_plan
-from .automation_action_edit import (
-    action_edit_operation,
-    homeintent_candidates,
-    is_action_edit_request,
-    reordered_actions,
-    select_candidate_reply,
-)
+from .automation_action_edit import is_action_edit_request
 from .automation_scenarios import interpret_downstairs_shutdown
-from .automation_management import (
-    AutomationManagementKind,
-    AutomationManagementRequest,
-    READ_ONLY_MANAGEMENT_KINDS,
-    format_scheduled_time,
-    parse_automation_management,
-    select_automation_management,
-)
-from .automation_simulation import render_automation_simulation
-from .automation_structure_edit import (
-    AutomationEditOperation,
-    AutomationStructureEditRequest,
-    parse_automation_structure_edit,
-)
-from .automation_wizard import (
-    AutomationWizardStage,
-    AutomationWizardState,
-    parse_lifetime,
-    starts_automation_wizard,
-)
+from .automation_management import parse_automation_management
+from .automation_structure_edit import parse_automation_structure_edit
+from .automation_wizard import starts_automation_wizard
 from .advanced_queries import match_advanced_query
 from .audit_log import render_today
 from .calendar_event import start_calendar_event_draft, writable_calendars
@@ -80,7 +53,6 @@ from .conversation_location import (
     resolve_conversation_area,
 )
 from .const import (
-    CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
     CONF_CUSTOM_ALIASES,
     CONF_HOUSE_RELATIONS,
     DOMAIN,
@@ -114,35 +86,11 @@ from .history_query import (
     HistoryQuery,
     StateHistoryQuery,
     async_execute_history_query,
-    async_get_transition_evidence,
     parse_history_query,
 )
 from .household_query import match_household_query
-from .management_dialogs import (
-    async_handle_automation_action_edit_turn,
-    async_handle_automation_structure_edit_turn,
-    async_prepare_automation_structure_edit,
-    async_handle_calendar_management,
-    async_handle_calendar_mutation_confirmation,
-    store_automation_action_edit,
-    store_automation_structure_edit,
-)
 from .house_graph import FactProvenance, HouseGraph, parse_relation_specs
 from .goal_intent import interpret_goal
-from .goal_model import (
-    DesiredState,
-    GoalKind as V10GoalKind,
-    GoalScope,
-    GoalSemanticChoice,
-    PendingGoalSemanticClarification,
-    TemporalGoal,
-)
-from .goal_run import (
-    GoalRun,
-    GoalRunClarification,
-    GoalRunQuery,
-    explain_goal_run,
-)
 from .memory import MemoryKind
 from .memory_intent import MemoryOperation, interpret_memory_intent
 from .learning_intent import LearningOperation, interpret_learning_request
@@ -168,7 +116,6 @@ from .learning_control import (
 from .preferences import (
     LearnedPreference, PreferenceContext, resolve_preferences,
 )
-from .predictive_house_model import PredictiveHouseModel
 from .management_understanding import understand_management
 from .proactive_dialog import V12_TASK_KINDS
 from .proactive_session import classify_proposal_reply
@@ -177,26 +124,10 @@ from .planner import (
     Goal,
     GoalKind,
     MaterializedPlan,
-    PlanExecutor,
-    PlanResult,
-    PlanStatus,
-    StepKind,
-    effect_satisfied,
     materialize_goal,
     materialize_comfort_profile,
-    materialize_routine,
-    goal_run_from_plan_result,
-)
-from .adaptive_planning import AdaptivePlanningAdvice, advise_deadline_goal
-from .thermal_deadline import (
-    PendingThermalCheckpointStore,
-    ThermalCheckpointPhase,
-    ThermalDeadlineCheckpoint,
-    append_start_checkpoint,
-    checkpoint_automation_config,
 )
 from .thermal_question import answer_thermal_question
-from .nlu.primitives import SemanticProperty
 from .nlu.clock_language import normalize_clock_expressions, wake_request
 from .nlu.semantic_exclusion import canonical_exception_words
 from .nlu.normalize import expand_clitics
@@ -207,39 +138,13 @@ from .nlu.target_resolution import genus_members, hidden_device_text, hidden_nam
 from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain
 from .nlu.german_morphology import counted_passive
-from .nlu.unit_reasoning import normalize_measurement
-from .monitor_goal import MonitorRecord
-from .nlu.temporal_semantics import resolve_history_window, resolve_scheduled_datetime
-from .plan_modification import apply_plan_modification
-from .profiles import ComfortProfile, RoutineDefinition, RoutineStepDefinition
-from .user_context import BindingStatus
+from .profiles import ComfortProfile, RoutineDefinition
 from .procedure_intent import ProcedureOperation, interpret_procedure_intent
 from .routine_intent import interpret_routine_feedback
 from .nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
-from .nlu.action_model import (
-    ActionGroup,
-    ActionModel,
-    ActionType,
-    NotificationRecipient,
-    NotificationRecipientKind,
-)
-from .agent_delivery import AgentDelivery
-from .notification_request import NotificationRequest, async_deliver_notification_request
-from .notification_target import (
-    named_notification_targets,
-    NotificationTargetResolver,
-    resolution_failure_text,
-)
-from .nlu.automation_model import (
-    AutomationModel,
-    CalendarReference,
-    CalendarSchedule,
-    TriggerModel,
-    TriggerTarget,
-    TriggerType,
-    resolve_pending_schedule,
-)
-from .nlu.automation_validator import validate_automation
+from .nlu.action_model import NotificationRecipient, NotificationRecipientKind
+from .notification_request import NotificationRequest
+from .nlu.automation_model import TriggerTarget
 from .nlu.automation_preview import render_automation_preview
 from .nlu.context import (
     active_pending_dialog,
@@ -270,13 +175,7 @@ from .nlu.entity_clarification import (
     resolve_candidate_reply,
 )
 from .nlu.explanation import explain_command, is_explanation_request
-from .nlu.ha_automation_generator import (
-    GenerationError,
-    generate_ha_automation_config,
-    resolve_automation_action_entity_ids,
-)
 from .nlu.language_frontend import LanguageDocument, analyse_language
-from .nlu.response_generator import _automation_label
 from .nlu.semantic_utterance import (
     Modality,
     SpeechAct,
@@ -291,7 +190,7 @@ from .service_executor import (
     async_execute_service_plan,
     confirmed_scope,
 )
-from .effect_graph import build_plan_effects, is_composite_entity, summarize_effects
+from .effect_graph import build_plan_effects, summarize_effects
 from .semantic_dialog import continue_semantic_dialog, start_semantic_dialog
 from .reminder import (
     reminder_automation_text,
@@ -306,34 +205,26 @@ from .security_control import (
 )
 from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
-from .execution_policy import (
-    PolicyOutcome,
-    evaluate_service_plan,
-    validate_automation_action_targets,
-)
+from .execution_policy import PolicyOutcome, evaluate_service_plan
 from .world_model import WorldModel, build_world_model as assemble_world_model
 from .undo import UndoPlan, build_undo_plan, is_undo_request
 from .runtime_data import HomeIntentRuntimeData
-from .execution_context import begin_turn, call_context, current_turn, end_turn, user_facing_error
+from .execution_context import begin_turn, end_turn, user_facing_error
 from .execution_trace import (
     CauseExplanation,
     ContextIndex,
     Evidence,
     ExecutionTraceStore,
     explain_change,
-    record_execution,
 )
 from .nlu.causal_question import interpret_cause_question
-from .nlu.recurrence import (
-    Recurrence,
-    answer_recurrence,
-    is_conditional,
-    recurrence_of,
-    trigger_kinds,
-)
 from .bindings import BindingKind, BindingScope
 from .conversation_learning import DialogLearningMixin, is_known_device_word
 from .nlu.meaning_ir import is_deferred
+from .controllers.goals import GoalController
+from .controllers.automation_management import AutomationManagementController
+from .controllers.automations import AutomationController
+from .controllers.notifications import NotificationController
 from .controllers.productivity import ProductivityController
 from .arbitration import (
     DecisionKind,
@@ -375,10 +266,6 @@ class RoutineBindConfirmation:
     personal: bool = False
 
 
-@dataclass(frozen=True)
-class _ScheduledOutcome:
-    executed: bool
-    error: str | None = None
 from .productivity import TimerRequest, TodoRequest
 from .phonetic_correction import PhoneticSuggestion, phonetic_suggestions
 
@@ -437,10 +324,6 @@ def _describe_memory(record: Any, labels: Mapping[str, str]) -> str:
     return f"{kind}: {text}" if isinstance(text, str) and text else f"ein Eintrag ({kind})"
 
 
-# How long a spoken plan confirmation may wait for the plan's verified
-# result before replying and continuing in the background (F17).
-_PLAN_REPLY_BUDGET_SECONDS = 2.0
-
 # Open questions whose expected answer is itself a command (a routine being
 # defined step by step, an automation action): a command answers them.
 # Dialogs that compose an automation: a complete command is their content,
@@ -461,11 +344,6 @@ _COMMAND_ANSWER_TASK_KINDS = frozenset({
     DialogTaskKind.ROUTINE_DEFINITION,
     DialogTaskKind.AUTOMATION,
 })
-_NO_CONDITION_RE = re.compile(
-    r"(?:keine|keins|nein\s*,?\s*keine|ohne|keine\s+(?:bedingung|bedingungen)|"
-    r"ohne\s+(?:bedingung|bedingungen)|keine\s+weitere(?:n)?(?:\s+bedingung(?:en)?)?|"
-    r"nichts|brauche\s+ich\s+nicht)"
-)
 
 
 # Single source of truth for "which intents are queries" (V4.2) - read state
@@ -473,62 +351,12 @@ _NO_CONDITION_RE = re.compile(
 # rather than the default ACTION_DONE.
 QUERY_INTENT_NAMES = frozenset(QUERY_INTENTS)
 
-# V5 Teil 7/10 (V5.23/V5.26) - the confirmation dialog's own fixed spoken
-# replies, same "small closed vocabulary" precedent NOT_UNDERSTOOD_TEXT
-# already sets in const.py.
-AUTOMATION_CREATED_TEXT = "Automation wurde erstellt."
-AUTOMATION_CANCELLED_TEXT = "Abgebrochen. Die Automation wurde nicht erstellt."
-AUTOMATION_CONFIRMATION_UNCLEAR_TEXT = (
-    "Das habe ich nicht verstanden. Soll die Automation erstellt werden? "
-    "Bitte antworte mit Ja oder Nein."
-)
-
-# V5 Teil 8/10 (V5.28, "Automation Deletion") - same "small closed
-# vocabulary" precedent as the creation texts above, mirrored one-to-one for
-# the deletion confirmation dialog.
-AUTOMATION_DELETED_TEXT = "Automation wurde gelöscht."
-AUTOMATION_DELETION_CANCELLED_TEXT = "Abgebrochen. Die Automation wurde nicht gelöscht."
-AUTOMATION_DELETION_CONFIRMATION_UNCLEAR_TEXT = (
-    "Das habe ich nicht verstanden. Soll die Automation gelöscht werden? "
-    "Bitte antworte mit Ja oder Nein."
-)
 
 # HomeIntent V5 Teil 8/10 (Wave 11, "Automation Disable/Enable") - no
 # confirmation-round-trip vocabulary here (see ``AutomationToggleMatchResult``'s
 # own docstring for why): a single-match toggle executes immediately, so
 # only an error text is needed here, mirroring the ordinary command path's
 # own ``FAILED_TO_HANDLE`` wording.
-
-# One spoken sentence per GenerationError member (nlu/ha_automation_generator.py) -
-# every one of these is a "niemals raten" refusal Regel 4 already established
-# one stage earlier (automation_validator.py); a validate_automation()-clean
-# model can still hit one of these at confirmation time (e.g. the target
-# entity disappeared between preview and "ja", or the model uses a
-# TriggerType/ConditionType/ActionType the validator itself never rejects
-# but the HA-native schema has no faithful translation for - see that
-# module's own docstring for the full "why" per member).
-_GENERATION_ERROR_SPOKEN_DE = {
-    GenerationError.ENTITY_NOT_FOUND: (
-        "Das passende Gerät wurde nicht mehr gefunden. Die Automation wurde nicht erstellt."
-    ),
-    GenerationError.UNSUPPORTED_STATE: (
-        "Dieser Zustand lässt sich für dieses Gerät nicht in eine Automation übersetzen. "
-        "Die Automation wurde nicht erstellt."
-    ),
-    GenerationError.UNSUPPORTED_TRIGGER_TYPE: (
-        "Dieser Auslöser wird von Home Assistant nicht unterstützt. Die Automation wurde nicht erstellt."
-    ),
-    GenerationError.UNSUPPORTED_CONDITION_TYPE: (
-        "Diese Bedingung wird von Home Assistant nicht unterstützt. Die Automation wurde nicht erstellt."
-    ),
-    GenerationError.UNSUPPORTED_ACTION_TYPE: (
-        "Diese Aktion wird von Home Assistant nicht unterstützt. Die Automation wurde nicht erstellt."
-    ),
-    GenerationError.NOTIFY_RECIPIENT_UNRESOLVED: (
-        "Für diese Benachrichtigung fehlt ein eindeutiges Push-Ziel. "
-        "Die Automation wurde nicht erstellt."
-    ),
-}
 
 
 # Past-tense or passive endings of service_call.py's response texts and the
@@ -592,18 +420,6 @@ def _with_session_conversation_id(
     if not isinstance(session_id, str) or not session_id:
         return user_input
     return replace(user_input, conversation_id=session_id)
-
-
-_OCCASION_PHRASES = {
-    "schlafengehen": "beim Schlafengehen",
-    "filmabend": "beim Filmabend",
-    "abwesenheit": "bei Abwesenheit",
-}
-
-
-def _occasion_phrase(routine_id: str) -> str:
-    """"beim Schlafengehen" - the occasion with its preposition (7.6.1)."""
-    return _OCCASION_PHRASES.get(routine_id, f"bei „{routine_id}“")
 
 
 def _ambiguous_reading_text(decision: Any) -> str:
@@ -741,6 +557,41 @@ class NluConversationEntity(
             context_store=self._context_store,
             runtime=runtime,
             record_execution=self._record_execution,
+            world_model=lambda: self._world_model,
+        )
+        self._notifications = NotificationController(
+            hass=lambda: self.hass,
+            entry=entry,
+            context_store=self._context_store,
+            runtime=runtime,
+        )
+        self._goals = GoalController(
+            hass=lambda: self.hass,
+            entry=entry,
+            engine=self._engine,
+            world_model=lambda: self._world_model,
+            executor=self._automation_store,
+            audit_trail=self._audit_trail,
+            runtime=runtime,
+            entities=lambda: build_entity_snapshots(self.hass, self.entry),
+            conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
+        )
+        self._management = AutomationManagementController(
+            context_store=self._context_store,
+            executor=self._automation_store,
+            engine=self._engine,
+            world_model=lambda: self._world_model,
+        )
+        self._automations = AutomationController(
+            hass=lambda: self.hass,
+            entry=entry,
+            context_store=self._context_store,
+            engine=self._engine,
+            world_model=lambda: self._world_model,
+            executor=self._automation_store,
+            runtime=runtime,
+            notifications=self._notifications,
+            record_execution=self._record_execution,
         )
         # Rebuilt every turn in _async_handle_message() (World Model Wave,
         # 2026-08-14); None only until the first turn.
@@ -819,94 +670,6 @@ class NluConversationEntity(
         self._apply_continue_conversation(user_input, result)
         return result
 
-    def _decide_recurrence(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: AutomationMatchResult,
-        entities: list[EntitySnapshot],
-        pending: ConversationContext | None,
-    ) -> AutomationMatchResult | conversation.ConversationResult:
-        """Once or recurring - never guessed (7.3.3, Q5)."""
-        model = result.model
-        if result.validation_error is not None or model.once or model.max_runs is not None:
-            return result
-        kinds = trigger_kinds(model.triggers)
-        recurrence = recurrence_of(user_input.text)
-        if recurrence is Recurrence.RECURRING or not kinds or not kinds <= {"TIME", "SUN"}:
-            return result
-        conditional = is_conditional(user_input.text)
-        time_triggers = [item for item in model.triggers if item.time_hour is not None]
-        if kinds == {"TIME"} and not conditional and len(time_triggers) == 1 == len(model.triggers):
-            # "Schalte um 22 Uhr das Licht aus": a one-time command at the
-            # next occurrence of that clock time, not a daily automation.
-            trigger = time_triggers[0]
-            hour, minute = trigger.time_hour or 0, trigger.time_minute or 0
-            once_model = replace(
-                model,
-                triggers=(TriggerModel(type=TriggerType.CALENDAR_TIME),),
-                once=True,
-                calendar_schedule=CalendarSchedule(
-                    CalendarReference.NEXT_OCCURRENCE, hour, minute,
-                    spoken=f"um {hour:02d}:{minute:02d} Uhr",
-                ),
-            )
-            validation = validate_automation(once_model)
-            if validation is None:
-                return replace(result, model=once_model, validation_error=None)
-        if recurrence is Recurrence.ONCE:
-            return replace(result, model=replace(model, max_runs=1))
-        self._runtime_data.dialog_manager.create(
-            user_input.conversation_id,
-            "recurrence-choice",
-            DialogTaskKind.RECURRENCE_CHOICE,
-            DialogPriority.SELECTION,
-            reason="Ob ein Auftrag einmalig oder wiederkehrend gilt, rate ich nicht.",
-            requested_by_user_id=conversation_user_id(user_input),
-            payload=result,
-        )
-        preview = render_automation_preview(model, entities)
-        understood = preview.removesuffix("Soll diese Automation erstellt werden?").strip()
-        response.async_set_speech(f"{understood} Nur heute oder jeden Tag?".strip())
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    def _handle_recurrence_choice(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        task: Any,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        manager = self._runtime_data.dialog_manager
-        if not isinstance(task.payload, AutomationMatchResult):
-            return None
-        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
-            response.async_set_speech("Diese Rückfrage gehört zu einem anderen Benutzer.")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        answer = answer_recurrence(user_input.text)
-        if classify_confirmation_reply(user_input.text) is ConfirmationReply.NO:
-            manager.cancel(user_input.conversation_id, task.task_id)
-            response.async_set_speech("In Ordnung, ich lege nichts an.")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        if answer is Recurrence.UNSPECIFIED:
-            if len(user_input.text.split()) > 4:
-                manager.cancel(user_input.conversation_id, task.task_id)
-                return None
-            response.async_set_speech("Bitte sag „nur heute“ oder „jeden Tag“.")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        manager.cancel(user_input.conversation_id, task.task_id)
-        result = task.payload
-        if answer is Recurrence.ONCE:
-            result = replace(result, model=replace(result.model, max_runs=1))
-        return self._handle_automation_match_result(user_input, response, result, entities)
 
     def _routine_bindings_for(self, user_id: str | None) -> dict[str, str]:
         """Concept -> bound script/scene for this speaker (own before household)."""
@@ -1443,7 +1206,7 @@ class NluConversationEntity(
             and active_task is not None
             and active_task.kind is DialogTaskKind.RECURRENCE_CHOICE
         ):
-            handled = self._handle_recurrence_choice(
+            handled = self._automations.handle_recurrence_choice(
                 user_input, response, active_task, entities
             )
             if handled is not None:
@@ -1755,7 +1518,7 @@ class NluConversationEntity(
                 return routine_feedback_result
             scenario = interpret_downstairs_shutdown(language_document, entities)
             if scenario is not None:
-                return self._handle_automation_match_result(
+                return self._automations.handle_match_result(
                     user_input, response, scenario, entities
                 )
             comfort_result = await self._async_handle_comfort_turn(
@@ -1792,7 +1555,7 @@ class NluConversationEntity(
             )
             if learning_result is not None:
                 return learning_result
-            plan_result = await self._async_handle_goal_turn(
+            plan_result = await self._goals.async_handle_goal_turn(
                 user_input, response, language_document, entities, direct_understanding
             )
             if plan_result is not None:
@@ -1895,7 +1658,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationWizard)
         ):
-            return await self._async_handle_automation_wizard(
+            return await self._automations.async_handle_wizard(
                 user_input,
                 response,
                 active_task.payload.state,
@@ -1929,8 +1692,8 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingCalendarMutation)
         ):
-            return await async_handle_calendar_mutation_confirmation(
-                self, user_input, response, active_task.payload
+            return await self._productivity.async_handle_calendar_mutation_confirmation(
+                user_input, response, active_task.payload
             )
 
         if (
@@ -1939,7 +1702,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationConfirmation)
         ):
-            return await self._async_handle_pending_automation_confirmation_turn(
+            return await self._automations.async_handle_pending_confirmation_turn(
                 user_input,
                 response,
                 active_task.payload,
@@ -1952,8 +1715,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationActionEdit)
         ):
-            return await async_handle_automation_action_edit_turn(
-                self,
+            return await self._management.async_handle_action_edit_turn(
                 user_input,
                 response,
                 active_task.payload,
@@ -1966,8 +1728,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationStructureEdit)
         ):
-            structure_turn = await async_handle_automation_structure_edit_turn(
-                self,
+            structure_turn = await self._management.async_handle_structure_edit_turn(
                 user_input,
                 response,
                 active_task.payload,
@@ -1986,7 +1747,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationManagement)
         ):
-            return await self._async_handle_automation_management_confirmation(
+            return await self._management.async_handle_management_confirmation(
                 user_input, response, active_task.payload
             )
 
@@ -1996,7 +1757,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationDeletion)
         ):
-            return await self._async_handle_automation_deletion_confirmation_reply(
+            return await self._management.async_handle_deletion_confirmation_reply(
                 user_input, response, active_task.payload
             )
 
@@ -2029,7 +1790,7 @@ class NluConversationEntity(
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationEventClarification)
         ):
-            handled = self._handle_pending_event_clarification(
+            handled = self._automations.handle_pending_event_clarification(
                 user_input, response, active_task.payload, entities
             )
             if handled is not None:
@@ -2042,7 +1803,7 @@ class NluConversationEntity(
             and isinstance(active_task.payload, PendingAutomationDraft)
             and pending is not None
         ):
-            return await self._async_handle_pending_automation_draft(
+            return await self._automations.async_handle_pending_draft(
                 user_input, response, active_task.payload, pending, entities
             )
 
@@ -2131,7 +1892,7 @@ class NluConversationEntity(
             )
 
         if starts_automation_wizard(user_input.text):
-            return self._start_automation_wizard(user_input, response)
+            return self._automations.start_wizard(user_input, response)
 
         if re.search(
             r"\bwas\s+wurde\s+heute\s+(?:durch|von)\s+homeintent\s+ausgefuehrt\b",
@@ -2208,8 +1969,8 @@ class NluConversationEntity(
         if management is not None and isinstance(
             management.payload, CalendarManagementRequest
         ):
-            return await async_handle_calendar_management(
-                self, user_input, response, management.payload, all_calendars
+            return await self._productivity.async_handle_calendar_management(
+                user_input, response, management.payload, all_calendars
             )
 
         calendar_draft = start_calendar_event_draft(
@@ -2226,18 +1987,18 @@ class NluConversationEntity(
             else parse_automation_structure_edit(user_input.text)
         )
         if structure_edit is not None:
-            return await self._async_handle_structure_edit_request(
+            return await self._management.async_handle_structure_edit_request(
                 user_input, response, structure_edit, entities
             )
 
         if is_action_edit_request(user_input.text):
-            return await self._async_handle_action_edit_request(
+            return await self._management.async_handle_action_edit_request(
                 user_input, response, entities
             )
 
         management_request = parse_automation_management(user_input.text)
         if management_request is not None:
-            return await self._async_handle_automation_management(
+            return await self._management.async_handle_management(
                 user_input, response, management_request, entities
             )
 
@@ -2253,9 +2014,7 @@ class NluConversationEntity(
             or _AUTOMATION_DISABLE_RE.search(user_input.text)
             or _AUTOMATION_ENABLE_RE.search(user_input.text)
         ):
-            if self._automation_executor is None:
-                self._automation_executor = AutomationExecutor(self.hass)
-            automations = await self._automation_executor.async_list_automations()
+            automations = await self._automation_store().async_list_automations()
             early_automation_result = (
                 self._engine.match_automation_delete(user_input.text, entities, automations)
                 or self._engine.match_automation_disable(user_input.text, entities, automations)
@@ -2520,7 +2279,7 @@ class NluConversationEntity(
                     user_input.text
                 )
                 if notification_clause is not None:
-                    return await self._async_handle_immediate_notification(
+                    return await self._notifications.async_handle_immediate(
                         user_input, response, NotificationRequest.from_clause(notification_clause),
                         entities,
                     )
@@ -2559,23 +2318,17 @@ class NluConversationEntity(
                 # gate first (that grammar just wouldn't match it). Same
                 # lazily-constructed, entity-lifetime executor instance the
                 # query/creation paths already use.
-                if self._automation_executor is None:
-                    self._automation_executor = AutomationExecutor(self.hass)
-                automations = await self._automation_executor.async_list_automations()
+                automations = await self._automation_store().async_list_automations()
                 result = self._engine.match_automation_delete(user_input.text, entities, automations)
             if result is None and _AUTOMATION_DISABLE_RE.search(user_input.text):
                 # Wave 11 "Automation Disable/Enable": same "checked before
                 # the query gate" reasoning as the delete gate above -
                 # "Deaktiviere die Automation für X" also contains the word
                 # "Automation".
-                if self._automation_executor is None:
-                    self._automation_executor = AutomationExecutor(self.hass)
-                automations = await self._automation_executor.async_list_automations()
+                automations = await self._automation_store().async_list_automations()
                 result = self._engine.match_automation_disable(user_input.text, entities, automations)
             if result is None and _AUTOMATION_ENABLE_RE.search(user_input.text):
-                if self._automation_executor is None:
-                    self._automation_executor = AutomationExecutor(self.hass)
-                automations = await self._automation_executor.async_list_automations()
+                automations = await self._automation_store().async_list_automations()
                 result = self._engine.match_automation_enable(user_input.text, entities, automations)
             if result is None and _AUTOMATION_QUERY_RE.search(user_input.text):
                 # V5.29 "Automation Query": the same cheap pre-check
@@ -2588,9 +2341,7 @@ class NluConversationEntity(
                 # ``_async_handle_automation_confirmation_reply`` already
                 # uses for automation creation (see below) - one executor,
                 # one lock, shared across both read and write paths.
-                if self._automation_executor is None:
-                    self._automation_executor = AutomationExecutor(self.hass)
-                automations = await self._automation_executor.async_list_automations()
+                automations = await self._automation_store().async_list_automations()
                 result = self._engine.match_automation_query(
                     user_input.text, entities, pending, automations
                 )
@@ -2751,30 +2502,30 @@ class NluConversationEntity(
             )
 
         if isinstance(result, AutomationMatchResult):
-            decided = self._decide_recurrence(user_input, response, result, entities, pending)
+            decided = self._automations.decide_recurrence(user_input, response, result, entities, pending)
             if isinstance(decided, conversation.ConversationResult):
                 return decided
-            return self._handle_automation_match_result(
+            return self._automations.handle_match_result(
                 user_input, response, decided, entities
             )
 
         if isinstance(result, AutomationDraftMatchResult):
-            return self._handle_automation_draft_match_result(
+            return self._automations.handle_draft_match_result(
                 user_input, response, result
             )
 
         if isinstance(result, AutomationClarificationResult):
-            return self._handle_automation_clarification_result(
+            return self._automations.handle_clarification_result(
                 user_input, response, result
             )
 
         if isinstance(result, AutomationDeletionMatchResult):
-            return self._handle_automation_deletion_match_result(
+            return self._management.handle_deletion_match_result(
                 user_input, response, result
             )
 
         if isinstance(result, AutomationToggleMatchResult):
-            return await self._async_handle_automation_toggle_result(
+            return await self._management.async_handle_toggle_result(
                 user_input, response, result
             )
 
@@ -3290,7 +3041,7 @@ class NluConversationEntity(
         except (PermissionError, ValueError) as err:
             response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        return self._stage_goal_plan(user_input, response, plan, actor_id)
+        return self._goals.stage_plan(user_input, response, plan, actor_id)
 
     async def _async_handle_document_turn(
         self,
@@ -3318,1013 +3069,6 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    async def _async_handle_goal_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        language_document: LanguageDocument,
-        entities: list[EntitySnapshot],
-        direct_understanding: object | None = None,
-    ) -> conversation.ConversationResult | None:
-        manager = self._runtime_data.dialog_manager
-        conversation_id = user_input.conversation_id
-        active = manager.active(conversation_id)
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.GOAL_RUN_CLARIFICATION
-            and isinstance(active.payload, GoalRunClarification)
-        ):
-            actor_id = conversation_user_id(user_input)
-            pending_runs = active.payload
-            if pending_runs.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Verlaufs-Rückfrage gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            selected_id = _select_goal_run_reply(
-                language_document, pending_runs.run_ids, pending_runs.labels
-            )
-            if selected_id is None:
-                response.async_set_speech(
-                    "Bitte nenne eines der Ziele: " + _german_goal_labels(pending_runs.labels) + "."
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            store = self._runtime_data.goal_runs
-            matches = (
-                await store.async_query(GoalRunQuery(user_id=actor_id, run_id=selected_id))
-                if store is not None
-                else ()
-            )
-            manager.cancel(conversation_id, active.task_id)
-            response.async_set_speech(explain_goal_run(matches[-1] if matches else None).message)
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        if (
-            active is not None
-            and active.kind is DialogTaskKind.GOAL_SEMANTIC_CLARIFICATION
-            and isinstance(active.payload, PendingGoalSemanticClarification)
-        ):
-            actor_id = conversation_user_id(user_input)
-            pending_goal = active.payload
-            if pending_goal.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Ziel-Rückfrage gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            choice = _goal_semantic_choice(language_document)
-            if choice is None or choice not in pending_goal.choices:
-                response.async_set_speech(
-                    "Bitte wähle eindeutig: Sollwert zum Zeitpunkt setzen oder bis dahin erreichen."
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            manager.cancel(conversation_id, active.task_id)
-            if choice is GoalSemanticChoice.ACHIEVE_BY_DEADLINE:
-                original_document = analyse_language(
-                    pending_goal.goal.provenance.source_utterance, entities
-                )
-                deadline = resolve_scheduled_datetime(
-                    original_document.temporal, dt_util.now()
-                )
-                goal_for_advice = (
-                    replace(
-                        pending_goal.goal,
-                        temporal=replace(pending_goal.goal.temporal, deadline=deadline),
-                    )
-                    if pending_goal.goal.temporal is not None and deadline is not None
-                    else pending_goal.goal
-                )
-                advice = _thermal_advice_for_goal(
-                    goal_for_advice, entities, self._runtime_data.predictive_house
-                )
-                if advice is None:
-                    response.async_set_speech(
-                        "Für dieses Ergebnisziel fehlt mir ein ausreichend validiertes thermisches Modell. "
-                        "Ich kann den Sollwert zu einem festen Zeitpunkt setzen oder du sammelst weitere belegte Heizvorgänge."
-                    )
-                    return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-                try:
-                    plan = materialize_goal(
-                        goal_for_advice, entities, options=self.entry.options,
-                        is_admin=await user_is_admin(self.hass, user_input),
-                        user_id=actor_id, adaptive_advice=advice,
-                    )
-                except (PermissionError, ValueError) as err:
-                    response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-                    return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-                return self._stage_goal_plan(user_input, response, plan, actor_id)
-            original_document = analyse_language(
-                pending_goal.goal.provenance.source_utterance, entities
-            )
-            scheduled_for = resolve_scheduled_datetime(
-                original_document.temporal, dt_util.now()
-            )
-            if scheduled_for is None:
-                response.async_set_speech(
-                    "Der geplante Zeitpunkt ist nicht mehr vollständig. Ich habe nichts geplant."
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            clarified = replace(
-                pending_goal.goal,
-                temporal=TemporalGoal(
-                    execute_at=scheduled_for,
-                    day_part=scheduled_for.strftime("%Y-%m-%d %H:%M"),
-                    must_be_achieved_by_deadline=False,
-                ),
-                failure_handling="report",
-            )
-            try:
-                plan = materialize_goal(
-                    clarified,
-                    entities,
-                    options=self.entry.options,
-                    is_admin=await user_is_admin(self.hass, user_input),
-                    user_id=actor_id,
-                )
-            except (PermissionError, ValueError) as err:
-                response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            return self._stage_goal_plan(user_input, response, plan, actor_id)
-
-        if active is not None and active.kind is DialogTaskKind.ROUTINE_DEFINITION:
-            actor_id = conversation_user_id(user_input)
-            if active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Routinen-Definition gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            draft = active.slots.get("routine")
-            if (
-                not isinstance(draft, RoutineDefinition)
-                and classify_confirmation_reply(language_document.source_text)
-                is ConfirmationReply.NO
-            ):
-                manager.cancel(conversation_id)
-                response.async_set_speech("In Ordnung. Ich lege keine Routine an.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            if isinstance(draft, RoutineDefinition):
-                reply = classify_confirmation_reply(language_document.source_text)
-                if reply is ConfirmationReply.NO:
-                    manager.cancel(conversation_id)
-                    response.async_set_speech("In Ordnung. Die Routine wurde nicht gespeichert.")
-                elif reply is not ConfirmationReply.YES:
-                    response.async_set_speech("Bitte bestätige die gezeigte Routine eindeutig mit Ja oder Nein.")
-                elif self._runtime_data.profiles is None:
-                    manager.cancel(conversation_id)
-                    response.async_set_speech("Die lokale Profil-Persistenz ist nicht verfügbar.")
-                else:
-                    confirmed_routine = replace(draft, confirmed=True)
-                    await self._runtime_data.profiles.async_save_routine(
-                        confirmed_routine, confirmed=True
-                    )
-                    manager.cancel(conversation_id)
-                    response.async_set_speech(
-                        f"Gespeichert. Die Routine {confirmed_routine.name} enthält "
-                        f"{len(confirmed_routine.steps)} bestätigte Schritte."
-                    )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-            understood = direct_understanding
-            if understood is None:
-                understood = self._engine.understand(
-                    user_input.text,
-                    entities,
-                    self._world_model,
-                    language_document,
-                )
-            payload = getattr(understood, "payload", None)
-            routine_id = active.slots.get("routine_id")
-            if not isinstance(routine_id, str) or actor_id is None:
-                manager.cancel(conversation_id)
-                response.async_set_speech("Die Routinen-Definition ist nicht mehr vollständig.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            routine = _routine_definition_from_payload(
-                routine_id, actor_id, payload, entities
-            )
-            if routine is None:
-                response.async_set_speech(
-                    "Ich konnte daraus keine vollständige Folge unterstützter Gerätezustände bilden. Bitte nenne konkrete Geräte und Zielzustände."
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            manager.create(
-                conversation_id,
-                active.task_id,
-                DialogTaskKind.ROUTINE_DEFINITION,
-                DialogPriority.CONFIRMATION,
-                slots={"routine_id": routine_id, "routine": routine},
-                reason="Eine typisierte Routinen-Definition wartet auf ausdrückliche Bestätigung.",
-                requested_by_user_id=actor_id,
-            )
-            preview = "; ".join(step.description for step in routine.steps)
-            response.async_set_speech(
-                f"Als Routine {routine.name} habe ich verstanden: {preview}. Soll ich diese Definition lokal speichern?"
-            )
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        if active is not None and active.kind is DialogTaskKind.PLAN_CONFIRMATION:
-            actor_id = conversation_user_id(user_input)
-            if active.requested_by_user_id is not None and active.requested_by_user_id != actor_id:
-                response.async_set_speech("Diese Planbestätigung gehört zu einem anderen Benutzer.")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            pending_plan = active.slots.get("plan")
-            if isinstance(pending_plan, MaterializedPlan):
-                modified = apply_plan_modification(
-                    pending_plan, language_document, entities
-                )
-                if modified is not None:
-                    manager.create(
-                        conversation_id,
-                        active.task_id,
-                        DialogTaskKind.PLAN_CONFIRMATION,
-                        DialogPriority.CONFIRMATION,
-                        slots={"plan": modified},
-                        reason="Der strukturierte Plan wurde geändert und wartet erneut auf Bestätigung.",
-                        requested_by_user_id=actor_id,
-                    )
-                    actions = [
-                        step.description for step in modified.steps
-                        if step.kind is StepKind.ACTION
-                    ]
-                    response.async_set_speech(
-                        f"Plan angepasst: {'; '.join(actions[:3]) or 'keine sofortige Aktion'}. Soll ich diesen Plan ausführen?"
-                    )
-                    return conversation.ConversationResult(
-                        response=response, conversation_id=conversation_id
-                    )
-            reply = classify_confirmation_reply(language_document.source_text)
-            if reply is ConfirmationReply.NO:
-                manager.cancel(conversation_id)
-                response.async_set_speech("In Ordnung. Der Plan wurde nicht ausgeführt.")
-            elif reply is ConfirmationReply.UNCLEAR:
-                if len(language_document.tokens) > 3:
-                    manager.cancel(conversation_id)
-                    return None
-                response.async_set_speech("Bitte bestätige den gesamten Plan eindeutig mit Ja oder Nein.")
-            else:
-                stored_plan = active.slots.get("plan")
-                if not isinstance(stored_plan, MaterializedPlan):
-                    manager.cancel(conversation_id)
-                    response.async_set_speech("Der Plan ist nicht mehr vollständig. Ich habe nichts ausgeführt.")
-                else:
-                    is_admin = await user_is_admin(self.hass, user_input)
-
-                    async def refresh() -> list[EntitySnapshot]:
-                        return build_entity_snapshots(self.hass, self.entry)
-
-                    async def execute(plan, fresh, confirmed):
-                        return await async_execute_service_plan(
-                            self.hass,
-                            plan,
-                            fresh,
-                            self.entry.options,
-                            is_admin=is_admin,
-                            user_id=actor_id,
-                            confirmed=confirmed,
-                            audit_trail=self._audit_trail,
-                            audit_actor_id=actor_id or "voice",
-                            effect_monitor=self._runtime_data.effect_monitor,
-                        )
-
-                    async def verify(entity_id: str, expected: str) -> bool:
-                        loop = asyncio.get_running_loop()
-                        deadline = loop.time() + min(
-                            10.0,
-                            self._runtime_data.effect_monitor.timeout.total_seconds(),
-                        )
-                        while True:
-                            current = next(
-                                (
-                                    item
-                                    for item in build_entity_snapshots(self.hass, self.entry)
-                                    if item.entity_id == entity_id
-                                ),
-                                None,
-                            )
-                            if current is not None and effect_satisfied(current, expected):
-                                return True
-                            remaining = deadline - loop.time()
-                            if remaining <= 0:
-                                return False
-                            await asyncio.sleep(min(0.1, remaining))
-
-                    async def schedule(step, fresh, confirmed):
-                        action = step.action
-                        if action is None or step.execute_at_local_time is None:
-                            return _ScheduledOutcome(False, "Der terminierte Schritt ist unvollständig.")
-                        decision = evaluate_service_plan(
-                            action,
-                            fresh,
-                            self.entry.options,
-                            is_admin=is_admin,
-                            user_id=actor_id,
-                            effects=build_plan_effects(self.hass, action),
-                            attended=False,
-                        )
-                        if decision.outcome is PolicyOutcome.DENY:
-                            return _ScheduledOutcome(False, decision.reason)
-                        if decision.outcome is PolicyOutcome.CONFIRM and not confirmed:
-                            return _ScheduledOutcome(False, "Die Aktion benötigt eine Bestätigung.")
-                        automation_action = _scheduled_action_model(action)
-                        if automation_action is None:
-                            return _ScheduledOutcome(False, "Für diese Aktion gibt es keinen geschlossenen Zeitplan-Operator.")
-                        try:
-                            hour_text, minute_text = step.execute_at_local_time.split(":", 1)
-                            hour, minute = int(hour_text), int(minute_text)
-                        except (TypeError, ValueError):
-                            return _ScheduledOutcome(False, "Der geplante Zeitpunkt ist ungültig.")
-                        now = dt_util.now()
-                        scheduled_for = step.scheduled_for
-                        if scheduled_for is None:
-                            scheduled_for = now.replace(
-                                hour=hour, minute=minute, second=0, microsecond=0
-                            )
-                            if scheduled_for <= now:
-                                scheduled_for += timedelta(days=1)
-                        elif scheduled_for <= now:
-                            return _ScheduledOutcome(False, "Der geplante Zeitpunkt liegt bereits in der Vergangenheit.")
-                        automation_id = uuid.uuid4().hex
-                        model = AutomationModel(
-                            triggers=(TriggerModel(
-                                TriggerType.TIME,
-                                time_hour=hour,
-                                time_minute=minute,
-                                time_second=0,
-                            ),),
-                            actions=(automation_action,),
-                            source_text=(
-                                f"HomeIntent: {step.description} um "
-                                f"{step.execute_at_local_time} Uhr"
-                            ),
-                            once=True,
-                            scheduled_for=scheduled_for,
-                        )
-                        validation_error = validate_automation(model)
-                        if validation_error is not None:
-                            return _ScheduledOutcome(
-                                False,
-                                f"Der terminierte Schritt ist nicht sicher: {validation_error.name}",
-                            )
-                        generation = generate_ha_automation_config(
-                            model, fresh, automation_id=automation_id
-                        )
-                        if generation.error is not None or generation.config is None:
-                            return _ScheduledOutcome(
-                                False,
-                                "Der terminierte Schritt konnte nicht sicher erzeugt werden.",
-                            )
-                        automation_configs: list[tuple[str, dict[str, object], datetime]] = [
-                            (automation_id, generation.config, scheduled_for)
-                        ]
-                        checkpoint_records: list[
-                            tuple[ThermalDeadlineCheckpoint, datetime]
-                        ] = []
-                        advice = stored_plan.adaptive_advice
-                        if advice is not None:
-                            area_id = stored_plan.goal.scope.area_id
-                            thermal_model = (
-                                self._runtime_data.predictive_house.thermal_model(area_id)
-                                if self._runtime_data.predictive_house is not None
-                                and area_id is not None else None
-                            )
-                            target_value = action.data.get("temperature")
-                            climate_id = (
-                                action.entity_id
-                                if isinstance(action.entity_id, str) else None
-                            )
-                            if (
-                                thermal_model is None or climate_id is None
-                                or not isinstance(target_value, (int, float))
-                                or thermal_model.model_id != advice.model_id
-                            ):
-                                return _ScheduledOutcome(
-                                    False,
-                                    "Die thermische Modellbindung ist nicht mehr eindeutig.",
-                                )
-                            base_checkpoint = ThermalDeadlineCheckpoint(
-                                ThermalCheckpointPhase.START,
-                                stored_plan.goal.goal_id,
-                                thermal_model.binding.area_id,
-                                climate_id,
-                                thermal_model.binding.temperature_entity_id,
-                                float(target_value),
-                                advice.model_id,
-                                advice.predicted_duration.total_seconds(),
-                                advice.uncertainty_buffer.total_seconds(),
-                                checkpoint_id=f"thermal-checkpoint-{uuid.uuid4().hex}",
-                                token=secrets.token_urlsafe(32),
-                                run_id=execution_run_id,
-                                scheduled_for=scheduled_for.isoformat(),
-                                deadline=advice.final_verification_at.isoformat(),
-                            )
-                            enriched = append_start_checkpoint(
-                                generation.config, base_checkpoint
-                            )
-                            if enriched is None:
-                                return _ScheduledOutcome(
-                                    False, "Die thermische Startprüfung konnte nicht geplant werden."
-                                )
-                            automation_configs[0] = (automation_id, enriched, scheduled_for)
-                            checkpoint_records = [(base_checkpoint, scheduled_for)]
-                            for phase, checkpoint_at in (
-                                (ThermalCheckpointPhase.INTERMEDIATE,
-                                 advice.intermediate_check_at),
-                                (ThermalCheckpointPhase.FINAL,
-                                 advice.final_verification_at),
-                            ):
-                                checkpoint_id = uuid.uuid4().hex
-                                phase_checkpoint = replace(
-                                    base_checkpoint, phase=phase,
-                                    checkpoint_id=f"thermal-checkpoint-{uuid.uuid4().hex}",
-                                    token=secrets.token_urlsafe(32),
-                                    scheduled_for=checkpoint_at.isoformat(),
-                                )
-                                checkpoint_config = checkpoint_automation_config(
-                                    phase_checkpoint,
-                                    scheduled_for=checkpoint_at,
-                                    automation_id=checkpoint_id,
-                                )
-                                if checkpoint_config is None:
-                                    return _ScheduledOutcome(
-                                        False, "Ein thermischer Prüfzeitpunkt ist ungültig."
-                                    )
-                                automation_configs.append(
-                                    (checkpoint_id, checkpoint_config, checkpoint_at)
-                                )
-                                checkpoint_records.append((phase_checkpoint, checkpoint_at))
-                            checkpoint_store = self._runtime_data.thermal_checkpoints
-                            if checkpoint_store is None:
-                                checkpoint_store = PendingThermalCheckpointStore(
-                                    self.hass.config.path(
-                                        ".storage/homeintent_thermal_checkpoints.json"
-                                    )
-                                )
-                                self._runtime_data.thermal_checkpoints = checkpoint_store
-                            for checkpoint_record, checkpoint_at in checkpoint_records:
-                                registered = await checkpoint_store.async_register(
-                                    checkpoint_record, scheduled_for=checkpoint_at,
-                                    deadline=advice.final_verification_at,
-                                )
-                                if not registered:
-                                    return _ScheduledOutcome(
-                                        False, "Ein thermischer Prüfpunkt konnte nicht authentifiziert werden."
-                                    )
-                        if self._automation_executor is None:
-                            self._automation_executor = AutomationExecutor(self.hass)
-                        created_ids: list[str] = []
-                        try:
-                            for created_id, config, execute_at in automation_configs:
-                                await self._automation_executor.async_create_automation(
-                                    config,
-                                    automation_id=created_id,
-                                    scheduled_for=execute_at,
-                                    once=True,
-                                )
-                                created_ids.append(created_id)
-                        except Exception as err:  # noqa: BLE001 - transactional executor reports heterogeneous HA/I/O failures
-                            for created_id in reversed(created_ids):
-                                try:
-                                    await self._automation_executor.async_delete_automation(
-                                        created_id
-                                    )
-                                except Exception:  # noqa: BLE001 - best-effort multi-object rollback
-                                    _LOGGER.exception(
-                                        "Could not roll back thermal checkpoint %s",
-                                        created_id,
-                                    )
-                            if advice is not None and self._runtime_data.thermal_checkpoints is not None:
-                                for checkpoint_record, _checkpoint_at in checkpoint_records:
-                                    await self._runtime_data.thermal_checkpoints.async_delete(
-                                        checkpoint_record.checkpoint_id
-                                    )
-                            return _ScheduledOutcome(False, str(err))
-                        return _ScheduledOutcome(True)
-
-                    execution_run_id = f"run_{uuid.uuid4().hex}"
-                    reservation = await self._runtime_data.execution_coordinator.async_acquire(
-                        execution_run_id, stored_plan
-                    )
-                    if reservation.outcome.value == "conflict":
-                        manager.cancel(conversation_id)
-                        response.async_set_speech(
-                            "Ein anderes Ziel verändert gerade mindestens dasselbe Gerät. Ich habe diesen Plan nicht nondeterministisch parallel ausgeführt."
-                        )
-                        return conversation.ConversationResult(
-                            response=response, conversation_id=conversation_id
-                        )
-                    goal_runs = self._runtime_data.goal_runs
-                    user_contexts = self._runtime_data.user_contexts
-
-                    async def run_plan() -> PlanResult:
-                        try:
-                            plan_result = await PlanExecutor(
-                                refresh, execute, verify, schedule
-                            ).execute(
-                                stored_plan, confirmed=True
-                            )
-                        finally:
-                            await self._runtime_data.execution_coordinator.async_release(
-                                execution_run_id
-                            )
-                        if goal_runs is not None:
-                            current_entities = {
-                                item.entity_id: item
-                                for item in build_entity_snapshots(self.hass, self.entry)
-                            }
-                            run = goal_run_from_plan_result(
-                                stored_plan, plan_result, current_entities,
-                                run_id=execution_run_id,
-                                user_id=actor_id,
-                                person_entity_id=(
-                                    user_contexts.resolve_current_person(actor_id).person_entity_id
-                                    if user_contexts is not None
-                                    else None
-                                ),
-                                updated_at=dt_util.utcnow().isoformat(),
-                            )
-                            await goal_runs.async_append(run)
-                        return plan_result
-
-                    # Service calls are accepted within milliseconds, but
-                    # verifying slow effects (a garage door, several locks)
-                    # can take much longer than a voice satellite waits (F17).
-                    # Answer with the final result when it is quick; otherwise
-                    # confirm immediately, keep verifying in the background and
-                    # report only a failure. The GoalRun keeps every piece of
-                    # evidence for "Warum?".
-                    plan_task = self.hass.async_create_task(
-                        run_plan(), name=f"HomeIntent plan {execution_run_id}"
-                    )
-                    done, _pending = await asyncio.wait(
-                        {plan_task}, timeout=_PLAN_REPLY_BUDGET_SECONDS
-                    )
-                    manager.cancel(conversation_id)
-                    if plan_task not in done:
-                        label = (stored_plan.goal.provenance.source_utterance if stored_plan.goal.provenance else "") or "Der bestätigte Plan"
-                        plan_task.add_done_callback(
-                            lambda task: self.hass.async_create_task(
-                                self._async_report_background_plan(
-                                    task, execution_run_id, label[:80], actor_id
-                                ),
-                                name=f"HomeIntent plan report {execution_run_id}",
-                            )
-                        )
-                        steps = sum(
-                            1 for step in stored_plan.steps
-                            if step.kind in {StepKind.ACTION, StepKind.NOTIFY}
-                        )
-                        response.async_set_speech(
-                            f"In Ordnung, ich führe den Plan jetzt aus ({steps} "
-                            f"{'Schritt' if steps == 1 else 'Schritte'}) und prüfe die Wirkung. "
-                            "Ich melde mich nur, falls etwas nicht klappt."
-                        )
-                        return conversation.ConversationResult(
-                            response=response, conversation_id=conversation_id
-                        )
-                    result = plan_task.result()
-                    if result.status is PlanStatus.COMPLETED:
-                        response.async_set_speech("Der Plan wurde vollständig ausgeführt und verifiziert.")
-                    elif result.status is PlanStatus.SCHEDULED:
-                        response.async_set_speech(
-                            "Die sofortigen Schritte wurden verifiziert; die verschobenen Schritte sind als persistente einmalige Home-Assistant-Automation geplant."
-                        )
-                    elif result.status is PlanStatus.PARTIAL_FAILURE:
-                        response.async_set_speech(
-                            "Der Plan wurde nur teilweise erfüllt. Mindestens ein früherer Schritt ist verifiziert, aber ein weiterer Schritt ist fehlgeschlagen."
-                        )
-                    else:
-                        response.async_set_speech("Der Plan wurde sicher gestoppt, weil ein Schritt fehlschlug oder nicht verifiziert werden konnte.")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        actor_id = conversation_user_id(user_input)
-        person_id = None
-        user_contexts = self._runtime_data.user_contexts
-        if user_contexts is not None:
-            person_binding = user_contexts.resolve_current_person(actor_id)
-            if person_binding.status is BindingStatus.RESOLVED:
-                person_id = person_binding.person_entity_id
-        area = resolve_conversation_area(self.hass, user_input)
-        household = (
-            user_contexts.household.person_entity_ids if user_contexts is not None else ()
-        )
-        person_names: dict[str, list[str]] = {}
-        for entity in entities:
-            if entity.domain != "person":
-                continue
-            aliases = {
-                normalize_for_compare(entity.friendly_name),
-                normalize_for_compare(entity.entity_id.partition(".")[2]),
-            }
-            for alias in aliases:
-                if alias:
-                    person_names.setdefault(alias, []).append(entity.entity_id)
-        profiles = self._runtime_data.profiles
-        routine_names: dict[str, str] = {}
-        if profiles is not None and actor_id is not None:
-            for routine in profiles.routines_for(actor_id):
-                for spoken in (routine.name, routine.routine_id.replace("_", " ")):
-                    if key := normalize_for_compare(spoken).strip():
-                        routine_names[key] = routine.routine_id
-        area_names = {
-            key: entity.area_id
-            for entity in entities
-            if entity.area_id is not None
-            for name in (entity.area_name or "", *entity.area_aliases)
-            if (key := normalize_for_compare(name).strip())
-        }
-        goal = interpret_goal(
-            language_document,
-            current_user_id=actor_id,
-            conversation_id=conversation_id,
-            current_person_entity_id=person_id,
-            voice_area_id=area.area_id if area is not None else None,
-            household_person_ids=household,
-            person_name_bindings={
-                name: tuple(dict.fromkeys(entity_ids))
-                for name, entity_ids in person_names.items()
-            },
-            routine_names=routine_names,
-            area_names=area_names,
-        )
-        if goal is None:
-            return None
-
-        if goal.kind is V10GoalKind.EXPLAIN_FAILURE:
-            # Explicit automation diagnostics belong to the existing
-            # authoritative automation-management path.  V10 run-history
-            # explanations handle anaphoric/general failure questions only.
-            if parse_automation_management(user_input.text) is not None:
-                return None
-            if actor_id is None:
-                response.async_set_speech(
-                    "Ohne eindeutige Home-Assistant-Benutzerzuordnung kann ich keinen "
-                    "persönlichen Zielverlauf erklären."
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=conversation_id
-                )
-            store = self._runtime_data.goal_runs
-            window = resolve_history_window(language_document.tokens, dt_util.now())
-            goal_kind_value = goal.parameters.get("goal_kind")
-            goal_kind = None
-            if isinstance(goal_kind_value, str):
-                try:
-                    goal_kind = V10GoalKind(goal_kind_value)
-                except ValueError:
-                    goal_kind = None
-            entity_id = _mentioned_goal_run_entity(language_document, entities)
-            query = GoalRunQuery(
-                user_id=actor_id,
-                start_time=window.start if window is not None else None,
-                end_time=window.end if window is not None else None,
-                failed_only=goal.parameters.get("failed_only") is not False,
-                goal_kind=goal_kind,
-                routine_id=goal.routine_id,
-                entity_id=entity_id,
-            )
-            matches = await store.async_query(query) if store else ()
-            if window is not None and len(matches) > 1:
-                labels = tuple(_goal_run_label(item) for item in matches)
-                manager.create(
-                    conversation_id,
-                    "goal-run-clarification",
-                    DialogTaskKind.GOAL_RUN_CLARIFICATION,
-                    DialogPriority.SELECTION,
-                    candidates=tuple(item.run_id for item in matches),
-                    reason="Mehrere historische Ziele passen zum genannten Zeitraum.",
-                    requested_by_user_id=actor_id,
-                    payload=GoalRunClarification(
-                        tuple(item.run_id for item in matches), labels, actor_id
-                    ),
-                )
-                response.async_set_speech(
-                    f"{window.label.capitalize()} sind {_german_count(len(matches))} passende Ziele fehlgeschlagen: "
-                    + _german_goal_labels(labels)
-                    + ". Welches meinst du?"
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            run = matches[-1] if matches else None
-            explanation = explain_goal_run(run)
-            if run is None and window is not None and window.label.startswith("gestern"):
-                records = (
-                    await self._runtime_data.monitor_goals.async_load()
-                    if self._runtime_data.monitor_goals is not None
-                    else ()
-                )
-                candidates = [
-                    item.goal
-                    for item in records
-                    if item.enabled
-                    and item.goal.provenance.user_id == actor_id
-                    and item.goal.trigger is not None
-                    and item.goal.trigger.person_entity_id is not None
-                ]
-                if len(candidates) == 1:
-                    trigger = candidates[0].trigger
-                    assert trigger is not None and trigger.person_entity_id is not None
-                    evidence = await async_get_transition_evidence(
-                        self.hass,
-                        trigger.person_entity_id,
-                        start=window.start,
-                        end=window.end,
-                        from_state=trigger.from_state or "home",
-                        to_state=trigger.to_state or "not_home",
-                    )
-                    if evidence.available and evidence.occurred is False:
-                        explanation = replace(
-                            explanation,
-                            message=(
-                                f"Die Erinnerung wurde gestern nicht ausgelöst, weil "
-                                f"{trigger.person_entity_id} laut Home-Assistant-Verlauf "
-                                "nicht vom Ausgangszustand in den erwarteten Zielzustand wechselte."
-                            ),
-                        )
-            response.async_set_speech(explanation.message)
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        if goal.kind is V10GoalKind.MONITOR_AND_NOTIFY:
-            if goal.parameters.get("ambiguous_person_name"):
-                response.async_set_speech(
-                    "Die genannte Person ist nicht eindeutig. Bitte wähle eine konkrete person.*-Entität."
-                )
-            elif goal.trigger is None:
-                response.async_set_speech("Der Auslöser ist nicht eindeutig. Es wurde nichts gespeichert.")
-            elif goal.trigger.kind.startswith("person_") and goal.trigger.person_entity_id is None:
-                response.async_set_speech(
-                    "Ich kann „ich“ noch keinem Home-Assistant-Benutzer und keiner person.*-Entität eindeutig zuordnen. Bitte konfiguriere diese Zuordnung einmalig."
-                )
-            elif goal.trigger.kind == "nobody_home" and not household:
-                response.async_set_speech(
-                    "Für „niemand zuhause“ ist noch kein bestätigter Haushalt aus person.*-Entitäten konfiguriert."
-                )
-            elif not goal.recipient_person_ids:
-                response.async_set_speech(
-                    "Für den Empfänger fehlt eine eindeutige Personenzuordnung. Es wurde nichts gespeichert."
-                )
-            elif user_contexts is None or self._runtime_data.monitor_goals is None:
-                response.async_set_speech("Die lokale Goal-Persistenz ist nicht verfügbar.")
-            else:
-                unresolved = [
-                    user_contexts.resolve_notification_targets(recipient)
-                    for recipient in goal.recipient_person_ids
-                    if user_contexts.resolve_notification_targets(recipient).status
-                    is not BindingStatus.RESOLVED
-                ]
-                if unresolved:
-                    ambiguous = any(item.status is BindingStatus.AMBIGUOUS for item in unresolved)
-                    response.async_set_speech(
-                        "Welches bestätigte Gerät soll ich für diese Push-Benachrichtigung verwenden?"
-                        if ambiguous
-                        else "Für diese Person ist noch kein bestätigtes Push-Ziel konfiguriert."
-                    )
-                else:
-                    confirmed_goal = replace(
-                        goal, provenance=replace(goal.provenance, confirmed=True)
-                    )
-                    await self._runtime_data.monitor_goals.async_save(
-                        MonitorRecord(confirmed_goal)
-                    )
-                    response.async_set_speech(
-                        "Das Monitor-Ziel ist lokal gespeichert. Die Bedingung wird beim tatsächlichen Auslöser mit einem frischen Hauszustand geprüft."
-                    )
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        if goal.kind is V10GoalKind.SCHEDULED and goal.temporal is not None and goal.temporal.must_be_achieved_by_deadline:
-            resolved_deadline = resolve_scheduled_datetime(
-                language_document.temporal, dt_util.now()
-            )
-            goal_for_advice = (
-                replace(goal, temporal=replace(goal.temporal, deadline=resolved_deadline))
-                if resolved_deadline is not None else goal
-            )
-            advice = _thermal_advice_for_goal(
-                goal_for_advice, entities, self._runtime_data.predictive_house
-            )
-            if advice is not None:
-                try:
-                    plan = materialize_goal(
-                        goal_for_advice, entities, options=self.entry.options,
-                        is_admin=await user_is_admin(self.hass, user_input),
-                        user_id=actor_id, adaptive_advice=advice,
-                    )
-                except (PermissionError, ValueError) as err:
-                    response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-                    return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-                return self._stage_goal_plan(user_input, response, plan, actor_id)
-            manager.create(
-                conversation_id,
-                "goal-semantic-clarification",
-                DialogTaskKind.GOAL_SEMANTIC_CLARIFICATION,
-                DialogPriority.SELECTION,
-                slots={
-                    "goal_id": goal.goal_id,
-                    "area_id": goal.scope.area_id,
-                    "desired_states": goal.desired_states,
-                    "temporal": goal.temporal,
-                },
-                missing_slots=("goal_semantic_choice",),
-                candidates=tuple(item.value for item in GoalSemanticChoice),
-                reason="Ein Temperatur-Ergebnisziel muss semantisch geklärt werden.",
-                requested_by_user_id=actor_id,
-                payload=PendingGoalSemanticClarification(
-                    goal, actor_id, conversation_id
-                ),
-            )
-            response.async_set_speech(
-                "Soll die Heizung zu diesem Zeitpunkt auf den Zielwert gestellt werden oder soll der Raum ihn dann bereits erreicht haben? Ohne bestätigtes thermisches Modell kann ich keine Vorheizzeit garantieren."
-            )
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-        if goal.kind in {V10GoalKind.COMFORT, V10GoalKind.IMPROVE_COMFORT}:
-            if actor_id is None or goal.scope.area_id is None:
-                response.async_set_speech(
-                    "Was bedeutet angenehm für dich hier? Soll ich Temperatur, Licht oder beides berücksichtigen?"
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            profiles = self._runtime_data.profiles
-            profile = profiles.comfort(area_id=goal.scope.area_id, user_id=actor_id) if profiles else None
-            if profile is None:
-                response.async_set_speech(
-                    "Was bedeutet angenehm für dich hier? Soll ich Temperatur, Licht oder beides berücksichtigen?"
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            try:
-                plan = materialize_comfort_profile(
-                    goal, profile, entities, options=self.entry.options,
-                    is_admin=await user_is_admin(self.hass, user_input), user_id=actor_id,
-                )
-            except (PermissionError, ValueError) as err:
-                response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            return self._stage_goal_plan(user_input, response, plan, actor_id)
-
-        if goal.routine_id is not None:
-            profiles = self._runtime_data.profiles
-            routine = profiles.routine(goal.routine_id, user_id=actor_id) if profiles and actor_id else None
-            if routine is None:
-                manager.create(
-                    conversation_id,
-                    "routine-definition",
-                    DialogTaskKind.ROUTINE_DEFINITION,
-                    DialogPriority.FOLLOWUP,
-                    slots={"routine_id": goal.routine_id},
-                    missing_slots=("typisierte Routinen-Schritte",),
-                    reason="Der Begriff hat noch keine ausdrücklich bestätigte lokale Bedeutung.",
-                    requested_by_user_id=actor_id,
-                )
-                response.async_set_speech(
-                    f"Was soll ich {_occasion_phrase(goal.routine_id)} erledigen? Ich speichere die Routine erst nach deiner ausdrücklichen Bestätigung."
-                )
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            excluded_names = goal.parameters.get("excluded_area_names", ())
-            if isinstance(excluded_names, (list, tuple)):
-                excluded = {
-                    entity.area_id for entity in entities
-                    if entity.area_id is not None and any(
-                        normalize_for_compare(str(name)) in {
-                            normalize_for_compare(entity.area_id),
-                            normalize_for_compare(entity.area_name or ""),
-                        }
-                        for name in excluded_names
-                    )
-                }
-                if excluded:
-                    goal = replace(goal, exclusions=GoalScope(excluded_area_ids=tuple(sorted(excluded))))
-            try:
-                plan = materialize_routine(
-                    goal, routine, entities, options=self.entry.options,
-                    is_admin=await user_is_admin(self.hass, user_input), user_id=actor_id,
-                )
-            except (PermissionError, ValueError) as err:
-                response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-            return self._stage_goal_plan(user_input, response, plan, actor_id)
-
-        if goal.kind is GoalKind.PREPARE_MOVIE:
-            store = self._runtime_data.memory
-            preferences = (
-                await store.async_list(
-                    person_id=actor_id, kinds=(MemoryKind.PREFERENCE,)
-                )
-                if store is not None and store.enabled and actor_id is not None
-                else ()
-            )
-            matching_preferences = [
-                record
-                for record in preferences
-                if record.content.get("activity") == "television"
-                and isinstance(record.content.get("entity_id"), str)
-                and isinstance(record.content.get("brightness_percent"), int)
-            ]
-            if len(matching_preferences) == 1:
-                preference = matching_preferences[0].content
-                goal = Goal(
-                    GoalKind.PREPARE_MOVIE,
-                    {
-                        "entity_ids": [preference["entity_id"]],
-                        "brightness_percent": preference["brightness_percent"],
-                    },
-                )
-        try:
-            plan = materialize_goal(
-                goal,
-                entities,
-                options=self.entry.options,
-                is_admin=await user_is_admin(self.hass, user_input),
-                user_id=actor_id,
-            )
-        except (PermissionError, ValueError) as err:
-            response.async_set_speech(f"Ich kann dafür keinen sicheren Plan erstellen: {err}")
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        actions = [step.description for step in plan.steps if step.kind is StepKind.ACTION]
-        details = "; ".join(actions[:3])
-        if len(actions) > 3:
-            details += f"; sowie {len(actions) - 3} weitere geprüfte Schritte"
-        if not plan.requires_confirmation:
-            response.async_set_speech(plan.summary)
-            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-        manager.create(
-            conversation_id,
-            "goal-plan",
-            DialogTaskKind.PLAN_CONFIRMATION,
-            DialogPriority.CONFIRMATION,
-            slots={"plan": plan},
-            reason="Ein vollständiger Mehrschrittplan wartet auf Bestätigung.",
-            requested_by_user_id=actor_id,
-        )
-        response.async_set_speech(
-            f"Planvorschau: {details}. {plan.summary} Soll ich den gesamten Plan ausführen?"
-        )
-        return conversation.ConversationResult(response=response, conversation_id=conversation_id)
-
-    async def _async_report_background_plan(
-        self,
-        task: "asyncio.Task[PlanResult]",
-        run_id: str,
-        label: str,
-        actor_id: str | None,
-    ) -> None:
-        """Report a plan that finished after the spoken reply - only if it failed."""
-        try:
-            result = task.result()
-        except asyncio.CancelledError:
-            failed = True
-        except Exception:  # noqa: BLE001 - reported below, never swallowed silently
-            _LOGGER.exception("HomeIntent background plan %s failed", run_id)
-            failed = True
-        else:
-            failed = result.status not in {PlanStatus.COMPLETED, PlanStatus.SCHEDULED}
-        if not failed:
-            return
-        proactive = self._runtime_data.proactive_context
-        if proactive is not None and proactive.enabled and actor_id is not None:
-            await proactive.async_report_goal_failure(
-                run_id=run_id, goal_label=label, owner_user_id=actor_id,
-            )
-            return
-        # Without the proactive layer the failure still has to reach the
-        # user: a Home Assistant notification names what did not work.
-        try:
-            await self.hass.services.async_call(
-                "persistent_notification",
-                "create",
-                {
-                    "title": "HomeIntent",
-                    "message": (
-                        f"„{label}“ wurde nicht vollständig ausgeführt. "
-                        "Frag „Warum hat das nicht funktioniert?“ für die Details."
-                    ),
-                    "notification_id": f"homeintent_plan_{run_id}",
-                },
-                blocking=False,
-                context=call_context(),
-            )
-        except Exception:  # noqa: BLE001 - reporting must never raise
-            _LOGGER.warning("HomeIntent could not report a failed plan", exc_info=True)
-
-    def _stage_goal_plan(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        plan: MaterializedPlan,
-        actor_id: str | None,
-    ) -> conversation.ConversationResult:
-        actions = [step.description for step in plan.steps if step.kind is StepKind.ACTION]
-        details = "; ".join(actions[:3]) or "keine Änderung nötig"
-        if len(actions) > 3:
-            details += f"; sowie {len(actions) - 3} weitere geprüfte Schritte"
-        if not plan.requires_confirmation:
-            response.async_set_speech(plan.summary)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        self._runtime_data.dialog_manager.create(
-            user_input.conversation_id,
-            "goal-plan",
-            DialogTaskKind.PLAN_CONFIRMATION,
-            DialogPriority.CONFIRMATION,
-            slots={"plan": plan},
-            reason="Ein vollständiger Mehrschrittplan wartet auf Bestätigung.",
-            requested_by_user_id=actor_id,
-        )
-        response.async_set_speech(
-            f"Planvorschau: {details}. {plan.summary} Soll ich den gesamten Plan ausführen?"
-        )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     async def _async_handle_learning_turn(
         self,
@@ -5082,20 +3826,6 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    def _start_automation_wizard(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-    ) -> conversation.ConversationResult:
-        """Start the bounded automation wizard."""
-        state = AutomationWizardState()
-        self._store_automation_wizard(user_input.conversation_id, state)
-        response.async_set_speech(
-            "Was soll die Automation auslösen? Bitte nenne einen vollständigen Auslöser."
-        )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     def _handle_audit_query(
         self,
@@ -5139,162 +3869,6 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-
-    async def _async_handle_structure_edit_request(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        request: AutomationStructureEditRequest,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Resolve and prepare a trigger or condition edit."""
-        if self._automation_executor is None:
-            self._automation_executor = AutomationExecutor(self.hass)
-        automations = await self._automation_executor.async_list_automations()
-        candidates = tuple(
-            item
-            for item in homeintent_candidates(automations, user_input.text, entities)
-            if not item.once
-        )
-        if not candidates:
-            response.async_set_speech(
-                "Ich finde keine passende dauerhafte HomeIntent-Automation. "
-                "Einmalige Aufträge werden aus Sicherheitsgründen nicht strukturell geändert."
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        pending_edit = PendingAutomationStructureEdit(
-            request=request,
-            candidates=candidates,
-            automation=candidates[0] if len(candidates) == 1 else None,
-        )
-        if len(candidates) > 1:
-            store_automation_structure_edit(
-                self, user_input.conversation_id, pending_edit
-            )
-            response.async_set_speech(
-                "Welche Automation meinst du? "
-                + ", ".join(_automation_label(item) for item in candidates)
-                + "."
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        if request.payload or request.operation in {
-            AutomationEditOperation.CLEAR,
-            AutomationEditOperation.REMOVE,
-        }:
-            return await async_prepare_automation_structure_edit(
-                self,
-                user_input,
-                response,
-                pending_edit,
-                entities,
-                request.payload,
-            )
-        store_automation_structure_edit(self, user_input.conversation_id, pending_edit)
-        response.async_set_speech(
-            "Wie soll der neue Auslöser lauten?"
-            if request.section.name == "TRIGGERS"
-            else "Welche Bedingung soll gelten?"
-        )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_action_edit_request(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        entities: list[EntitySnapshot] | None = None,
-    ) -> conversation.ConversationResult:
-        """Resolve an automation and begin its action-only edit dialog."""
-        if self._automation_executor is None:
-            self._automation_executor = AutomationExecutor(self.hass)
-        automations = await self._automation_executor.async_list_automations()
-        candidates = homeintent_candidates(automations, user_input.text, entities)
-        operation = action_edit_operation(user_input.text)
-        if not candidates:
-            response.async_set_speech("Ich finde keine änderbare HomeIntent-Automation.")
-        elif len(candidates) > 1:
-            store_automation_action_edit(
-                self,
-                user_input.conversation_id,
-                PendingAutomationActionEdit(
-                    candidates=candidates, operation=operation
-                ),
-            )
-            response.async_set_speech(
-                "Welche Automation meinst du? "
-                + ", ".join(_automation_label(item) for item in candidates)
-                + "."
-            )
-        else:
-            automation = next(iter(candidates))
-            reordered = reordered_actions(automation.actions, operation)
-            if operation.startswith("reorder:") and reordered is None:
-                response.async_set_speech(
-                    "Diese Automation hat nicht genügend Aktionen für diese Reihenfolge."
-                )
-            else:
-                store_automation_action_edit(
-                    self,
-                    user_input.conversation_id,
-                    PendingAutomationActionEdit(
-                        candidates=candidates,
-                        automation=automation,
-                        rendered_actions=reordered or (),
-                        action_text=user_input.text if reordered else None,
-                        operation=operation,
-                    ),
-                )
-                response.async_set_speech(
-                    "Soll ich die Reihenfolge der Aktionen wie gewünscht ändern?"
-                    if reordered
-                    else "Welche Aktion soll zusätzlich danach ausgeführt werden?"
-                    if operation == "add"
-                    else "Was soll stattdessen passieren? Auslöser und Bedingungen bleiben unverändert."
-                )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_pending_automation_confirmation_turn(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        pending: PendingAutomationConfirmation,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Revise a pending automation or interpret its confirmation reply."""
-        revised = self._engine.revise_pending_automation(
-            user_input.text,
-            pending.model,
-            entities,
-            self._world_model,
-        )
-        if revised is not None and revised.validation_error is None:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=revised.model,
-                        requested_by_user_id=pending.requested_by_user_id,
-                    ),
-                ),
-            )
-            response.async_set_speech(render_automation_preview(revised.model, entities))
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        return await self._async_handle_automation_confirmation_reply(
-            user_input, response, pending, entities
-        )
 
     async def _async_handle_pending_semantic_command(
         self,
@@ -5361,54 +3935,6 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    async def _async_handle_pending_automation_draft(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        draft: PendingAutomationDraft,
-        pending: ConversationContext,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Complete the action missing from a pending automation draft."""
-        if classify_confirmation_reply(user_input.text) is ConfirmationReply.NO:
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_speech("In Ordnung. Ich lege keine Automation an.")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        completed = self._engine.complete_automation_draft(
-            user_input.text,
-            draft.trigger,
-            draft.source_text,
-            entities,
-            self._world_model,
-            pending,
-        )
-        if completed is None:
-            response.async_set_speech(
-                "Was soll dann passieren? Bitte nenne eine vollständige Aktion."
-            )
-        elif completed.validation_error is not None:
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_speech(completed.response_text)
-        else:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=completed.model,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
-            )
-            response.async_set_speech(render_automation_preview(completed.model, entities))
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
         """The configured action sequence of one script entity, if readable."""
@@ -5624,316 +4150,6 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    def _handle_automation_match_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: AutomationMatchResult,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Store a valid automation preview, or report its validation error."""
-        if result.validation_error is None:
-            speaker_bound, failure = self._materialize_presence_speaker(result.model, user_input)
-            if failure is None:
-                materialized, failure = self._materialize_notification_recipients(
-                    speaker_bound, user_input, entities
-                )
-            else:
-                materialized = result.model
-            if failure is not None:
-                # Understood, but nobody to deliver to: say so instead of
-                # silently degrading into an HA persistent notification.
-                self._context_store.clear(user_input.conversation_id)
-                response.async_set_speech(failure)
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            result = replace(result, model=materialized)
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=result.model,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
-            )
-            response.async_set_speech(render_automation_preview(result.model, entities))
-        else:
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    def _notification_target_resolver(
-        self, entities: list[EntitySnapshot]
-    ) -> NotificationTargetResolver:
-        labels = {item.entity_id: item.friendly_name for item in entities}
-        return NotificationTargetResolver.from_options(
-            self.entry.options,
-            self._runtime_data.user_contexts,
-            label_for=lambda target_id: labels.get(target_id, ""),
-            named_targets=named_notification_targets(
-                entities, self._runtime_data.user_contexts
-            ),
-        )
-
-    def _materialize_presence_speaker(
-        self,
-        model: AutomationModel,
-        user_input: conversation.ConversationInput,
-    ) -> tuple[AutomationModel, str | None]:
-        """Bind "ich komme nach Hause" to the speaker's own person entity.
-
-        Only an explicit, confirmed user/person binding is used - never a
-        person guessed from a similar name.
-        """
-        if not any(trigger.presence_of_speaker for trigger in model.triggers):
-            return model, None
-        store = self._runtime_data.user_contexts
-        binding = (
-            store.resolve_current_person(conversation_user_id(user_input))
-            if store is not None else None
-        )
-        if binding is None or binding.person_entity_id is None:
-            return model, (
-                "Ich weiß noch nicht, welche Person du bist. Bitte ordne deinem "
-                "HomeIntent-Benutzer eine Person zu."
-            )
-        triggers = tuple(
-            replace(trigger, target=TriggerTarget(domain="person", entity_id=binding.person_entity_id))
-            if trigger.presence_of_speaker else trigger
-            for trigger in model.triggers
-        )
-        return replace(model, triggers=triggers), None
-
-    def _materialize_notification_recipients(
-        self,
-        model: AutomationModel,
-        user_input: conversation.ConversationInput,
-        entities: list[EntitySnapshot],
-    ) -> tuple[AutomationModel, str | None]:
-        """Turn "mich"/"uns" into the exact authorized notify targets.
-
-        The automation runs later without a live conversation user, so the
-        semantic recipient is resolved now - through the single
-        ``NotificationTargetResolver`` - and the exact targets are persisted.
-        """
-        resolver: NotificationTargetResolver | None = None
-        failure: str | None = None
-
-        def materialize(step: ActionModel | ActionGroup) -> ActionModel | ActionGroup:
-            nonlocal resolver, failure
-            if isinstance(step, ActionGroup):
-                return replace(step, steps=tuple(materialize(child) for child in step.steps))
-            recipient = step.recipient
-            if (
-                step.type is not ActionType.NOTIFY
-                or recipient is None
-                or recipient.materialized
-                or failure is not None
-            ):
-                return step
-            if resolver is None:
-                resolver = self._notification_target_resolver(entities)
-            resolution = resolver.resolve(recipient.kind, conversation_user_id(user_input))
-            if not resolution.resolved:
-                failure = resolution_failure_text(resolution)
-                return step
-            return replace(step, recipient=NotificationRecipient(
-                recipient.kind,
-                entity_ids=resolution.entity_ids,
-                service_ids=resolution.service_ids,
-                label=resolution.label,
-            ))
-
-        actions = tuple(materialize(step) for step in model.actions)
-        if failure is not None:
-            return model, failure
-        return replace(model, actions=actions), None
-
-    async def _async_handle_immediate_notification(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        request: NotificationRequest,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Explicit push the user asked for right now.
-
-        Independent of proactive situation detection and V12 opportunity
-        policies; only the push channel and a safely resolved target matter.
-        """
-        self._context_store.clear(user_input.conversation_id)
-        outcome = await async_deliver_notification_request(
-            request,
-            resolver=self._notification_target_resolver(entities),
-            delivery=AgentDelivery(self.hass),
-            user_id=conversation_user_id(user_input),
-        )
-        response.async_set_speech(outcome.spoken())
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    def _handle_automation_clarification_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: AutomationClarificationResult,
-    ) -> conversation.ConversationResult:
-        """Ask the one open question of an automation draft - nothing runs.
-
-        Only a device choice keeps the draft; the answer ("Die linke.")
-        continues exactly this automation and nothing else.
-        """
-        if result.clarification is not None:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_event_clarification=PendingAutomationEventClarification(
-                        clarification=result.clarification,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
-            )
-        else:
-            self._context_store.clear(user_input.conversation_id)
-        response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    def _handle_pending_event_clarification(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        pending: PendingAutomationEventClarification,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        """Resolve "Die linke." against exactly the open draft.
-
-        Another user's answer, or a reply that selects none/several of the
-        offered devices, never continues the draft: the draft is dropped and
-        the turn is processed as a fresh utterance (``None``).
-        """
-        if pending.requested_by_user_id not in {None, conversation_user_id(user_input)}:
-            return None
-        result = self._engine.resolve_event_clarification(
-            user_input.text, pending.clarification, entities
-        )
-        if result is None:
-            if looks_like_selection_reply(user_input.text):
-                # A short answer that names no offered device is still an
-                # answer to this question - ask again, never guess.
-                response.async_set_speech(
-                    "Das konnte ich keiner der Möglichkeiten zuordnen. "
-                    + (pending.clarification.grounded.question or "Welches Gerät meinst du?")
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            self._context_store.clear(user_input.conversation_id)
-            return None
-        if isinstance(result, AutomationClarificationResult):
-            return self._handle_automation_clarification_result(user_input, response, result)
-        return self._handle_automation_match_result(user_input, response, result, entities)
-
-    def _handle_automation_draft_match_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: AutomationDraftMatchResult,
-    ) -> conversation.ConversationResult:
-        """Persist a partial automation until its action is supplied."""
-        self._context_store.set(
-            user_input.conversation_id,
-            ConversationContext(
-                last_command=None,
-                last_entities=(),
-                last_area=None,
-                pending_clarification=None,
-                pending_automation_draft=PendingAutomationDraft(
-                    trigger=result.trigger,
-                    source_text=result.source_text,
-                ),
-            ),
-        )
-        response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    def _handle_automation_deletion_match_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: AutomationDeletionMatchResult,
-    ) -> conversation.ConversationResult:
-        """Store an unambiguous deletion candidate for confirmation."""
-        if result.automation is not None:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_deletion=PendingAutomationDeletion(
-                        automation=result.automation
-                    ),
-                ),
-            )
-        else:
-            self._context_store.clear(user_input.conversation_id)
-        response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_automation_toggle_result(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        result: AutomationToggleMatchResult,
-    ) -> conversation.ConversationResult:
-        """Apply an unambiguous enable/disable result immediately."""
-        self._context_store.clear(user_input.conversation_id)
-        if result.automation is not None:
-            if self._automation_executor is None:
-                self._automation_executor = AutomationExecutor(self.hass)
-            try:
-                if result.enable:
-                    await self._automation_executor.async_enable_automation(
-                        result.automation.automation_id
-                    )
-                else:
-                    await self._automation_executor.async_disable_automation(
-                        result.automation.automation_id
-                    )
-            except Exception as err:  # noqa: BLE001 - HA/YAML failures are heterogeneous
-                verb = "Aktivieren" if result.enable else "Deaktivieren"
-                _LOGGER.error("Automation %s failed: %s", verb.lower(), err)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim {verb} der Automation: {user_facing_error(err)}",
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-        response.async_set_speech(result.response_text)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     async def _async_clarify(
         self,
@@ -6276,347 +4492,6 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    def _store_automation_wizard(
-        self, conversation_id: str, state: AutomationWizardState
-    ) -> None:
-        self._context_store.set(
-            conversation_id,
-            ConversationContext(
-                last_command=None,
-                last_entities=(),
-                last_area=None,
-                pending_clarification=None,
-                pending_automation_wizard=PendingAutomationWizard(state),
-            ),
-        )
-
-    async def _async_handle_automation_wizard(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        state: AutomationWizardState,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        text = user_input.text.strip()
-        if has_word(text, "abbrechen", "abbruch", "stopp", "stop", "vergiss"):
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_speech("Abgebrochen. Der Automationsentwurf wurde verworfen.")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        if state.stage is AutomationWizardStage.TRIGGER:
-            trigger = self._engine.parse_automation_trigger(
-                text, entities, self._world_model
-            )
-            if trigger is None:
-                response.async_set_speech(
-                    "Den Auslöser habe ich nicht eindeutig verstanden. "
-                    "Zum Beispiel: Wenn das Küchenfenster geöffnet wird."
-                )
-            else:
-                state = replace(
-                    state,
-                    stage=AutomationWizardStage.CONDITION_DECISION,
-                    trigger=trigger,
-                    source_parts=(*state.source_parts, text),
-                )
-                self._store_automation_wizard(user_input.conversation_id, state)
-                response.async_set_speech(
-                    "Soll zusätzlich eine Bedingung gelten? Bitte antworte mit Ja oder Nein."
-                )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        if state.stage is AutomationWizardStage.CONDITION_DECISION:
-            reply = classify_confirmation_reply(text)
-            if reply is ConfirmationReply.UNCLEAR and _NO_CONDITION_RE.fullmatch(
-                normalize_for_compare(text).strip(" .!")
-            ):
-                # "Keine Bedingung" / "ohne Bedingung" / "keine" answer the
-                # yes/no question with no (F10).
-                reply = ConfirmationReply.NO
-            if reply is ConfirmationReply.UNCLEAR:
-                response.async_set_speech("Bitte antworte mit Ja oder Nein.")
-            else:
-                next_stage = (
-                    AutomationWizardStage.CONDITION
-                    if reply is ConfirmationReply.YES
-                    else AutomationWizardStage.ACTION
-                )
-                state = replace(state, stage=next_stage)
-                self._store_automation_wizard(user_input.conversation_id, state)
-                response.async_set_speech(
-                    "Welche Bedingung soll gelten?"
-                    if next_stage is AutomationWizardStage.CONDITION
-                    else "Was soll dann passieren?"
-                )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        if state.stage is AutomationWizardStage.CONDITION:
-            condition = self._engine.parse_automation_condition(
-                text, entities, self._world_model
-            )
-            if condition is None:
-                response.async_set_speech(
-                    "Die Bedingung habe ich nicht eindeutig verstanden. "
-                    "Zum Beispiel: Nur wenn jemand zuhause ist."
-                )
-            else:
-                state = replace(
-                    state,
-                    stage=AutomationWizardStage.ACTION,
-                    condition=condition,
-                    source_parts=(*state.source_parts, text),
-                )
-                self._store_automation_wizard(user_input.conversation_id, state)
-                response.async_set_speech("Was soll dann passieren?")
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        if state.stage is AutomationWizardStage.ACTION:
-            actions = self._engine.parse_automation_actions(
-                text, entities, self._world_model
-            )
-            if not actions:
-                response.async_set_speech(
-                    "Die Aktion habe ich nicht eindeutig verstanden. "
-                    "Bitte nenne eine vollständige Geräteaktion."
-                )
-            else:
-                state = replace(
-                    state,
-                    stage=AutomationWizardStage.LIFETIME,
-                    actions=actions,
-                    source_parts=(*state.source_parts, text),
-                )
-                self._store_automation_wizard(user_input.conversation_id, state)
-                response.async_set_speech(
-                    "Soll die Automation dauerhaft, einmalig oder nur eine bestimmte Anzahl Mal gelten?"
-                )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        lifetime = parse_lifetime(text)
-        if lifetime is None:
-            response.async_set_speech(
-                "Bitte sage dauerhaft, einmalig oder zum Beispiel nur dreimal."
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        once, max_runs = lifetime
-        assert state.trigger is not None and state.actions
-        model = AutomationModel(
-            triggers=(state.trigger,),
-            conditions=(state.condition,) if state.condition is not None else (),
-            actions=state.actions,
-            source_text="; ".join((*state.source_parts, text)),
-            once=once,
-            max_runs=max_runs,
-        )
-        validation_error = validate_automation(model)
-        if validation_error is not None:
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_speech(
-                "Der vollständige Entwurf ist strukturell nicht sicher ausführbar: "
-                + validation_error.name
-            )
-        else:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model, conversation_user_id(user_input)
-                    ),
-                ),
-            )
-            response.async_set_speech(render_automation_preview(model, entities))
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
-    async def _async_handle_automation_confirmation_reply(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        confirmation: PendingAutomationConfirmation,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """V5 Teil 7/10 (V5.23/V5.25/V5.26): resolves this turn's text
-        against the closed yes/no vocabulary (see
-        ``nlu/automation_confirmation.py``) instead of parsing it as a fresh
-        sentence - a reply like "Ja" isn't itself a command.
-
-        ``UNCLEAR`` keeps the same pending confirmation in place (re-asks,
-        never guesses) rather than clearing it - same "caller decides how to
-        re-ask" split ``resolve_clarification()``'s own ``None`` case
-        already uses. ``NO`` and any generation/persistence failure both
-        clear the pending state and persist nothing; only a clean ``YES`` ->
-        ``generate_ha_automation_config()`` -> ``AutomationExecutor`` path
-        ever reaches Home Assistant.
-        """
-        current_user_id = conversation_user_id(user_input)
-        if (
-            confirmation.requested_by_user_id is not None
-            and confirmation.requested_by_user_id != current_user_id
-        ):
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                "Diese Bestätigung gehört zu einem anderen Benutzer.",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        reply = classify_confirmation_reply(user_input.text)
-
-        if reply is ConfirmationReply.UNCLEAR:
-            response.async_set_speech(AUTOMATION_CONFIRMATION_UNCLEAR_TEXT)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        self._context_store.clear(user_input.conversation_id)
-
-        if reply is ConfirmationReply.NO:
-            response.async_set_speech(AUTOMATION_CANCELLED_TEXT)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        if (
-            not bool(
-                self.entry.options.get(CONF_ALLOW_NON_ADMIN_AUTOMATIONS, True)
-            )
-            and not await user_is_admin(self.hass, user_input)
-        ):
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                "Das Erstellen von Automationen ist nur für Administratoren erlaubt.",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        controlled_ids = resolve_automation_action_entity_ids(
-            confirmation.model, entities
-        )
-        composite_ids = sorted(
-            entity.entity_id for entity in entities
-            if entity.entity_id in controlled_ids
-            and is_composite_entity(entity.entity_id, entity.attributes)
-        )
-        target_policy_error = validate_automation_action_targets(
-            controlled_ids,
-            self.entry.options,
-            is_admin=await user_is_admin(self.hass, user_input),
-            user_id=conversation_user_id(user_input),
-            effects=(
-                build_plan_effects(
-                    self.hass, ServiceCallPlan("homeassistant", "turn_on", composite_ids)
-                )
-                if composite_ids else None
-            ),
-            exposed_ids=frozenset(entity.entity_id for entity in entities),
-        )
-        if target_policy_error is not None:
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                target_policy_error,
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        materialized, failure = self._materialize_notification_recipients(
-            confirmation.model, user_input, entities
-        )
-        if failure is not None:
-            response.async_set_speech(failure)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        try:
-            model = resolve_pending_schedule(materialized, dt_util.now())
-        except ValueError as err:
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Der Zeitpunkt kann nicht geplant werden: {err}",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        # Wave 12 ("Einmalige Automation"): a self-deleting automation's own
-        # action list needs to reference its own future id (see
-        # ha_automation_generator.py's generate_ha_automation_config()
-        # docstring for why) - pre-generated here, before persistence, and
-        # threaded into both the generator and the executor so they agree.
-        # None/unused for every ordinary (non-once) automation.
-        # Every generated automation receives its stable id before rendering.
-        # Targetless notification actions embed this id as their proactive
-        # rule identity; one-shot lifecycle actions use the same id.
-        once_automation_id = uuid.uuid4().hex
-
-        generation_result = generate_ha_automation_config(
-            model, entities, automation_id=once_automation_id
-        )
-        if generation_result.error is not None:
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                _GENERATION_ERROR_SPOKEN_DE[generation_result.error],
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        assert generation_result.config is not None
-
-        if self._automation_executor is None:
-            self._automation_executor = AutomationExecutor(self.hass)
-        try:
-            created_id = await self._automation_executor.async_create_automation(
-                generation_result.config,
-                automation_id=once_automation_id,
-                scheduled_for=model.scheduled_for,
-                once=model.once,
-                max_runs=model.max_runs,
-            )
-        except Exception as err:  # noqa: BLE001 - a YAML write + service call can fail in ways beyond HomeAssistantError; must not propagate as "Unexpected error during intent recognition"
-            _LOGGER.error("Automation creation failed: %s", err)
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Erstellen der Automation: {user_facing_error(err)}",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        created_plan = ServiceCallPlan("homeintent", "create_automation", created_id, {})
-        self._record_execution(user_input, created_plan)
-        turn = current_turn()
-        if turn is not None:
-            # The turn that authorized the automation stays in the trace;
-            # the reload itself ran in a user-less child context (7.6.1).
-            record_execution(
-                self.hass, context=turn.context, plan=created_plan, decision=None,
-                user_id=turn.user_id, utterance=turn.utterance, origin=None,
-                attended=True, now=dt_util.now(),
-            )
-        response.async_set_speech(AUTOMATION_CREATED_TEXT)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
 
     async def _async_handle_device_control_result(
         self,
@@ -6772,495 +4647,18 @@ class NluConversationEntity(
             origin=pending.origin, binding_confirmed=pending.binding_confirmed,
         ))
 
+    def _automation_store(self) -> AutomationExecutor:
+        """The one executor of automations.yaml (its lock guards every write)."""
+        if self._automation_executor is None:
+            self._automation_executor = AutomationExecutor(self.hass)
+        return self._automation_executor
+
     def _record_execution(self, user_input, plan) -> None:
         context = getattr(user_input, "context", None)
         self._audit_trail.record(
             dt_util.now(), getattr(context, "user_id", None), plan
         )
 
-
-    async def _async_handle_automation_management(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        request: AutomationManagementRequest,
-        entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
-        """Execute the bounded query/reschedule/cleanup management language."""
-        self._context_store.clear(user_input.conversation_id)
-        if self._automation_executor is None:
-            self._automation_executor = AutomationExecutor(self.hass)
-        now = dt_util.now()
-        if request.kind in {
-            AutomationManagementKind.CLEAN_EXPIRED,
-            AutomationManagementKind.ROLLBACK,
-        }:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_management=PendingAutomationManagement(request),
-                ),
-            )
-            response.async_set_speech(
-                "Soll ich die letzte HomeIntent-Automationsänderung wirklich rückgängig machen?"
-                if request.kind is AutomationManagementKind.ROLLBACK
-                else "Soll ich alle abgelaufenen HomeIntent-Aufträge wirklich löschen?"
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        automations = await self._automation_executor.async_list_automations()
-        selection = select_automation_management(request, entities, automations, now)
-        if request.kind in READ_ONLY_MANAGEMENT_KINDS:
-            response.response_type = intent.IntentResponseType.QUERY_ANSWER
-        if selection.error_text is not None:
-            response.async_set_speech(selection.error_text)
-        elif request.kind is AutomationManagementKind.LIST_HOMEINTENT:
-            labels = [_automation_label(item) for item in selection.automations]
-            response.async_set_speech(
-                "Es sind keine HomeIntent-Automationen vorhanden."
-                if not labels
-                else "HomeIntent-Automationen: " + ", ".join(labels) + "."
-            )
-        elif request.kind in {
-            AutomationManagementKind.COUNT_ACTIVE,
-            AutomationManagementKind.COUNT_DISABLED,
-        }:
-            state = (
-                "aktiv"
-                if request.kind is AutomationManagementKind.COUNT_ACTIVE
-                else "deaktiviert"
-            )
-            response.async_set_speech(
-                f"{len(selection.automations)} HomeIntent-Automationen sind {state}."
-            )
-        elif request.kind in {
-            AutomationManagementKind.EXPLAIN_TRIGGER,
-            AutomationManagementKind.CONTROLS_ENTITY,
-            AutomationManagementKind.DETAIL,
-            AutomationManagementKind.DIAGNOSE,
-            AutomationManagementKind.SIMULATE,
-        }:
-            if not selection.automations:
-                response.async_set_speech(
-                    "Ich finde keine passende Automation."
-                    if request.kind in {
-                        AutomationManagementKind.EXPLAIN_TRIGGER,
-                        AutomationManagementKind.CONTROLS_ENTITY,
-                    }
-                    else "Ich finde keine passende HomeIntent-Automation."
-                )
-            else:
-                details = [
-                    (item.source_text or item.alias).rstrip(" .")
-                    for item in selection.automations
-                ]
-                prefix = (
-                    "Auf diesen Auslöser reagieren: "
-                    if request.kind is AutomationManagementKind.EXPLAIN_TRIGGER
-                    else "Dieses Gerät wird gesteuert durch: "
-                )
-                if request.kind is AutomationManagementKind.DIAGNOSE:
-                    item = selection.automations[0]
-                    live = self._automation_executor.automation_runtime_info(
-                        item.automation_id
-                    )
-                    enabled = item.enabled and (
-                        live is None or live.get("state") != "off"
-                    )
-                    last = live.get("last_triggered") if live else None
-                    response.async_set_speech(
-                        f"{_automation_label(item)} ist "
-                        f"{'aktiv' if enabled else 'deaktiviert'}, hat "
-                        f"{len(item.triggers)} Auslöser und {len(item.conditions)} Bedingungen. "
-                        + (
-                            f"Zuletzt ausgelöst: {last}. " if last else
-                            "Home Assistant meldet keine letzte Auslösung. "
-                        )
-                        + "Ohne gespeicherte Home-Assistant-Ablaufverfolgung kann ich die "
-                        "genaue Ursache nicht beweisen; häufig sind Auslöser nicht eingetreten "
-                        "oder eine Bedingung war zu diesem Zeitpunkt falsch."
-                    )
-                elif request.kind is AutomationManagementKind.SIMULATE:
-                    item = selection.automations[0]
-                    response.async_set_speech(
-                        f"Simulation für {_automation_label(item)}: "
-                        + render_automation_simulation(item, entities)
-                    )
-                elif request.kind is AutomationManagementKind.DETAIL:
-                    item = selection.automations[0]
-                    response.async_set_speech(
-                        f"{_automation_label(item)}: {len(item.triggers)} Auslöser, "
-                        f"{len(item.conditions)} Bedingungen und {len(item.actions)} Aktionen. "
-                        f"Quelle: {item.source_text or item.alias}."
-                    )
-                else:
-                    response.async_set_speech(prefix + "; ".join(details) + ".")
-        elif request.kind in (
-            AutomationManagementKind.LIST_SCHEDULED,
-            AutomationManagementKind.WHEN,
-        ):
-            if not selection.automations:
-                response.async_set_speech("Es sind keine passenden einmaligen Aufträge geplant.")
-            else:
-                details = [
-                    f"{_automation_label(item)} – {format_scheduled_time(item.scheduled_for)}"
-                    for item in selection.automations
-                    if item.scheduled_for is not None
-                ]
-                response.async_set_speech("Geplant sind: " + "; ".join(details) + ".")
-        elif request.kind is AutomationManagementKind.RESCHEDULE:
-            if not selection.automations:
-                response.async_set_speech("Ich habe keinen passenden geplanten Auftrag gefunden.")
-            elif len(selection.automations) > 1:
-                labels = ", ".join(_automation_label(item) for item in selection.automations)
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None, last_entities=(), last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request=request, candidates=selection.automations
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    "Mehrere Aufträge passen. Bitte nenne das Gerät oder wähle "
-                    "einen Auftrag per Name oder Nummer: "
-                    + labels
-                    + "."
-                )
-            else:
-                automation = next(iter(selection.automations))
-                if automation.scheduled_for is None:
-                    response.async_set_speech(
-                        "Der passende Auftrag hat keine sichere geplante Zeit."
-                    )
-                    return conversation.ConversationResult(
-                        response=response,
-                        conversation_id=user_input.conversation_id,
-                    )
-                target = datetime.fromisoformat(automation.scheduled_for)
-                if request.hour is None:
-                    response.async_set_speech("Die neue Uhrzeit ist unvollständig.")
-                    return conversation.ConversationResult(
-                        response=response,
-                        conversation_id=user_input.conversation_id,
-                    )
-                target = target.replace(hour=request.hour, minute=request.minute, second=0)
-                comparable_now = now
-                if target.tzinfo is None and now.tzinfo is not None:
-                    comparable_now = now.replace(tzinfo=None)
-                elif target.tzinfo is not None and now.tzinfo is None:
-                    comparable_now = now.replace(tzinfo=target.tzinfo)
-                if target <= comparable_now:
-                    response.async_set_speech(
-                        "Die neue Uhrzeit liegt am geplanten Tag bereits in der Vergangenheit."
-                    )
-                else:
-                    self._context_store.set(
-                        user_input.conversation_id,
-                        ConversationContext(
-                            last_command=None,
-                            last_entities=(),
-                            last_area=None,
-                            pending_clarification=None,
-                            pending_automation_management=PendingAutomationManagement(
-                                request, automation, target
-                            ),
-                        ),
-                    )
-                    response.async_set_speech(
-                        f"Soll ich {_automation_label(automation)} wirklich auf "
-                        f"{format_scheduled_time(target.isoformat())} verschieben?"
-                    )
-        elif request.kind is AutomationManagementKind.SET_MAX_RUNS:
-            if not selection.automations:
-                response.async_set_speech(
-                    "Ich habe keine passende dauerhafte HomeIntent-Automation gefunden."
-                )
-            elif len(selection.automations) > 1:
-                labels = ", ".join(
-                    _automation_label(item) for item in selection.automations
-                )
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None, last_entities=(), last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request=request, candidates=selection.automations
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    "Mehrere Automationen passen. Welche meinst du? "
-                    + labels
-                    + "."
-                )
-            else:
-                automation = next(iter(selection.automations))
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None,
-                        last_entities=(),
-                        last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request, automation
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    f"Soll {_automation_label(automation)} wirklich auf "
-                    f"{request.max_runs} Ausführungen begrenzt werden?"
-                )
-        elif request.kind is AutomationManagementKind.DUPLICATE:
-            if not selection.automations:
-                response.async_set_speech("Ich finde keine passende HomeIntent-Automation.")
-            elif len(selection.automations) > 1:
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None, last_entities=(), last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request=request, candidates=selection.automations
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    "Mehrere Automationen passen. Welche soll kopiert werden? "
-                    + ", ".join(_automation_label(item) for item in selection.automations)
-                    + "."
-                )
-            else:
-                automation = next(iter(selection.automations))
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None, last_entities=(), last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request=request, automation=automation
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    f"Soll ich {_automation_label(automation)} wirklich duplizieren?"
-                )
-        elif request.kind is AutomationManagementKind.PAUSE_UNTIL:
-            if not selection.automations:
-                response.async_set_speech("Ich finde keine passende HomeIntent-Automation.")
-            elif len(selection.automations) > 1:
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None, last_entities=(), last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request=request, candidates=selection.automations
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    "Mehrere Automationen passen. Welche soll pausiert werden? "
-                    + ", ".join(_automation_label(item) for item in selection.automations)
-                    + "."
-                )
-            else:
-                if request.hour is None:
-                    response.async_set_speech("Die Uhrzeit ist nicht vollständig.")
-                    return conversation.ConversationResult(
-                        response=response,
-                        conversation_id=user_input.conversation_id,
-                    )
-                target = (now + timedelta(days=request.day_offset)).replace(
-                    hour=request.hour, minute=request.minute, second=0, microsecond=0
-                )
-                if request.day_offset == 0 and target <= now:
-                    target += timedelta(days=1)
-                automation = next(iter(selection.automations))
-                self._context_store.set(
-                    user_input.conversation_id,
-                    ConversationContext(
-                        last_command=None, last_entities=(), last_area=None,
-                        pending_clarification=None,
-                        pending_automation_management=PendingAutomationManagement(
-                            request=request, automation=automation, target=target
-                        ),
-                    ),
-                )
-                response.async_set_speech(
-                    f"Soll ich {_automation_label(automation)} bis "
-                    f"{format_scheduled_time(target.isoformat())} pausieren?"
-                )
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-    async def _async_handle_automation_management_confirmation(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        pending: PendingAutomationManagement,
-    ) -> conversation.ConversationResult:
-        if pending.candidates:
-            automation = select_candidate_reply(user_input.text, pending.candidates)
-            if automation is None:
-                response.async_set_speech(
-                    "Das ist nicht eindeutig. Bitte nenne eine Automation oder sage "
-                    "die erste, die zweite oder die dritte: "
-                    + ", ".join(_automation_label(item) for item in pending.candidates)
-                    + "."
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            request = pending.request
-            if request.kind is AutomationManagementKind.RESCHEDULE:
-                now = dt_util.now()
-                if automation.scheduled_for is None:
-                    self._context_store.clear(user_input.conversation_id)
-                    response.async_set_speech(
-                        "Der passende Auftrag hat keine sichere geplante Zeit."
-                    )
-                    return conversation.ConversationResult(
-                        response=response,
-                        conversation_id=user_input.conversation_id,
-                    )
-                target = datetime.fromisoformat(automation.scheduled_for)
-                if request.hour is None:
-                    self._context_store.clear(user_input.conversation_id)
-                    response.async_set_speech("Die neue Uhrzeit ist unvollständig.")
-                    return conversation.ConversationResult(
-                        response=response,
-                        conversation_id=user_input.conversation_id,
-                    )
-                target = target.replace(hour=request.hour, minute=request.minute, second=0)
-                comparable_now = now
-                if target.tzinfo is None and now.tzinfo is not None:
-                    comparable_now = now.replace(tzinfo=None)
-                elif target.tzinfo is not None and now.tzinfo is None:
-                    comparable_now = now.replace(tzinfo=target.tzinfo)
-                if target <= comparable_now:
-                    self._context_store.clear(user_input.conversation_id)
-                    response.async_set_speech("Die neue Uhrzeit liegt bereits in der Vergangenheit.")
-                    return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
-                replacement = PendingAutomationManagement(request, automation, target)
-                question = (
-                    f"Soll ich {_automation_label(automation)} wirklich auf "
-                    f"{format_scheduled_time(target.isoformat())} verschieben?"
-                )
-            elif request.kind is AutomationManagementKind.DUPLICATE:
-                replacement = PendingAutomationManagement(request, automation)
-                question = f"Soll ich {_automation_label(automation)} wirklich duplizieren?"
-            elif request.kind is AutomationManagementKind.PAUSE_UNTIL:
-                now = dt_util.now()
-                if request.hour is None:
-                    self._context_store.clear(user_input.conversation_id)
-                    response.async_set_speech("Die Uhrzeit ist nicht vollständig.")
-                    return conversation.ConversationResult(
-                        response=response,
-                        conversation_id=user_input.conversation_id,
-                    )
-                target = (now + timedelta(days=request.day_offset)).replace(
-                    hour=request.hour, minute=request.minute, second=0, microsecond=0
-                )
-                if request.day_offset == 0 and target <= now:
-                    target += timedelta(days=1)
-                replacement = PendingAutomationManagement(request, automation, target)
-                question = (
-                    f"Soll ich {_automation_label(automation)} bis "
-                    f"{format_scheduled_time(target.isoformat())} pausieren?"
-                )
-            else:
-                replacement = PendingAutomationManagement(request, automation)
-                question = (
-                    f"Soll {_automation_label(automation)} wirklich auf "
-                    f"{request.max_runs} Ausführungen begrenzt werden?"
-                )
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None, last_entities=(), last_area=None,
-                    pending_clarification=None,
-                    pending_automation_management=replacement,
-                ),
-            )
-            response.async_set_speech(question)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-        reply = classify_confirmation_reply(user_input.text)
-        if reply is ConfirmationReply.UNCLEAR:
-            response.async_set_speech("Bitte antworte mit Ja oder Nein.")
-            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
-        self._context_store.clear(user_input.conversation_id)
-        if reply is ConfirmationReply.NO:
-            response.async_set_speech("Abgebrochen. Es wurde nichts verändert.")
-            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
-        assert self._automation_executor is not None
-        request = pending.request
-        try:
-            if request.kind is AutomationManagementKind.CLEAN_EXPIRED:
-                removed = await self._automation_executor.async_cleanup_expired_scheduled_automations(dt_util.now())
-                response.async_set_speech(
-                    "Es waren keine abgelaufenen HomeIntent-Aufträge vorhanden."
-                    if not removed else f"{len(removed)} abgelaufene HomeIntent-Aufträge wurden gelöscht."
-                )
-            elif request.kind is AutomationManagementKind.ROLLBACK:
-                operation = await self._automation_executor.async_rollback_last_change()
-                response.async_set_speech(
-                    f"Die letzte HomeIntent-Änderung ({operation}) wurde rückgängig gemacht."
-                )
-            elif request.kind is AutomationManagementKind.RESCHEDULE:
-                assert pending.automation is not None and pending.target is not None
-                await self._automation_executor.async_reschedule_automation(
-                    pending.automation.automation_id, pending.target
-                )
-                response.async_set_speech(
-                    "Der Auftrag wurde auf " + format_scheduled_time(pending.target.isoformat()) + " verschoben."
-                )
-            elif request.kind is AutomationManagementKind.DUPLICATE:
-                assert pending.automation is not None
-                await self._automation_executor.async_duplicate_automation(
-                    pending.automation.automation_id
-                )
-                response.async_set_speech(
-                    f"{_automation_label(pending.automation)} wurde dupliziert."
-                )
-            elif request.kind is AutomationManagementKind.PAUSE_UNTIL:
-                assert pending.automation is not None and pending.target is not None
-                await self._automation_executor.async_pause_automation_until(
-                    pending.automation.automation_id, pending.target
-                )
-                response.async_set_speech(
-                    f"{_automation_label(pending.automation)} ist bis "
-                    f"{format_scheduled_time(pending.target.isoformat())} pausiert."
-                )
-            else:
-                assert pending.automation is not None
-                assert request.max_runs is not None
-                await self._automation_executor.async_set_max_runs(
-                    pending.automation.automation_id, request.max_runs
-                )
-                response.async_set_speech(
-                    f"{_automation_label(pending.automation)} wird nur noch {request.max_runs} Mal ausgeführt."
-                )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Automation management failed: %s", err, exc_info=True)
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Ändern der Automation: {user_facing_error(err)}",
-            )
-        return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
     async def _async_handle_service_confirmation_reply(
         self,
@@ -7364,124 +4762,7 @@ class NluConversationEntity(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    async def _async_handle_automation_deletion_confirmation_reply(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        deletion: PendingAutomationDeletion,
-    ) -> conversation.ConversationResult:
-        """V5 Teil 8/10 (V5.28, "Automation Deletion"): the deletion
-        counterpart to ``_async_handle_automation_confirmation_reply()``
-        above - same closed yes/no vocabulary, same ``UNCLEAR``-keeps-
-        pending/``NO``-and-failure-clear-and-persist-nothing shape. No
-        ``entities`` parameter is needed here (unlike the creation reply):
-        deletion doesn't regenerate anything against live HA state, it just
-        removes the already-resolved ``deletion.automation`` by id.
-        """
-        reply = classify_confirmation_reply(user_input.text)
 
-        if reply is ConfirmationReply.UNCLEAR:
-            response.async_set_speech(AUTOMATION_DELETION_CONFIRMATION_UNCLEAR_TEXT)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        self._context_store.clear(user_input.conversation_id)
-
-        if reply is ConfirmationReply.NO:
-            response.async_set_speech(AUTOMATION_DELETION_CANCELLED_TEXT)
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        if self._automation_executor is None:
-            self._automation_executor = AutomationExecutor(self.hass)
-        try:
-            await self._automation_executor.async_delete_automation(
-                deletion.automation.automation_id
-            )
-        except Exception as err:  # noqa: BLE001 - a YAML write + service call can fail in ways beyond HomeAssistantError; must not propagate as "Unexpected error during intent recognition"
-            _LOGGER.error("Automation deletion failed: %s", err)
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Löschen der Automation: {user_facing_error(err)}",
-            )
-            return conversation.ConversationResult(
-                response=response, conversation_id=user_input.conversation_id
-            )
-
-        response.async_set_speech(AUTOMATION_DELETED_TEXT)
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
-
-
-def _routine_definition_from_payload(
-    routine_id: str,
-    owner_user_id: str,
-    payload: object,
-    entities: list[EntitySnapshot],
-) -> RoutineDefinition | None:
-    """Convert already validated V8 actions into a non-executable routine draft."""
-    matches = (
-        (payload,)
-        if isinstance(payload, MatchResult)
-        else payload.commands
-        if isinstance(payload, CommandPlan)
-        else ()
-    )
-    plans = [item.plan for item in matches if item.plan is not None]
-    if not plans or len(plans) != len(matches):
-        return None
-    by_id = {item.entity_id: item for item in entities}
-    steps: list[RoutineStepDefinition] = []
-    for plan in plans:
-        desired = _desired_state_from_service_plan(plan)
-        if desired is None:
-            return None
-        raw_targets = (
-            (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
-        )
-        for entity_id in raw_targets:
-            entity = by_id.get(entity_id)
-            if entity is None:
-                return None
-            steps.append(
-                RoutineStepDefinition(
-                    f"definition-{len(steps) + 1}",
-                    GoalScope(entity_ids=(entity_id,)),
-                    desired,
-                    f"{entity.friendly_name}: {desired.property_name} = {desired.value}",
-                )
-            )
-    return RoutineDefinition(
-        routine_id,
-        routine_id.replace("_", " ").capitalize(),
-        owner_user_id,
-        tuple(steps),
-        False,
-    )
-
-
-def _desired_state_from_service_plan(plan: ServiceCallPlan) -> DesiredState | None:
-    if plan.service in {"turn_on", "turn_off"}:
-        brightness = plan.data.get("brightness_pct")
-        if plan.service == "turn_on" and isinstance(brightness, (int, float)):
-            return DesiredState("brightness", float(brightness), "%")
-        return DesiredState("state", "on" if plan.service == "turn_on" else "off")
-    if plan.service == "close_cover":
-        return DesiredState("state", "closed")
-    if plan.service == "lock":
-        return DesiredState("state", "locked")
-    if plan.service == "set_temperature":
-        temperature = plan.data.get("temperature")
-        if isinstance(temperature, (int, float)):
-            return DesiredState("temperature", float(temperature), "°C")
-    if plan.service == "set_cover_position":
-        position = plan.data.get("position")
-        if isinstance(position, (int, float)):
-            return DesiredState("position", float(position), "%")
-    return None
 
 
 def _comfort_profile_from_document(
@@ -7558,83 +4839,6 @@ def _comfort_value_signature(profile: ComfortProfile) -> str:
     ))
 
 
-def _scheduled_action_model(plan: ServiceCallPlan) -> ActionModel | None:
-    """Lift a closed service plan into the existing typed automation model."""
-    entity_ids = (
-        (plan.entity_id,)
-        if isinstance(plan.entity_id, str)
-        else tuple(plan.entity_id)
-    )
-    if not entity_ids:
-        return None
-    target = TriggerTarget(
-        domain=entity_ids[0].partition(".")[0],
-        entity_id=entity_ids[0] if len(entity_ids) == 1 else None,
-        entity_ids=entity_ids if len(entity_ids) > 1 else (),
-    )
-    if plan.service == "set_temperature" and plan.domain == "climate":
-        value = plan.data.get("temperature")
-        if isinstance(value, (int, float)):
-            return ActionModel(ActionType.SET_TEMPERATURE, target=target, value=float(value))
-    if plan.service in {"turn_on", "turn_off"} and plan.domain == "homeassistant":
-        return ActionModel(
-            ActionType.TURN_ON if plan.service == "turn_on" else ActionType.TURN_OFF,
-            target=target,
-        )
-    return None
-
-
-def _goal_semantic_choice(document: LanguageDocument) -> GoalSemanticChoice | None:
-    words = frozenset(token.canonical for token in document.tokens if token.is_word)
-    normalized = document.normalized_text.casefold()
-    if words & {"ersteres", "erstes"}:
-        return GoalSemanticChoice.SETPOINT_AT_TIME
-    if words & {"zweiteres", "zweites"}:
-        return GoalSemanticChoice.ACHIEVE_BY_DEADLINE
-    setpoint = bool(words & {"sollwert", "einstellen", "setz", "setzen", "stell"}) and bool(
-        words & {"dann", "zeitpunkt", "uhr", "einfach"}
-    )
-    achieved = bool(words & {"erreicht", "warm", "sein", "haben"}) and bool(
-        words & {"bis", "dahin", "schon"}
-    )
-    if setpoint and not achieved:
-        return GoalSemanticChoice.SETPOINT_AT_TIME
-    if achieved and not setpoint:
-        return GoalSemanticChoice.ACHIEVE_BY_DEADLINE
-    if "zum zeitpunkt" in normalized:
-        return GoalSemanticChoice.SETPOINT_AT_TIME
-    return None
-
-
-def _mentioned_goal_run_entity(
-    document: LanguageDocument, entities: Sequence[EntitySnapshot]
-) -> str | None:
-    normalized = normalize_for_compare(document.source_text)
-    matches = {
-        entity.entity_id
-        for entity in entities
-        if any(
-            candidate and candidate in normalized
-            for candidate in (
-                normalize_for_compare(entity.friendly_name),
-                normalize_for_compare(entity.entity_id.partition(".")[2]),
-            )
-        )
-    }
-    return next(iter(matches)) if len(matches) == 1 else None
-
-
-def _goal_run_label(run: GoalRun) -> str:
-    if run.goal.routine_id:
-        return run.goal.routine_id.replace("_", " ").capitalize()
-    labels = {
-        V10GoalKind.MONITOR_AND_NOTIFY: "Monitor-Ziel",
-        V10GoalKind.SCHEDULED: "terminiertes Ziel",
-        V10GoalKind.COMFORT: "Komfortziel",
-    }
-    return labels.get(run.goal.kind, run.source_utterance.strip() or run.goal.kind.value)
-
-
 def _model_matches_hint(model: LearnedModel, hint: str | None) -> bool:
     if hint is None:
         return True
@@ -7649,62 +4853,6 @@ def _model_matches_hint(model: LearnedModel, hint: str | None) -> bool:
         "morgenroutine": ("habit", "morning", "morgen"),
     }
     return any(term in searchable for term in aliases.get(hint, (hint,)))
-
-
-def _thermal_advice_for_goal(
-    goal: Goal,
-    entities: Sequence[EntitySnapshot],
-    predictive_house: PredictiveHouseModel | None,
-) -> AdaptivePlanningAdvice | None:
-    """Use only an installed model's exact confirmed measurement binding."""
-    if predictive_house is None or goal.scope.area_id is None or not goal.desired_states:
-        return None
-    model = predictive_house.thermal_model(goal.scope.area_id)
-    if model is None or not model.binding.confirmed:
-        return None
-    by_id = {item.entity_id: item for item in entities}
-    temperature = by_id.get(model.binding.temperature_entity_id)
-    if temperature is None or temperature.state in {"unknown", "unavailable"}:
-        return None
-    try:
-        raw_current = float(temperature.state)
-    except ValueError:
-        return None
-    normalized_current = normalize_measurement(
-        raw_current, temperature.unit, SemanticProperty.TEMPERATURE
-    )
-    if normalized_current is None:
-        return None
-    desired = goal.desired_states[0]
-    if desired.property_name != "temperature" or not isinstance(desired.value, (int, float)):
-        return None
-    normalized_target = normalize_measurement(
-        float(desired.value), desired.unit, SemanticProperty.TEMPERATURE
-    )
-    if normalized_target is None:
-        return None
-    outdoor_value: float | None = None
-    outdoor_id = model.binding.outdoor_temperature_entity_id
-    if outdoor_id is not None:
-        outdoor = by_id.get(outdoor_id)
-        if outdoor is None or outdoor.state in {"unknown", "unavailable"}:
-            return None
-        try:
-            raw_outdoor = float(outdoor.state)
-        except ValueError:
-            return None
-        normalized_outdoor = normalize_measurement(
-            raw_outdoor, outdoor.unit, SemanticProperty.TEMPERATURE
-        )
-        if normalized_outdoor is None:
-            return None
-        outdoor_value = normalized_outdoor.value
-    prediction = predictive_house.predict_thermal(
-        goal.scope.area_id, current_celsius=normalized_current.value,
-        target_celsius=normalized_target.value, outdoor_celsius=outdoor_value,
-        now=dt_util.now(),
-    )
-    return advise_deadline_goal(goal, prediction)
 
 
 def _learning_control_speech(error: LearningControlError) -> str:
@@ -7753,33 +4901,3 @@ def _learned_model_summary(model: LearnedModel) -> str:
     )
 
 
-def _german_goal_labels(labels: Sequence[str]) -> str:
-    values = tuple(dict.fromkeys(labels))
-    if not values:
-        return "keine benannten Ziele"
-    if len(values) == 1:
-        return values[0]
-    return ", ".join(values[:-1]) + " und " + values[-1]
-
-
-def _german_count(value: int) -> str:
-    return {2: "zwei", 3: "drei"}.get(value, str(value))
-
-
-def _select_goal_run_reply(
-    document: LanguageDocument,
-    run_ids: Sequence[str],
-    labels: Sequence[str],
-) -> str | None:
-    words = frozenset(token.canonical for token in document.tokens if token.is_word)
-    if words & {"erstes", "ersteres", "erste"} and run_ids:
-        return run_ids[0]
-    if words & {"zweites", "zweiteres", "zweite"} and len(run_ids) >= 2:
-        return run_ids[1]
-    normalized = normalize_for_compare(document.source_text)
-    matches = {
-        run_id
-        for run_id, label in zip(run_ids, labels, strict=True)
-        if normalize_for_compare(label) in normalized
-    }
-    return next(iter(matches)) if len(matches) == 1 else None

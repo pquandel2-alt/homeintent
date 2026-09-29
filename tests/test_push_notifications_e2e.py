@@ -35,7 +35,8 @@ from homeintent.const import (  # noqa: E402
     CONF_AGENT_ENABLED,
     CONF_AGENT_NOTIFY_TARGETS,
 )
-from homeintent.conversation import AUTOMATION_CREATED_TEXT, NluConversationEntity  # noqa: E402
+from homeintent.controllers.automations import AUTOMATION_CREATED_TEXT  # noqa: E402
+from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.user_context import (  # noqa: E402
     NotificationTarget,

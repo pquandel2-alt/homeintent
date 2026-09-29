@@ -1125,7 +1125,7 @@ def test_automation_management_failure_is_logged(monkeypatch, caplog):
     )
 
     result = asyncio.run(
-        entity._async_handle_automation_management_confirmation(
+        entity._management.async_handle_management_confirmation(
             user_input, response, pending
         )
     )
