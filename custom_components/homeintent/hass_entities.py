@@ -71,6 +71,32 @@ def _friendly(state: State) -> str:
     return state.attributes.get("friendly_name") or state.entity_id
 
 
+def hidden_entity_names(
+    hass: HomeAssistant, exposed_ids: set[str] | frozenset[str]
+) -> list[tuple[str, str]]:
+    """``(domain, name)`` of devices HA knows that HomeIntent may not use.
+
+    Only for honest answers ("Saugroboter ist für HomeIntent nicht
+    freigegeben."); never a target of any kind.
+    """
+    hidden: list[tuple[str, str]] = []
+    for state in hass.states.async_all():
+        domain = state.entity_id.split(".", 1)[0]
+        if domain in SELECTABLE_DOMAINS and state.entity_id not in exposed_ids:
+            hidden.append((domain, _friendly(state)))
+    return hidden
+
+
+def exposure_hint(entry: ConfigEntry) -> str:
+    """Where an administrator releases a device for HomeIntent."""
+    if entry.options.get(CONF_SELECTED_ENTITIES) or entry.data.get(CONF_SELECTED_ENTITIES):
+        return "Freigeben kannst du es in den Optionen von HomeIntent unter der Geräteauswahl."
+    return (
+        "Freigeben kannst du es in Home Assistant unter Einstellungen, "
+        "Sprachassistenten, Entitäten freigeben."
+    )
+
+
 def _area_info(
     hass: HomeAssistant, entity_id: str, registry_entry: er.RegistryEntry | None = None
 ) -> tuple[str | None, str | None, tuple[str, ...]]:

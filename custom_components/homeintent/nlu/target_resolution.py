@@ -975,3 +975,75 @@ def default_choice_for(
         ):
             return by_id[str(getattr(binding, "target"))]
     return None
+
+
+# ---------------------------------------------------------------------------
+# Devices that exist in Home Assistant but are not exposed (7.6.1).
+
+
+def _name_words(text: str) -> list[str]:
+    folded = normalize_for_compare(text)
+    return "".join(char if char.isalnum() else " " for char in folded).split()
+
+
+def hidden_name_mentions(
+    text: str,
+    exposed: Sequence[EntitySnapshot],
+    hidden: Iterable[tuple[str, str]],
+) -> tuple[str, ...]:
+    """Names of non-exposed devices spoken in ``text``.
+
+    ``hidden`` holds ``(domain, friendly name)`` of entities Home Assistant
+    knows but HomeIntent may not use. A hidden name counts only when it is
+    spoken as whole words, outside every exposed name ("Kaffeemaschine
+    entkalken" is the exposed button, not the hidden machine), and when no
+    exposed entity carries the same name. A single genus word ("Licht")
+    only counts when no exposed device of that genus exists, so it never
+    shadows an ordinary genus reference. Nothing here resolves a target:
+    the result only explains why nothing is done - side entities of a
+    hidden device never become its substitute.
+    """
+    words = _name_words(text)
+    if not words:
+        return ()
+    exposed_keys: set[tuple[str, ...]] = set()
+    for entity in exposed:
+        for name in (entity.friendly_name, *entity.aliases):
+            key = tuple(_name_words(name))
+            if key:
+                exposed_keys.add(key)
+    covered = [False] * len(words)
+    for key in exposed_keys:
+        width = len(key)
+        for start in range(len(words) - width + 1):
+            if tuple(words[start:start + width]) == key:
+                for index in range(start, start + width):
+                    covered[index] = True
+    present = set(words)
+    found: list[str] = []
+    for _domain, name in hidden:
+        key = tuple(_name_words(name))
+        if not key or key[0] not in present or key in exposed_keys or name in found:
+            continue
+        if len(key) == 1:
+            analysis = analyse_word(key[0])
+            if analysis is not None and any(
+                set(analysis.genera) & set(entity_genera(entity)) for entity in exposed
+            ):
+                continue
+        width = len(key)
+        if any(
+            tuple(words[start:start + width]) == key
+            and not any(covered[start:start + width])
+            for start in range(len(words) - width + 1)
+        ):
+            found.append(name)
+    return tuple(found)
+
+
+def hidden_device_text(names: Sequence[str], *, admin_hint: str | None = None) -> str:
+    """"Saugroboter ist für HomeIntent nicht freigegeben." (+ where to change it)."""
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
+    verb = "ist" if len(names) == 1 else "sind"
+    text = f"{listed} {verb} für HomeIntent nicht freigegeben."
+    return f"{text} {admin_hint}" if admin_hint else text

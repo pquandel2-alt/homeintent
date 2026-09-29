@@ -110,7 +110,12 @@ from .engine import (
     _AUTOMATION_QUERY_RE,
 )
 from .entities import EntitySnapshot, normalize_for_compare
-from .hass_entities import build_device_snapshots, build_entity_snapshots
+from .hass_entities import (
+    build_device_snapshots,
+    build_entity_snapshots,
+    exposure_hint,
+    hidden_entity_names,
+)
 from .history_query import (
     ComparativeHistoryQuery,
     HistoryQuery,
@@ -205,7 +210,7 @@ from .nlu.normalize import expand_clitics
 from .nlu.german_morphology import dative_location_phrase
 from .nlu.place_model import build_place_lexicon
 from .nlu.device_ontology import analyse_word, lookup_genus_word
-from .nlu.target_resolution import genus_members
+from .nlu.target_resolution import genus_members, hidden_device_text, hidden_name_mentions
 from .nlu.situation_views import answer_situation_view
 from .nlu.utterance_meaning import render_maintain
 from .nlu.german_morphology import counted_passive
@@ -2003,6 +2008,26 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response,
                 conversation_id=user_input.conversation_id,
+            )
+
+        hidden = hidden_name_mentions(
+            user_input.text,
+            entities,
+            hidden_entity_names(self.hass, {entity.entity_id for entity in entities}),
+        )
+        if hidden:
+            # A device HomeIntent may not use is named: say so instead of
+            # "gibt es nicht" or offering its side entities (7.6.1).
+            self._context_store.clear(user_input.conversation_id)
+            response.async_set_speech(hidden_device_text(
+                hidden,
+                admin_hint=(
+                    exposure_hint(self.entry)
+                    if await user_is_admin(self.hass, user_input) else None
+                ),
+            ))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
             )
 
         routine_request = interpret_routine_binding(user_input.text, entities)
