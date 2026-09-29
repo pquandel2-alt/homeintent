@@ -12,7 +12,7 @@ from .audit_log import AuditTrail
 from .entities import STATELESS_ACTION_DOMAINS, EntitySnapshot
 from .effect_graph import build_plan_effects
 from .effect_monitor import EffectMonitor
-from .execution_context import current_turn, new_execution_context
+from .execution_context import UNAUTHORIZED_TEXT, current_turn, is_unauthorized, new_execution_context
 from .execution_trace import record_execution
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
 from .plan_origin import PlanOrigin
@@ -109,10 +109,8 @@ async def async_execute_service_plan(
             context=call_context,
         )
     except Exception as err:  # noqa: BLE001 - HA service failures are heterogeneous
-        if type(err).__name__ == "Unauthorized":
-            return ExecutionResult(
-                False, decision, "Home Assistant erlaubt diesem Benutzer diese Aktion nicht.", execution
-            )
+        if is_unauthorized(err):
+            return ExecutionResult(False, decision, UNAUTHORIZED_TEXT, execution)
         return ExecutionResult(False, decision, str(err), execution)
     from homeassistant.util import dt as dt_util
 

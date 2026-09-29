@@ -312,13 +312,14 @@ from .execution_policy import (
 from .world_model import WorldModel, build_world_model as assemble_world_model
 from .undo import UndoPlan, build_undo_plan, is_undo_request
 from .runtime_data import HomeIntentRuntimeData
-from .execution_context import begin_turn, call_context, end_turn
+from .execution_context import begin_turn, call_context, current_turn, end_turn, user_facing_error
 from .execution_trace import (
     CauseExplanation,
     ContextIndex,
     Evidence,
     ExecutionTraceStore,
     explain_change,
+    record_execution,
 )
 from .nlu.causal_question import interpret_cause_question
 from .nlu.recurrence import (
@@ -4956,7 +4957,7 @@ class NluConversationEntity(
                 _LOGGER.error("Undo service call failed: %s", err, exc_info=True)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Rückgängigmachen: {err}",
+                    f"Fehler beim Rückgängigmachen: {user_facing_error(err)}",
                 )
             else:
                 response.async_set_speech("Die letzte Aktion wurde rückgängig gemacht.")
@@ -5869,7 +5870,7 @@ class NluConversationEntity(
                 _LOGGER.error("Automation %s failed: %s", verb.lower(), err)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim {verb} der Automation: {err}",
+                    f"Fehler beim {verb} der Automation: {user_facing_error(err)}",
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
@@ -6458,7 +6459,7 @@ class NluConversationEntity(
             _LOGGER.error("Timer command failed: %s", err)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Ausführen: {err}",
+                f"Fehler beim Ausführen: {user_facing_error(err)}",
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=conversation_id
@@ -6724,7 +6725,7 @@ class NluConversationEntity(
             _LOGGER.error("Productivity command failed: %s", err)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Ausführen: {err}",
+                f"Fehler beim Ausführen: {user_facing_error(err)}",
             )
         else:
             response.async_set_speech(speech)
@@ -7170,16 +7171,23 @@ class NluConversationEntity(
             _LOGGER.error("Automation creation failed: %s", err)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Erstellen der Automation: {err}",
+                f"Fehler beim Erstellen der Automation: {user_facing_error(err)}",
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
 
-        self._record_execution(
-            user_input,
-            ServiceCallPlan("homeintent", "create_automation", created_id, {}),
-        )
+        created_plan = ServiceCallPlan("homeintent", "create_automation", created_id, {})
+        self._record_execution(user_input, created_plan)
+        turn = current_turn()
+        if turn is not None:
+            # The turn that authorized the automation stays in the trace;
+            # the reload itself ran in a user-less child context (7.6.1).
+            record_execution(
+                self.hass, context=turn.context, plan=created_plan, decision=None,
+                user_id=turn.user_id, utterance=turn.utterance, origin=None,
+                attended=True, now=dt_util.now(),
+            )
         response.async_set_speech(AUTOMATION_CREATED_TEXT)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -7394,7 +7402,7 @@ class NluConversationEntity(
                 _LOGGER.error("Calendar event creation failed: %s", err)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Eintragen des Termins: {err}",
+                    f"Fehler beim Eintragen des Termins: {user_facing_error(err)}",
                 )
             else:
                 self._record_execution(
@@ -7915,7 +7923,7 @@ class NluConversationEntity(
             _LOGGER.error("Automation management failed: %s", err, exc_info=True)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Ändern der Automation: {err}",
+                f"Fehler beim Ändern der Automation: {user_facing_error(err)}",
             )
         return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
@@ -8059,7 +8067,7 @@ class NluConversationEntity(
             _LOGGER.error("Automation deletion failed: %s", err)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Löschen der Automation: {err}",
+                f"Fehler beim Löschen der Automation: {user_facing_error(err)}",
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id

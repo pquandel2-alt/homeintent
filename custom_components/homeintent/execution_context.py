@@ -46,6 +46,46 @@ def system_context() -> Context:
     return Context()
 
 
+# Services HomeIntent may call with ``system_context_for_turn``: the
+# management of its *own* automation configuration. Home Assistant treats
+# ``automation.reload`` as an admin service, but HomeIntent has already
+# authorized the change itself (``allow_non_admin_automations``,
+# ``validate_automation_action_targets``). Device writes never use it; an
+# architecture test pins this list.
+SYSTEM_CONTEXT_SERVICES: frozenset[tuple[str, str]] = frozenset({("automation", "reload")})
+
+
+def system_context_for_turn() -> Context:
+    """Context for HomeIntent-internal management calls inside a turn.
+
+    No ``user_id`` (HA would reject the admin-only reload for a non-admin),
+    but ``parent_id`` is the turn's context, so the trace chain from the
+    spoken sentence to the change stays intact. Outside a turn it is a plain
+    system context.
+    """
+    turn = _TURN.get()
+    if turn is None:
+        return Context()
+    return Context(user_id=None, parent_id=turn.context.id)
+
+
+UNAUTHORIZED_TEXT = "Home Assistant erlaubt diesem Benutzer diese Aktion nicht."
+
+
+def is_unauthorized(err: BaseException) -> bool:
+    return type(err).__name__ == "Unauthorized"
+
+
+def user_facing_error(err: BaseException) -> str:
+    """A Home Assistant failure as it may be spoken: never raw ``Unauthorized``."""
+    if is_unauthorized(err):
+        return UNAUTHORIZED_TEXT
+    if type(err).__name__ == "ServiceNotFound":
+        return "Home Assistant kennt den dafür nötigen Dienst nicht."
+    text = str(err).strip()
+    return text or "Home Assistant hat die Aktion abgelehnt."
+
+
 def execution_id(context: Any) -> str | None:
     value = getattr(context, "id", None)
     return str(value) if value else None

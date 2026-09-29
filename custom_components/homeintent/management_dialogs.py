@@ -44,7 +44,7 @@ from .nlu.ha_automation_generator import (
     generate_ha_trigger_configs,
 )
 from .nlu.response_generator import _automation_label
-from .execution_context import call_context
+from .execution_context import call_context, user_facing_error
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ async def async_handle_automation_structure_edit_turn(
             except Exception as err:  # noqa: BLE001
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ändern der Automation: {err}",
+                    f"Fehler beim Ändern der Automation: {user_facing_error(err)}",
                 )
             else:
                 response.async_set_speech(
@@ -302,7 +302,7 @@ async def async_handle_automation_action_edit_turn(
             except Exception as err:  # noqa: BLE001
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ändern der Automation: {err}",
+                    f"Fehler beim Ändern der Automation: {user_facing_error(err)}",
                 )
             else:
                 response.async_set_speech(
@@ -449,7 +449,7 @@ async def async_handle_calendar_management(
             _LOGGER.error("Calendar event query failed: %s", err)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Lesen des Kalenders: {err}",
+                f"Fehler beim Lesen des Kalenders: {user_facing_error(err)}",
             )
         else:
             # Reading events is a question, not an action (F22).
@@ -506,7 +506,7 @@ async def async_handle_calendar_management(
         _LOGGER.error("Calendar event lookup for mutation failed: %s", err)
         response.async_set_error(
             intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-            f"Fehler beim Lesen des Kalenders: {err}",
+            f"Fehler beim Lesen des Kalenders: {user_facing_error(err)}",
         )
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -786,7 +786,7 @@ async def async_handle_calendar_mutation_confirmation(
             _LOGGER.error("Calendar mutation failed: %s", err)
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                f"Fehler beim Ändern des Termins: {err}",
+                f"Fehler beim Ändern des Termins: {user_facing_error(err)}",
             )
     return conversation.ConversationResult(
         response=response, conversation_id=user_input.conversation_id
