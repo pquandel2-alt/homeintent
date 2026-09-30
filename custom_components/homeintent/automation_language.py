@@ -31,7 +31,7 @@ Home-Assistant-free and strictly typed.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable
 
@@ -152,6 +152,16 @@ class EventActionFrame:
     # "Benachrichtige mich, sobald X, mit dem Text: Y" - text dictated after
     # the event clause still belongs to the notification.
     trailing_message: str | None = None
+    # Monitoring frames (7.8.3, ``automation_monitoring``): the monitored
+    # object an anaphor in the event clause refers to ("Überwache das
+    # Garagentor und melde dich, wenn *es* ..."), a notification implied by
+    # the monitoring verb itself ("Achte darauf, ob ..."), conditions spoken
+    # after the event ("..., dass kein Fenster offen bleibt, wenn niemand
+    # zuhause ist") and a prohibition whose violation is the event
+    # ("kein Fenster" -> any window).
+    reference: "EventReference | None" = None
+    implicit_notification: bool = False
+    extra_conditions: tuple["ConditionSpan", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -519,10 +529,81 @@ class EventRoles:
     unsupported: str | None = None  # relative change / rate - understood, not buildable
     presence: PresenceEvent | None = None
     conditions: tuple[ConditionSpan, ...] = field(default_factory=tuple)
+    # How the subject was obtained from a monitored object (7.8.3):
+    # "es"/"er"/"sie" (agreement is checked in grounding), "member" for
+    # "eins/eines davon" and a prohibition's "kein" (any member of the set).
+    reference: str | None = None
 
     @property
     def numeric(self) -> bool:
         return self.value is not None
+
+
+# --- reference to a monitored object (7.8.3) -----------------------------------------
+
+
+@dataclass(frozen=True)
+class EventReference:
+    """The antecedent noun phrase a monitoring frame introduced.
+
+    ``words`` is the unchanged source noun phrase ("die Fenster"); ``member``
+    says the event is about any one of it even without a partitive word (a
+    prohibition "dass kein Fenster ..." is violated by any window).
+    """
+
+    words: tuple[str, ...]
+    member: bool = False
+
+
+# Personal pronouns in subject position.  Agreement with the antecedent's
+# grammatical gender is checked where the noun is known (grounding).
+PERSONAL_ANAPHORS = frozenset({"es", "er", "sie"})
+_DEMONSTRATIVE_ANAPHORS = frozenset({"dieses", "diese", "dieser", "dies", "das"})
+# "eins", "eines davon", "irgendeins von ihnen", "welches": one member.
+_MEMBER_HEADS = frozenset({
+    "eins", "eines", "einer", "eine", "irgendeins", "irgendeines", "irgendeiner",
+    "irgendeine", "welches", "welcher", "welche", "jedes", "jeder", "jede",
+})
+_MEMBER_TAILS = frozenset({"davon", "von", "ihnen", "denen", "den", "der", "dieser", "diesen"})
+
+
+def reference_kind(subject_words: tuple[str, ...]) -> str | None:
+    """How a subject refers back, or ``None`` when it names something itself.
+
+    Only pure reference material counts: "es", "eins davon", or no subject
+    at all.  A subject with a noun of its own ("das Tor") is never replaced.
+    """
+    keys = [word.casefold().strip(",.;:!?") for word in subject_words]
+    keys = [key for key in keys if key]
+    if not keys:
+        return "empty"
+    if len(keys) == 1 and keys[0] in PERSONAL_ANAPHORS:
+        return keys[0]
+    if len(keys) == 1 and keys[0] in _DEMONSTRATIVE_ANAPHORS:
+        return "demonstrative"
+    if keys[0] in _MEMBER_HEADS and all(key in _MEMBER_TAILS for key in keys[1:]):
+        return "member"
+    return None
+
+
+def resolve_reference(roles: EventRoles, reference: EventReference | None) -> EventRoles:
+    """Bind a pronoun, partitive or missing subject to the monitored object.
+
+    Deterministic and structural: the antecedent's own source words become
+    the subject; nothing is guessed when there is no antecedent or when the
+    event names a subject of its own.
+    """
+    if reference is None or roles.presence is not None:
+        return roles
+    kind = reference_kind(roles.subject_words)
+    if kind is None:
+        # "dass kein Fenster offen bleibt": the prohibition's own noun, any member.
+        return replace(roles, reference="member") if reference.member else roles
+    if not reference.words:
+        return roles
+    if reference.member and kind in {"empty", "demonstrative"}:
+        kind = "member"
+    return replace(roles, subject_words=reference.words, reference=kind)
 
 
 _ABOVE_WORDS = (
@@ -549,7 +630,8 @@ _RELATIVE_CHANGE_RE = re.compile(
     re.IGNORECASE,
 )
 _DURATION_RE = re.compile(
-    r"(?:\b(?:seit|länger\s+als|mehr\s+als|mindestens|für|schon)\s+)?"
+    # Duration modifiers stack: "seit mehr als", "schon länger als" (7.8.3).
+    r"(?:\b(?:seit|länger\s+als|mehr\s+als|über|mindestens|für|schon)\s+)*"
     r"(?:(?P<number>-?\d+|[a-zäöüß]+)\s+|(?P<half>eine\s+halbe|einer\s+halben)\s+)"
     r"(?P<unit>sekunden?|minuten?|stunden?)\b(?:\s+lang)?",
     re.IGNORECASE,
@@ -663,9 +745,23 @@ def _duration_seconds(match: re.Match[str]) -> int | None:
     return amount * multiplier if amount > 0 else None
 
 
+# A time window qualifying the event ("wenn sie nachts geöffnet wird",
+# "zwischen 22 und 6 Uhr") is a condition read by the established condition
+# grammar, never part of the subject (7.8.3).
+_TIME_WINDOW_CONDITION_RE = re.compile(
+    r"\b(?:nur\s+)?(?:nachts|abends|morgens|vormittags|mittags|nachmittags)\b"
+    r"|\bzwischen\s+\d{1,2}(?::\d{2})?\s+(?:uhr\s+)?und\s+\d{1,2}(?::\d{2})?\s+uhr\b",
+    re.IGNORECASE,
+)
+
+
 def _extract_conditions(text: str) -> tuple[str, tuple[ConditionSpan, ...]]:
     """Pull time/weekday prepositional conditions out of the event clause."""
     spans: list[ConditionSpan] = []
+    window = _TIME_WINDOW_CONDITION_RE.search(text)
+    if window is not None:
+        spans.append(ConditionSpan(window.group(0)))
+        text = (text[:window.start()] + " " + text[window.end():]).strip()
     time_match = _TIME_CONDITION_RE.search(text)
     if time_match is not None and not re.match(r"\s*(?:um)\b", text[: time_match.start()][-4:]):
         spans.append(ConditionSpan(time_match.group(0)))
@@ -920,7 +1016,11 @@ def _trim_articles(words: tuple[str, ...]) -> tuple[str, ...]:
 __all__ = (
     "ClauseOrder",
     "ConditionSpan",
+    "EventReference",
     "EventRoles",
+    "PERSONAL_ANAPHORS",
+    "reference_kind",
+    "resolve_reference",
     "ActionCheck",
     "EventActionFrame",
     "PreparedText",

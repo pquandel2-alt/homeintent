@@ -264,7 +264,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_grounding.py::_PLURAL_PARTITIVE_RE::b26498ae00",
+   "id": "custom_components/homeintent/automation_grounding.py::_PLURAL_PARTITIVE_RE::b4a3258042",
    "datei": "custom_components/homeintent/automation_grounding.py",
    "bereich": "_PLURAL_PARTITIVE_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -460,7 +460,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::478d9d953b",
+   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::6bd1edfda7",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_DURATION_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -526,6 +526,13 @@
    "id": "custom_components/homeintent/automation_language.py::<module>::67200c908e",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "<module>",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_TIME_WINDOW_CONDITION_RE::b94fd47eae",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_TIME_WINDOW_CONDITION_RE",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -633,6 +640,34 @@
    "bereich": "_subject_by_class_and_area",
    "klasse": "STRUCTURAL",
    "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_monitoring.py::_OBJECT_REST_RES::78d8d014d3",
+   "datei": "custom_components/homeintent/automation_monitoring.py",
+   "bereich": "_OBJECT_REST_RES",
+   "klasse": "STRUCTURAL",
+   "quelle": "manuell"
+  },
+  {
+   "id": "custom_components/homeintent/automation_monitoring.py::_OBJECT_CLAUSE_RES::27b56febab",
+   "datei": "custom_components/homeintent/automation_monitoring.py",
+   "bereich": "_OBJECT_CLAUSE_RES",
+   "klasse": "STRUCTURAL",
+   "quelle": "manuell"
+  },
+  {
+   "id": "custom_components/homeintent/automation_monitoring.py::_CLAUSE_HEAD_RE::156134fb2c",
+   "datei": "custom_components/homeintent/automation_monitoring.py",
+   "bereich": "_CLAUSE_HEAD_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "manuell"
+  },
+  {
+   "id": "custom_components/homeintent/automation_monitoring.py::_TRAILING_CONDITION_RE::37d58396ad",
+   "datei": "custom_components/homeintent/automation_monitoring.py",
+   "bereich": "_TRAILING_CONDITION_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "manuell"
   },
   {
    "id": "custom_components/homeintent/automation_notification.py::_RECIPIENT_FIRST_NOTIFY_RE::8698d276f7",
@@ -4941,9 +4976,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 372,
+  "LEXICAL": 373,
   "MORPHOLOGICAL": 38,
-  "STRUCTURAL": 121,
+  "STRUCTURAL": 125,
   "SEMANTIC_SENTENCE_PATTERN": 173
  }
 }

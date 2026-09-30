@@ -25,7 +25,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Sequence
 
@@ -92,8 +92,8 @@ class GroundedEvent:
 
 
 _ANY_WORDS = frozenset({
-    "ein", "eine", "einer", "eines", "einem", "einen", "irgendein", "irgendeine",
-    "irgendeiner", "irgendeines", "irgendeinem", "irgendwelche", "jede", "jeder",
+    "ein", "eine", "einer", "eines", "einem", "einen", "eins", "irgendein", "irgendeine",
+    "irgendeiner", "irgendeines", "irgendeins", "irgendeinem", "irgendwelche", "jede", "jeder",
     "jedes", "beliebige", "beliebiges", "beliebiger", "ne",
 })
 _DEFINITE_WORDS = frozenset({"der", "die", "das", "den", "dem", "des", "mein", "meine", "unser", "unsere"})
@@ -107,7 +107,9 @@ _SIDE_WORDS = {
     "hinten": "hinten", "hintere": "hinten", "hinteren": "hinten",
     "oben": "oben", "obere": "oben", "oberen": "oben", "unten": "unten", "untere": "unten",
 }
-_PLURAL_PARTITIVE_RE = re.compile(r"^(?:einer|eines|eine|irgendeiner)\s+(?:der|von\s+den)$")
+_PLURAL_PARTITIVE_RE = re.compile(
+    r"^(?:einer|eines|eins|eine|irgendeiner|irgendeins|irgendeines)\s+(?:der|von\s+den)$"
+)
 
 
 def _area_index(entities: Sequence[EntitySnapshot]) -> dict[str, tuple[str, str]]:
@@ -461,6 +463,43 @@ _OPENING_CLASSES = frozenset({"window", "door", "garage_door", "opening"})
 _GENERIC_ANY_CLASSES = frozenset({"window", "door", "motion"})
 
 
+_KIND_LABELS = {
+    "binary_sensor": "Sensoren", "cover": "Antriebe", "lock": "Schlösser",
+    "light": "Lichter", "switch": "Schalter",
+}
+
+
+def _device_kinds(candidates: Sequence[EntitySnapshot]) -> list[tuple[str, list[str]]]:
+    """Candidates grouped by the domain that decides the state's meaning."""
+    grouped: dict[str, list[str]] = {}
+    for entity in sorted(candidates, key=lambda item: item.friendly_name):
+        grouped.setdefault(entity.domain, []).append(entity.friendly_name)
+    return [(_KIND_LABELS.get(domain, domain), names) for domain, names in grouped.items()]
+
+
+_PRONOUN_GENDERS = {
+    "es": GrammaticalGender.NEUTER,
+    "er": GrammaticalGender.MASCULINE,
+    "sie": GrammaticalGender.FEMININE,
+}
+_PLURAL_DETERMINERS = frozenset({"die", "alle", "meine", "unsere", "sämtliche"})
+
+
+def _reference_agrees(
+    reference: str, antecedent: Sequence[str], subject: SubjectReading
+) -> bool:
+    """"es" needs a neuter antecedent, "er" a masculine one, "sie" a feminine
+    or plural one.  Without a typed noun there is nothing to check against."""
+    gender = _PRONOUN_GENDERS.get(reference)
+    if gender is None or subject.noun is None:
+        return True
+    first = antecedent[0].casefold() if antecedent else ""
+    plural = first in _PLURAL_DETERMINERS and subject.noun.gender is not GrammaticalGender.FEMININE
+    if reference == "sie":
+        return subject.noun.gender is GrammaticalGender.FEMININE or plural
+    return subject.noun.gender is gender and not plural
+
+
 def _state_ok(entity: EntitySnapshot, state: SemanticState) -> bool:
     allowed = _STATE_DOMAINS.get(entity.domain)
     if allowed is None or state not in allowed:
@@ -533,6 +572,20 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             return finished
         return GroundedEvent(GroundingStatus.NOT_APPLICABLE, roles=roles)
     subject = read_subject(roles.subject_words, entities)
+    if roles.reference is not None:
+        # The subject came from a monitored object (7.8.3).
+        if not _reference_agrees(roles.reference, roles.subject_words, subject):
+            return GroundedEvent(
+                GroundingStatus.MISSING_SUBJECT,
+                question=f"Worauf bezieht sich „{roles.reference}“? Bitte nenne das Gerät.",
+                subject=subject, roles=roles,
+            )
+        if roles.reference == "member":
+            subject = replace(subject, quantifier=Quantifier.ANY)
+        elif subject.quantifier is Quantifier.ALL:
+            # "Beobachte alle Fenster und melde dich, wenn eins/es ...": the
+            # watched set, never an aggregate state.
+            subject = replace(subject, quantifier=Quantifier.ANY)
     unknown_detector_words = tuple(
         item for item in subject.modifiers if item not in {"bewegung", "eine", "ein"}
     )
@@ -603,6 +656,14 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             candidates = filtered
     else:
         candidates = _named_candidates(subject, entities)
+        if not candidates and roles.reference is not None:
+            # The monitored object is no device of this house: say so.
+            spoken = " ".join(word for word in roles.subject_words if word.casefold() not in _DEFINITE_WORDS)
+            return GroundedEvent(
+                GroundingStatus.NOT_FOUND,
+                question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
+                subject=subject, roles=roles,
+            )
         if not candidates:
             # Not a device we can type - leave it to the established parsers
             # (presence "Julia", time, sun, ...).
@@ -610,6 +671,21 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
 
     if roles.state is not None and roles.value is None:
         candidates = [entity for entity in candidates if _state_ok(entity, roles.state)]
+        kinds = _device_kinds(candidates)
+        if len(kinds) > 1:
+            # "Fenster" = window contacts and window drives: one state trigger
+            # cannot mean both, and picking one kind would be a guess.
+            noun = (subject.noun_word or "dieses Gerät").strip("-")
+            options = " oder ".join(
+                f"{label} ({', '.join(names[:2])}{', …' if len(names) > 2 else ''})"
+                for label, names in kinds
+            )
+            return GroundedEvent(
+                GroundingStatus.UNSUPPORTED,
+                reason="mixed_kinds",
+                question=f"Mit „{noun}“ können {options} gemeint sein. Welche meinst du?",
+                subject=subject, roles=roles,
+            )
     if subject.place is not None and len(candidates) > 1:
         # "wenn es draußen kälter als 5 Grad wird": the spoken place narrows
         # the measured quantity (7.8 B5) - never the action's device.

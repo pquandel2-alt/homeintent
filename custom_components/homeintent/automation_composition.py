@@ -39,6 +39,7 @@ from .automation_grounding import (
 )
 from .automation_language import (
     ConditionSpan,
+    EventReference,
     EventRoles,
     EventActionFrame,
     TemporalEvent,
@@ -48,8 +49,10 @@ from .automation_language import (
     prepare_automation_text,
     protected_message_spans,
     read_event_roles,
+    resolve_reference,
     segment_event_automation,
 )
+from .automation_monitoring import segment_monitoring
 from .automation_notification import notification_action
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.action_model import ActionGroup, ActionModel, ActionType, NotificationRecipientKind
@@ -60,6 +63,9 @@ from .nlu.measurement import MeasurementProperty, TravelDirection
 from .nlu.semantic_state import SemanticState
 from .nlu.normalize import german_number
 from .notification_language import NotificationClause, parse_notification_clause, trigger_message
+
+# "Achte darauf, ob ...": the monitoring verb itself asks to tell the speaker.
+_IMPLICIT_NOTIFICATION = NotificationClause(NotificationRecipientKind.CURRENT_USER)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,6 +113,7 @@ class EventClarification:
     trailing_message: str | None
     conditions: tuple[ConditionNode, ...]
     source_text: str
+    implicit_notification: bool = False
 
 
 @dataclass(frozen=True)
@@ -248,9 +255,14 @@ def interpret_event_clause(
     entities: Sequence[EntitySnapshot],
     parse_trigger: TriggerReader,
     parse_condition: ConditionReader,
+    reference: EventReference | None = None,
 ) -> EventInterpretation:
-    """Typed reading first; established parsers only for untyped event kinds."""
-    roles = read_event_roles(event_text)
+    """Typed reading first; established parsers only for untyped event kinds.
+
+    ``reference`` is the monitored object of a monitoring frame: a pronoun,
+    partitive or missing subject of the event is bound to it (7.8.3).
+    """
+    roles = resolve_reference(read_event_roles(event_text), reference)
     embedded = _conditions_for(roles.conditions, parse_condition, entities)
     if embedded is None:
         return EventInterpretation(None)
@@ -263,7 +275,7 @@ def interpret_event_clause(
         condition = _conditions_for((span,), parse_condition, entities)
         if condition is None:
             continue
-        left_roles = read_event_roles(left)
+        left_roles = resolve_reference(read_event_roles(left), reference)
         left_conditions = _conditions_for(left_roles.conditions, parse_condition, entities)
         if left_conditions is None:
             continue
@@ -493,6 +505,17 @@ def read_actions(
     return ActionReading(tuple(steps), only_clause)
 
 
+def implicit_notification_reading(
+    trigger: TriggerModel | None, entities: Sequence[EntitySnapshot]
+) -> ActionReading:
+    """NOTIFY the speaker - the action a monitoring verb implies (7.8.3)."""
+    message = trigger_message(trigger, "", entities)
+    action = notification_action(_IMPLICIT_NOTIFICATION, message, tuple(entities))
+    if action is None:
+        return ActionReading((), _IMPLICIT_NOTIFICATION, "dich")
+    return ActionReading((action,), _IMPLICIT_NOTIFICATION)
+
+
 def _whole_clause(text: str, chunks: list[str], readers: Readers) -> ActionReading | None:
     """"Schalte das Flurlicht und das Wohnzimmerlicht ein" - one verb bracket.
 
@@ -518,12 +541,18 @@ _OR_SPLIT_RE = re.compile(r"\s*,?\s+oder\s+(?:wenn|sobald|falls|sofern)\s+", re.
 
 
 def _alternative_triggers(
-    parts: Sequence[str], connector: str, entities: Sequence[EntitySnapshot], readers: Readers
+    parts: Sequence[str],
+    connector: str,
+    entities: Sequence[EntitySnapshot],
+    readers: Readers,
+    reference: EventReference | None = None,
 ) -> EventInterpretation:
     """"Wenn X oder wenn Y": each alternative is its own complete trigger."""
     triggers: list[TriggerModel] = []
     for part in parts:
-        reading = interpret_event_clause(part, connector, entities, readers.trigger, readers.condition)
+        reading = interpret_event_clause(
+            part, connector, entities, readers.trigger, readers.condition, reference
+        )
         if reading.trigger is None or reading.conditions:
             return EventInterpretation(None, (), reading.grounded)
         triggers.append(reading.trigger)
@@ -586,10 +615,13 @@ def compose_event_automation(
             memo[text] = read_actions(text, None, entities, readers) is not None
         return memo[text]
 
-    frame: EventActionFrame | None = segment_event_automation(prepared.text, action_ok)
+    frame: EventActionFrame | None = (
+        segment_monitoring(prepared.text, action_ok)
+        or segment_event_automation(prepared.text, action_ok)
+    )
     if frame is None:
         return None
-    notification_only = is_notification_text(frame.action_text)
+    notification_only = frame.implicit_notification or is_notification_text(frame.action_text)
     trace = CompositionTrace(
         route="event_notification" if notification_only else "event_action",
         order=frame.order.name,
@@ -601,11 +633,20 @@ def compose_event_automation(
     if frame.temporal is not None:
         interpreted = temporal_interpretation(frame.temporal)
     elif len(alternatives) > 1:
-        interpreted = _alternative_triggers(alternatives, frame.connector, entities, readers)
+        interpreted = _alternative_triggers(
+            alternatives, frame.connector, entities, readers, frame.reference
+        )
     else:
         interpreted = interpret_event_clause(
-            frame.event_text, frame.connector, entities, readers.trigger, readers.condition
+            frame.event_text, frame.connector, entities, readers.trigger, readers.condition,
+            frame.reference,
         )
+    if frame.extra_conditions:
+        extra = _conditions_for(frame.extra_conditions, readers.condition, entities)
+        if extra is None:
+            # A spoken condition that is not understood is never dropped.
+            return None
+        interpreted = replace(interpreted, conditions=(*interpreted.conditions, *extra))
     if interpreted.trigger is None:
         grounded = interpreted.grounded
         if not notification_only and (
@@ -617,9 +658,14 @@ def compose_event_automation(
             # that cannot be grounded is no automation (never a guess).
             return None
         return failure_outcome(
-            grounded, frame.action_text, frame.trailing_message, raw_text, trace, interpreted.conditions
+            grounded, frame.action_text, frame.trailing_message, raw_text, trace, interpreted.conditions,
+            implicit_notification=frame.implicit_notification,
         )
-    reading = read_actions(frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message)
+    reading = (
+        implicit_notification_reading(interpreted.trigger, entities)
+        if frame.implicit_notification
+        else read_actions(frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message)
+    )
     if reading is None:
         return None
     trace = replace(trace, grounding="typed" if interpreted.typed else "established_parser")
@@ -633,6 +679,8 @@ def failure_outcome(
     source_text: str,
     trace: CompositionTrace,
     conditions: tuple[ConditionNode, ...] = (),
+    *,
+    implicit_notification: bool = False,
 ) -> CompositionOutcome:
     status = grounded.status if grounded is not None else GroundingStatus.NOT_APPLICABLE
     reason = grounded.reason if grounded is not None else None
@@ -642,11 +690,15 @@ def failure_outcome(
             OutcomeKind.CLARIFY,
             speech=grounded.question,
             clarification=EventClarification(
-                grounded, action_text, trailing_message, conditions, source_text
+                grounded, action_text, trailing_message, conditions, source_text,
+                implicit_notification,
             ),
             trace=failed,
         )
-    if grounded is not None and status in {GroundingStatus.MISSING_SUBJECT, GroundingStatus.NOT_FOUND}:
+    if grounded is not None and (
+        status in {GroundingStatus.MISSING_SUBJECT, GroundingStatus.NOT_FOUND}
+        or (status is GroundingStatus.UNSUPPORTED and grounded.question)
+    ):
         return CompositionOutcome(OutcomeKind.CLARIFY, speech=grounded.question, trace=failed)
     return CompositionOutcome(OutcomeKind.UNSUPPORTED, speech=unsupported_text(reason), trace=failed)
 
@@ -666,8 +718,12 @@ def resolve_event_clarification(
     if grounded.trigger is None:
         return None
     interpreted = EventInterpretation(grounded.trigger, pending.conditions, grounded, typed=True)
-    reading = read_actions(
-        pending.action_text, grounded.trigger, entities, readers, pending.trailing_message
+    reading = (
+        implicit_notification_reading(grounded.trigger, entities)
+        if pending.implicit_notification
+        else read_actions(
+            pending.action_text, grounded.trigger, entities, readers, pending.trailing_message
+        )
     )
     if reading is None:
         return None

@@ -28,6 +28,7 @@
     ,"custom_components/homeintent/automation_language.py"
     ,"custom_components/homeintent/automation_grounding.py"
     ,"custom_components/homeintent/automation_composition.py"
+    ,"custom_components/homeintent/automation_monitoring.py"
     ,"custom_components/homeintent/nlu/automation_lexicon.py"
     ,"custom_components/homeintent/nlu/measurement.py"
     ,"custom_components/homeintent/house_graph.py"
