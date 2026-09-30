@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.8.2** (ausdrücklich genannte Skripte, Szenen und Gruppen laufen auch mit nicht freigegebenen Geräten; Schlösser, Alarm, Rollläden/Tore und Ventile nie)
+- Aktuelle Version: **7.8.3** (Überwachungsaufträge: „Überwache das Garagentor und melde dich, wenn …“, eine Bedeutung für jede Formulierung)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,36 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.8.3 neu?
+
+**Überwachungsaufträge** – HomeIntent versteht, was es überwachen und wann es
+sich melden soll, und macht daraus eine Automation mit Push-Nachricht:
+
+- „Überwache das Garagentor und melde dich, wenn es länger als 10 Minuten
+  offen ist.“ · „Beobachte die Fenster und warne mich, wenn eins offen ist
+  und niemand zuhause ist.“ · „Achte darauf, ob …“ · „Behalte die Haustür im
+  Auge und melde dich, wenn sie nachts geöffnet wird.“
+- Erkannt werden Konstruktionen, keine Sätze: Überwachungsverben,
+  Benachrichtigungsverben, Konnektoren, Bezüge („es“, „sie“, „eins davon“,
+  mit Genus-Prüfung), gestapelte Dauerangaben („seit mehr als 20 Minuten“),
+  Tageszeitfenster („nachts“). „Prüfe, ob …“ bleibt eine einmalige Abfrage.
+- **Zustände gelten in beiden Reihenfolgen:** „wenn ein Fenster offen ist und
+  niemand zuhause ist“ meldet sich auch, wenn zuletzt jemand geht. Ein Moment
+  („geöffnet wird“) bleibt ein Moment.
+- **Eine Bedeutung, egal wie formuliert:** „niemand“, „keiner“, „warne“,
+  „sag Bescheid“, Wenn-Satz vorn oder hinten, mit oder ohne Überwachungsverb –
+  immer dieselbe Automation. Der satzbasierte Leser entscheidet zuerst; die
+  V10-Monitor-Goals behalten nur, was er nicht versteht.
+- **„Niemand zuhause“ meint genau eine Personenmenge:** den bestätigten
+  Haushalt, sonst alle Personen – die Vorschau nennt sie („keiner von Anna,
+  Lena und Philipp“).
+- „ein Fenster offen ist“ als Bedingung heißt jetzt „irgendeines“ (vorher
+  erzeugte Home Assistant daraus „alle“).
+- Nachfragen statt raten: Bezug ohne Antezedens, falsches Genus, unbekanntes
+  Gerät, Fensterkontakte und Fensterantriebe unter einem Wort.
+
+Details, Tabellen und alle Messwerte: `docs/umsetzung-7.8.3.md`.
 
 ## Was ist in Version 7.8.2 neu?
 
@@ -2223,19 +2253,17 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.8.2:
+Geprüfter Release-Stand von Version 7.8.3:
 
 ```text
-6458 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+6830 passed, 12 skipped, 0 failed (Stub-Suite, lokal)
 Sprachverständnis-Gate: 463 passed
-Property-Suite: 40 Sicherheitsinvarianten, CI- und Nightly-Profil 0 Verletzungen
-Korpus-Signaturen: 0 Änderungen gegenüber 7.8.1, 7.8.0 und 7.7.1
-Dialog-Shadow gegen 7.8.1: 239 Dialoge / 480 Turns, 1 Abweichung (geändertes Szenario s781, kein Code)
-Arbiter-Shadow 2075 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2052 EQUIVALENT
-Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107 (held-out 32/36), unsafe_execution_count 0
-Live-Testbett 175/175 (168 + Proaktiv 7; neu: s781-ellipsis-unknown), Push-Matrix 35/35, README-Beispiele wie 7.7.0
-Ganzer Turn 5000 Entitäten p50 31 ms, p90 92 ms, p95 108 ms, p99 128 ms
-Pyright 0 Fehler (voll und alle Strict-Profile)
+Korpus-Signaturen: 0 Änderungen gegenüber 7.8.2 (Baseline um 49 neue Testsätze ergänzt)
+Arbiter-Shadow 2078 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2055 EQUIVALENT
+Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 179/179 (inklusive Proaktiv; neu: mon-window-away, mon-window-away-anna, mon-routing-niemand, mon-garage-duration), check_log 0 Befunde
+Automationssprache 5000 Entitäten p95 16,6 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
 Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
 ```
 
@@ -2276,7 +2304,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.8.2.json
+  --check docs/perf/corpus-signatures-7.8.3.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
