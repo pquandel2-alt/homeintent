@@ -17,7 +17,10 @@ from .const import (
     IMPLICIT_ACTION_LEVELS,
     CONF_MAX_ACTION_TARGETS,
     CONF_READ_ONLY_ENTITIES,
+    CONF_ROUTINE_UNEXPOSED,
     CONF_SELECTED_ENTITIES,
+    DEFAULT_ROUTINE_UNEXPOSED,
+    ROUTINE_UNEXPOSED_MODES,
 )
 from .effect_graph import (
     PlanEffects,
@@ -47,6 +50,18 @@ def _exposure_hint(options: Mapping[str, object]) -> str:
         "Freigeben kannst du sie in Home Assistant unter Einstellungen, "
         "Sprachassistenten, Entitäten freigeben."
     )
+
+
+# Domains whose risk depends on what the device is (garage door, gate, water
+# valve) or that guard the house. HomeIntent cannot see an unexposed device's
+# class, so such an effect stays refused in every mode (7.8.2).
+GUARDED_UNEXPOSED_DOMAINS = frozenset({"lock", "alarm_control_panel", "cover", "valve"})
+
+
+def routine_unexposed_mode(options: Mapping[str, object]) -> str:
+    """allow | confirm | deny for unexposed devices inside a named routine."""
+    mode = str(options.get(CONF_ROUTINE_UNEXPOSED, DEFAULT_ROUTINE_UNEXPOSED))
+    return mode if mode in ROUTINE_UNEXPOSED_MODES else DEFAULT_ROUTINE_UNEXPOSED
 
 
 class PolicyOutcome(Enum):
@@ -189,18 +204,34 @@ def evaluate_service_plan(
             PolicyOutcome.DENY,
             "Dieser Benutzer darf HomeIntent nicht zur Gerätesteuerung verwenden.",
         )
+    unexposed_needs_confirmation = False
+    unexposed_note: str | None = None
     if effects is not None and effect_targets:
         exposed = {entity.entity_id for entity in entities}
         # effective_targets leaves out entities Home Assistant does not know:
         # a step on them switches nothing (7.8.1).
         unexposed = sorted(effect_targets - exposed)
         if unexposed:
-            # The exposure list is the user's configuration: no confirmation
-            # can override it.
-            return decide(
-                PolicyOutcome.DENY,
-                f"{describe_unexposed(effects, unexposed, (entity.friendly_name for entity in entities))} "
-                f"{_exposure_hint(options)}",
+            # Exposing a script, scene or group exposes what it does, as in
+            # Home Assistant's own Assist (7.8.2) - only for a routine the
+            # user names right now and is present for, never for guarded
+            # domains, never for implicit, inferred or unattended plans.
+            mode = routine_unexposed_mode(options)
+            if (
+                mode == "deny"
+                or origin is not PlanOrigin.EXPLICIT_COMMAND
+                or not attended
+                or any(item.split(".", 1)[0] in GUARDED_UNEXPOSED_DOMAINS for item in unexposed)
+            ):
+                return decide(
+                    PolicyOutcome.DENY,
+                    f"{describe_unexposed(effects, unexposed, (entity.friendly_name for entity in entities))} "
+                    f"{_exposure_hint(options)}",
+                )
+            unexposed_needs_confirmation = mode == "confirm"
+            # Named in every question this plan still gets (risk, unknown step).
+            unexposed_note = describe_unexposed(
+                effects, unexposed, (entity.friendly_name for entity in entities), refused=False,
             )
     admin_only_ids = _id_set(options, CONF_ADMIN_ONLY_ENTITIES)
     if not is_admin and all_ids & admin_only_ids:
@@ -234,6 +265,8 @@ def evaluate_service_plan(
         risk = max(risk, RiskLevel.HIGH)
         note = unknown_text
         unknown_needs_confirmation = True
+    if unexposed_note:
+        note = f"{note} {unexposed_note}" if note else unexposed_note
     if effects is not None:
         # Informed consent (7.7.1 A6): a question about a script, scene,
         # group or routine names every effect from HIGH risk upwards.
@@ -275,7 +308,7 @@ def evaluate_service_plan(
         )
     configured_level = options.get(CONF_CONFIRMATION_LEVEL, "high")
     confirmation_level = _RISK_BY_OPTION.get(str(configured_level), RiskLevel.HIGH)
-    if risk >= confirmation_level or unknown_needs_confirmation:
+    if risk >= confirmation_level or unknown_needs_confirmation or unexposed_needs_confirmation:
         return decide(PolicyOutcome.CONFIRM, note=note)
     # Implicit Action Policy (7.3.3): a non-explicit origin is never looser
     # than the same explicit command; everything below only adds confirmations.

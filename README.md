@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.8.1** (Skripte und Gruppen: gelöschte Geräte blockieren nicht mehr, Freigabe-Hinweis nennt Ursache und Ort; Ellipse mit unbekanntem Objekt schaltet nie das vorherige Gerät)
+- Aktuelle Version: **7.8.2** (ausdrücklich genannte Skripte, Szenen und Gruppen laufen auch mit nicht freigegebenen Geräten; Schlösser, Alarm, Rollläden/Tore und Ventile nie)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,27 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.8.2 neu?
+
+**Skripte, Szenen und Gruppen laufen, wenn du sie nennst** (Entscheidung aus
+dem Betrieb: „Schlafen“ schaltet alles aus und Fernseher und LED-Bettlicht
+ein, „Ambiente“ ist eine Lichtgruppe – beide wurden abgelehnt, weil sie auch
+nicht freigegebene Lichter schalten).
+
+- Neue Option `routine_unexposed_effects`: `allow` (Standard) führt ein
+  freigegebenes Skript, eine Szene oder Gruppe aus, die du ausdrücklich
+  nennst, auch wenn darin nicht freigegebene Geräte stecken – wie Home
+  Assistants eigenes Assist. `confirm` fragt vorher und nennt die Geräte,
+  `deny` lehnt ab wie bis 7.8.1.
+- Immer geschützt, in jedem Modus: nicht freigegebene Schlösser,
+  Alarmanlagen, Rollläden/Tore und Ventile im Skript; indirekte Aussagen
+  („Ich gehe schlafen“), abgeleitete Routinen, proaktive und zeitversetzte
+  Ausführungen und Automationen.
+- Unverändert: Risiko, Bestätigungsstufe, Nur-Admin, Nur-Lesen und maximale
+  Zielzahl gelten für alle wirksamen Ziele. Muss HomeIntent ohnehin
+  nachfragen (etwa bei einem Button im Skript), nennt die Frage auch die
+  nicht freigegebenen Geräte.
 
 ## Was ist in Version 7.8.1 neu?
 
@@ -578,10 +599,11 @@ liefen los) zeigte die Lücke. Jetzt:
   und `device_id`/`area_id`/`floor_id`/`label_id` so, wie Home Assistant sie
   auflöst. Details: [Skripte, Szenen und Gruppen](#skripte-szenen-und-gruppen-transitive-prüfung-seit-731).
 - **Freigabe gilt transitiv:** Schaltet ein Skript ein nicht freigegebenes
-  Gerät, lehnt HomeIntent ab und nennt es – auch ein „Ja“ ändert das nicht.
-  Entitäten, die Home Assistant nicht kennt, schalten nichts und zählen
-  nicht (seit 7.8.1). Die Antwort sagt, wo freigegeben wird (feste
-  HomeIntent-Auswahl oder Assist).
+  Gerät, entscheidet seit 7.8.2 die Option `routine_unexposed_effects`
+  (Standard `allow`: ein ausdrücklich genanntes Skript läuft; Schlösser,
+  Alarm, Rollläden/Tore und Ventile nie). Entitäten, die Home Assistant nicht
+  kennt, schalten nichts und zählen nicht (seit 7.8.1). Eine Ablehnung sagt,
+  wo freigegeben wird (feste HomeIntent-Auswahl oder Assist).
 - **Risiko = höchste Wirkung:** Ein Schloss im Skript macht das Skript HIGH,
   eine Alarmanlage CRITICAL; ein reines Lichtskript bleibt LOW.
 - **Nicht prüfbare Schritte** (Vorlagen, `event:`, `shell_command` …) gelten
@@ -1945,8 +1967,19 @@ Domäne der Aktion (`button.press` auf eine Etage = alle Buttons dieser Etage).
 
 Für diese **wirksamen Ziele** gelten dieselben Regeln wie für direkte Befehle:
 
-- Ist ein wirksames Ziel nicht für HomeIntent freigegeben, lehnt HomeIntent ab
-  und nennt die Geräte. Eine Bestätigung kann das nicht überstimmen.
+- Nicht freigegebene wirksame Ziele regelt seit 7.8.2 die Option
+  `routine_unexposed_effects`:
+  - `allow` (Standard): Ein freigegebenes Skript, eine Szene oder Gruppe, die
+    du ausdrücklich nennst („Aktiviere Schlafen“, „Schalte Ambiente ein“),
+    läuft – wie bei Home Assistants eigenem Assist. Fragt HomeIntent aus
+    anderem Grund ohnehin nach (Risiko, nicht prüfbarer Schritt), nennt die
+    Frage die nicht freigegebenen Geräte.
+  - `confirm`: HomeIntent fragt vorher und nennt die Geräte.
+  - `deny`: HomeIntent lehnt ab und nennt die Geräte (Verhalten bis 7.8.1).
+  - In jedem Modus abgelehnt: nicht freigegebene Schlösser, Alarmanlagen,
+    Rollläden/Tore und Ventile (deren Art sieht HomeIntent ohne Freigabe
+    nicht), indirekte Aussagen, abgeleitete Routinen, proaktive und
+    zeitversetzte Ausführungen sowie Automationen.
 - Nur-Lesen, Nur-Admin und die maximale Zielzahl zählen die wirksamen Ziele.
 - Das Risiko ist das höchste Risiko aller wirksamen Effekte (Schloss im
   `choose`-Zweig → HIGH, Alarmanlage → CRITICAL).
@@ -2190,15 +2223,15 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.8.1:
+Geprüfter Release-Stand von Version 7.8.2:
 
 ```text
-6438 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+6458 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 463 passed
 Property-Suite: 40 Sicherheitsinvarianten, CI- und Nightly-Profil 0 Verletzungen
-Korpus-Signaturen: 0 Änderungen gegenüber 7.8.0 (und 7.7.1)
-Dialog-Shadow gegen 7.8.0: 238 Dialoge / 477 Turns, 0 Abweichungen
-Arbiter-Shadow 2076 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2050 EQUIVALENT
+Korpus-Signaturen: 0 Änderungen gegenüber 7.8.1, 7.8.0 und 7.7.1
+Dialog-Shadow gegen 7.8.1: 239 Dialoge / 480 Turns, 1 Abweichung (geändertes Szenario s781, kein Code)
+Arbiter-Shadow 2075 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2052 EQUIVALENT
 Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107 (held-out 32/36), unsafe_execution_count 0
 Live-Testbett 175/175 (168 + Proaktiv 7; neu: s781-ellipsis-unknown), Push-Matrix 35/35, README-Beispiele wie 7.7.0
 Ganzer Turn 5000 Entitäten p50 31 ms, p90 92 ms, p95 108 ms, p99 128 ms
@@ -2243,7 +2276,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.8.1.json
+  --check docs/perf/corpus-signatures-7.8.2.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

@@ -541,3 +541,61 @@ Bezug und besteht live.
 (bestehender Vertrag seit 2026-08-20: Skripte laufen mit
 starten/ausführen/aktivieren); die Antwort darauf („… lässt sich nur ein-
 und ausschalten“) ist widersprüchlich und wird separat entschieden.
+
+---
+
+# Nachtrag – 7.8.2: ausdrücklich genannte Routinen laufen
+
+**Entscheidung des Eigentümers.** „Schlafen“ schaltet alles aus und
+Fernseher und LED-Bettlicht ein; „Ambiente“ ist eine Lichtgruppe. Beide
+schalten auch Lichter, die für Assist nicht freigegeben sind (etwa über
+`entity_id: all` oder eine verschachtelte Gruppe). HomeIntent lehnte das bis
+7.8.1 immer ab; gewünscht ist das Verhalten von Home Assistants eigenem
+Assist: Wer ein Skript oder eine Gruppe freigibt und ausdrücklich nennt, gibt
+frei, was sie tut.
+
+**Regel** (`execution_policy.evaluate_service_plan`, Option
+`routine_unexposed_effects`):
+
+| Modus | Verhalten bei nicht freigegebenen wirksamen Zielen |
+|---|---|
+| `allow` (Standard) | ausführen; fragt HomeIntent aus anderem Grund ohnehin nach, nennt die Frage die Geräte |
+| `confirm` | vorher fragen und die Geräte nennen |
+| `deny` | ablehnen und die Geräte nennen (bis 7.8.1) |
+
+In jedem Modus abgelehnt:
+
+- nicht freigegebene Schlösser, Alarmanlagen, Rollläden/Tore und Ventile
+  (`GUARDED_UNEXPOSED_DOMAINS`): ihr Risiko hängt an der Geräteklasse
+  (Garagentor, Wasserventil), die HomeIntent ohne Freigabe nicht sieht,
+- jede Herkunft außer dem ausdrücklichen Befehl (indirekte Aussage,
+  abgeleitete Routine, proaktiv, Daueranweisung) und jede Ausführung ohne
+  anwesenden Nutzer,
+- Automationen (`validate_automation_action_targets` unverändert).
+
+Risiko, Bestätigungsstufe, Nur-Admin, Nur-Lesen und maximale Zielzahl gelten
+unverändert für alle wirksamen Ziele. Ein Skript, das über `entity_id: all`
+mehr als `max_action_targets` (Standard 50) Lichter schaltet, bleibt deshalb
+abgelehnt, bis die Grenze in den Optionen erhöht wird.
+
+**Tests.** `tests/test_routine_unexposed_782.py` (Standard, Lichtgruppe,
+confirm, deny, geschützte Domänen je Modus, alle Herkünfte, unbeaufsichtigt,
+Automation, Rückfrage nennt Geräte, Konversation führt aus). Die Invariante
+`test_unexposed_effective_target_never_writes` prüft jetzt alle Modi,
+Herkünfte und Anwesenheit: `deny` schreibt nie; `allow`/`confirm` schreiben
+nie für eine geschützte Domäne, eine nicht ausdrückliche Herkunft oder ohne
+anwesenden Nutzer. Die Tests aus 7.3.1 und 7.8.1, die die Ablehnung prüfen,
+laufen ausdrücklich im Modus `deny`.
+
+**Pflichtläufe 7.8.2.** Stub-Suite 6458 passed / 12 skipped; Property-Suite
+40 Invarianten (CI und Nightly) 0 Verletzungen; Korpus-Signaturen 0
+Änderungen (Baseline `corpus-signatures-7.8.2.json`, ein neuer Testsatz);
+Arbiter-Shadow 2075 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT;
+Shadow-Vergleich 2052 EQUIVALENT; Dialog-Shadow gegen 7.8.1 eine Abweichung,
+die allein aus dem geänderten Szenario `s781-ellipsis-unknown` stammt;
+Entwicklungs-Benchmarks unverändert, unsafe 0; Pyright voll/Strict und
+Pyflakes 0; Satzmuster 173. Live: 168/168 ohne Proaktiv, Proaktiv 7/7,
+Push-Matrix 35/35 (jeweils frisches Home Assistant, nacheinander). Live-Probe
+mit einem Skript `light.turn_off` auf `entity_id: all` und nicht
+freigegebener Kücheninsel: „Schlafen Test ausgeführt: 24 Lichter.“, die
+Kücheninsel ist aus.

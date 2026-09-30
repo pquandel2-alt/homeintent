@@ -381,8 +381,17 @@ def test_incomplete_effect_graph_is_never_low_or_allowed(steps, unknown_step, mo
     assert decision.outcome is PolicyOutcome.DENY or decision.risk >= RiskLevel.HIGH
 
 
-@given(script_steps(), st.data())
-def test_unexposed_effective_target_never_writes(steps, data):
+_GUARDED_UNEXPOSED = frozenset({"lock", "alarm_control_panel", "cover", "valve"})
+
+
+@given(
+    script_steps(), st.data(), st.sampled_from(["deny", "confirm", "allow"]),
+    st.sampled_from(list(PlanOrigin)), st.booleans(),
+)
+def test_unexposed_effective_target_never_writes(steps, data, mode, origin, attended):
+    """A routine that switches a hidden device: never in deny mode; in
+    allow/confirm mode (7.8.2) only for an explicit, attended command and
+    never for a guarded domain (lock, alarm, cover/gate, valve)."""
     import asyncio
 
     from homeassistant.core import HomeAssistant
@@ -393,12 +402,18 @@ def test_unexposed_effective_target_never_writes(steps, data):
     exposed = [entity for entity in entities if entity.entity_id != hidden.entity_id]
     hass = HomeAssistant()
     _ha_stub.register_script(hass, "script.x", steps)
+    options = {"effect_graph_unknown": "confirm", "routine_unexposed_effects": mode}
     result = asyncio.run(async_execute_service_plan(
-        hass, SCRIPT, exposed, {"effect_graph_unknown": "confirm"}, is_admin=True, user_id="admin",
-        confirmed=True,
+        hass, SCRIPT, exposed, options, is_admin=True, user_id="admin",
+        confirmed=True, origin=origin, attended=attended,
     ))
-    assert result.executed is False
-    hass.services.async_call.assert_not_awaited()
+    may_run = (
+        mode != "deny" and origin is PlanOrigin.EXPLICIT_COMMAND and attended
+        and hidden.domain not in _GUARDED_UNEXPOSED
+    )
+    if not may_run:
+        assert result.executed is False
+        hass.services.async_call.assert_not_awaited()
 
 
 # ------------------------------------------------------------ ambiguity and learned bindings

@@ -808,7 +808,11 @@ def _selector_phrase(selector: tuple[tuple[str, str], ...], names: Mapping[str, 
 
 
 def describe_unexposed(
-    effects: PlanEffects, unexposed: Iterable[str], exposed_names: Iterable[str] = ()
+    effects: PlanEffects,
+    unexposed: Iterable[str],
+    exposed_names: Iterable[str] = (),
+    *,
+    refused: bool = True,
 ) -> str:
     """User-facing denial: which foreign devices a routine would switch.
 
@@ -848,7 +852,7 @@ def describe_unexposed(
     )
     for sentence in dict.fromkeys(broad_steps):
         text += f" {sentence}"
-    return text + " Ich habe nichts ausgeführt."
+    return text + " Ich habe nichts ausgeführt." if refused else text
 
 
 def describe_unknown(effects: PlanEffects) -> str:

@@ -36,6 +36,8 @@ from homeintent.service_call import ServiceCallPlan  # noqa: E402
 from homeintent.service_executor import async_execute_service_plan  # noqa: E402
 
 SCRIPT = ServiceCallPlan("script", "turn_on", "script.schlafen")
+# The refusal texts belong to the deny mode (7.8.2 made "allow" the default).
+DENY = {"routine_unexposed_effects": "deny"}
 GROUP = ServiceCallPlan("light", "turn_on", "light.ambiente")
 
 
@@ -89,7 +91,7 @@ def test_an_existing_hidden_device_is_still_refused():
     hass, entities = _script_house()
     _state(hass, "light.musikanlage", "Musikanlage")
     result = asyncio.run(async_execute_service_plan(
-        hass, SCRIPT, entities, {}, is_admin=True, user_id="admin", confirmed=True,
+        hass, SCRIPT, entities, DENY, is_admin=True, user_id="admin", confirmed=True,
     ))
     assert result.executed is False
     assert "Musikanlage" in (result.error or "")
@@ -109,7 +111,7 @@ def _group_house(options: dict) -> tuple[HomeAssistant, list[EntitySnapshot], di
 
 
 def test_a_hidden_namesake_is_named_with_its_entity_id():
-    hass, entities, options = _group_house({})
+    hass, entities, options = _group_house(dict(DENY))
     decision = evaluate_service_plan(
         GROUP, entities, options, is_admin=True, user_id="admin", effects=build_plan_effects(hass, GROUP),
     )
@@ -120,7 +122,7 @@ def test_a_hidden_namesake_is_named_with_its_entity_id():
 
 
 def test_a_fixed_selection_is_named_as_the_cause():
-    hass, entities, options = _group_house({"selected_entities": ["light.ambiente", "light.kuecheninsel"]})
+    hass, entities, options = _group_house({**DENY, "selected_entities": ["light.ambiente", "light.kuecheninsel"]})
     decision = evaluate_service_plan(
         GROUP, entities, options, is_admin=True, user_id="admin", effects=build_plan_effects(hass, GROUP),
     )
