@@ -30,6 +30,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .automation_executor import AutomationExecutor
+from .automation_composition import OutcomeKind
 from .alias_learning import (
     AliasLearningDraft,
     parse_alias_learning,
@@ -1259,7 +1260,10 @@ class NluConversationEntity(
             if learning_result is not None:
                 return learning_result
             plan_result = await self._goals.async_handle_goal_turn(
-                user_input, response, language_document, entities, direct_understanding
+                user_input, response, language_document, entities, direct_understanding,
+                event_reading_claims=lambda: self._event_reading_claims(
+                    user_input.text, entities
+                ),
             )
             if plan_result is not None:
                 return plan_result
@@ -2334,6 +2338,20 @@ class NluConversationEntity(
             return MatchResult(plan=None, response_text=ambiguous_reading_text(decision))
         return next((payload for _source, payload in payloads if payload is not None), None)
 
+
+    def _event_reading_claims(self, text: str, entities: list[EntitySnapshot]) -> bool:
+        """Routing rule for monitoring requests (7.8.3).
+
+        One meaning, one source: when the sentence-based event reader
+        understands a request completely or asks a targeted device question
+        about it, the automation path owns it - never a second reading with
+        a different meaning.  Structural: it asks the reader, it keeps no
+        list of sentences or words for either side.
+        """
+        return self._engine.event_reading_kind(text, entities, self._world_model) in (
+            OutcomeKind.AUTOMATION,
+            OutcomeKind.CLARIFY,
+        )
 
     def _automation_store(self) -> AutomationExecutor:
         """The one executor of automations.yaml (its lock guards every write)."""

@@ -174,11 +174,13 @@ def test_a_moment_stays_a_moment(monkeypatch, tmp_path):
     assert automation["conditions"] == [NOBODY_HOME]
 
 
-def test_a_duration_is_not_completed(monkeypatch, tmp_path):
+@pytest.mark.parametrize("nobody", ["keiner", "niemand"])
+def test_a_duration_is_not_completed(monkeypatch, tmp_path, nobody):
+    # Both words: the routing rule (7.8.3 Teil B) gives "niemand" the same
+    # reading as "keiner" - the V10 monitor goal no longer claims it first.
     automation = _create(
         monkeypatch, tmp_path,
-        # "keiner": the V10 monitor-goal route claims "niemand" + "Fenster" first.
-        "Informiere mich, wenn ein Fenster seit 20 Minuten offen ist und keiner zuhause ist.",
+        f"Informiere mich, wenn ein Fenster seit 20 Minuten offen ist und {nobody} zuhause ist.",
     )
     [trigger] = automation["triggers"]
     assert trigger["for"] == {"seconds": 1200}
@@ -202,8 +204,13 @@ def test_two_device_states_hold_in_both_orders(monkeypatch, tmp_path):
 def test_preview_speaks_the_situation_not_the_trigger_list(monkeypatch, tmp_path):
     house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
     preview = house.say(_WINDOW_AND_AWAY[0])
+    # Geänderte Erwartung (7.8.3 Teil B): "niemand zuhause" wird an genau eine
+    # Personenmenge gebunden (presence_scope). Ohne bestätigten Haushalt sind
+    # das alle person.*-Entitäten, und die Vorschau nennt sie, damit das "Ja"
+    # wissentlich gegeben wird. Die Bedeutung ist dieselbe, nur ausdrücklich.
     assert preview.speech.startswith(
-        "Sobald ein Fenster offen ist und niemand zuhause ist, egal was davon zuletzt eintritt,"
+        "Sobald ein Fenster offen ist und keiner von Anna, Lena und Philipp zuhause ist, "
+        "egal was davon zuletzt eintritt,"
     )
     assert "person." not in preview.speech and "binary_sensor" not in preview.speech
 

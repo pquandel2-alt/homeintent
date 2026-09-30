@@ -371,6 +371,63 @@ S("push-window-automation", "Push", "Benachrichtige mich sobald ein Fenster geö
   say(YES, settle=3),
   set_("binary_sensor.wohnzimmerfenster", "on", settle=3),
   check(notify="fenster"))
+# 7.8.3: Überwachungsaufträge - geprüft wird die Wirkung (Anzahl, Empfänger
+# und Text der Push-Nachrichten), nicht nur die Vorschau.
+PUSH_BOTH = options(
+    agent_notify_targets=["notify.handy_philipp_nachricht", "notify.handy_anna_nachricht"],
+    agent_delivery_channels=["push"], allow_non_admin_automations=True,
+)
+BIND_PHONES = [
+    service("homeintent.bind_user_context", {"user_id": "$admin_user_id", "person_entity_id": "person.philipp", "notification_targets": ["notify.handy_philipp_nachricht"], "preferred_notification_target": "notify.handy_philipp_nachricht", "confirmed": True}),
+    service("homeintent.bind_user_context", {"user_id": "$anna_user_id", "person_entity_id": "person.anna", "notification_targets": ["notify.handy_anna_nachricht"], "preferred_notification_target": "notify.handy_anna_nachricht", "confirmed": True}),
+]
+AWAY_MESSAGE = "niemand ist zuhause"
+
+
+def window_while_away(user: str, phone: str) -> list[dict[str, Any]]:
+    return [
+        # Frühere Testautomationen (auch aus Wiederholungsläufen) würden
+        # dieselbe Nachricht ein zweites Mal senden: Wirkung zählt genau.
+        service("haus_sim.reset", {"full": True}),
+        say("Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
+            user=user, no_calls=True, all=["egal was davon zuletzt eintritt", "anna", "philipp"]),
+        say(YES, user=user, settle=3, any=["erstellt"]),
+        # Ausgangslage: Küchen- und Badfenster sind im Testhaus offen.
+        set_("binary_sensor.kuechenfenster", "off"), set_("binary_sensor.badezimmerfenster", "off"),
+        # 1. Küchenfenster auf, danach gehen alle: genau eine Nachricht.
+        service("haus_sim.clear_log"),
+        set_("binary_sensor.kuechenfenster", "on", settle=2),
+        check(notify_count=0, notify_to=phone, notify_match=AWAY_MESSAGE),
+        set_("device_tracker.handy_philipp", "not_home", settle=2),
+        check(notify_count=0, notify_to=phone, notify_match=AWAY_MESSAGE),
+        set_("device_tracker.handy_anna", "not_home", settle=3),
+        check(notify_count=1, notify_to=phone, notify_match=AWAY_MESSAGE),
+        # 2. Alle Fenster zu, alle gehen: keine Nachricht.
+        set_("binary_sensor.kuechenfenster", "off"),
+        set_("device_tracker.handy_philipp", "home"), set_("device_tracker.handy_anna", "home", settle=2),
+        service("haus_sim.clear_log"),
+        set_("device_tracker.handy_philipp", "not_home"), set_("device_tracker.handy_anna", "not_home", settle=3),
+        check(notify_count=0, notify_to=phone, notify_match=AWAY_MESSAGE),
+        # 3. Haus leer, dann Fenster auf: eine Nachricht.
+        service("haus_sim.clear_log"),
+        set_("binary_sensor.kuechenfenster", "on", settle=3),
+        check(notify_count=1, notify_to=phone, notify_match=AWAY_MESSAGE),
+        set_("binary_sensor.kuechenfenster", "off"),
+        set_("device_tracker.handy_philipp", "home"), set_("device_tracker.handy_anna", "home", settle=2),
+    ]
+
+
+S("mon-window-away", "Push", "7.8.3: Fenster offen und niemand zuhause, beide Reihenfolgen",
+  PUSH_BOTH, *BIND_PHONES,
+  *window_while_away("admin", "notify.handy_philipp_nachricht"))
+S("mon-window-away-anna", "Push", "7.8.3: derselbe Auftrag von Anna geht an Annas Handy",
+  PUSH_BOTH, *BIND_PHONES,
+  *window_while_away("anna", "notify.handy_anna_nachricht"))
+S("mon-routing-niemand", "Push", "7.8.3: „niemand“ und „keiner“ ergeben dieselbe Automation",
+  PUSH_BOTH, *BIND_PHONES,
+  say("Sag mir Bescheid, wenn das Garagentor offen ist und niemand zuhause ist.",
+      no_calls=True, all=["egal was davon zuletzt eintritt"], none=["haushalt"]),
+  say(YES, settle=2, any=["erstellt"]))
 S("reminder-relative", "Push", "Erinnere mich in 20 Sekunden an die Waschmaschine",
   say("Erinnere mich in 20 Sekunden an die Waschmaschine."),
   say(YES), wait(26),
@@ -547,6 +604,18 @@ S("pro-standing", "Proaktiv", "Daueranweisung: niemand zuhause → Licht aus",
   say("Welche Daueranweisungen gibt es?", any=["wohnzimmer", "licht"]))
 S("pro-standing-never-auto", "Proaktiv", "Daueranweisung für Garage wird abgelehnt (NEVER_AUTO)",
   say("Wenn niemand zuhause ist und das Garagentor offen ist, darfst du es automatisch schließen.", any=["nichts gespeichert", "nie automatisch"]))
+S("mon-garage-duration", "Proaktiv", "7.8.3: Garagentor länger als 1 Minute offen → genau eine Nachricht",
+  PUSH_BOTH, *BIND_PHONES,
+  say("Überwache das Garagentor und melde dich, wenn es länger als 1 Minute offen ist.",
+      no_calls=True, all=["länger als 1 minute"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}),
+  wait(30),
+  check(notify_count=0, notify_to="notify.handy_philipp_nachricht", notify_match="seit 1 minute"),
+  wait(50),  # 6 s Fahrzeit + 60 s "for" + Reserve
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht", notify_match="seit 1 minute"),
+  service("cover.close_cover", {"entity_id": "cover.garagentor"}), wait(8))
 
 # ================================================ 15. Agent: Gedächtnis, Ziele, Routinen
 S("agent-smalltalk", "Agent", "Uhrzeit, Datum, Fähigkeiten",

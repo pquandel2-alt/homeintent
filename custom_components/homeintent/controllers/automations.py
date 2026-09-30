@@ -451,6 +451,10 @@ class AutomationController:
         if result.validation_error is None:
             speaker_bound, failure = self._notifications.materialize_presence_speaker(result.model, user_input)
             if failure is None:
+                speaker_bound, failure = self._notifications.materialize_presence_scope(
+                    speaker_bound, entities
+                )
+            if failure is None:
                 materialized, failure = self._notifications.materialize_recipients(
                     speaker_bound, user_input, entities
                 )

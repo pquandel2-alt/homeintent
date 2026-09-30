@@ -294,7 +294,14 @@ def _speak_condition_leaf(
             return f"es {abs(condition.offset_minutes)} Minuten {comparator} dem {event} ist"
         return f"es {comparator} dem {event} ist"
     if condition.type is ConditionType.PRESENCE:
-        who = _speak_target(condition.target, entity_by_id, area_name_by_id) if condition.target is not None else "jemand"
+        if condition.target is not None:
+            who = _speak_target(condition.target, entity_by_id, area_name_by_id)
+        elif len(condition.person_entity_ids) == 1:
+            who = _people_spoken(condition, entity_by_id)
+        elif condition.person_entity_ids:
+            who = f"jemand von {_people_spoken(condition, entity_by_id)}"
+        else:
+            who = "jemand"
         raw_state = condition.raw_state or "unbekannt"
         state = _PRESENCE_RAW_STATE_SPOKEN_DE.get(raw_state, raw_state)
         return f"{who} {state} ist"
@@ -308,6 +315,36 @@ def _speak_condition_leaf(
     if condition.type is ConditionType.TEMPLATE:
         return "der angegebene Kalenderzeitraum erfüllt ist"
     return "eine unbekannte Bedingung erfüllt ist"
+
+
+def _people_spoken(condition: ConditionModel, entity_by_id: dict[str, EntitySnapshot]) -> str:
+    names = [
+        entity_by_id[person].friendly_name if person in entity_by_id else person
+        for person in condition.person_entity_ids
+    ]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} und {names[-1]}"
+
+
+def _nobody_home_spoken(condition: ConditionModel, entity_by_id: dict[str, EntitySnapshot]) -> str:
+    """"niemand zuhause ist" - naming the people it is about once they are
+    bound (``presence_scope``, 7.8.3), so the "Ja" is given knowingly."""
+    if not condition.person_entity_ids:
+        return "niemand zuhause ist"
+    if len(condition.person_entity_ids) == 1:
+        return f"{_people_spoken(condition, entity_by_id)} nicht zuhause ist"
+    return f"keiner von {_people_spoken(condition, entity_by_id)} zuhause ist"
+
+
+def _bound_nobody_home(model: AutomationModel) -> ConditionModel | None:
+    for node in model.conditions:
+        if node.operator is LogicalOperator.NOT and len(node.children) == 1:
+            leaf = node.children[0].condition
+            if (
+                leaf is not None and leaf.type is ConditionType.PRESENCE
+                and leaf.target is None and leaf.raw_state == "home" and leaf.person_entity_ids
+            ):
+                return leaf
+    return None
 
 
 def _speak_condition_node(
@@ -328,10 +365,48 @@ def _speak_condition_node(
             # AutomationConditionParser's own lexical-negation special case
             # ("niemand [mehr] zuhause ist" - see its docstring) - rendered
             # back the same idiomatic way, not "nicht (jemand zuhause ist)".
-            return "niemand zuhause ist"
+            return _nobody_home_spoken(child.condition, entity_by_id)
         return f"nicht ({_speak_condition_node(child, entity_by_id, area_name_by_id)})"
+    if node.operator is LogicalOperator.OR:
+        existential = _speak_existential(node, entity_by_id)
+        if existential is not None:
+            return existential
     joiner = " und " if node.operator is LogicalOperator.AND else " oder "
     return joiner.join(f"({_speak_condition_node(c, entity_by_id, area_name_by_id)})" for c in node.children)
+
+
+def _speak_existential(node: ConditionNode, entity_by_id: dict[str, EntitySnapshot]) -> str | None:
+    """"ein Fenster offen ist" - an OR of one state per device (the reading
+    of "ein/irgendein X", 7.8.3) is spoken as the phrase it came from."""
+    # Function-local: these modules live outside nlu/ and import it.
+    from ..automation_grounding import target_for
+    from ..notification_language import describe_holding_state
+    from .automation_model import TriggerModel, TriggerType
+
+    leaves = [child.condition for child in node.children if child.operator is None]
+    if len(leaves) != len(node.children) or len(leaves) < 2:
+        return None
+    from .ha_automation_generator import resolve_target_entities
+
+    states = {leaf.state for leaf in leaves if leaf is not None and leaf.type is ConditionType.STATE}
+    everything = list(entity_by_id.values())
+    members: list[EntitySnapshot] = []
+    for leaf in leaves:
+        resolved = (
+            resolve_target_entities(leaf.target, everything)
+            if leaf is not None and leaf.target is not None else []
+        )
+        if len(resolved) != 1:
+            return None
+        members.append(resolved[0])
+    if len(states) != 1:
+        return None
+    state = next(iter(states))
+    phrase = describe_holding_state(
+        TriggerModel(TriggerType.STATE, target=target_for(members, everything), state=state),
+        everything,
+    )
+    return phrase.subordinate if phrase is not None else None
 
 
 _OPEN_CLOSE_DOMAINS = frozenset({"cover"})
@@ -493,7 +568,13 @@ def _render_notification_preview(
             for c in model.conditions
             if _is_time_window(c)
         ]
-        when = model.situation + "".join(f" und {text}" for text in extra_conditions)
+        situation = model.situation
+        nobody = _bound_nobody_home(model)
+        if nobody is not None:
+            situation = situation.replace(
+                "niemand zuhause ist", _nobody_home_spoken(nobody, entity_by_id)
+            )
+        when = situation + "".join(f" und {text}" for text in extra_conditions)
         sentence = (
             f"Sobald {when}, egal was davon zuletzt eintritt, {action_text}"
         )

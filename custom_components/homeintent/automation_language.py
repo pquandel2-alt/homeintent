@@ -789,6 +789,20 @@ def condition_split_candidates(text: str) -> tuple[tuple[str, ConditionSpan], ..
     return tuple(candidates)
 
 
+_PLAIN_AND_RE = re.compile(r"\s+und\s+", re.IGNORECASE)
+
+
+def and_reversed_candidates(text: str) -> tuple[tuple[str, str], ...]:
+    """Every "<condition> und <event>" decomposition (condition spoken first)."""
+    candidates: list[tuple[str, str]] = []
+    for match in _PLAIN_AND_RE.finditer(text):
+        left = text[:match.start()].strip(" ,")
+        right = text[match.end():].strip(" ,.")
+        if left and right:
+            candidates.append((left, right))
+    return tuple(candidates)
+
+
 def read_event_roles(event_text: str) -> EventRoles:
     """Decompose one event clause into semantic roles.
 
@@ -977,7 +991,12 @@ _LEAVE_RE = re.compile(
     r"\b(?:das\s+haus|die\s+wohnung)\s+verl(?:ässt|asse|assen|ässt)\b"
     r"|\bweg(?:geh\w*|gegangen|fähr\w*|fahr\w*|gefahren)\b"
     r"|\baus\s+dem\s+haus\s+geh\w*\b"
-    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b",
+    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b"
+    # "wenn ich gehe", "wenn Anna geht": intransitive "gehen" closing the
+    # clause (verb-final) means leaving; with a separated particle ("auf
+    # geht", "aus geht") it is a device state, never presence (7.8.3).
+    r"|(?<!\bauf\s)(?<!\bzu\s)(?<!\baus\s)(?<!\ban\s)(?<!\bvor\s)(?<!\bein\s)"
+    r"\bgeh(?:e|st|t|en)\s*$",
     re.IGNORECASE,
 )
 _PRESENT_VERBS = frozenset({
@@ -1039,6 +1058,7 @@ def _trim_articles(words: tuple[str, ...]) -> tuple[str, ...]:
 __all__ = (
     "ClauseOrder",
     "ConditionSpan",
+    "and_reversed_candidates",
     "EventReference",
     "EventRoles",
     "PERSONAL_ANAPHORS",

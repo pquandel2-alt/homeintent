@@ -25,6 +25,7 @@ from ..nlu.action_model import (
 from ..nlu.automation_model import AutomationModel, TriggerTarget
 from ..nlu.context import ConversationContextStore
 from ..notification_request import async_deliver_notification_request, NotificationRequest
+from ..presence_scope import bind_presence_scope, presence_scope, scope_failure
 from ..notification_target import (
     named_notification_targets,
     NotificationTargetResolver,
@@ -100,6 +101,22 @@ class NotificationController:
             for trigger in model.triggers
         )
         return replace(model, triggers=triggers), None
+
+    def household_person_ids(self) -> tuple[str, ...]:
+        store = self._runtime.user_contexts
+        return store.household.person_entity_ids if store is not None else ()
+
+    def materialize_presence_scope(
+        self, model: AutomationModel, entities: list[EntitySnapshot]
+    ) -> tuple[AutomationModel, str | None]:
+        """Bind "niemand zuhause" to the people ``presence_scope`` decides:
+        the confirmed household, else every ``person.*`` - the same rule the
+        V10 monitor goals use."""
+        scope = presence_scope(entities, self.household_person_ids())
+        failure = scope_failure(model, scope)
+        if failure is not None:
+            return model, failure
+        return bind_presence_scope(model, scope), None
 
     def materialize_recipients(
         self,

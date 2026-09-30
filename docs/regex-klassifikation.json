@@ -551,6 +551,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/automation_language.py::_PLAIN_AND_RE::67200c908e",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_PLAIN_AND_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "manuell"
+  },
+  {
    "id": "custom_components/homeintent/automation_language.py::read_event_roles::a10e0110ff",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "read_event_roles",
@@ -579,7 +586,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_LEAVE_RE::00f0a47c05",
+   "id": "custom_components/homeintent/automation_language.py::_LEAVE_RE::492440ce4c",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_LEAVE_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -1678,7 +1685,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/engine.py::_NEGATED_NOTIFICATION_RE::65d37adde8",
+   "id": "custom_components/homeintent/engine.py::_NEGATED_NOTIFICATION_RE::293c1d5eee",
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "_NEGATED_NOTIFICATION_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -1689,6 +1696,20 @@
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "_NOTIFICATION_REQUEST_VERB_RE",
    "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/engine.py::_strip_run_limits::25ef703b14",
+   "datei": "custom_components/homeintent/engine.py",
+   "bereich": "_strip_run_limits",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/engine.py::_strip_run_limits::25ef703b14#2",
+   "datei": "custom_components/homeintent/engine.py",
+   "bereich": "_strip_run_limits",
+   "klasse": "STRUCTURAL",
    "quelle": "heuristik"
   },
   {
@@ -1934,20 +1955,6 @@
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "NluEngine.match_automation",
    "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/engine.py::NluEngine._compose_with_run_limits::25ef703b14",
-   "datei": "custom_components/homeintent/engine.py",
-   "bereich": "NluEngine._compose_with_run_limits",
-   "klasse": "STRUCTURAL",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/engine.py::NluEngine._compose_with_run_limits::25ef703b14#2",
-   "datei": "custom_components/homeintent/engine.py",
-   "bereich": "NluEngine._compose_with_run_limits",
-   "klasse": "STRUCTURAL",
    "quelle": "heuristik"
   },
   {
@@ -4978,7 +4985,7 @@
  "anzahl": {
   "LEXICAL": 373,
   "MORPHOLOGICAL": 38,
-  "STRUCTURAL": 125,
+  "STRUCTURAL": 126,
   "SEMANTIC_SENTENCE_PATTERN": 173
  }
 }

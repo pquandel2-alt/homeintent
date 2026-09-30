@@ -378,6 +378,25 @@ def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> 
     return None, GenerationError.UNSUPPORTED_TRIGGER_TYPE
 
 
+def resolve_target_entities(target: TriggerTarget, entities: list[EntitySnapshot]) -> list[EntitySnapshot]:
+    """Public name of the generator's own target resolution (preview reuse)."""
+    return _resolve_target_entities(target, entities)
+
+
+def _presence_people(
+    condition: ConditionModel, entities: list[EntitySnapshot]
+) -> list[EntitySnapshot]:
+    """The people of a whole-house presence condition (``presence_scope``):
+    exactly the bound ones - all of them must still exist - or, unbound,
+    every ``person.*`` entity."""
+    if not condition.person_entity_ids:
+        return resolve_candidates(entities, Constraints(domain="person"))
+    by_id = {entity.entity_id: entity for entity in entities if entity.domain == "person"}
+    if any(person not in by_id for person in condition.person_entity_ids):
+        return []
+    return [by_id[person] for person in condition.person_entity_ids]
+
+
 def _generate_condition_leaf(condition: ConditionModel, entities: list[EntitySnapshot]) -> tuple[dict[str, Any] | None, GenerationError | None]:
     if condition.type is ConditionType.STATE:
         assert condition.target is not None and condition.state is not None
@@ -442,7 +461,7 @@ def _generate_condition_leaf(condition: ConditionModel, entities: list[EntitySna
             # zuhause") - OR across every known person entity, since HA's
             # own multi-entity ``state`` condition uses AND semantics, the
             # opposite of what "jemand" (someone, i.e. at least one) means.
-            person_entities = resolve_candidates(entities, Constraints(domain="person"))
+            person_entities = _presence_people(condition, entities)
             if not person_entities:
                 return None, GenerationError.ENTITY_NOT_FOUND
             return {
@@ -695,7 +714,7 @@ def _condition_template(
         if condition.target is None:
             if condition.type is not ConditionType.PRESENCE or condition.raw_state is None:
                 return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
-            people = resolve_candidates(entities, Constraints(domain="person"))
+            people = _presence_people(condition, entities)
             if not people:
                 return None, GenerationError.ENTITY_NOT_FOUND
             raw = json.dumps(condition.raw_state)

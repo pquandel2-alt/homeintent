@@ -697,8 +697,13 @@ _WH_QUESTION_RE = re.compile(
     re.IGNORECASE,
 )
 _NEGATED_NOTIFICATION_RE = re.compile(
+    # The negation must belong to the notification verb's own clause: the
+    # skipped words never cross a comma or a subordinator, so "Melde dich,
+    # wenn keiner zuhause ist" (the "keiner" belongs to the event, 7.8.3)
+    # is no refusal while "Melde dich bitte nicht, wenn ..." still is.
     r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|sag\w*|gib|meld\w*)\s+"
-    r"(?:\S+\s+){0,2}?(?:nicht|nie|niemals|keine?[nmrs]?|bloß\s+nicht)\b"
+    r"(?:(?!(?:wenn|sobald|falls|ob|dass)\b)[^\s,]+\s+){0,2}?"
+    r"(?:nicht|nie|niemals|keine?[nmrs]?|bloß\s+nicht)\b"
     r"|\b(?:keine|kein)\s+(?:push[\s-]?)?(?:nachricht|benachrichtigung|meldung)\w*\b"
     r"|\bnicht\s+(?:mehr\s+)?(?:benachrichtigt|informiert)\b",
     re.IGNORECASE,
@@ -782,6 +787,20 @@ def _unexplained_rest(text: str, mentioned: Sequence[EntitySnapshot]) -> str | N
     ]
     return " ".join(rest) if rest else None
 
+
+
+def _strip_run_limits(text: str) -> tuple[str, bool, int | None]:
+    """Remove "einmalig"/"dreimal": they qualify the automation, not a clause."""
+    repeat_match = _AUTOMATION_REPEAT_RE.search(text)
+    max_runs: int | None = None
+    if repeat_match is not None:
+        raw_count = (repeat_match.group("separate") or repeat_match.group("joined")).casefold()
+        max_runs = int(raw_count) if raw_count.isdigit() else _REPEAT_COUNTS[raw_count]
+        text = re.sub(r"\s+", " ", _AUTOMATION_REPEAT_RE.sub(" ", text)).strip()
+    once = bool(_AUTOMATION_ONCE_RE.search(text))
+    if once:
+        text = re.sub(r"\s+", " ", _AUTOMATION_ONCE_RE.sub(" ", text)).strip()
+    return text, once, max_runs
 
 class NluEngine:
     """Loads all intent YAML files once at construction; ``match()`` is
@@ -3539,15 +3558,7 @@ class NluEngine:
         context: ConversationContext | None,
     ) -> AutomationMatchResult | AutomationClarificationResult | None:
         """"einmalig"/"dreimal" qualify the whole automation, not a clause."""
-        repeat_match = _AUTOMATION_REPEAT_RE.search(text)
-        max_runs: int | None = None
-        if repeat_match is not None:
-            raw_count = (repeat_match.group("separate") or repeat_match.group("joined")).casefold()
-            max_runs = int(raw_count) if raw_count.isdigit() else _REPEAT_COUNTS[raw_count]
-            text = re.sub(r"\s+", " ", _AUTOMATION_REPEAT_RE.sub(" ", text)).strip()
-        once = bool(_AUTOMATION_ONCE_RE.search(text))
-        if once:
-            text = re.sub(r"\s+", " ", _AUTOMATION_ONCE_RE.sub(" ", text)).strip()
+        text, once, max_runs = _strip_run_limits(text)
         result = self.compose_event_automation(text, entities, world_model, context)
         if isinstance(result, AutomationMatchResult) and (once or max_runs is not None):
             model = replace(result.model, once=once, max_runs=max_runs, source_text=source_text)
@@ -3557,6 +3568,37 @@ class NluEngine:
                 response_text = f"{response_text}\nvalidation_error: {validation_error.name}"
             return AutomationMatchResult(model, response_text, validation_error)
         return result
+
+    def event_reading_kind(
+        self,
+        text: str,
+        entities: list[EntitySnapshot],
+        world_model: WorldModel | None = None,
+        context: ConversationContext | None = None,
+    ) -> OutcomeKind | None:
+        """What the sentence-based event reader makes of ``text`` (7.8.3).
+
+        It is the single source of a monitoring request's meaning: a
+        complete reading (``AUTOMATION``) or a targeted device question
+        (``CLARIFY``) claims the sentence for the automation path before any
+        other path may give it a different meaning.  The same guards as
+        ``match_automation`` apply first, so a question or a negated
+        notification is never claimed.
+        """
+        stripped, _ = strip_automation_shell(text)
+        utterance = analyse_utterance(stripped)
+        if utterance.speech_act is SpeechAct.QUERY and (
+            _WH_QUESTION_RE.match(stripped)
+            or not (_SAY_REQUEST_RE.match(stripped) or _MODAL_REQUEST_RE.search(stripped))
+        ):
+            return None
+        if _NEGATED_NOTIFICATION_RE.search(stripped):
+            return None
+        stripped, _, _ = _strip_run_limits(stripped)
+        outcome = compose_event_automation(
+            stripped, entities, self._composition_readers(entities, world_model, context)
+        )
+        return outcome.kind if outcome is not None else None
 
     def compose_event_automation(
         self,

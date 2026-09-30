@@ -30,6 +30,7 @@ from typing import Callable, Sequence
 from .automation_grounding import (
     GroundedEvent,
     GroundingStatus,
+    Quantifier,
     choose_candidate,
     ground_event,
     read_subject,
@@ -43,6 +44,7 @@ from .automation_language import (
     EventRoles,
     EventActionFrame,
     TemporalEvent,
+    and_reversed_candidates,
     condition_split_candidates,
     is_notification_text,
     looks_like_device_action,
@@ -234,6 +236,42 @@ def _typed_condition(text: str, entities: Sequence[EntitySnapshot]) -> Condition
     return None
 
 
+def _existential_condition(
+    node: ConditionNode, text: str, entities: Sequence[EntitySnapshot]
+) -> ConditionNode | None:
+    """A device-state condition over several devices means what the same
+    phrase means as an event (7.8.3): "ein Fenster offen ist" holds while
+    *any* window is open.  One Home Assistant state condition with an
+    entity list would require *all* of them, so the reading becomes an OR
+    of one state condition per device.  A bare noun without determiner
+    ("wenn noch Licht an ist") is indefinite as well.  A definite phrase the
+    typed grounding finds ambiguous ("das Licht" with 24 lights) is not
+    understood - it never silently becomes "all of them"."""
+    leaf = node.condition
+    if (
+        node.operator is not None
+        or leaf is None
+        or leaf.type is not ConditionType.STATE
+        or leaf.target is None
+        or leaf.target.entity_id is not None
+        or leaf.target.entity_ids
+        or leaf.target.quantifier is not None
+        or not entities
+    ):
+        return node
+    grounded = ground_event(read_event_roles(text), entities)
+    if grounded.status is GroundingStatus.AMBIGUOUS:
+        subject = grounded.subject
+        if subject is None or subject.quantifier is not Quantifier.BARE:
+            return None
+    elif grounded.status is not GroundingStatus.RESOLVED or len(grounded.candidates) < 2:
+        return node
+    return ConditionNode(operator=LogicalOperator.OR, children=tuple(
+        ConditionNode(condition=replace(leaf, target=target_for([entity], entities)))
+        for entity in sorted(grounded.candidates, key=lambda item: item.entity_id)
+    ))
+
+
 def _conditions_for(
     spans: Sequence[ConditionSpan],
     parse_condition: ConditionReader,
@@ -247,6 +285,8 @@ def _conditions_for(
             )))
             continue
         node = parse_condition(span.text) or _typed_condition(span.text, entities)
+        if node is not None:
+            node = _existential_condition(node, span.text, entities)
         if node is None:
             return None
         nodes.append(ConditionNode(operator=LogicalOperator.NOT, children=(node,)) if span.negated else node)
@@ -305,6 +345,25 @@ def interpret_event_clause(
             return EventInterpretation(
                 None, (*left_conditions, *condition), left_grounded
             )
+    # "wenn niemand zuhause ist und noch ein Licht an ist": "und" joins a
+    # condition and the event in either order (7.8.3).  Only a typed,
+    # fully grounded event behind a condition the established parser
+    # accepts verbatim - the first order above always wins.
+    for condition_text, event_part in and_reversed_candidates(roles.source):
+        condition = _conditions_for((ConditionSpan(condition_text),), parse_condition, entities)
+        if condition is None:
+            continue
+        right_roles = resolve_reference(read_event_roles(event_part), reference)
+        right_conditions = _conditions_for(right_roles.conditions, parse_condition, entities)
+        if right_conditions is None:
+            continue
+        right_grounded = ground_event(right_roles, entities)
+        if right_grounded.status is GroundingStatus.RESOLVED:
+            return EventInterpretation(
+                right_grounded.trigger, (*condition, *right_conditions), right_grounded, typed=True
+            )
+        if right_grounded.status is not GroundingStatus.NOT_APPLICABLE:
+            return EventInterpretation(None, (*condition, *right_conditions), right_grounded)
     if grounded.status is GroundingStatus.NOT_APPLICABLE:
         legacy = _untyped_event(parse_trigger(f"{connector} {roles.source}"))
         if legacy is not None:

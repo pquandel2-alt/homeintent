@@ -151,6 +151,19 @@ class Runner:
                     problems.append(f"Unerwartete Push-Nachricht: {msgs}")
             elif not any(_norm(expect["notify"]) in _norm(m) for m in msgs):
                 problems.append(f"Keine Push-Nachricht mit '{expect['notify']}' (erhalten: {msgs})")
+        if "notify_count" in expect:
+            # Wirkung statt Vorschau (7.8.3): genau so viele Push-Nachrichten
+            # seit dem letzten Log-Löschen, bei Bedarf nur an ein Ziel.
+            sent = [
+                n for n in log.get("notifications", [])
+                if ("notify_to" not in expect or n.get("target") == expect["notify_to"])
+                and ("notify_match" not in expect or _norm(expect["notify_match"]) in _norm(n.get("message")))
+            ]
+            if len(sent) != expect["notify_count"]:
+                problems.append(
+                    f"{len(sent)} Push-Nachrichten statt {expect['notify_count']} "
+                    f"(erhalten: {[(n.get('target'), n.get('message')) for n in log.get('notifications', [])]})"
+                )
         if "spoken" in expect:
             spoken = [s["message"] for s in log.get("spoken", [])]
             if not any(_norm(expect["spoken"]) in _norm(m) for m in spoken):

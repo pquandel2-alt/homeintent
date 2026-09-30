@@ -84,6 +84,9 @@ class ConditionModel:
     device_id: str | None = None  # DEVICE
     device_condition_type: str | None = None  # DEVICE
     raw_state: str | None = None  # ENTITY - closed vocabulary for non-binary domains (locks/vacuums/media players)
+    # PRESENCE without a target ("jemand/niemand zuhause"): exactly these
+    # people (``presence_scope``, 7.8.3). Empty = every ``person.*`` entity.
+    person_entity_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
