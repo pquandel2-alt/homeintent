@@ -1,0 +1,1157 @@
+From 779bc3e808a800e58ab7500f01045dd892fee419 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 30 Sep 2026 11:08:03 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?=C3=9Cberwachungsauftr=C3=A4ge=20als=20Bena?=
+ =?UTF-8?q?chrichtigungs-Automationen?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"Überwache X und melde dich, wenn es ...", "Beobachte die Fenster und warne
+mich, wenn eins ...", "Achte darauf, ob|dass ..." werden als Konstruktionen
+gelesen (Überwachungsverb + Objekt, implizites oder explizites NOTIFY,
+Anapher auf das überwachte Objekt, Dauer-Modifikatoren, nachgestellte
+Bedingungen) und laufen danach unverändert durch Grounding, Validator,
+Vorschau und Bestätigung.
+
+- automation_monitoring.py: Monitoring-Frames (neu)
+- automation_language.py: EventReference/resolve_reference, gestapelte
+  Dauerangaben ("seit mehr als"), Tageszeitfenster als Bedingung
+- automation_grounding.py: "eins"/"eines davon", Genus-Kongruenz der
+  Anapher, Rückfrage bei Sensoren und Antrieben unter einem Nomen,
+  unbekanntes überwachtes Objekt wird benannt
+- automation_composition.py: Frame-Auswahl, implizites NOTIFY,
+  Zusatzbedingungen
+- tests/test_monitoring_automation_783.py: 85 Regressions-, Negativ- und
+  Mehrdeutigkeitstests
+
+Claude-Session: https://claude.ai/code/session_01JZkPqjcceaFr6yzi8t6YLJ
+---
+ .../homeintent/automation_composition.py      |  86 ++++-
+ .../homeintent/automation_grounding.py        |  84 ++++-
+ .../homeintent/automation_language.py         | 104 +++++-
+ .../homeintent/automation_monitoring.py       | 190 +++++++++++
+ docs/regex-klassifikation.json                |  43 ++-
+ pyrightconfig.json                            |   1 +
+ tests/test_monitoring_automation_783.py       | 316 ++++++++++++++++++
+ 7 files changed, 799 insertions(+), 25 deletions(-)
+ create mode 100644 custom_components/homeintent/automation_monitoring.py
+ create mode 100644 tests/test_monitoring_automation_783.py
+
+diff --git a/custom_components/homeintent/automation_composition.py b/custom_components/homeintent/automation_composition.py
+index f15e1f7..dbe6fe9 100644
+--- a/custom_components/homeintent/automation_composition.py
++++ b/custom_components/homeintent/automation_composition.py
+@@ -39,6 +39,7 @@ from .automation_grounding import (
+ )
+ from .automation_language import (
+     ConditionSpan,
++    EventReference,
+     EventRoles,
+     EventActionFrame,
+     TemporalEvent,
+@@ -48,8 +49,10 @@ from .automation_language import (
+     prepare_automation_text,
+     protected_message_spans,
+     read_event_roles,
++    resolve_reference,
+     segment_event_automation,
+ )
++from .automation_monitoring import segment_monitoring
+ from .automation_notification import notification_action
+ from .entities import EntitySnapshot, normalize_for_compare
+ from .nlu.action_model import ActionGroup, ActionModel, ActionType, NotificationRecipientKind
+@@ -61,6 +64,9 @@ from .nlu.semantic_state import SemanticState
+ from .nlu.normalize import german_number
+ from .notification_language import NotificationClause, parse_notification_clause, trigger_message
+ 
++# "Achte darauf, ob ...": the monitoring verb itself asks to tell the speaker.
++_IMPLICIT_NOTIFICATION = NotificationClause(NotificationRecipientKind.CURRENT_USER)
++
+ _LOGGER = logging.getLogger(__name__)
+ 
+ TriggerReader = Callable[[str], "TriggerModel | None"]
+@@ -107,6 +113,7 @@ class EventClarification:
+     trailing_message: str | None
+     conditions: tuple[ConditionNode, ...]
+     source_text: str
++    implicit_notification: bool = False
+ 
+ 
+ @dataclass(frozen=True)
+@@ -248,9 +255,14 @@ def interpret_event_clause(
+     entities: Sequence[EntitySnapshot],
+     parse_trigger: TriggerReader,
+     parse_condition: ConditionReader,
++    reference: EventReference | None = None,
+ ) -> EventInterpretation:
+-    """Typed reading first; established parsers only for untyped event kinds."""
+-    roles = read_event_roles(event_text)
++    """Typed reading first; established parsers only for untyped event kinds.
++
++    ``reference`` is the monitored object of a monitoring frame: a pronoun,
++    partitive or missing subject of the event is bound to it (7.8.3).
++    """
++    roles = resolve_reference(read_event_roles(event_text), reference)
+     embedded = _conditions_for(roles.conditions, parse_condition, entities)
+     if embedded is None:
+         return EventInterpretation(None)
+@@ -263,7 +275,7 @@ def interpret_event_clause(
+         condition = _conditions_for((span,), parse_condition, entities)
+         if condition is None:
+             continue
+-        left_roles = read_event_roles(left)
++        left_roles = resolve_reference(read_event_roles(left), reference)
+         left_conditions = _conditions_for(left_roles.conditions, parse_condition, entities)
+         if left_conditions is None:
+             continue
+@@ -493,6 +505,17 @@ def read_actions(
+     return ActionReading(tuple(steps), only_clause)
+ 
+ 
++def implicit_notification_reading(
++    trigger: TriggerModel | None, entities: Sequence[EntitySnapshot]
++) -> ActionReading:
++    """NOTIFY the speaker - the action a monitoring verb implies (7.8.3)."""
++    message = trigger_message(trigger, "", entities)
++    action = notification_action(_IMPLICIT_NOTIFICATION, message, tuple(entities))
++    if action is None:
++        return ActionReading((), _IMPLICIT_NOTIFICATION, "dich")
++    return ActionReading((action,), _IMPLICIT_NOTIFICATION)
++
++
+ def _whole_clause(text: str, chunks: list[str], readers: Readers) -> ActionReading | None:
+     """"Schalte das Flurlicht und das Wohnzimmerlicht ein" - one verb bracket.
+ 
+@@ -518,12 +541,18 @@ _OR_SPLIT_RE = re.compile(r"\s*,?\s+oder\s+(?:wenn|sobald|falls|sofern)\s+", re.
+ 
+ 
+ def _alternative_triggers(
+-    parts: Sequence[str], connector: str, entities: Sequence[EntitySnapshot], readers: Readers
++    parts: Sequence[str],
++    connector: str,
++    entities: Sequence[EntitySnapshot],
++    readers: Readers,
++    reference: EventReference | None = None,
+ ) -> EventInterpretation:
+     """"Wenn X oder wenn Y": each alternative is its own complete trigger."""
+     triggers: list[TriggerModel] = []
+     for part in parts:
+-        reading = interpret_event_clause(part, connector, entities, readers.trigger, readers.condition)
++        reading = interpret_event_clause(
++            part, connector, entities, readers.trigger, readers.condition, reference
++        )
+         if reading.trigger is None or reading.conditions:
+             return EventInterpretation(None, (), reading.grounded)
+         triggers.append(reading.trigger)
+@@ -586,10 +615,13 @@ def compose_event_automation(
+             memo[text] = read_actions(text, None, entities, readers) is not None
+         return memo[text]
+ 
+-    frame: EventActionFrame | None = segment_event_automation(prepared.text, action_ok)
++    frame: EventActionFrame | None = (
++        segment_monitoring(prepared.text, action_ok)
++        or segment_event_automation(prepared.text, action_ok)
++    )
+     if frame is None:
+         return None
+-    notification_only = is_notification_text(frame.action_text)
++    notification_only = frame.implicit_notification or is_notification_text(frame.action_text)
+     trace = CompositionTrace(
+         route="event_notification" if notification_only else "event_action",
+         order=frame.order.name,
+@@ -601,11 +633,20 @@ def compose_event_automation(
+     if frame.temporal is not None:
+         interpreted = temporal_interpretation(frame.temporal)
+     elif len(alternatives) > 1:
+-        interpreted = _alternative_triggers(alternatives, frame.connector, entities, readers)
++        interpreted = _alternative_triggers(
++            alternatives, frame.connector, entities, readers, frame.reference
++        )
+     else:
+         interpreted = interpret_event_clause(
+-            frame.event_text, frame.connector, entities, readers.trigger, readers.condition
++            frame.event_text, frame.connector, entities, readers.trigger, readers.condition,
++            frame.reference,
+         )
++    if frame.extra_conditions:
++        extra = _conditions_for(frame.extra_conditions, readers.condition, entities)
++        if extra is None:
++            # A spoken condition that is not understood is never dropped.
++            return None
++        interpreted = replace(interpreted, conditions=(*interpreted.conditions, *extra))
+     if interpreted.trigger is None:
+         grounded = interpreted.grounded
+         if not notification_only and (
+@@ -617,9 +658,14 @@ def compose_event_automation(
+             # that cannot be grounded is no automation (never a guess).
+             return None
+         return failure_outcome(
+-            grounded, frame.action_text, frame.trailing_message, raw_text, trace, interpreted.conditions
++            grounded, frame.action_text, frame.trailing_message, raw_text, trace, interpreted.conditions,
++            implicit_notification=frame.implicit_notification,
+         )
+-    reading = read_actions(frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message)
++    reading = (
++        implicit_notification_reading(interpreted.trigger, entities)
++        if frame.implicit_notification
++        else read_actions(frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message)
++    )
+     if reading is None:
+         return None
+     trace = replace(trace, grounding="typed" if interpreted.typed else "established_parser")
+@@ -633,6 +679,8 @@ def failure_outcome(
+     source_text: str,
+     trace: CompositionTrace,
+     conditions: tuple[ConditionNode, ...] = (),
++    *,
++    implicit_notification: bool = False,
+ ) -> CompositionOutcome:
+     status = grounded.status if grounded is not None else GroundingStatus.NOT_APPLICABLE
+     reason = grounded.reason if grounded is not None else None
+@@ -642,11 +690,15 @@ def failure_outcome(
+             OutcomeKind.CLARIFY,
+             speech=grounded.question,
+             clarification=EventClarification(
+-                grounded, action_text, trailing_message, conditions, source_text
++                grounded, action_text, trailing_message, conditions, source_text,
++                implicit_notification,
+             ),
+             trace=failed,
+         )
+-    if grounded is not None and status in {GroundingStatus.MISSING_SUBJECT, GroundingStatus.NOT_FOUND}:
++    if grounded is not None and (
++        status in {GroundingStatus.MISSING_SUBJECT, GroundingStatus.NOT_FOUND}
++        or (status is GroundingStatus.UNSUPPORTED and grounded.question)
++    ):
+         return CompositionOutcome(OutcomeKind.CLARIFY, speech=grounded.question, trace=failed)
+     return CompositionOutcome(OutcomeKind.UNSUPPORTED, speech=unsupported_text(reason), trace=failed)
+ 
+@@ -666,8 +718,12 @@ def resolve_event_clarification(
+     if grounded.trigger is None:
+         return None
+     interpreted = EventInterpretation(grounded.trigger, pending.conditions, grounded, typed=True)
+-    reading = read_actions(
+-        pending.action_text, grounded.trigger, entities, readers, pending.trailing_message
++    reading = (
++        implicit_notification_reading(grounded.trigger, entities)
++        if pending.implicit_notification
++        else read_actions(
++            pending.action_text, grounded.trigger, entities, readers, pending.trailing_message
++        )
+     )
+     if reading is None:
+         return None
+diff --git a/custom_components/homeintent/automation_grounding.py b/custom_components/homeintent/automation_grounding.py
+index e53363b..e87bc55 100644
+--- a/custom_components/homeintent/automation_grounding.py
++++ b/custom_components/homeintent/automation_grounding.py
+@@ -25,7 +25,7 @@ from __future__ import annotations
+ from functools import lru_cache
+ 
+ import re
+-from dataclasses import dataclass, field
++from dataclasses import dataclass, field, replace
+ from enum import Enum, auto
+ from typing import Sequence
+ 
+@@ -92,8 +92,8 @@ class GroundedEvent:
+ 
+ 
+ _ANY_WORDS = frozenset({
+-    "ein", "eine", "einer", "eines", "einem", "einen", "irgendein", "irgendeine",
+-    "irgendeiner", "irgendeines", "irgendeinem", "irgendwelche", "jede", "jeder",
++    "ein", "eine", "einer", "eines", "einem", "einen", "eins", "irgendein", "irgendeine",
++    "irgendeiner", "irgendeines", "irgendeins", "irgendeinem", "irgendwelche", "jede", "jeder",
+     "jedes", "beliebige", "beliebiges", "beliebiger", "ne",
+ })
+ _DEFINITE_WORDS = frozenset({"der", "die", "das", "den", "dem", "des", "mein", "meine", "unser", "unsere"})
+@@ -107,7 +107,9 @@ _SIDE_WORDS = {
+     "hinten": "hinten", "hintere": "hinten", "hinteren": "hinten",
+     "oben": "oben", "obere": "oben", "oberen": "oben", "unten": "unten", "untere": "unten",
+ }
+-_PLURAL_PARTITIVE_RE = re.compile(r"^(?:einer|eines|eine|irgendeiner)\s+(?:der|von\s+den)$")
++_PLURAL_PARTITIVE_RE = re.compile(
++    r"^(?:einer|eines|eins|eine|irgendeiner|irgendeins|irgendeines)\s+(?:der|von\s+den)$"
++)
+ 
+ 
+ def _area_index(entities: Sequence[EntitySnapshot]) -> dict[str, tuple[str, str]]:
+@@ -461,6 +463,43 @@ _OPENING_CLASSES = frozenset({"window", "door", "garage_door", "opening"})
+ _GENERIC_ANY_CLASSES = frozenset({"window", "door", "motion"})
+ 
+ 
++_KIND_LABELS = {
++    "binary_sensor": "Sensoren", "cover": "Antriebe", "lock": "Schlösser",
++    "light": "Lichter", "switch": "Schalter",
++}
++
++
++def _device_kinds(candidates: Sequence[EntitySnapshot]) -> list[tuple[str, list[str]]]:
++    """Candidates grouped by the domain that decides the state's meaning."""
++    grouped: dict[str, list[str]] = {}
++    for entity in sorted(candidates, key=lambda item: item.friendly_name):
++        grouped.setdefault(entity.domain, []).append(entity.friendly_name)
++    return [(_KIND_LABELS.get(domain, domain), names) for domain, names in grouped.items()]
++
++
++_PRONOUN_GENDERS = {
++    "es": GrammaticalGender.NEUTER,
++    "er": GrammaticalGender.MASCULINE,
++    "sie": GrammaticalGender.FEMININE,
++}
++_PLURAL_DETERMINERS = frozenset({"die", "alle", "meine", "unsere", "sämtliche"})
++
++
++def _reference_agrees(
++    reference: str, antecedent: Sequence[str], subject: SubjectReading
++) -> bool:
++    """"es" needs a neuter antecedent, "er" a masculine one, "sie" a feminine
++    or plural one.  Without a typed noun there is nothing to check against."""
++    gender = _PRONOUN_GENDERS.get(reference)
++    if gender is None or subject.noun is None:
++        return True
++    first = antecedent[0].casefold() if antecedent else ""
++    plural = first in _PLURAL_DETERMINERS and subject.noun.gender is not GrammaticalGender.FEMININE
++    if reference == "sie":
++        return subject.noun.gender is GrammaticalGender.FEMININE or plural
++    return subject.noun.gender is gender and not plural
++
++
+ def _state_ok(entity: EntitySnapshot, state: SemanticState) -> bool:
+     allowed = _STATE_DOMAINS.get(entity.domain)
+     if allowed is None or state not in allowed:
+@@ -533,6 +572,20 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
+             return finished
+         return GroundedEvent(GroundingStatus.NOT_APPLICABLE, roles=roles)
+     subject = read_subject(roles.subject_words, entities)
++    if roles.reference is not None:
++        # The subject came from a monitored object (7.8.3).
++        if not _reference_agrees(roles.reference, roles.subject_words, subject):
++            return GroundedEvent(
++                GroundingStatus.MISSING_SUBJECT,
++                question=f"Worauf bezieht sich „{roles.reference}“? Bitte nenne das Gerät.",
++                subject=subject, roles=roles,
++            )
++        if roles.reference == "member":
++            subject = replace(subject, quantifier=Quantifier.ANY)
++        elif subject.quantifier is Quantifier.ALL:
++            # "Beobachte alle Fenster und melde dich, wenn eins/es ...": the
++            # watched set, never an aggregate state.
++            subject = replace(subject, quantifier=Quantifier.ANY)
+     unknown_detector_words = tuple(
+         item for item in subject.modifiers if item not in {"bewegung", "eine", "ein"}
+     )
+@@ -603,6 +656,14 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
+             candidates = filtered
+     else:
+         candidates = _named_candidates(subject, entities)
++        if not candidates and roles.reference is not None:
++            # The monitored object is no device of this house: say so.
++            spoken = " ".join(word for word in roles.subject_words if word.casefold() not in _DEFINITE_WORDS)
++            return GroundedEvent(
++                GroundingStatus.NOT_FOUND,
++                question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
++                subject=subject, roles=roles,
++            )
+         if not candidates:
+             # Not a device we can type - leave it to the established parsers
+             # (presence "Julia", time, sun, ...).
+@@ -610,6 +671,21 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
+ 
+     if roles.state is not None and roles.value is None:
+         candidates = [entity for entity in candidates if _state_ok(entity, roles.state)]
++        kinds = _device_kinds(candidates)
++        if len(kinds) > 1:
++            # "Fenster" = window contacts and window drives: one state trigger
++            # cannot mean both, and picking one kind would be a guess.
++            noun = (subject.noun_word or "dieses Gerät").strip("-")
++            options = " oder ".join(
++                f"{label} ({', '.join(names[:2])}{', …' if len(names) > 2 else ''})"
++                for label, names in kinds
++            )
++            return GroundedEvent(
++                GroundingStatus.UNSUPPORTED,
++                reason="mixed_kinds",
++                question=f"Mit „{noun}“ können {options} gemeint sein. Welche meinst du?",
++                subject=subject, roles=roles,
++            )
+     if subject.place is not None and len(candidates) > 1:
+         # "wenn es draußen kälter als 5 Grad wird": the spoken place narrows
+         # the measured quantity (7.8 B5) - never the action's device.
+diff --git a/custom_components/homeintent/automation_language.py b/custom_components/homeintent/automation_language.py
+index ca34ba6..ac31ed1 100644
+--- a/custom_components/homeintent/automation_language.py
++++ b/custom_components/homeintent/automation_language.py
+@@ -31,7 +31,7 @@ Home-Assistant-free and strictly typed.
+ from __future__ import annotations
+ 
+ import re
+-from dataclasses import dataclass, field
++from dataclasses import dataclass, field, replace
+ from enum import Enum, auto
+ from typing import Callable
+ 
+@@ -152,6 +152,16 @@ class EventActionFrame:
+     # "Benachrichtige mich, sobald X, mit dem Text: Y" - text dictated after
+     # the event clause still belongs to the notification.
+     trailing_message: str | None = None
++    # Monitoring frames (7.8.3, ``automation_monitoring``): the monitored
++    # object an anaphor in the event clause refers to ("Überwache das
++    # Garagentor und melde dich, wenn *es* ..."), a notification implied by
++    # the monitoring verb itself ("Achte darauf, ob ..."), conditions spoken
++    # after the event ("..., dass kein Fenster offen bleibt, wenn niemand
++    # zuhause ist") and a prohibition whose violation is the event
++    # ("kein Fenster" -> any window).
++    reference: "EventReference | None" = None
++    implicit_notification: bool = False
++    extra_conditions: tuple["ConditionSpan", ...] = ()
+ 
+ 
+ @dataclass(frozen=True)
+@@ -519,12 +529,83 @@ class EventRoles:
+     unsupported: str | None = None  # relative change / rate - understood, not buildable
+     presence: PresenceEvent | None = None
+     conditions: tuple[ConditionSpan, ...] = field(default_factory=tuple)
++    # How the subject was obtained from a monitored object (7.8.3):
++    # "es"/"er"/"sie" (agreement is checked in grounding), "member" for
++    # "eins/eines davon" and a prohibition's "kein" (any member of the set).
++    reference: str | None = None
+ 
+     @property
+     def numeric(self) -> bool:
+         return self.value is not None
+ 
+ 
++# --- reference to a monitored object (7.8.3) -----------------------------------------
++
++
++@dataclass(frozen=True)
++class EventReference:
++    """The antecedent noun phrase a monitoring frame introduced.
++
++    ``words`` is the unchanged source noun phrase ("die Fenster"); ``member``
++    says the event is about any one of it even without a partitive word (a
++    prohibition "dass kein Fenster ..." is violated by any window).
++    """
++
++    words: tuple[str, ...]
++    member: bool = False
++
++
++# Personal pronouns in subject position.  Agreement with the antecedent's
++# grammatical gender is checked where the noun is known (grounding).
++PERSONAL_ANAPHORS = frozenset({"es", "er", "sie"})
++_DEMONSTRATIVE_ANAPHORS = frozenset({"dieses", "diese", "dieser", "dies", "das"})
++# "eins", "eines davon", "irgendeins von ihnen", "welches": one member.
++_MEMBER_HEADS = frozenset({
++    "eins", "eines", "einer", "eine", "irgendeins", "irgendeines", "irgendeiner",
++    "irgendeine", "welches", "welcher", "welche", "jedes", "jeder", "jede",
++})
++_MEMBER_TAILS = frozenset({"davon", "von", "ihnen", "denen", "den", "der", "dieser", "diesen"})
++
++
++def reference_kind(subject_words: tuple[str, ...]) -> str | None:
++    """How a subject refers back, or ``None`` when it names something itself.
++
++    Only pure reference material counts: "es", "eins davon", or no subject
++    at all.  A subject with a noun of its own ("das Tor") is never replaced.
++    """
++    keys = [word.casefold().strip(",.;:!?") for word in subject_words]
++    keys = [key for key in keys if key]
++    if not keys:
++        return "empty"
++    if len(keys) == 1 and keys[0] in PERSONAL_ANAPHORS:
++        return keys[0]
++    if len(keys) == 1 and keys[0] in _DEMONSTRATIVE_ANAPHORS:
++        return "demonstrative"
++    if keys[0] in _MEMBER_HEADS and all(key in _MEMBER_TAILS for key in keys[1:]):
++        return "member"
++    return None
++
++
++def resolve_reference(roles: EventRoles, reference: EventReference | None) -> EventRoles:
++    """Bind a pronoun, partitive or missing subject to the monitored object.
++
++    Deterministic and structural: the antecedent's own source words become
++    the subject; nothing is guessed when there is no antecedent or when the
++    event names a subject of its own.
++    """
++    if reference is None or roles.presence is not None:
++        return roles
++    kind = reference_kind(roles.subject_words)
++    if kind is None:
++        # "dass kein Fenster offen bleibt": the prohibition's own noun, any member.
++        return replace(roles, reference="member") if reference.member else roles
++    if not reference.words:
++        return roles
++    if reference.member and kind in {"empty", "demonstrative"}:
++        kind = "member"
++    return replace(roles, subject_words=reference.words, reference=kind)
++
++
+ _ABOVE_WORDS = (
+     "auf über", "mehr als", "höher als", "heller als", "wärmer als", "größer als",
+     "oberhalb von", "über",
+@@ -549,7 +630,8 @@ _RELATIVE_CHANGE_RE = re.compile(
+     re.IGNORECASE,
+ )
+ _DURATION_RE = re.compile(
+-    r"(?:\b(?:seit|länger\s+als|mehr\s+als|mindestens|für|schon)\s+)?"
++    # Duration modifiers stack: "seit mehr als", "schon länger als" (7.8.3).
++    r"(?:\b(?:seit|länger\s+als|mehr\s+als|über|mindestens|für|schon)\s+)*"
+     r"(?:(?P<number>-?\d+|[a-zäöüß]+)\s+|(?P<half>eine\s+halbe|einer\s+halben)\s+)"
+     r"(?P<unit>sekunden?|minuten?|stunden?)\b(?:\s+lang)?",
+     re.IGNORECASE,
+@@ -663,9 +745,23 @@ def _duration_seconds(match: re.Match[str]) -> int | None:
+     return amount * multiplier if amount > 0 else None
+ 
+ 
++# A time window qualifying the event ("wenn sie nachts geöffnet wird",
++# "zwischen 22 und 6 Uhr") is a condition read by the established condition
++# grammar, never part of the subject (7.8.3).
++_TIME_WINDOW_CONDITION_RE = re.compile(
++    r"\b(?:nur\s+)?(?:nachts|abends|morgens|vormittags|mittags|nachmittags)\b"
++    r"|\bzwischen\s+\d{1,2}(?::\d{2})?\s+(?:uhr\s+)?und\s+\d{1,2}(?::\d{2})?\s+uhr\b",
++    re.IGNORECASE,
++)
++
++
+ def _extract_conditions(text: str) -> tuple[str, tuple[ConditionSpan, ...]]:
+     """Pull time/weekday prepositional conditions out of the event clause."""
+     spans: list[ConditionSpan] = []
++    window = _TIME_WINDOW_CONDITION_RE.search(text)
++    if window is not None:
++        spans.append(ConditionSpan(window.group(0)))
++        text = (text[:window.start()] + " " + text[window.end():]).strip()
+     time_match = _TIME_CONDITION_RE.search(text)
+     if time_match is not None and not re.match(r"\s*(?:um)\b", text[: time_match.start()][-4:]):
+         spans.append(ConditionSpan(time_match.group(0)))
+@@ -920,7 +1016,11 @@ def _trim_articles(words: tuple[str, ...]) -> tuple[str, ...]:
+ __all__ = (
+     "ClauseOrder",
+     "ConditionSpan",
++    "EventReference",
+     "EventRoles",
++    "PERSONAL_ANAPHORS",
++    "reference_kind",
++    "resolve_reference",
+     "ActionCheck",
+     "EventActionFrame",
+     "PreparedText",
+diff --git a/custom_components/homeintent/automation_monitoring.py b/custom_components/homeintent/automation_monitoring.py
+new file mode 100644
+index 0000000..76465a5
+--- /dev/null
++++ b/custom_components/homeintent/automation_monitoring.py
+@@ -0,0 +1,190 @@
++"""Monitoring requests as automations (7.8.3).
++
++"Überwache das Garagentor und melde dich, wenn es länger als 10 Minuten
++offen ist." names the watched object first and the event last, and the
++event refers back to the object with a pronoun.  This module recognizes the
++reusable German *constructions* of such a request - never whole sentences -
++and hands the established reader exactly what it already understands:
++
++``MONITOR_HEAD``
++    a durative monitoring verb with its object noun phrase:
++    "überwache/beobachte NP", "behalte/hab NP im Auge|im Blick",
++    "hab/halte ein Auge auf NP", "achte/pass auf NP (auf)",
++    "kannst du NP überwachen/beobachten/im Auge behalten".
++``CLAUSE_HEAD``
++    the same verbs without an object, followed by a clause:
++    "achte darauf, ob|dass|wenn ...", "pass auf, dass ...", "überwache, ob ...".
++
++Frames (``segment_monitoring``):
++
++1. ``MONITOR_HEAD (und|,) REST``: REST is an ordinary event/action request
++   ("melde dich, wenn es ...", "wenn es ..., sag mir Bescheid"), segmented
++   by ``segment_event_automation``; the head's noun phrase becomes the
++   antecedent for "es/sie/er", "eins/eines davon" or a missing subject.
++2. ``MONITOR_HEAD|CLAUSE_HEAD [,] ob|wenn|sobald|falls EVENT``: the
++   monitoring verb itself asks to be told - an implicit notification of the
++   speaker.
++3. ``CLAUSE_HEAD [,] dass PROHIBITION``: "dass kein Fenster offen bleibt",
++   "dass das Tor nicht länger als 10 Minuten offen ist" - the event is the
++   violation ("kein" = any member).  A positive goal ("dass das Tor zu ist")
++   has no violation event that could be read without inverting a state and
++   is left to the caller (no frame).
++
++One-off checks ("prüfe/kontrolliere, ob ...") are queries, not monitoring,
++and are deliberately not monitoring verbs.  Grounding, validation, preview
++and the write path are unchanged: this module only returns source spans and
++the typed reference.
++
++Home-Assistant-free and strictly typed.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import replace
++
++from .automation_language import (
++    ActionCheck,
++    ClauseOrder,
++    ConditionSpan,
++    EventActionFrame,
++    EventReference,
++    segment_event_automation,
++)
++
++_LEAD = r"^(?:(?:bitte|kannst\s+du|könntest\s+du|würdest\s+du|du\s+sollst)\s+)?"
++_WATCH = r"(?:überwache|überwach|beobachte|beobacht)"
++_KEEP = r"(?:behalte|behalt|hab|habe|halte|halt)"
++_ATTEND = r"(?:achte|acht|passe|pass)"
++# A noun phrase ends at a clause boundary; it never contains a connector.
++_NP = r"(?P<np>(?:(?!\b(?:und|wenn|sobald|falls|ob|dass)\b)[^,:])+?)"
++_CONNECTOR = r"(?P<conn>ob|dass|wenn|sobald|falls)"
++
++# MONITOR_HEAD alternatives, each with the object noun phrase ``np``.
++_OBJECT_HEADS = (
++    rf"{_WATCH}\s+{_NP}",
++    rf"{_KEEP}\s+{_NP}\s+(?:im|in\s+dem)\s+(?:auge|blick)",
++    rf"(?:hab|habe|halte|halt)\s+(?:ein|mal\s+ein)\s+auge\s+auf\s+{_NP}",
++    rf"{_ATTEND}\s+auf\s+{_NP}(?:\s+auf)?",
++    # Modal request, verb last: "Kannst du das Garagentor überwachen und ...".
++    rf"(?:kannst|könntest|würdest)\s+du\s+(?:bitte\s+)?(?:mal\s+)?{_NP}\s+"
++    rf"(?:überwachen|beobachten|(?:im|in\s+dem)\s+(?:auge|blick)\s+behalten)",
++)
++_OBJECT_REST_RES = tuple(
++    re.compile(_LEAD + head + r"\s*(?:,\s*(?:und\s+)?|\s+und\s+)(?P<rest>.+)$", re.IGNORECASE)
++    for head in _OBJECT_HEADS
++)
++_OBJECT_CLAUSE_RES = tuple(
++    re.compile(_LEAD + head + rf"\s*,?\s*{_CONNECTOR}\s+(?P<event>.+)$", re.IGNORECASE)
++    for head in _OBJECT_HEADS
++)
++_CLAUSE_HEAD_RE = re.compile(
++    _LEAD
++    + rf"(?:{_ATTEND}(?:\s+(?:darauf|drauf))?(?:\s+auf)?|{_WATCH})"
++    + rf"\s*,?\s*{_CONNECTOR}\s+(?P<event>.+)$",
++    re.IGNORECASE,
++)
++# Conditions spoken after the event clause ("..., wenn niemand zuhause ist").
++_TRAILING_CONDITION_RE = re.compile(
++    r"\s*,\s*(?:aber\s+nur\s+)?(?:wenn|falls|solange|während)\s+", re.IGNORECASE
++)
++_NEGATIVE_DETERMINERS = frozenset({"kein", "keine", "keiner", "keines", "keinen", "keinem"})
++_NOT_AN_OBJECT = frozenset({
++    "es", "das", "dies", "alles", "mich", "mir", "dich", "dir", "ihn", "sie", "uns",
++    "darauf", "drauf", "auf", "mal", "bitte",
++})
++
++
++def _object_words(noun_phrase: str) -> tuple[str, ...] | None:
++    words = tuple(word.strip(",.;:!?") for word in noun_phrase.split())
++    words = tuple(word for word in words if word)
++    if not words or all(word.casefold() in _NOT_AN_OBJECT for word in words):
++        return None
++    return words
++
++
++def _split_trailing_condition(event: str) -> tuple[str, tuple[ConditionSpan, ...]]:
++    match = _TRAILING_CONDITION_RE.search(event)
++    if match is None:
++        return event, ()
++    left = event[:match.start()].strip(" ,")
++    right = event[match.end():].strip(" ,.!?")
++    if not left or not right:
++        return event, ()
++    return left, (ConditionSpan(right),)
++
++
++def _violation(event: str) -> tuple[str, bool] | None:
++    """The event that violates a prohibition, and whether "kein" quantified it."""
++    words = event.split()
++    keys = [word.casefold().strip(",.;:!?") for word in words]
++    for index, key in enumerate(keys):
++        if key in _NEGATIVE_DETERMINERS:
++            return " ".join(words[:index] + words[index + 1:]), True
++    if "nicht" in keys:
++        index = keys.index("nicht")
++        return " ".join(words[:index] + words[index + 1:]), False
++    return None
++
++
++def _implicit_frame(
++    connector: str, event: str, reference: EventReference | None
++) -> EventActionFrame | None:
++    event = event.strip(" ,.!?")
++    member = False
++    if connector == "dass":
++        violated = _violation(event)
++        if violated is None:
++            return None
++        event, member = violated
++    event, conditions = _split_trailing_condition(event)
++    if not event:
++        return None
++    if member:
++        reference = EventReference(reference.words if reference else (), member=True)
++    return EventActionFrame(
++        action_text="",
++        event_text=event,
++        # "ob"/"dass" introduce the watched event exactly like "wenn".
++        connector="wenn" if connector in {"ob", "dass"} else connector,
++        order=ClauseOrder.ACTION_FIRST,
++        reference=reference,
++        implicit_notification=True,
++        extra_conditions=conditions,
++    )
++
++
++def segment_monitoring(text: str, action_ok: ActionCheck) -> EventActionFrame | None:
++    """Read a monitoring request into one event/action frame, or ``None``."""
++    stripped = text.strip()
++    for pattern in _OBJECT_REST_RES:
++        match = pattern.match(stripped)
++        if match is None:
++            continue
++        words = _object_words(match.group("np"))
++        rest = match.group("rest").strip()
++        if words is None or not rest:
++            continue
++        inner = segment_event_automation(rest, action_ok)
++        if inner is None:
++            continue
++        return replace(inner, reference=EventReference(words))
++    for pattern in _OBJECT_CLAUSE_RES:
++        match = pattern.match(stripped)
++        if match is None:
++            continue
++        words = _object_words(match.group("np"))
++        if words is None:
++            continue
++        frame = _implicit_frame(
++            match.group("conn").casefold(), match.group("event"), EventReference(words)
++        )
++        if frame is not None:
++            return frame
++    match = _CLAUSE_HEAD_RE.match(stripped)
++    if match is not None:
++        return _implicit_frame(match.group("conn").casefold(), match.group("event"), None)
++    return None
++
++
++__all__ = ("segment_monitoring",)
+diff --git a/docs/regex-klassifikation.json b/docs/regex-klassifikation.json
+index 99cf56e..9f7f7ee 100644
+--- a/docs/regex-klassifikation.json
++++ b/docs/regex-klassifikation.json
+@@ -264,7 +264,7 @@
+    "quelle": "heuristik"
+   },
+   {
+-   "id": "custom_components/homeintent/automation_grounding.py::_PLURAL_PARTITIVE_RE::b26498ae00",
++   "id": "custom_components/homeintent/automation_grounding.py::_PLURAL_PARTITIVE_RE::b4a3258042",
+    "datei": "custom_components/homeintent/automation_grounding.py",
+    "bereich": "_PLURAL_PARTITIVE_RE",
+    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+@@ -460,7 +460,7 @@
+    "quelle": "heuristik"
+   },
+   {
+-   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::478d9d953b",
++   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::6bd1edfda7",
+    "datei": "custom_components/homeintent/automation_language.py",
+    "bereich": "_DURATION_RE",
+    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+@@ -529,6 +529,13 @@
+    "klasse": "LEXICAL",
+    "quelle": "heuristik"
+   },
++  {
++   "id": "custom_components/homeintent/automation_language.py::_TIME_WINDOW_CONDITION_RE::b94fd47eae",
++   "datei": "custom_components/homeintent/automation_language.py",
++   "bereich": "_TIME_WINDOW_CONDITION_RE",
++   "klasse": "LEXICAL",
++   "quelle": "heuristik"
++  },
+   {
+    "id": "custom_components/homeintent/automation_language.py::_extract_conditions::3abee18de0",
+    "datei": "custom_components/homeintent/automation_language.py",
+@@ -634,6 +641,34 @@
+    "klasse": "STRUCTURAL",
+    "quelle": "heuristik"
+   },
++  {
++   "id": "custom_components/homeintent/automation_monitoring.py::_OBJECT_REST_RES::78d8d014d3",
++   "datei": "custom_components/homeintent/automation_monitoring.py",
++   "bereich": "_OBJECT_REST_RES",
++   "klasse": "STRUCTURAL",
++   "quelle": "manuell"
++  },
++  {
++   "id": "custom_components/homeintent/automation_monitoring.py::_OBJECT_CLAUSE_RES::27b56febab",
++   "datei": "custom_components/homeintent/automation_monitoring.py",
++   "bereich": "_OBJECT_CLAUSE_RES",
++   "klasse": "STRUCTURAL",
++   "quelle": "manuell"
++  },
++  {
++   "id": "custom_components/homeintent/automation_monitoring.py::_CLAUSE_HEAD_RE::156134fb2c",
++   "datei": "custom_components/homeintent/automation_monitoring.py",
++   "bereich": "_CLAUSE_HEAD_RE",
++   "klasse": "STRUCTURAL",
++   "quelle": "manuell"
++  },
++  {
++   "id": "custom_components/homeintent/automation_monitoring.py::_TRAILING_CONDITION_RE::37d58396ad",
++   "datei": "custom_components/homeintent/automation_monitoring.py",
++   "bereich": "_TRAILING_CONDITION_RE",
++   "klasse": "STRUCTURAL",
++   "quelle": "manuell"
++  },
+   {
+    "id": "custom_components/homeintent/automation_notification.py::_RECIPIENT_FIRST_NOTIFY_RE::8698d276f7",
+    "datei": "custom_components/homeintent/automation_notification.py",
+@@ -4941,9 +4976,9 @@
+   }
+  ],
+  "anzahl": {
+-  "LEXICAL": 372,
++  "LEXICAL": 373,
+   "MORPHOLOGICAL": 38,
+-  "STRUCTURAL": 121,
++  "STRUCTURAL": 125,
+   "SEMANTIC_SENTENCE_PATTERN": 173
+  }
+ }
+diff --git a/pyrightconfig.json b/pyrightconfig.json
+index 76f4fe8..5dfacc3 100644
+--- a/pyrightconfig.json
++++ b/pyrightconfig.json
+@@ -28,6 +28,7 @@
+     ,"custom_components/homeintent/automation_language.py"
+     ,"custom_components/homeintent/automation_grounding.py"
+     ,"custom_components/homeintent/automation_composition.py"
++    ,"custom_components/homeintent/automation_monitoring.py"
+     ,"custom_components/homeintent/nlu/automation_lexicon.py"
+     ,"custom_components/homeintent/nlu/measurement.py"
+     ,"custom_components/homeintent/house_graph.py"
+diff --git a/tests/test_monitoring_automation_783.py b/tests/test_monitoring_automation_783.py
+new file mode 100644
+index 0000000..ad24400
+--- /dev/null
++++ b/tests/test_monitoring_automation_783.py
+@@ -0,0 +1,316 @@
++"""7.8.3: monitoring requests become notification automations.
++
++"Überwache X und melde dich, wenn es ...", "Beobachte die Fenster und warne
++mich, wenn eins ...", "Achte darauf, ob|dass ..." - monitoring verbs, an
++implied or explicit NOTIFY, an anaphor bound to the monitored object, a
++duration modifier and trailing conditions.  Every draft still goes through
++the validator, the spoken preview and an explicit "Ja" before anything is
++written; ambiguous or unknown references ask instead of guessing.
++"""
++
++from __future__ import annotations
++
++import pytest
++
++from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities
++
++PHILIPP = PHONES[0]
++WINDOWS = {
++    "binary_sensor.badezimmerfenster", "binary_sensor.buerofenster",
++    "binary_sensor.kinderzimmerfenster", "binary_sensor.kuechenfenster",
++    "binary_sensor.schlafzimmerfenster", "binary_sensor.wohnzimmerfenster",
++}
++NOBODY_HOME = {
++    "condition": "not",
++    "conditions": [{
++        "condition": "or",
++        "conditions": [
++            {"condition": "state", "entity_id": f"person.{name}", "state": "home"}
++            for name in ("anna", "lena", "philipp")
++        ],
++    }],
++}
++NIGHT = {"condition": "or", "conditions": [
++    {"condition": "time", "after": "22:00:00"}, {"condition": "time", "before": "06:00:00"},
++]}
++
++
++def _create(monkeypatch, tmp_path, text: str, entities=None) -> dict:
++    house = HouseConversation(
++        monkeypatch, entities=entities, tmp_path=tmp_path, options=PUSH_OPTIONS
++    )
++    preview = house.say(text)
++    assert preview.calls == [], text
++    assert "Soll ich das so einrichten" in preview.speech, (text, preview.speech)
++    assert house.automations() == [], "nothing is written before the confirmation"
++    house.say("Ja.")
++    [automation] = house.automations()
++    return automation
++
++
++def _entities(trigger: dict) -> set[str]:
++    entity = trigger["entity_id"]
++    return {entity} if isinstance(entity, str) else set(entity)
++
++
++def _notifies_speaker(automation: dict) -> None:
++    [action] = automation["actions"]
++    assert action["action"] == "notify.send_message"
++    assert action["target"]["entity_id"] == [PHILIPP]
++
++
++# (sentence, trigger entities, to-state, for seconds, conditions)
++_REGRESSION = [
++    ("Überwache das Garagentor und melde dich, wenn es länger als 10 Minuten offen ist.",
++     {"cover.garagentor"}, "open", 600, []),
++    ("Beobachte das Garagentor und sag mir Bescheid, wenn es 5 Minuten offen steht.",
++     {"cover.garagentor"}, "open", 300, []),
++    ("Achte darauf, ob das Garagentor länger als 15 Minuten geöffnet bleibt.",
++     {"cover.garagentor"}, "open", 900, []),
++    ("Warne mich, wenn das Garagentor länger als 10 Minuten offen ist.",
++     {"cover.garagentor"}, "open", 600, []),
++    ("Benachrichtige mich, sobald das Garagentor geöffnet wird.",
++     {"cover.garagentor"}, "open", None, []),
++    ("Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
++     WINDOWS, "on", None, [NOBODY_HOME]),
++    ("Sag mir Bescheid, wenn irgendein Fenster offen ist und keiner zuhause ist.",
++     WINDOWS, "on", None, [NOBODY_HOME]),
++    ("Achte darauf, dass kein Fenster offen bleibt, wenn niemand zuhause ist.",
++     WINDOWS, "on", None, [NOBODY_HOME]),
++    ("Informiere mich, wenn ein Fenster seit mehr als 20 Minuten offen ist.",
++     WINDOWS, "on", 1200, []),
++    ("Behalte die Haustür im Auge und melde dich, wenn sie nachts geöffnet wird.",
++     {"binary_sensor.haustuer"}, "on", None, [NIGHT]),
++]
++
++
++@pytest.mark.parametrize("text,entities,state,seconds,conditions", _REGRESSION)
++def test_monitoring_and_notification_requests(
++    monkeypatch, tmp_path, text, entities, state, seconds, conditions
++):
++    automation = _create(monkeypatch, tmp_path, text)
++    [trigger] = automation["triggers"]
++    assert trigger["trigger"] == "state"
++    assert _entities(trigger) == entities, text
++    assert trigger["to"] == state
++    assert trigger.get("for") == ({"seconds": seconds} if seconds else None), text
++    assert automation.get("conditions", []) == conditions, text
++    _notifies_speaker(automation)
++
++
++# --- constructions, not sentences --------------------------------------------
++
++_HEADS = (
++    "Überwache das Garagentor und {n}, wenn es {e}.",
++    "Beobachte das Garagentor und {n}, wenn es {e}.",
++    "Behalte das Garagentor im Auge und {n}, sobald es {e}.",
++    "Behalte das Garagentor im Blick und {n}, falls es {e}.",
++    "Hab ein Auge auf das Garagentor und {n}, wenn es {e}.",
++    "Achte auf das Garagentor und {n}, wenn es {e}.",
++    "Kannst du das Garagentor überwachen und {n}, wenn es {e}?",
++    "Überwache das Garagentor und wenn es {e}, {n}.",
++)
++_NOTIFY = (
++    "melde dich", "sag mir Bescheid", "gib mir Bescheid", "informiere mich",
++    "benachrichtige mich", "warne mich",
++)
++_DURATIONS = {
++    "länger als 10 Minuten offen ist": 600,
++    "10 Minuten offen ist": 600,
++    "seit 10 Minuten offen ist": 600,
++    "mehr als 10 Minuten geöffnet ist": 600,
++    "seit mehr als 10 Minuten offen ist": 600,
++    "eine halbe Stunde offen bleibt": 1800,
++}
++
++
++# The modal frame takes the infinitive forms of the same notification verbs.
++_MODAL_NOTIFY = ("mir Bescheid sagen", "mich benachrichtigen", "mich informieren")
++_COMBINATIONS = [
++    (head, notify)
++    for head in _HEADS
++    for notify in (_MODAL_NOTIFY if head.startswith("Kannst") else _NOTIFY)
++]
++
++
++@pytest.mark.parametrize("head,notify", _COMBINATIONS)
++def test_monitoring_head_times_notification_verb(monkeypatch, tmp_path, head, notify):
++    text = head.format(n=notify, e="länger als 10 Minuten offen ist")
++    automation = _create(monkeypatch, tmp_path, text)
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == {"cover.garagentor"} and trigger["to"] == "open", text
++    assert trigger["for"] == {"seconds": 600}, text
++    _notifies_speaker(automation)
++
++
++@pytest.mark.parametrize("event,seconds", list(_DURATIONS.items()))
++def test_duration_state_forms(monkeypatch, tmp_path, event, seconds):
++    automation = _create(
++        monkeypatch, tmp_path, f"Überwache das Garagentor und melde dich, wenn es {event}."
++    )
++    [trigger] = automation["triggers"]
++    assert trigger["for"] == {"seconds": seconds}, event
++
++
++@pytest.mark.parametrize("member", ["eins", "eines", "eines davon", "irgendeins davon", "welches"])
++def test_member_reference_is_the_monitored_set(monkeypatch, tmp_path, member):
++    automation = _create(
++        monkeypatch, tmp_path,
++        f"Beobachte die Fenster und warne mich, wenn {member} offen ist.",
++    )
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == WINDOWS, member
++
++
++def test_member_reference_keeps_the_monitored_place(monkeypatch, tmp_path):
++    automation = _create(
++        monkeypatch, tmp_path,
++        "Beobachte die Fenster im Obergeschoss und melde dich, wenn eins offen ist.",
++    )
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == {
++        "binary_sensor.badezimmerfenster", "binary_sensor.kinderzimmerfenster",
++        "binary_sensor.schlafzimmerfenster",
++    }
++
++
++def test_prohibition_violation_with_duration(monkeypatch, tmp_path):
++    automation = _create(
++        monkeypatch, tmp_path,
++        "Achte darauf, dass das Garagentor nicht länger als 10 Minuten offen bleibt.",
++    )
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == {"cover.garagentor"} and trigger["for"] == {"seconds": 600}
++
++
++def test_explicit_event_subject_is_kept(monkeypatch, tmp_path):
++    automation = _create(
++        monkeypatch, tmp_path,
++        "Beobachte das Garagentor und warne mich, wenn die Haustür offen ist.",
++    )
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == {"binary_sensor.haustuer"}
++
++
++def test_monitoring_with_device_action_resolves_the_pronoun(monkeypatch, tmp_path):
++    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
++    preview = house.say(
++        "Beobachte das Küchenfenster und schalte das Küchenlicht aus, wenn es geöffnet wird."
++    )
++    assert preview.calls == []
++    house.say("Ja.")
++    [automation] = house.automations()
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == {"binary_sensor.kuechenfenster"}
++
++
++def test_anna_is_notified_on_her_own_phone(monkeypatch, tmp_path):
++    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS, user="anna")
++    house.say("Überwache das Garagentor und melde dich, wenn es länger als 10 Minuten offen ist.")
++    house.say("Ja.")
++    [automation] = house.automations()
++    [action] = automation["actions"]
++    assert action["target"]["entity_id"] == [PHONES[1]]
++
++
++def test_monitoring_and_plain_form_share_one_canonical_meaning():
++    from homeintent.automation_composition import compose_event_automation
++    from homeintent.engine import NluEngine
++
++    entities = house_entities()
++    engine = NluEngine()
++    readers = engine._composition_readers(entities, None, None)
++    canonical = {
++        compose_event_automation(text, entities, readers).canonical
++        for text in (
++            "Überwache das Garagentor und melde dich, wenn es länger als 10 Minuten offen ist.",
++            "Melde dich, wenn das Garagentor länger als 10 Minuten offen ist.",
++            "Achte darauf, ob das Garagentor länger als 10 Minuten offen ist.",
++            "Behalte das Garagentor im Auge und benachrichtige mich, wenn es seit 10 Minuten offen ist.",
++        )
++    }
++    assert len(canonical) == 1
++    [meaning] = canonical
++    assert meaning.event.entity_ids == ("cover.garagentor",)
++    assert meaning.event.for_seconds == 600
++
++
++# --- negative and ambiguity cases --------------------------------------------
++
++
++def _refused(monkeypatch, tmp_path, text: str, entities=None) -> str:
++    house = HouseConversation(
++        monkeypatch, entities=entities, tmp_path=tmp_path, options=PUSH_OPTIONS
++    )
++    turn = house.say(text)
++    assert turn.calls == [], text
++    assert "Soll ich das so einrichten" not in turn.speech, (text, turn.speech)
++    house.say("Ja.")
++    assert house.automations() == [], text
++    return turn.speech
++
++
++def test_pronoun_disagreeing_with_the_monitored_object_asks(monkeypatch, tmp_path):
++    speech = _refused(
++        monkeypatch, tmp_path, "Überwache das Garagentor und melde dich, wenn er offen ist."
++    )
++    assert "„er“" in speech
++
++
++@pytest.mark.parametrize("text", [
++    "Melde dich, wenn es offen ist.",
++    "Warne mich, wenn eins offen ist.",
++])
++def test_pronoun_without_antecedent_asks(monkeypatch, tmp_path, text):
++    assert "Welches Gerät" in _refused(monkeypatch, tmp_path, text)
++
++
++def test_unknown_monitored_object_is_named(monkeypatch, tmp_path):
++    speech = _refused(
++        monkeypatch, tmp_path, "Überwache den Blumentopf und melde dich, wenn er offen ist."
++    )
++    assert "Blumentopf" in speech
++
++
++@pytest.mark.parametrize("text", [
++    "Prüfe, ob das Garagentor offen ist.",
++    "Kontrolliere, ob ein Fenster offen ist.",
++    "Überwache das Garagentor.",
++    "Achte darauf, dass das Garagentor zu ist.",
++    "Überwache die Haustür und schließ sie ab, wenn sie offen ist.",
++    "Pass auf, dass keiner die Haustür öffnet.",
++])
++def test_no_automation_without_a_readable_event_and_notification(monkeypatch, tmp_path, text):
++    _refused(monkeypatch, tmp_path, text)
++
++
++def test_one_off_check_stays_a_query(monkeypatch, tmp_path):
++    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
++    turn = house.say("Ist das Garagentor offen?")
++    assert "Garagentor" in turn.speech and "einrichten" not in turn.speech
++    assert house.automations() == []
++
++
++def _with_window_drive() -> list:
++    from dataclasses import replace
++
++    entities = house_entities()
++    cover = next(entity for entity in entities if entity.entity_id == "cover.kuechenrollladen")
++    drive = replace(
++        cover,
++        entity_id="cover.dachfenster",
++        friendly_name="Dachfenster",
++        device_class="window",
++        area_id=None, area_name=None, aliases=(),
++        attributes={**cover.attributes, "friendly_name": "Dachfenster", "device_class": "window"},
++    )
++    return [*entities, drive]
++
++
++@pytest.mark.parametrize("text", [
++    "Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
++    "Informiere mich, wenn ein Fenster seit mehr als 20 Minuten offen ist.",
++])
++def test_window_contacts_and_window_drives_are_not_merged(monkeypatch, tmp_path, text):
++    speech = _refused(monkeypatch, tmp_path, text, entities=_with_window_drive())
++    assert "Sensoren" in speech and "Antriebe" in speech and "Dachfenster" in speech
+-- 
+2.43.0
+

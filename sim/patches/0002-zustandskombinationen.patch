@@ -1,0 +1,520 @@
+From 57a4c8cc6560db577709bc045cff2c76ac289b99 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 30 Sep 2026 11:54:59 +0000
+Subject: [PATCH 2/2] Zustandskombinationen gelten in beiden Reihenfolgen
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"wenn ein Fenster offen ist und niemand zuhause ist" beschreibt eine
+Situation, keinen Moment: Sie tritt ein, egal welcher Teil zuletzt wahr
+wird. Die Automation bekommt deshalb je Teil einen Auslöser (Fenster geht
+auf, jede Person verlässt das Haus) und alle Teile als Bedingung (irgendein
+Fenster offen, niemand zuhause). Ein Moment ("geöffnet wird"), eine Dauer
+und ein Zeitfenster bleiben wie gesprochen.
+
+- automation_language.py: EventRoles.stative (offen ist / geöffnet wird)
+- automation_composition.py: state_conjunction()
+- notification_language.py: describe_holding_state()
+- nlu/automation_model.py, nlu/automation_preview.py: gesprochene
+  Situation statt Auslöserliste in der Vorschau
+- Tests inkl. Nachbildung der Home-Assistant-Auswertung
+
+Claude-Session: https://claude.ai/code/session_01JZkPqjcceaFr6yzi8t6YLJ
+---
+ .../homeintent/automation_composition.py      | 142 +++++++++++++++++-
+ .../homeintent/automation_language.py         |  23 +++
+ .../homeintent/nlu/automation_model.py        |   4 +
+ .../homeintent/nlu/automation_preview.py      |  23 +++
+ .../homeintent/notification_language.py       |  19 +++
+ tests/test_monitoring_automation_783.py       | 122 ++++++++++++++-
+ 6 files changed, 319 insertions(+), 14 deletions(-)
+
+diff --git a/custom_components/homeintent/automation_composition.py b/custom_components/homeintent/automation_composition.py
+index dbe6fe9..7e4682a 100644
+--- a/custom_components/homeintent/automation_composition.py
++++ b/custom_components/homeintent/automation_composition.py
+@@ -56,13 +56,25 @@ from .automation_monitoring import segment_monitoring
+ from .automation_notification import notification_action
+ from .entities import EntitySnapshot, normalize_for_compare
+ from .nlu.action_model import ActionGroup, ActionModel, ActionType, NotificationRecipientKind
+-from .nlu.automation_model import AutomationModel, NumericComparator, TriggerModel, TriggerType
++from .nlu.automation_model import (
++    AutomationModel,
++    NumericComparator,
++    PresenceEvent,
++    TriggerModel,
++    TriggerTarget,
++    TriggerType,
++)
+ from .nlu.automation_validator import AutomationValidationError, validate_automation
+ from .nlu.condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator
+ from .nlu.measurement import MeasurementProperty, TravelDirection
+ from .nlu.semantic_state import SemanticState
+ from .nlu.normalize import german_number
+-from .notification_language import NotificationClause, parse_notification_clause, trigger_message
++from .notification_language import (
++    NotificationClause,
++    describe_holding_state,
++    parse_notification_clause,
++    trigger_message,
++)
+ 
+ # "Achte darauf, ob ...": the monitoring verb itself asks to tell the speaker.
+ _IMPLICIT_NOTIFICATION = NotificationClause(NotificationRecipientKind.CURRENT_USER)
+@@ -149,6 +161,7 @@ class EventInterpretation:
+     grounded: GroundedEvent | None = None
+     typed: bool = False
+     alternatives: tuple[TriggerModel, ...] = ()
++    situation: str | None = None  # spoken combined state (``state_conjunction``)
+ 
+ 
+ _UNSUPPORTED_TEXT = {
+@@ -304,6 +317,109 @@ def interpret_event_clause(
+     return EventInterpretation(None, embedded, grounded)
+ 
+ 
++def _nobody_home(node: ConditionNode) -> bool:
++    """"niemand zuhause": NOT(any person at home)."""
++    if node.operator is not LogicalOperator.NOT or len(node.children) != 1:
++        return False
++    leaf = node.children[0].condition
++    return (
++        leaf is not None
++        and leaf.type is ConditionType.PRESENCE
++        and leaf.raw_state == "home"
++        and (leaf.target is None or leaf.target.entity_id is None)
++    )
++
++
++def state_conjunction(
++    interpreted: EventInterpretation, entities: Sequence[EntitySnapshot]
++) -> tuple[EventInterpretation, str | None]:
++    """"wenn ein Fenster offen ist und niemand zuhause ist" (7.8.3).
++
++    Two lasting states joined by "und" hold whenever both are true - also
++    when the *second* one begins (everybody leaves while a window is still
++    open).  Home Assistant needs that as: one trigger per state becoming
++    true, and every state as a condition.  Only states with a deterministic
++    "becoming true" trigger are completed (nobody home: each person leaves;
++    an entity state); a moment ("geöffnet wird"), a duration ("seit 10
++    Minuten") or a time window stays exactly as spoken.
++
++    Returns the completed interpretation and a message describing the
++    combined situation, or the unchanged interpretation and ``None``.
++    """
++    trigger = interpreted.trigger
++    grounded = interpreted.grounded
++    if (
++        trigger is None
++        or trigger.type is not TriggerType.STATE
++        or trigger.for_seconds is not None
++        or trigger.state is None
++        or interpreted.alternatives
++        or not interpreted.conditions
++        or grounded is None
++        or grounded.roles is None
++        or not grounded.roles.stative
++        or not grounded.candidates
++    ):
++        return interpreted, None
++    extra: list[TriggerModel] = []
++    situation: list[tuple[str, str]] = []
++    for node in interpreted.conditions:
++        if _nobody_home(node):
++            people = sorted(
++                (entity for entity in entities if entity.domain == "person"),
++                key=lambda entity: entity.entity_id,
++            )
++            if not people:
++                continue
++            extra.extend(
++                TriggerModel(
++                    type=TriggerType.PRESENCE,
++                    target=TriggerTarget(domain="person", entity_id=person.entity_id),
++                    zone_id="home",
++                    presence_event=PresenceEvent.LEAVE,
++                )
++                for person in people
++            )
++            situation.append(("niemand zuhause ist", "Niemand ist zuhause."))
++            continue
++        leaf = node.condition
++        if (
++            node.operator is None
++            and leaf is not None
++            and leaf.type is ConditionType.STATE
++            and leaf.target is not None
++            and leaf.state is not None
++        ):
++            state_trigger = TriggerModel(type=TriggerType.STATE, target=leaf.target, state=leaf.state)
++            extra.append(state_trigger)
++            holding = describe_holding_state(state_trigger, entities)
++            if holding is None:
++                return interpreted, None
++            situation.append((holding.subordinate, holding.sentence))
++    if not extra:
++        return interpreted, None
++    first = describe_holding_state(trigger, entities)
++    if first is None:
++        return interpreted, None
++    # The event's own state, for any one of its entities (a list in one
++    # Home Assistant state condition would require *all* of them).
++    holds = tuple(
++        ConditionNode(condition=ConditionModel(
++            type=ConditionType.STATE, target=target_for([entity], entities), state=trigger.state,
++        ))
++        for entity in sorted(grounded.candidates, key=lambda item: item.entity_id)
++    )
++    own = holds[0] if len(holds) == 1 else ConditionNode(operator=LogicalOperator.OR, children=holds)
++    parts = (first.subordinate, *(item[0] for item in situation))
++    completed = replace(
++        interpreted,
++        conditions=(own, *interpreted.conditions),
++        alternatives=(trigger, *extra),
++        situation=" und ".join(parts),
++    )
++    return completed, " ".join((first.sentence, *(item[1] for item in situation)))
++
++
+ def temporal_interpretation(temporal: TemporalEvent) -> EventInterpretation:
+     """Project a sun/clock phrase straight into the existing trigger model."""
+     if temporal.sun_event is not None:
+@@ -465,6 +581,7 @@ def read_actions(
+     entities: Sequence[EntitySnapshot],
+     readers: Readers,
+     trailing_message: str | None = None,
++    default_message: str | None = None,
+ ) -> ActionReading | None:
+     """Every coordinated action chunk must be understood - none is dropped."""
+     whole_notification = parse_notification_clause(text.strip(" ,.")) is not None
+@@ -479,7 +596,10 @@ def read_actions(
+         if clause is not None:
+             if clause.reminder or clause.test:
+                 return None
+-            message = clause.message or trailing_message or trigger_message(trigger, "", entities)
++            message = (
++                clause.message or trailing_message or default_message
++                or trigger_message(trigger, "", entities)
++            )
+             action = notification_action(clause, message, tuple(entities))
+             if action is None:
+                 return ActionReading((), clause, clause.recipient_name or "diese Person")
+@@ -506,10 +626,12 @@ def read_actions(
+ 
+ 
+ def implicit_notification_reading(
+-    trigger: TriggerModel | None, entities: Sequence[EntitySnapshot]
++    trigger: TriggerModel | None,
++    entities: Sequence[EntitySnapshot],
++    default_message: str | None = None,
+ ) -> ActionReading:
+     """NOTIFY the speaker - the action a monitoring verb implies (7.8.3)."""
+-    message = trigger_message(trigger, "", entities)
++    message = default_message or trigger_message(trigger, "", entities)
+     action = notification_action(_IMPLICIT_NOTIFICATION, message, tuple(entities))
+     if action is None:
+         return ActionReading((), _IMPLICIT_NOTIFICATION, "dich")
+@@ -586,7 +708,7 @@ def build_automation(
+     )
+     model = AutomationModel(
+         triggers=triggers, conditions=interpreted.conditions,
+-        actions=reading.steps, source_text=source_text,
++        actions=reading.steps, source_text=source_text, situation=interpreted.situation,
+     )
+     canonical = (
+         _canonical(interpreted.trigger, reading.notification, interpreted.conditions, interpreted.grounded)
+@@ -661,10 +783,14 @@ def compose_event_automation(
+             grounded, frame.action_text, frame.trailing_message, raw_text, trace, interpreted.conditions,
+             implicit_notification=frame.implicit_notification,
+         )
++    interpreted, holding_message = state_conjunction(interpreted, entities)
+     reading = (
+-        implicit_notification_reading(interpreted.trigger, entities)
++        implicit_notification_reading(interpreted.trigger, entities, holding_message)
+         if frame.implicit_notification
+-        else read_actions(frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message)
++        else read_actions(
++            frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message,
++            holding_message,
++        )
+     )
+     if reading is None:
+         return None
+diff --git a/custom_components/homeintent/automation_language.py b/custom_components/homeintent/automation_language.py
+index ac31ed1..c97702c 100644
+--- a/custom_components/homeintent/automation_language.py
++++ b/custom_components/homeintent/automation_language.py
+@@ -533,6 +533,10 @@ class EventRoles:
+     # "es"/"er"/"sie" (agreement is checked in grounding), "member" for
+     # "eins/eines davon" and a prohibition's "kein" (any member of the set).
+     reference: str | None = None
++    # "offen ist/steht/bleibt" names a lasting state, "geöffnet wird" or
++    # "aufgeht" a moment.  A state joined with another state ("und niemand
++    # zuhause ist") holds whenever both are true (7.8.3).
++    stative: bool = False
+ 
+     @property
+     def numeric(self) -> bool:
+@@ -943,6 +947,25 @@ def read_event_roles(event_text: str) -> EventRoles:
+         direction=direction,
+         for_seconds=for_seconds,
+         conditions=conditions,
++        stative=state is not None and value is None and not motion and _is_stative(keys),
++    )
++
++
++# A predicate adjective or participle with a stative copula ("offen ist",
++# "geöffnet sind", "an bleibt"); "wird/werden" and event verbs are moments.
++_STATIVE_COPULAS = frozenset({"ist", "sind", "steht", "stehen", "bleibt", "bleiben", "ist?"})
++_EVENT_AUXILIARIES = frozenset({"wird", "werden", "worden", "wurde", "wurden"})
++_STATIVE_PREDICATES = frozenset({
++    "offen", "geöffnet", "auf", "zu", "geschlossen", "an", "aus", "ein", "eingeschaltet",
++    "ausgeschaltet", "angeschaltet",
++})
++
++
++def _is_stative(keys: list[str]) -> bool:
++    return (
++        bool(set(keys) & _STATIVE_COPULAS)
++        and not set(keys) & _EVENT_AUXILIARIES
++        and bool(set(keys) & _STATIVE_PREDICATES)
+     )
+ 
+ 
+diff --git a/custom_components/homeintent/nlu/automation_model.py b/custom_components/homeintent/nlu/automation_model.py
+index 32f4634..d917f42 100644
+--- a/custom_components/homeintent/nlu/automation_model.py
++++ b/custom_components/homeintent/nlu/automation_model.py
+@@ -259,6 +259,10 @@ class AutomationModel:
+     calendar_schedule: CalendarSchedule | None = None
+     quiet_start_hour: int | None = None
+     quiet_end_hour: int | None = None
++    # A combination of lasting states ("ein Fenster offen ist und niemand
++    # zuhause ist", 7.8.3) that holds whichever part begins last; spoken by
++    # the preview instead of listing every generated trigger and condition.
++    situation: str | None = None
+ 
+ 
+ def resolve_relative_schedule(model: AutomationModel, now: datetime) -> AutomationModel:
+diff --git a/custom_components/homeintent/nlu/automation_preview.py b/custom_components/homeintent/nlu/automation_preview.py
+index af13399..b28708d 100644
+--- a/custom_components/homeintent/nlu/automation_preview.py
++++ b/custom_components/homeintent/nlu/automation_preview.py
+@@ -486,6 +486,17 @@ def _render_notification_preview(
+         sentence = f"Zum Zeitpunkt „{model.calendar_schedule.spoken}“ {action_text}"
+     elif trigger is not None and trigger.type is TriggerType.RELATIVE_TIME:
+         sentence = f"In {_format_delay(trigger.relative_offset_seconds)} {action_text}"
++    elif model.situation is not None:
++        # One combined situation, whichever part of it begins last (7.8.3).
++        extra_conditions = [
++            _speak_condition_node(c, entity_by_id, area_name_by_id)
++            for c in model.conditions
++            if _is_time_window(c)
++        ]
++        when = model.situation + "".join(f" und {text}" for text in extra_conditions)
++        sentence = (
++            f"Sobald {when}, egal was davon zuletzt eintritt, {action_text}"
++        )
+     else:
+         described = [
+             describe_event(item, entities) for item in model.triggers
+@@ -518,6 +529,18 @@ def _render_notification_preview(
+     return f"{sentence} Soll ich das so einrichten?"
+ 
+ 
++def _is_time_window(node: "ConditionNode") -> bool:
++    from .condition_model import ConditionType
++
++    leaves = [node.condition] if node.condition is not None else [
++        child.condition for child in node.children
++    ]
++    return bool(leaves) and all(
++        leaf is not None and leaf.type in {ConditionType.TIME, ConditionType.WEEKDAY}
++        for leaf in leaves
++    )
++
++
+ def _speak_measured_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> str | None:
+     """Natural wording for attribute measurements and inclusive bounds.
+ 
+diff --git a/custom_components/homeintent/notification_language.py b/custom_components/homeintent/notification_language.py
+index ae81013..99bbff5 100644
+--- a/custom_components/homeintent/notification_language.py
++++ b/custom_components/homeintent/notification_language.py
+@@ -730,6 +730,24 @@ def _with_duration(phrase: StateEventPhrase, trigger: TriggerModel) -> StateEven
+     )
+ 
+ 
++def describe_holding_state(
++    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
++) -> StateEventPhrase | None:
++    """"ein Fenster offen ist" / "Ein Fenster ist offen." - the state itself,
++    not the moment it began."""
++    phrase = describe_state_event(trigger, entities)
++    if phrase is None or trigger.state not in _STATE_ADJECTIVES:
++        return None
++    suffix = f" {_PARTICIPLES.get(trigger.state, '')} wird"
++    if not phrase.subordinate.endswith(suffix):
++        return None
++    subject = phrase.subordinate[: -len(suffix)]
++    adjective = _STATE_ADJECTIVES[trigger.state]
++    return StateEventPhrase(
++        f"{subject} {adjective} ist", f"{sentence_initial(subject)} ist {adjective}."
++    )
++
++
+ def describe_presence_event(
+     trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+ ) -> StateEventPhrase | None:
+@@ -937,6 +955,7 @@ def message_from_trigger_text(trigger_text: str) -> str:
+ 
+ __all__ = (
+     "DEFAULT_NOTIFICATION_MESSAGE",
++    "describe_holding_state",
+     "DEFAULT_NOTIFICATION_TITLE",
+     "DEFAULT_REMINDER_MESSAGE",
+     "NotificationClause",
+diff --git a/tests/test_monitoring_automation_783.py b/tests/test_monitoring_automation_783.py
+index ad24400..06d12fc 100644
+--- a/tests/test_monitoring_automation_783.py
++++ b/tests/test_monitoring_automation_783.py
+@@ -71,12 +71,6 @@ _REGRESSION = [
+      {"cover.garagentor"}, "open", 600, []),
+     ("Benachrichtige mich, sobald das Garagentor geöffnet wird.",
+      {"cover.garagentor"}, "open", None, []),
+-    ("Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
+-     WINDOWS, "on", None, [NOBODY_HOME]),
+-    ("Sag mir Bescheid, wenn irgendein Fenster offen ist und keiner zuhause ist.",
+-     WINDOWS, "on", None, [NOBODY_HOME]),
+-    ("Achte darauf, dass kein Fenster offen bleibt, wenn niemand zuhause ist.",
+-     WINDOWS, "on", None, [NOBODY_HOME]),
+     ("Informiere mich, wenn ein Fenster seit mehr als 20 Minuten offen ist.",
+      WINDOWS, "on", 1200, []),
+     ("Behalte die Haustür im Auge und melde dich, wenn sie nachts geöffnet wird.",
+@@ -98,6 +92,122 @@ def test_monitoring_and_notification_requests(
+     _notifies_speaker(automation)
+ 
+ 
++# --- a window open while nobody is home: both orders -------------------------
++
++_WINDOW_AND_AWAY = (
++    "Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
++    "Sag mir Bescheid, wenn irgendein Fenster offen ist und keiner zuhause ist.",
++    "Achte darauf, dass kein Fenster offen bleibt, wenn niemand zuhause ist.",
++    "Warne mich, wenn die Fenster offen sind und niemand zuhause ist.",
++)
++PEOPLE = ("person.anna", "person.lena", "person.philipp")
++
++
++@pytest.mark.parametrize("text", _WINDOW_AND_AWAY)
++def test_window_open_and_nobody_home_holds_in_both_orders(monkeypatch, tmp_path, text):
++    automation = _create(monkeypatch, tmp_path, text)
++    window_trigger, *leave_triggers = automation["triggers"]
++    assert _entities(window_trigger) == WINDOWS and window_trigger["to"] == "on"
++    assert [(item["entity_id"], item["from"]) for item in leave_triggers] == [
++        (person, "home") for person in PEOPLE
++    ]
++    any_window, nobody = automation["conditions"]
++    assert any_window["condition"] == "or"
++    assert {leaf["entity_id"] for leaf in any_window["conditions"]} == WINDOWS
++    assert nobody == NOBODY_HOME
++    assert automation["actions"][0]["data"]["message"] == "Ein Fenster ist offen. Niemand ist zuhause."
++    _notifies_speaker(automation)
++
++
++def _fires(automation: dict, states: dict[str, str], changed: str, before: str) -> bool:
++    """Minimal Home Assistant semantics for the generated state triggers and
++    state/or/not conditions: does the change of ``changed`` from ``before``
++    to its value in ``states`` run the actions?"""
++    def triggered(trigger: dict) -> bool:
++        if changed not in _entities(trigger):
++            return False
++        if "to" in trigger and states[changed] != trigger["to"]:
++            return False
++        if "from" in trigger and before != trigger["from"]:
++            return False
++        return states[changed] != before
++
++    def holds(condition: dict) -> bool:
++        kind = condition["condition"]
++        if kind == "state":
++            return all(states[entity] == condition["state"] for entity in _entities(condition))
++        if kind == "or":
++            return any(holds(child) for child in condition["conditions"])
++        if kind == "not":
++            return not any(holds(child) for child in condition["conditions"])
++        raise AssertionError(kind)
++
++    return any(triggered(item) for item in automation["triggers"]) and all(
++        holds(item) for item in automation.get("conditions", [])
++    )
++
++
++def test_home_assistant_runs_it_whichever_part_begins_last(monkeypatch, tmp_path):
++    automation = _create(monkeypatch, tmp_path, _WINDOW_AND_AWAY[0])
++    closed = {window: "off" for window in WINDOWS}
++    home = {person: "home" for person in PEOPLE}
++    away = {person: "not_home" for person in PEOPLE}
++    kitchen = "binary_sensor.kuechenfenster"
++    # Everybody leaves while the kitchen window is still open.
++    last_one_leaves = {**closed, kitchen: "on", **away}
++    assert _fires(automation, last_one_leaves, "person.lena", "home")
++    # A window opens while the house is empty.
++    assert _fires(automation, {**closed, kitchen: "on", **away}, kitchen, "off")
++    # Not while somebody is still home, and not with every window closed.
++    assert not _fires(automation, {**closed, kitchen: "on", **home, "person.lena": "not_home"},
++                      "person.lena", "home")
++    assert not _fires(automation, {**closed, **away}, "person.lena", "home")
++
++
++def test_a_moment_stays_a_moment(monkeypatch, tmp_path):
++    automation = _create(
++        monkeypatch, tmp_path,
++        "Benachrichtige mich, wenn ein Fenster geöffnet wird und niemand zuhause ist.",
++    )
++    [trigger] = automation["triggers"]
++    assert _entities(trigger) == WINDOWS
++    assert automation["conditions"] == [NOBODY_HOME]
++
++
++def test_a_duration_is_not_completed(monkeypatch, tmp_path):
++    automation = _create(
++        monkeypatch, tmp_path,
++        # "keiner": the V10 monitor-goal route claims "niemand" + "Fenster" first.
++        "Informiere mich, wenn ein Fenster seit 20 Minuten offen ist und keiner zuhause ist.",
++    )
++    [trigger] = automation["triggers"]
++    assert trigger["for"] == {"seconds": 1200}
++    assert automation["conditions"] == [NOBODY_HOME]
++
++
++def test_two_device_states_hold_in_both_orders(monkeypatch, tmp_path):
++    automation = _create(
++        monkeypatch, tmp_path,
++        "Melde dich, wenn das Garagentor offen ist und die Stehlampe an ist.",
++    )
++    assert [(item["entity_id"], item["to"]) for item in automation["triggers"]] == [
++        ("cover.garagentor", "open"), ("light.stehlampe", "on"),
++    ]
++    assert automation["conditions"] == [
++        {"condition": "state", "entity_id": "cover.garagentor", "state": "open"},
++        {"condition": "state", "entity_id": "light.stehlampe", "state": "on"},
++    ]
++
++
++def test_preview_speaks_the_situation_not_the_trigger_list(monkeypatch, tmp_path):
++    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
++    preview = house.say(_WINDOW_AND_AWAY[0])
++    assert preview.speech.startswith(
++        "Sobald ein Fenster offen ist und niemand zuhause ist, egal was davon zuletzt eintritt,"
++    )
++    assert "person." not in preview.speech and "binary_sensor" not in preview.speech
++
++
+ # --- constructions, not sentences --------------------------------------------
+ 
+ _HEADS = (
+-- 
+2.43.0
+
