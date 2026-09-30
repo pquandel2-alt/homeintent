@@ -28,9 +28,11 @@ from .automation_composition import (
     compose_event_automation,
     interpret_event_clause,
 )
+from .automation_grounding import read_subject, subject_candidates
 from .automation_language import EventReference
+from .automation_monitoring import open_monitoring_object
 from .automation_notification import notification_action
-from .entities import EntitySnapshot
+from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.action_model import ActionModel, ActionType
 from .nlu.automation_model import AutomationModel, TriggerModel, TriggerType
 from .nlu.automation_validator import validate_automation
@@ -56,11 +58,26 @@ _JOINED_VERB = (
 _REPEAT_RE = re.compile(
     _JOINED_VERB
     + r"\s*,?\s*(?:und\s+)?(?:(?:dann|danach)\s+)?(?:weiter(?:hin)?\s+)?"
-    r"alle\s+(?P<count>\d+|[a-zäöüß]+)\s+" + _UNIT + r"(?:\s+(?:wieder|erneut))?\s*,?\s+"
+    r"(?:alle\s+(?P<count>\d+|[a-zäöüß]+)\s+" + _UNIT + r"|jede(?:n)?\s+(?P<single>minute|stunde)"
+    r"|(?P<adverb>minütlich|stündlich))(?:\s+(?:wieder|erneut))?\s*,?\s+"
     r"(?P<kind>bis|solange)\s+(?P<bound>[^,.!?]+)",
     re.IGNORECASE,
 )
-_INTERVAL_RE = re.compile(r"\balle\s+(?:\d+|[a-zäöüß]+)\s+(?:minuten?|stunden?)\b", re.IGNORECASE)
+_VAGUE_RE = re.compile(
+    r"\b(?:etwas|was|irgendwas|irgendetwas|irgendwas)\s+(?:ungewöhnliche|komische|seltsame|"
+    r"merkwürdige|auffällige|verdächtige|unerwartete|besondere|eigenartige|sonderbare)s\b",
+    re.IGNORECASE,
+)
+_WATCH_WORD_RE = re.compile(r"\b(?:überwach|beobacht|acht|pass\s+auf|behalt)\w*", re.IGNORECASE)
+_LOCK_ACTION_RE = re.compile(
+    r"\b(?:schließ\w*|sperr\w*)\s+(?:\S+\s+){0,3}?ab\b|\bverriegel\w*|\bverriegle\b|\babschließen\b",
+    re.IGNORECASE,
+)
+_INTERVAL_RE = re.compile(
+    r"\balle\s+(?:\d+|[a-zäöüß]+)\s+(?:minuten?|stunden?)\b|\bjede[n]?\s+(?:minute|stunde)\b"
+    r"|\b(?:minütlich|stündlich)\b",
+    re.IGNORECASE,
+)
 _EVENT_WORD_RE = re.compile(r"\b(?:wenn|sobald|falls|bis|solange)\b", re.IGNORECASE)
 _REMIND_VERB_RE = re.compile(r"\berinnere\s+mich\b", re.IGNORECASE)
 _ESCALATE_RE = re.compile(
@@ -102,7 +119,11 @@ def split_repeat(text: str) -> RepeatSpan | None:
     match = _REPEAT_RE.search(text)
     if match is None:
         return None
-    seconds = _seconds(match.group("count"), match.group("unit"))
+    single = (match.group("single") or match.group("adverb") or "").casefold()
+    seconds = (
+        3600 if single.startswith(("stunde", "stünd")) else 60 if single
+        else _seconds(match.group("count"), match.group("unit"))
+    )
     if seconds is None:
         return None
     rest = (text[:match.start()] + text[match.end():]).strip(" ,")
@@ -186,7 +207,17 @@ def _holds(trigger: TriggerModel, state: SemanticState) -> ConditionNode:
 def compose_with_followups(
     raw_text: str, entities: Sequence[EntitySnapshot], readers: Readers
 ) -> CompositionOutcome | None:
-    """The sentence reader plus repetition and escalation (7.9 W5)."""
+    """The sentence reader plus repetition and escalation (7.9 W5) and the
+    open monitoring request (W6)."""
+    monitored = open_monitoring_object(raw_text)
+    if monitored is not None:
+        return _open_request(monitored, entities)
+    if _VAGUE_RE.search(raw_text) and (
+        _NOTIFY_WORD_RE.search(raw_text) or _WATCH_WORD_RE.search(raw_text)
+    ):
+        # "Melde dich, wenn etwas Ungewöhnliches passiert" (7.9 W7): an
+        # indefinite pronoun with an evaluative adjective names no event.
+        return CompositionOutcome(OutcomeKind.CLARIFY, speech="", vague_situation=True)
     escalation = split_escalation(raw_text)
     if escalation is not None:
         return _compose_escalation(escalation, entities, readers)
@@ -203,7 +234,46 @@ def compose_with_followups(
                 "offen ist, erinnere mich alle 10 Minuten, bis es zu ist.“"
             ),
         )
-    return compose_event_automation(raw_text, entities, readers)
+    outcome = compose_event_automation(raw_text, entities, readers)
+    if (outcome is None or outcome.kind is OutcomeKind.UNSUPPORTED) and _LOCK_ACTION_RE.search(raw_text):
+        # "… und schließ sie ab, wenn …": locks stay confirmed in person.
+        return CompositionOutcome(
+            OutcomeKind.UNSUPPORTED,
+            speech=(
+                "Schlösser schließe oder öffne ich nicht in einer Automation – das bestätigst du "
+                "immer selbst. Ich kann dich stattdessen benachrichtigen, zum Beispiel: „Überwache "
+                "die Haustür und melde dich, wenn sie offen ist.“"
+            ),
+        )
+    return outcome
+
+
+def _open_request(words: tuple[str, ...], entities: Sequence[EntitySnapshot]) -> CompositionOutcome:
+    """"Überwache das Garagentor." - ask for the event (7.9 W6)."""
+    subject = read_subject(words, entities)
+    if subject.noun is not None:
+        found = subject_candidates(subject, entities)
+    else:
+        found = [
+            entity for entity in entities
+            if normalize_for_compare(entity.friendly_name) == normalize_for_compare(" ".join(
+                word for word in words if word.casefold() not in {"der", "die", "das", "den", "dem"}
+            ))
+        ]
+    spoken = " ".join(word for word in words if word.casefold() not in {"der", "die", "das", "den", "dem"})
+    if not found:
+        return CompositionOutcome(
+            OutcomeKind.CLARIFY,
+            speech=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
+        )
+    return CompositionOutcome(
+        OutcomeKind.CLARIFY,
+        speech=(
+            f"Wann soll ich mich zu „{spoken}“ melden? Sag zum Beispiel: „Wenn es länger als "
+            "10 Minuten offen ist.“"
+        ),
+        monitored_object=words,
+    )
 
 
 def _base(text: str, entities: Sequence[EntitySnapshot], readers: Readers) -> CompositionOutcome | None:
@@ -223,7 +293,26 @@ def _base(text: str, entities: Sequence[EntitySnapshot], readers: Readers) -> Co
 
 
 def _finish(model: AutomationModel, outcome: CompositionOutcome) -> CompositionOutcome:
-    return replace(outcome, model=model, validation_error=validate_automation(model), canonical=None)
+    """The completed model; the canonical meaning gains the follow-ups."""
+    canonical = outcome.canonical
+    if canonical is not None:
+        for step in model.actions:
+            if not isinstance(step, ActionModel):
+                continue
+            if step.type is ActionType.REPEAT:
+                canonical = replace(
+                    canonical, repeat_interval_seconds=step.delay_seconds, max_repeats=step.max_repeats
+                )
+            if step.type is ActionType.ESCALATE:
+                second = next((s for s in step.then_steps if isinstance(s, ActionModel)), None)
+                recipient = second.recipient if second is not None else None
+                canonical = replace(
+                    canonical, escalation_seconds=step.timeout_seconds,
+                    escalation_recipient=(
+                        (recipient.label or recipient.kind.name).casefold() if recipient is not None else None
+                    ),
+                )
+    return replace(outcome, model=model, validation_error=validate_automation(model), canonical=canonical)
 
 
 def _compose_repeat(

@@ -114,6 +114,12 @@ class CanonicalEvent:
     state: SemanticState | None = None
     direction: TravelDirection | None = None
     for_seconds: int | None = None
+    # 7.9: the whole set (W1), the state that did not occur (W2) and a
+    # change by an amount within a window (W3).
+    quantifier_all: bool = False
+    absent_state: SemanticState | None = None
+    change_delta: float | None = None
+    change_window_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +131,11 @@ class CanonicalEventNotification:
     event: CanonicalEvent
     condition_count: int
     explicit_message: str | None
+    # 7.9 W5: repetition and escalation.
+    repeat_interval_seconds: int | None = None
+    max_repeats: int | None = None
+    escalation_seconds: int | None = None
+    escalation_recipient: str | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +173,11 @@ class CompositionOutcome:
     canonical: CanonicalEventNotification | None = None
     trace: CompositionTrace = field(default_factory=lambda: CompositionTrace("none"))
     monitor: MonitorProposal | None = None
+    # "Überwache das Garagentor." (7.9 W6): the object of an open request.
+    monitored_object: tuple[str, ...] | None = None
+    # "wenn etwas Ungewöhnliches passiert" (7.9 W7): no event of its own -
+    # answered from the proactive situation catalog, never invented.
+    vague_situation: bool = False
 
 
 @dataclass(frozen=True)
@@ -730,9 +746,29 @@ def _canonical(
             state=trigger.state,
             direction=trigger.direction,
             for_seconds=trigger.for_seconds,
+            quantifier_all=bool(grounded is not None and grounded.aggregate),
+            absent_state=trigger.absent_state,
         ),
         condition_count=len(conditions),
         explicit_message=clause.message,
+    )
+
+
+def rate_canonical(proposal: MonitorProposal) -> CanonicalEventNotification:
+    """The canonical meaning of a change request (7.9 W3)."""
+    rule = proposal.rule
+    return CanonicalEventNotification(
+        recipient=NotificationRecipientKind.CURRENT_USER,
+        recipient_name=None,
+        event=CanonicalEvent(
+            trigger_type=TriggerType.NUMERIC_STATE,
+            entity_ids=(rule.entity_id,),
+            state=None,
+            change_delta=rule.delta if rule.direction is not ChangeDirection.FALL else -rule.delta,
+            change_window_seconds=rule.window_seconds,
+        ),
+        condition_count=0,
+        explicit_message=None,
     )
 
 
@@ -1127,7 +1163,7 @@ def _change_outcome(
     proposal = propose(rule, f"„{sensor.friendly_name}“")
     return CompositionOutcome(
         OutcomeKind.MONITOR, speech=proposal.preview, monitor=proposal,
-        trace=replace(trace, grounding="change"),
+        canonical=rate_canonical(proposal), trace=replace(trace, grounding="change"),
     )
 
 

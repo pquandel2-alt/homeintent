@@ -690,7 +690,9 @@ def _writes(payload: object) -> bool:
 _MEANT_PREFIX_RE = re.compile(r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+", re.IGNORECASE)
 _MODAL_REQUEST_RE = re.compile(
     r"\b(?:kannst|könntest|koenntest|würdest|wuerdest)\s+du\s+(?:\S+\s+){0,4}?"
-    r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden)\b",
+    r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden"
+    # 7.9 W6: "Kannst du das Garagentor überwachen?" asks for a monitor.
+    r"|überwachen|beobachten|im\s+(?:auge|blick)\s+behalten)\b",
     re.IGNORECASE,
 )
 _WH_QUESTION_RE = re.compile(
@@ -3638,6 +3640,8 @@ class NluEngine:
             response_text=outcome.speech or unsupported_text(None),
             clarification=outcome.clarification,
             trace=outcome.trace,
+            monitored_object=outcome.monitored_object,
+            vague_situation=outcome.vague_situation,
         )
 
     def resolve_event_clarification(

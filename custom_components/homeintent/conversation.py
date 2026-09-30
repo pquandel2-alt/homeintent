@@ -73,6 +73,7 @@ from .hass_entities import (
 )
 from .history_query import parse_history_query
 from .household_query import match_household_query
+from .monitoring_management import parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
 from .proactive_dialog import V12_TASK_KINDS
@@ -453,7 +454,7 @@ class NluConversationEntity(
             entities=lambda: build_entity_snapshots(self.hass, self.entry),
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
         )
-        self._monitoring = MonitoringController(runtime=runtime)
+        self._monitoring = MonitoringController(runtime=runtime, automation_store=self._automation_store)
         self._comfort = ComfortController(
             hass=lambda: self.hass,
             entry=entry,
@@ -899,6 +900,44 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.MONITOR_EVENT
+        ):
+            # "Überwache das Garagentor." -> "Wenn es offen ist." (7.9 W6):
+            # the answer is read with the object as antecedent.  A complete
+            # other request ends the open question without effect.
+            combined = self._monitoring.open_monitor_text(user_input, active_task)
+            if combined is not None:
+                self._monitoring.cancel_open_monitor(user_input, active_task)
+                if self._event_reading_claims(combined, entities):
+                    return await self._async_handle_message_inner(
+                        replace(user_input, text=combined), chat_log
+                    )
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.MONITOR_DELETE
+        ):
+            handled = await self._monitoring.async_handle_monitor_delete(
+                user_input, response, active_task
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.UNUSUAL_OPT_IN
+        ):
+            handled = await self._monitoring.async_handle_unusual_opt_in(
+                user_input, response, active_task
+            )
+            if handled is not None:
+                return handled
 
         if (
             active_dialog is None
@@ -1564,6 +1603,14 @@ class NluConversationEntity(
             ))
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
+            )
+
+        monitoring_request = parse_monitoring_management(user_input.text)
+        if monitoring_request is not None:
+            # "Welche Überwachungen laufen?", "Stopp die Fensterüberwachung"
+            # (7.9 W8): automations and HomeIntent monitors, in plain words.
+            return await self._monitoring.async_handle_management(
+                user_input, response, monitoring_request, entities, dt_util.now()
             )
 
         routine_request = interpret_routine_binding(user_input.text, entities)
@@ -2272,6 +2319,14 @@ class NluConversationEntity(
 
         if isinstance(result, MonitorProposalResult):
             return self._monitoring.stage_value_monitor(user_input, response, result)
+
+        if isinstance(result, AutomationClarificationResult) and result.vague_situation:
+            return self._monitoring.answer_unusual(user_input, response, self.entry.options)
+
+        if isinstance(result, AutomationClarificationResult) and result.monitored_object:
+            return self._monitoring.stage_open_monitor(
+                user_input, response, result.monitored_object, result.response_text
+            )
 
         if isinstance(result, AutomationClarificationResult):
             return self._automations.handle_clarification_result(

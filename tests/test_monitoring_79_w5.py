@@ -153,3 +153,22 @@ def test_repeating_a_device_action_is_refused(monkeypatch, tmp_path):
     assert "Soll ich" not in turn.speech
     house.say("Ja.")
     assert house.automations() == []
+
+
+@pytest.mark.parametrize("interval,seconds", [
+    ("jede Minute", 60), ("alle zwei Minuten", 120), ("stündlich", 3600), ("jede Stunde", 3600),
+    ("alle 2 Stunden", 7200),
+])
+def test_interval_words(monkeypatch, tmp_path, interval, seconds):
+    _, automation = _create(
+        monkeypatch, tmp_path, f"Wenn das Garagentor offen ist, erinnere mich {interval}, bis es zu ist."
+    )
+    assert automation["actions"][0]["repeat"]["sequence"][-1] == {"delay": {"seconds": seconds}}
+
+
+def test_an_interval_that_is_not_used_is_never_dropped(monkeypatch, tmp_path):
+    house = _house(monkeypatch, tmp_path)
+    turn = house.say("Wenn das Garagentor offen ist, schalte jede Minute das Garagenlicht ein.")
+    assert "Soll" not in turn.speech
+    house.say("Ja.")
+    assert house.automations() == []

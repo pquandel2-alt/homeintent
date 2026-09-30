@@ -1001,6 +1001,11 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         subject.append(word)
     subject_words = _trim_articles(tuple(subject))
+    if state is None and value is None:
+        detector = _substance_detector(subject_words, keys)
+        if detector is not None:
+            # "wenn Wasser austritt" names what a detector reports (7.9 W7).
+            subject_words, state = detector, SemanticState.ON
     absent: SemanticState | None = None
     until: tuple[int, int] | None = None
     agent: str | None = None
@@ -1125,6 +1130,32 @@ def read_relative_change(text: str) -> tuple[RelativeChange, tuple[str, ...]] | 
         if word and word.casefold() not in _FALL_VERBS | _RISE_VERBS | _EITHER_VERBS | _CHANGE_FILLERS
     )
     return RelativeChange(delta, unit, sense, window_seconds), _trim_articles(subject)
+
+
+# --- what a detector reports (7.9 W7) -------------------------------------------------
+
+# A substance plus an appearing verb names the detector's report: "wenn
+# Wasser austritt" = the water detector reports water.  Closed classes.
+_SUBSTANCE_DETECTORS = {"wasser": "Wassermelder", "rauch": "Rauchmelder", "gas": "Gasmelder"}
+_APPEARING_VERBS = frozenset({
+    "austritt", "ausläuft", "ausgetreten", "ausgelaufen", "entsteht", "aufsteigt", "auftritt",
+    "erkannt", "gemeldet", "festgestellt", "da",
+})
+
+
+def _substance_detector(
+    words: tuple[str, ...], keys: list[str]
+) -> tuple[str, ...] | None:
+    if not any(key in _APPEARING_VERBS for key in keys):
+        return None
+    substances = [word for word in words if word.casefold() in _SUBSTANCE_DETECTORS]
+    if len(substances) != 1:
+        return None
+    rest = tuple(
+        word for word in words
+        if word.casefold() not in _SUBSTANCE_DETECTORS and word.casefold() not in _APPEARING_VERBS
+    )
+    return (*rest, _SUBSTANCE_DETECTORS[substances[0].casefold()])
 
 
 # --- inactivity (7.9 W2) ------------------------------------------------------------

@@ -700,6 +700,10 @@ class AutomationExecutor:
                     triggers=_mapping_tuple(automation.get("triggers", automation.get("trigger"))),
                     conditions=_mapping_tuple(automation.get("conditions", automation.get("condition"))),
                     actions=_mapping_tuple(automation.get("actions", automation.get("action"))),
+                    description=(
+                        automation.get("description")
+                        if isinstance(automation.get("description"), str) else None
+                    ),
                 )
             )
         return tuple(summaries)

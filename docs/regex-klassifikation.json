@@ -271,6 +271,27 @@
    "quelle": "manuell"
   },
   {
+   "id": "custom_components/homeintent/automation_followup.py::_VAGUE_RE::8415cf8775",
+   "datei": "custom_components/homeintent/automation_followup.py",
+   "bereich": "_VAGUE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_followup.py::_WATCH_WORD_RE::ccc9ed0a0f",
+   "datei": "custom_components/homeintent/automation_followup.py",
+   "bereich": "_WATCH_WORD_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_followup.py::_LOCK_ACTION_RE::27086d490f",
+   "datei": "custom_components/homeintent/automation_followup.py",
+   "bereich": "_LOCK_ACTION_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/automation_followup.py::_INTERVAL_RE::c5f7ce44c6",
    "datei": "custom_components/homeintent/automation_followup.py",
    "bereich": "_INTERVAL_RE",
@@ -719,6 +740,13 @@
    "quelle": "manuell"
   },
   {
+   "id": "custom_components/homeintent/automation_monitoring.py::_OPEN_RES::3fc35197f0",
+   "datei": "custom_components/homeintent/automation_monitoring.py",
+   "bereich": "_OPEN_RES",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/automation_monitoring.py::_OBJECT_CLAUSE_RES::27b56febab",
    "datei": "custom_components/homeintent/automation_monitoring.py",
    "bereich": "_OBJECT_CLAUSE_RES",
@@ -736,6 +764,13 @@
    "id": "custom_components/homeintent/automation_monitoring.py::_TRAILING_CONDITION_RE::37d58396ad",
    "datei": "custom_components/homeintent/automation_monitoring.py",
    "bereich": "_TRAILING_CONDITION_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "manuell"
+  },
+  {
+   "id": "custom_components/homeintent/automation_monitoring.py::_CLAUSE_CONNECTOR_RE::a3b701828c",
+   "datei": "custom_components/homeintent/automation_monitoring.py",
+   "bereich": "_CLAUSE_CONNECTOR_RE",
    "klasse": "STRUCTURAL",
    "quelle": "manuell"
   },
@@ -1734,7 +1769,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/engine.py::_MODAL_REQUEST_RE::5d5b3d9379",
+   "id": "custom_components/homeintent/engine.py::_MODAL_REQUEST_RE::0e8a6604a3",
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "_MODAL_REQUEST_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -2578,6 +2613,20 @@
    "datei": "custom_components/homeintent/memory_intent.py",
    "bereich": "interpret_memory_intent",
    "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/monitoring_management.py::_CLOCK_RE::fce7521f94",
+   "datei": "custom_components/homeintent/monitoring_management.py",
+   "bereich": "_CLOCK_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/monitoring_management.py::parse_monitoring_management::3fcc0d17d6",
+   "datei": "custom_components/homeintent/monitoring_management.py",
+   "bereich": "parse_monitoring_management",
+   "klasse": "STRUCTURAL",
    "quelle": "heuristik"
   },
   {
@@ -5053,9 +5102,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 378,
+  "LEXICAL": 382,
   "MORPHOLOGICAL": 38,
-  "STRUCTURAL": 131,
+  "STRUCTURAL": 134,
   "SEMANTIC_SENTENCE_PATTERN": 173
  }
 }

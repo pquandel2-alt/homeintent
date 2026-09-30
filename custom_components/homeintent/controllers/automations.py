@@ -137,6 +137,14 @@ _NO_CONDITION_RE = re.compile(
 )
 
 
+def spoken_summary(preview: str) -> str:
+    """The preview without its framing question."""
+    text = preview.removeprefix("Automation erkannt: ")
+    for question in ("Soll ich das so einrichten?", "Soll diese Automation erstellt werden?"):
+        text = text.removesuffix(question)
+    return text.strip()
+
+
 def start_now(model: AutomationModel) -> AutomationModel:
     """The same reminder, once, starting in a few seconds (7.9 W5)."""
     return replace(
@@ -455,10 +463,14 @@ class AutomationController:
                 response=response, conversation_id=user_input.conversation_id
             )
         assert generation_result.config is not None
+        # The spoken preview becomes the automation's description: visible in
+        # Home Assistant, and what "Welche Überwachungen laufen?" reads (7.9 W8).
+        described = dict(generation_result.config)
+        described.setdefault("description", spoken_summary(render_automation_preview(model, entities)))
 
         try:
             created_id = await self._automation_store().async_create_automation(
-                generation_result.config,
+                described,
                 automation_id=once_automation_id,
                 scheduled_for=model.scheduled_for,
                 once=model.once,

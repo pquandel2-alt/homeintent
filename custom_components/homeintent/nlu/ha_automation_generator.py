@@ -648,8 +648,8 @@ def _generate_action_leaf(action: ActionModel, entities: list[EntitySnapshot]) -
         if error is not None:
             return None, error
         sequence, error = generate_ha_action_configs(action.then_steps, entities)
-        if error is not None:
-            return None, error
+        if error is not None or sequence is None:
+            return None, error or GenerationError.UNSUPPORTED_ACTION_TYPE
         return {"repeat": {
             "while": [
                 condition,

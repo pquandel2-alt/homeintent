@@ -51,6 +51,8 @@ from .automation_language import (
     EventReference,
     segment_event_automation,
 )
+from .nlu.automation_lexicon import noun_class, split_compound
+from .nlu.german_morphology import GrammaticalGender, entity_name_gender
 
 _LEAD = r"^(?:(?:bitte|kannst\s+du|könntest\s+du|würdest\s+du|du\s+sollst)\s+)?"
 _WATCH = r"(?:überwache|überwach|beobachte|beobacht)"
@@ -74,6 +76,7 @@ _OBJECT_REST_RES = tuple(
     re.compile(_LEAD + head + r"\s*(?:,\s*(?:und\s+)?|\s+und\s+)(?P<rest>.+)$", re.IGNORECASE)
     for head in _OBJECT_HEADS
 )
+_OPEN_RES = tuple(re.compile(_LEAD + head + r"$", re.IGNORECASE) for head in _OBJECT_HEADS)
 _OBJECT_CLAUSE_RES = tuple(
     re.compile(_LEAD + head + rf"\s*,?\s*{_CONNECTOR}\s+(?P<event>.+)$", re.IGNORECASE)
     for head in _OBJECT_HEADS
@@ -154,6 +157,57 @@ def _implicit_frame(
     )
 
 
+_OBJECT_PRONOUNS = {
+    "sie": (GrammaticalGender.FEMININE,), "es": (GrammaticalGender.NEUTER,),
+    "ihn": (GrammaticalGender.MASCULINE,),
+}
+_CLAUSE_CONNECTOR_RE = re.compile(r"\s*,?\s*\b(?:wenn|sobald|falls)\b", re.IGNORECASE)
+
+
+def _np_gender(words: tuple[str, ...]) -> GrammaticalGender | None:
+    head = words[-1]
+    noun = noun_class(head)
+    if noun is None:
+        compound = split_compound(head)
+        noun = compound[1] if compound is not None else None
+    if noun is not None:
+        return noun.gender
+    return entity_name_gender(head)
+
+
+def bind_action_pronoun(rest: str, words: tuple[str, ...]) -> str:
+    """"schließ sie ab, wenn …" -> "schließ die Haustür ab, wenn …" (7.9 W6).
+
+    Only an object pronoun of the action part (before the connector) is
+    bound, only to the monitored noun phrase and only when its gender
+    agrees - the same rule as for the event's subject pronoun.
+    """
+    connector = _CLAUSE_CONNECTOR_RE.search(rest)
+    action = rest[:connector.start()] if connector is not None else rest
+    tail = rest[len(action):]
+    tokens = action.split()
+    gender = _np_gender(words)
+    for index, token in enumerate(tokens[1:], start=1):
+        key = token.casefold().strip(",.;:!?")
+        # Without a typed noun there is nothing to check against - the same
+        # rule as for the event's subject pronoun (``_reference_agrees``).
+        if key in _OBJECT_PRONOUNS and (gender is None or gender in _OBJECT_PRONOUNS[key]):
+            bound = [*tokens[:index], " ".join(words), *tokens[index + 1:]]
+            return " ".join(bound) + tail
+    return rest
+
+
+def open_monitoring_object(text: str) -> tuple[str, ...] | None:
+    """"Überwache das Garagentor." - a monitored object without an event
+    (7.9 W6): the words of the object, or ``None``."""
+    stripped = text.strip().rstrip(".!?").strip()
+    for pattern in _OPEN_RES:
+        match = pattern.match(stripped)
+        if match is not None:
+            return _object_words(match.group("np"))
+    return None
+
+
 def segment_monitoring(text: str, action_ok: ActionCheck) -> EventActionFrame | None:
     """Read a monitoring request into one event/action frame, or ``None``."""
     stripped = text.strip()
@@ -165,6 +219,7 @@ def segment_monitoring(text: str, action_ok: ActionCheck) -> EventActionFrame | 
         rest = match.group("rest").strip()
         if words is None or not rest:
             continue
+        rest = bind_action_pronoun(rest, words)
         inner = segment_event_automation(rest, action_ok)
         if inner is None:
             continue
@@ -187,4 +242,4 @@ def segment_monitoring(text: str, action_ok: ActionCheck) -> EventActionFrame | 
     return None
 
 
-__all__ = ("segment_monitoring",)
+__all__ = ("bind_action_pronoun", "open_monitoring_object", "segment_monitoring")

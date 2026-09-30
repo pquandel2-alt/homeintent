@@ -28,6 +28,10 @@ class AutomationClarificationResult:
     response_text: str
     clarification: EventClarification | None = None
     trace: CompositionTrace | None = None
+    # An open monitoring request (7.9 W6): the next turn names the event.
+    monitored_object: tuple[str, ...] | None = None
+    # "etwas Ungewöhnliches" (7.9 W7): answered from the situation catalog.
+    vague_situation: bool = False
 
 
 @dataclass(frozen=True)
