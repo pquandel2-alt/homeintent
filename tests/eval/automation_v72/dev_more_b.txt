@@ -73,6 +73,7 @@ clarify :: Gib mir Bescheid, wenn es halb offen ist.
 clarify :: Benachrichtige mich, wenn es unter 20 Prozent fällt.
 ## unsupported
 unsupported :: Sag mir Bescheid, wenn die Luftfeuchtigkeit im Büro um 5 Prozent steigt.
-unsupported :: Benachrichtige mich, wenn alle Rollläden geschlossen sind.
+# 7.9 W1: "alle Rollläden geschlossen" is a whole-set state (was: unsupported "aggregate").
+auto: state(cover.bad_rollladen,cover.buero_rollladen,cover.kueche_rollladen,cover.schlafzimmer_rollladen,cover.wohnzimmer_rollladen)=closed ; if: all state(cover.bad_rollladen,cover.buero_rollladen,cover.kueche_rollladen,cover.schlafzimmer_rollladen,cover.wohnzimmer_rollladen)=closed => notify(me) :: Benachrichtige mich, wenn alle Rollläden geschlossen sind.
 unsupported :: Schick mir eine Nachricht, wenn die Heizung im Wohnzimmer 22 Grad erreicht.
 unsupported :: Gib mir Bescheid, wenn der Rollladen im Büro schneller als sonst fährt.

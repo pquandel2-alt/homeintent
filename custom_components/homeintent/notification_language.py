@@ -683,6 +683,8 @@ def describe_event(
     if trigger.appliance_label:
         subject = trigger.appliance_label
         return StateEventPhrase(f"{subject} fertig ist", f"{sentence_initial(subject)} ist fertig.")
+    if trigger.type is TriggerType.STATE and trigger.absent_state is not None:
+        return describe_inactivity(trigger, entities)
     if trigger.type is TriggerType.STATE:
         phrase = describe_state_event(trigger, entities)
         if phrase is not None and trigger.for_seconds and trigger.state in _STATE_ADJECTIVES:
@@ -705,6 +707,9 @@ _STATE_ADJECTIVES: dict[SemanticState, str] = {
 
 def spoken_duration(seconds: int) -> str:
     """600 -> "10 Minuten", 3600 -> "1 Stunde", 90 -> "90 Sekunden"."""
+    if seconds % 86400 == 0:
+        days = seconds // 86400
+        return f"{days} Tag" if days == 1 else f"{days} Tage"
     if seconds % 3600 == 0:
         hours = seconds // 3600
         return f"{hours} Stunde" if hours == 1 else f"{hours} Stunden"
@@ -712,6 +717,97 @@ def spoken_duration(seconds: int) -> str:
         minutes = seconds // 60
         return f"{minutes} Minute" if minutes == 1 else f"{minutes} Minuten"
     return f"{seconds} Sekunden"
+
+
+def _since(duration: str) -> str:
+    """"seit 2 Tagen" - the dative plural of a spoken duration."""
+    return f"seit {duration}n" if duration.endswith("Tage") else f"seit {duration}"
+
+
+_MOTION_CLASSES = frozenset({"motion", "occupancy", "presence"})
+
+
+def describe_inactivity(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """"im Flur 12 Stunden lang keine Bewegung erkannt wurde" / "Im Flur wurde
+    seit 12 Stunden keine Bewegung erkannt." (7.9 W2)."""
+    target = trigger.target
+    if target is None or trigger.absent_state is None:
+        return None
+    duration = spoken_duration(int(trigger.for_seconds)) if trigger.for_seconds else None
+    span = f" {duration} lang" if duration else ""
+    since = f" {_since(duration)}" if duration else ""
+    matches = _matching_entities(target, entities)
+    if matches and all(item.device_class in _MOTION_CLASSES for item in matches):
+        location = _location(target, entities) or _shared_location(matches)
+        where = f"{location} " if location else ""
+        head = location or "Es"
+        return StateEventPhrase(
+            f"{where}{span.strip()} keine Bewegung erkannt wurde".replace("  ", " ").strip(),
+            f"{sentence_initial(head)} wurde{since} keine Bewegung erkannt.",
+        )
+    participle = _PARTICIPLES.get(trigger.absent_state)
+    single = _single_entity(target, entities)
+    if participle is None or single is None:
+        return None
+    definite = definite_entity_phrase(single.friendly_name)
+    subject = definite[0] if definite is not None else single.friendly_name
+    return StateEventPhrase(
+        f"{subject}{span} nicht {participle} wurde",
+        f"{sentence_initial(subject)} wurde{since} nicht {participle}.",
+    )
+
+
+def describe_unchanged_today(
+    target: TriggerTarget,
+    rest_state: SemanticState,
+    until: tuple[int, int] | None,
+    entities: Sequence[EntitySnapshot],
+) -> StateEventPhrase | None:
+    """"im Bad seit Mitternacht keine Bewegung erkannt wurde" / "Im Bad wurde
+    heute bis 10:00 Uhr keine Bewegung erkannt." (7.9 W2)."""
+    absent = _COMPLEMENT.get(rest_state, SemanticState.ACTIVE if rest_state is SemanticState.INACTIVE else None)
+    if absent is None:
+        return None
+    clock = f" bis {until[0]:02d}:{until[1]:02d} Uhr" if until is not None else ""
+    matches = _matching_entities(target, entities)
+    if matches and all(item.device_class in _MOTION_CLASSES for item in matches):
+        location = _location(target, entities) or _shared_location(matches) or "im Haus"
+        return StateEventPhrase(
+            f"{location} seit Mitternacht keine Bewegung erkannt wurde",
+            f"{sentence_initial(location)} wurde heute{clock} keine Bewegung erkannt.",
+        )
+    single = _single_entity(target, entities)
+    if single is None:
+        return None
+    if single.domain == "sensor" and rest_state is SemanticState.INACTIVE:
+        # A program status sensor ("Waschmaschine Status"): the appliance.
+        name = " ".join(
+            word for word in single.friendly_name.split()
+            if word.casefold() not in {"status", "zustand", "programm", "betrieb"}
+        ) or single.friendly_name
+        definite = definite_entity_phrase(name)
+        subject = definite[0] if definite is not None else name
+        return StateEventPhrase(
+            f"{subject} seit Mitternacht nicht gelaufen ist",
+            f"{sentence_initial(subject)} ist heute{clock} nicht gelaufen.",
+        )
+    participle = _PARTICIPLES.get(absent)
+    if participle is None:
+        return None
+    definite = definite_entity_phrase(single.friendly_name)
+    subject = definite[0] if definite is not None else single.friendly_name
+    return StateEventPhrase(
+        f"{subject} seit Mitternacht nicht {participle} wurde",
+        f"{sentence_initial(subject)} wurde heute{clock} nicht {participle}.",
+    )
+
+
+_COMPLEMENT: dict[SemanticState, SemanticState] = {
+    SemanticState.ON: SemanticState.OFF, SemanticState.OFF: SemanticState.ON,
+    SemanticState.OPEN: SemanticState.CLOSED, SemanticState.CLOSED: SemanticState.OPEN,
+}
 
 
 def _with_duration(phrase: StateEventPhrase, trigger: TriggerModel) -> StateEventPhrase:
@@ -745,6 +841,45 @@ def describe_holding_state(
     adjective = _STATE_ADJECTIVES[trigger.state]
     return StateEventPhrase(
         f"{subject} {adjective} ist", f"{sentence_initial(subject)} ist {adjective}."
+    )
+
+
+# Plural noun per device class / domain for a whole set ("alle Fenster", 7.9 W1).
+_PLURAL_NOUNS: dict[tuple[str, str | None], str] = {
+    ("binary_sensor", "window"): "Fenster",
+    ("binary_sensor", "door"): "Türen",
+    ("binary_sensor", "garage_door"): "Garagentore",
+    ("cover", "garage"): "Garagentore",
+    ("cover", None): "Rollläden",
+    ("light", None): "Lichter",
+    ("switch", None): "Schalter",
+    ("fan", None): "Ventilatoren",
+    ("lock", None): "Schlösser",
+}
+
+
+def describe_whole_set_state(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """"alle 6 Fenster im Obergeschoss geschlossen sind" / "Alle 6 Fenster im
+    Obergeschoss sind geschlossen." - the count is always spoken, so a set
+    larger than expected is visible before the "Ja"."""
+    target = trigger.target
+    if target is None or trigger.state not in _STATE_ADJECTIVES:
+        return None
+    matches = _matching_entities(target, entities)
+    if len(matches) < 2:
+        return None
+    classes = {(item.domain, item.device_class) for item in matches}
+    domains = {domain for domain, _ in classes}
+    noun = (
+        _PLURAL_NOUNS.get(next(iter(classes))) if len(classes) == 1 else None
+    ) or (_PLURAL_NOUNS.get((next(iter(domains)), None)) if len(domains) == 1 else None) or "Geräte"
+    location = _location(target, entities) or _shared_location(matches)
+    subject = f"alle {len(matches)} {noun}" + (f" {location}" if location else "")
+    adjective = _STATE_ADJECTIVES[trigger.state]
+    return StateEventPhrase(
+        f"{subject} {adjective} sind", f"{sentence_initial(subject)} sind {adjective}."
     )
 
 
@@ -840,6 +975,16 @@ def describe_numeric_event(
     }[comparator]
     suffix = _PROPERTY_SUFFIXES.get(trigger.measurement) if trigger.measurement else None
     measured = f"{word} {amount}" + (f" {suffix}" if suffix else "")
+    if trigger.for_seconds:
+        # "länger als 5 Minuten über 3000 W" - the duration is part of the
+        # meaning and is always said (7.9 W4).
+        duration = spoken_duration(int(trigger.for_seconds))
+        return StateEventPhrase(
+            f"{subject} {direction}länger als {duration} {measured} liegt",
+            f"{sentence_initial(subject)} liegt {direction}seit {duration} {measured}."
+            if not duration.endswith("Tage")
+            else f"{sentence_initial(subject)} liegt {direction}seit {duration}n {measured}.",
+        )
     return StateEventPhrase(
         f"{subject} {direction}{measured} liegt",
         f"{sentence_initial(subject)} liegt {direction}jetzt {measured}.",
@@ -956,6 +1101,9 @@ def message_from_trigger_text(trigger_text: str) -> str:
 __all__ = (
     "DEFAULT_NOTIFICATION_MESSAGE",
     "describe_holding_state",
+    "describe_inactivity",
+    "describe_unchanged_today",
+    "describe_whole_set_state",
     "DEFAULT_NOTIFICATION_TITLE",
     "DEFAULT_REMINDER_MESSAGE",
     "NotificationClause",

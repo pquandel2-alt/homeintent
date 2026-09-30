@@ -40,6 +40,10 @@ class ConditionType(Enum):
     ENTITY = auto()
     CALENDAR_EVENT = auto()
     TEMPLATE = auto()
+    # 7.9 W2: the entity has stayed in its rest ``state`` since midnight
+    # ("bis 10 Uhr keine Bewegung im Bad") - generated as a closed template
+    # from the entity id and state, never from user text.
+    UNCHANGED_TODAY = auto()
 
 
 class TimeComparator(Enum):

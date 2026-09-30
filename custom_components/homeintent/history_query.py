@@ -513,6 +513,48 @@ async def _async_execute_state_history_query(hass, query: StateHistoryQuery) -> 
     return render_state_history_result(query, result)
 
 
+async def async_get_numeric_samples(
+    hass, entity_id: str, start: datetime, end: datetime
+) -> list[tuple[datetime, float]]:
+    """(time, value) of one sensor in a window, from the recorder (7.9 W3).
+
+    Includes the state valid at the window's start; non-numeric states
+    (unknown, unavailable) are skipped.  Recorder failure is no evidence:
+    an empty list, never a guessed value.
+    """
+    try:
+        from homeassistant.components.recorder import history
+
+        result = await hass.async_add_executor_job(
+            partial(
+                history.get_significant_states,
+                hass,
+                start,
+                end,
+                entity_ids=[entity_id],
+                include_start_time_state=True,
+                significant_changes_only=False,
+                minimal_response=False,
+                no_attributes=True,
+            )
+        )
+    except Exception as err:
+        _LOGGER.warning("Recorder numeric samples failed: %s", err, exc_info=True)
+        return []
+    rows = result.get(entity_id, ()) if isinstance(result, dict) else ()
+    samples: list[tuple[datetime, float]] = []
+    for item in rows if isinstance(rows, (list, tuple)) else ():
+        raw, moment = _state_value(item), _state_time(item)
+        if raw is None or moment is None:
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        samples.append((max(moment, start), value))
+    return samples
+
+
 async def async_get_transition_evidence(
     hass,
     entity_id: str,
@@ -569,6 +611,6 @@ async def async_get_transition_evidence(
 __all__ = (
     "ComparativeHistoryQuery", "HistoryMetric", "HistoryQuery",
     "StateHistoryMetric", "StateHistoryQuery", "TransitionEvidence",
-    "async_execute_history_query", "async_get_transition_evidence",
+    "async_execute_history_query", "async_get_numeric_samples", "async_get_transition_evidence",
     "parse_history_query", "render_history_result", "render_state_history_result",
 )

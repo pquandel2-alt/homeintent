@@ -44,8 +44,11 @@ from .automation_language import (
     EventRoles,
     EventActionFrame,
     TemporalEvent,
+    ChangeSense,
+    ValueUnit,
     and_reversed_candidates,
     condition_split_candidates,
+    is_nobody_home_phrase,
     is_notification_text,
     looks_like_device_action,
     prepare_automation_text,
@@ -56,6 +59,7 @@ from .automation_language import (
 )
 from .automation_monitoring import segment_monitoring
 from .automation_notification import notification_action
+from .rate_monitor import ChangeDirection, MonitorProposal, RateRule, propose
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.action_model import ActionGroup, ActionModel, ActionType, NotificationRecipientKind
 from .nlu.automation_model import (
@@ -74,6 +78,8 @@ from .nlu.normalize import german_number
 from .notification_language import (
     NotificationClause,
     describe_holding_state,
+    describe_unchanged_today,
+    describe_whole_set_state,
     parse_notification_clause,
     trigger_message,
 )
@@ -91,6 +97,9 @@ class OutcomeKind(Enum):
     AUTOMATION = auto()
     CLARIFY = auto()
     UNSUPPORTED = auto()
+    # Understood, but only HomeIntent's own monitor runtime can run it
+    # without new Home Assistant helpers (7.9 W3).
+    MONITOR = auto()
 
 
 @dataclass(frozen=True)
@@ -152,6 +161,7 @@ class CompositionOutcome:
     clarification: EventClarification | None = None
     canonical: CanonicalEventNotification | None = None
     trace: CompositionTrace = field(default_factory=lambda: CompositionTrace("none"))
+    monitor: MonitorProposal | None = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +174,8 @@ class EventInterpretation:
     typed: bool = False
     alternatives: tuple[TriggerModel, ...] = ()
     situation: str | None = None  # spoken combined state (``state_conjunction``)
+    situation_parts: int = 1  # several parts: whichever begins last
+    situation_message: str | None = None  # default push text of the situation
 
 
 _UNSUPPORTED_TEXT = {
@@ -260,6 +272,9 @@ def _existential_condition(
     ):
         return node
     grounded = ground_event(read_event_roles(text), entities)
+    if grounded.aggregate and grounded.trigger is not None:
+        # "alle Fenster zu sind": the whole set - the list condition's "all".
+        return whole_set_condition(grounded.trigger)
     if grounded.status is GroundingStatus.AMBIGUOUS:
         subject = grounded.subject
         if subject is None or subject.quantifier is not Quantifier.BARE:
@@ -284,7 +299,11 @@ def _conditions_for(
                 type=ConditionType.WEEKDAY, weekdays=span.weekdays
             )))
             continue
-        node = parse_condition(span.text) or _typed_condition(span.text, entities)
+        node = (
+            parse_condition(span.text)
+            or _typed_nobody_home(span.text)
+            or _typed_condition(span.text, entities)
+        )
         if node is not None:
             node = _existential_condition(node, span.text, entities)
         if node is None:
@@ -316,10 +335,14 @@ def interpret_event_clause(
     partitive or missing subject of the event is bound to it (7.8.3).
     """
     roles = resolve_reference(read_event_roles(event_text), reference)
+    if is_nobody_home_phrase(roles.source) and not roles.conditions:
+        return nobody_home_interpretation(entities)
     embedded = _conditions_for(roles.conditions, parse_condition, entities)
     if embedded is None:
         return EventInterpretation(None)
     grounded = ground_event(roles, entities)
+    if grounded.status is GroundingStatus.RESOLVED and roles.until is not None:
+        return until_interpretation(grounded, roles.until, embedded, entities)
     if grounded.status is GroundingStatus.RESOLVED:
         return EventInterpretation(grounded.trigger, embedded, grounded, typed=True)
     # "X und niemand zuhause ist" / "X, aber nur wenn Y": the event plus a
@@ -376,6 +399,48 @@ def interpret_event_clause(
     return EventInterpretation(None, embedded, grounded)
 
 
+NOBODY_HOME_CONDITION = ConditionNode(
+    operator=LogicalOperator.NOT,
+    children=(ConditionNode(condition=ConditionModel(type=ConditionType.PRESENCE, raw_state="home")),),
+)
+
+
+def _leave_triggers(entities: Sequence[EntitySnapshot]) -> list[TriggerModel]:
+    """One "leaves the house" trigger per person (``presence_scope`` later
+    limits them to a confirmed household)."""
+    return [
+        TriggerModel(
+            type=TriggerType.PRESENCE,
+            target=TriggerTarget(domain="person", entity_id=person.entity_id),
+            zone_id="home",
+            presence_event=PresenceEvent.LEAVE,
+        )
+        for person in sorted(
+            (entity for entity in entities if entity.domain == "person"),
+            key=lambda entity: entity.entity_id,
+        )
+    ]
+
+
+def nobody_home_interpretation(entities: Sequence[EntitySnapshot]) -> EventInterpretation:
+    """"wenn niemand zuhause ist" / "wenn alle weg sind" (7.9 W1): the moment
+    the last person leaves - every leave is a trigger, the condition says
+    nobody is home.  Without any ``person.*`` there is nothing to read."""
+    leaves = _leave_triggers(entities)
+    if not leaves:
+        return EventInterpretation(None)
+    return EventInterpretation(
+        leaves[0], (NOBODY_HOME_CONDITION,), None, typed=True,
+        alternatives=tuple(leaves),
+        situation="niemand zuhause ist",
+        situation_message="Niemand ist zuhause.",
+    )
+
+
+def _typed_nobody_home(text: str) -> ConditionNode | None:
+    return NOBODY_HOME_CONDITION if is_nobody_home_phrase(text) else None
+
+
 def _nobody_home(node: ConditionNode) -> bool:
     """"niemand zuhause": NOT(any person at home)."""
     if node.operator is not LogicalOperator.NOT or len(node.children) != 1:
@@ -423,22 +488,25 @@ def state_conjunction(
     extra: list[TriggerModel] = []
     situation: list[tuple[str, str]] = []
     for node in interpreted.conditions:
+        members = _any_member_state(node)
+        if members is not None:
+            # "und ein Fenster offen ist": any member becoming so is a part.
+            state_trigger = TriggerModel(
+                type=TriggerType.STATE,
+                target=target_for(_resolve(members[0], entities), entities),
+                state=members[1],
+            )
+            extra.append(state_trigger)
+            holding = describe_holding_state(state_trigger, entities)
+            if holding is None:
+                return interpreted, None
+            situation.append((holding.subordinate, holding.sentence))
+            continue
         if _nobody_home(node):
-            people = sorted(
-                (entity for entity in entities if entity.domain == "person"),
-                key=lambda entity: entity.entity_id,
-            )
-            if not people:
+            leaves = _leave_triggers(entities)
+            if not leaves:
                 continue
-            extra.extend(
-                TriggerModel(
-                    type=TriggerType.PRESENCE,
-                    target=TriggerTarget(domain="person", entity_id=person.entity_id),
-                    zone_id="home",
-                    presence_event=PresenceEvent.LEAVE,
-                )
-                for person in people
-            )
+            extra.extend(leaves)
             situation.append(("niemand zuhause ist", "Niemand ist zuhause."))
             continue
         leaf = node.condition
@@ -451,32 +519,178 @@ def state_conjunction(
         ):
             state_trigger = TriggerModel(type=TriggerType.STATE, target=leaf.target, state=leaf.state)
             extra.append(state_trigger)
-            holding = describe_holding_state(state_trigger, entities)
+            holding = (
+                describe_whole_set_state(state_trigger, entities)
+                if leaf.target.quantifier == "all"
+                else describe_holding_state(state_trigger, entities)
+            )
             if holding is None:
                 return interpreted, None
             situation.append((holding.subordinate, holding.sentence))
     if not extra:
         return interpreted, None
-    first = describe_holding_state(trigger, entities)
+    first = (
+        describe_whole_set_state(trigger, entities)
+        if grounded.aggregate
+        else describe_holding_state(trigger, entities)
+    )
     if first is None:
         return interpreted, None
-    # The event's own state, for any one of its entities (a list in one
-    # Home Assistant state condition would require *all* of them).
-    holds = tuple(
-        ConditionNode(condition=ConditionModel(
-            type=ConditionType.STATE, target=target_for([entity], entities), state=trigger.state,
-        ))
-        for entity in sorted(grounded.candidates, key=lambda item: item.entity_id)
+    own = (
+        whole_set_condition(trigger)
+        if grounded.aggregate
+        else any_member_condition(grounded.candidates, trigger.state, entities)
     )
-    own = holds[0] if len(holds) == 1 else ConditionNode(operator=LogicalOperator.OR, children=holds)
     parts = (first.subordinate, *(item[0] for item in situation))
     completed = replace(
         interpreted,
         conditions=(own, *interpreted.conditions),
         alternatives=(trigger, *extra),
         situation=" und ".join(parts),
+        situation_parts=len(parts),
     )
     return completed, " ".join((first.sentence, *(item[1] for item in situation)))
+
+
+def until_interpretation(
+    grounded: GroundedEvent,
+    until: tuple[int, int],
+    conditions: tuple[ConditionNode, ...],
+    entities: Sequence[EntitySnapshot],
+) -> EventInterpretation:
+    """"bis 10 Uhr keine Bewegung im Bad" (7.9 W2): at the check time, every
+    detector has stayed in its rest state since midnight."""
+    trigger = grounded.trigger
+    if trigger is None or trigger.state is None or trigger.target is None or trigger.absent_state is None:
+        return EventInterpretation(None, conditions, grounded)
+    unchanged = tuple(
+        ConditionNode(condition=ConditionModel(
+            type=ConditionType.UNCHANGED_TODAY, target=target_for([entity], entities),
+            state=trigger.state,
+        ))
+        for entity in sorted(grounded.candidates, key=lambda item: item.entity_id)
+    )
+    at = TriggerModel(type=TriggerType.TIME, time_hour=until[0], time_minute=until[1], time_second=0)
+    phrase = describe_unchanged_today(trigger.target, trigger.state, until, entities)
+    return EventInterpretation(
+        at, (*unchanged, *conditions), grounded, typed=True,
+        situation_message=phrase.sentence if phrase is not None else None,
+    )
+
+
+RESTART_FOR_NOTE = "Startet Home Assistant neu, beginnt die Wartezeit von vorn."
+RESTART_TODAY_NOTE = (
+    "Startet Home Assistant an diesem Tag neu, zählt der Neustart als Änderung – "
+    "dann melde ich mich an diesem Tag nicht."
+)
+
+
+def honesty_notes(interpreted: EventInterpretation) -> tuple[str, ...]:
+    """What the preview must say about limits Home Assistant has (7.9 W2)."""
+    notes: list[str] = []
+    triggers = interpreted.alternatives or ((interpreted.trigger,) if interpreted.trigger else ())
+    if any(item.absent_state is not None for item in triggers):
+        notes.append(RESTART_FOR_NOTE)
+
+    def unchanged(node: ConditionNode) -> bool:
+        if node.operator is None:
+            return node.condition is not None and node.condition.type is ConditionType.UNCHANGED_TODAY
+        return any(unchanged(child) for child in node.children)
+
+    if any(unchanged(node) for node in interpreted.conditions):
+        notes.append(RESTART_TODAY_NOTE)
+    roles = interpreted.grounded.roles if interpreted.grounded is not None else None
+    if roles is not None and roles.agent:
+        notes.append(
+            f"Ich erkenne nur Bewegung, nicht, wer sich bewegt – also auch nicht, ob es {roles.agent} ist."
+        )
+    return tuple(notes)
+
+
+def whole_set_condition(trigger: TriggerModel) -> ConditionNode:
+    """Every member of the trigger's set is in its state: one Home Assistant
+    state condition with the entity list, which means "all" (7.9 W1)."""
+    assert trigger.target is not None and trigger.state is not None
+    return ConditionNode(condition=ConditionModel(
+        type=ConditionType.STATE, target=replace(trigger.target, quantifier="all"), state=trigger.state,
+    ))
+
+
+def any_member_condition(
+    candidates: Sequence[EntitySnapshot], state: SemanticState, entities: Sequence[EntitySnapshot]
+) -> ConditionNode:
+    """Any one member is in ``state``: an OR of one condition per entity (a
+    list in one Home Assistant state condition would require *all*)."""
+    holds = tuple(
+        ConditionNode(condition=ConditionModel(
+            type=ConditionType.STATE, target=target_for([entity], entities), state=state,
+        ))
+        for entity in sorted(candidates, key=lambda item: item.entity_id)
+    )
+    return holds[0] if len(holds) == 1 else ConditionNode(operator=LogicalOperator.OR, children=holds)
+
+
+def _any_member_state(node: ConditionNode) -> tuple[list[TriggerTarget], SemanticState] | None:
+    """The targets and state of an ``any_member_condition`` OR, else ``None``."""
+    if node.operator is not LogicalOperator.OR or len(node.children) < 2:
+        return None
+    targets: list[TriggerTarget] = []
+    states: set[SemanticState] = set()
+    for child in node.children:
+        leaf = child.condition
+        if child.operator is not None or leaf is None or leaf.type is not ConditionType.STATE:
+            return None
+        if leaf.target is None or leaf.state is None:
+            return None
+        targets.append(leaf.target)
+        states.add(leaf.state)
+    if len(states) != 1:
+        return None
+    return targets, next(iter(states))
+
+
+def _resolve(targets: Sequence[TriggerTarget], entities: Sequence[EntitySnapshot]) -> list[EntitySnapshot]:
+    found: dict[str, EntitySnapshot] = {}
+    for target in targets:
+        for entity in entities:
+            if target.entity_id is not None:
+                if entity.entity_id == target.entity_id:
+                    found[entity.entity_id] = entity
+            elif (
+                entity.domain == target.domain
+                and (target.device_class is None or entity.device_class == target.device_class)
+                and (target.area_id is None or entity.area_id == target.area_id)
+                and (target.floor_id is None or entity.floor_id == target.floor_id)
+            ):
+                found[entity.entity_id] = entity
+    return list(found.values())
+
+
+def whole_set_state(
+    interpreted: EventInterpretation, entities: Sequence[EntitySnapshot]
+) -> tuple[EventInterpretation, str | None]:
+    """"wenn alle Fenster zu sind" (7.9 W1): the trigger fires when any member
+    reaches the state, the condition requires every member to be in it -
+    whichever member is last.  Returns the completed interpretation and the
+    default message, or the unchanged interpretation and ``None``."""
+    trigger = interpreted.trigger
+    grounded = interpreted.grounded
+    if (
+        trigger is None or grounded is None or not grounded.aggregate
+        or interpreted.situation is not None or trigger.target is None
+    ):
+        return interpreted, None
+    marked = replace(trigger, target=replace(trigger.target, quantifier="all"))
+    phrase = describe_whole_set_state(marked, entities)
+    if phrase is None:
+        return interpreted, None
+    completed = replace(
+        interpreted,
+        trigger=marked,
+        conditions=(whole_set_condition(marked), *interpreted.conditions),
+        situation=phrase.subordinate,
+    )
+    return completed, phrase.sentence
 
 
 def temporal_interpretation(temporal: TemporalEvent) -> EventInterpretation:
@@ -768,6 +982,7 @@ def build_automation(
     model = AutomationModel(
         triggers=triggers, conditions=interpreted.conditions,
         actions=reading.steps, source_text=source_text, situation=interpreted.situation,
+        situation_parts=interpreted.situation_parts, notes=honesty_notes(interpreted),
     )
     canonical = (
         _canonical(interpreted.trigger, reading.notification, interpreted.conditions, interpreted.grounded)
@@ -828,6 +1043,9 @@ def compose_event_automation(
             # A spoken condition that is not understood is never dropped.
             return None
         interpreted = replace(interpreted, conditions=(*interpreted.conditions, *extra))
+    change = _change_outcome(interpreted, frame, notification_only, trace)
+    if change is not None:
+        return change
     if interpreted.trigger is None:
         grounded = interpreted.grounded
         if not notification_only and (
@@ -843,6 +1061,10 @@ def compose_event_automation(
             implicit_notification=frame.implicit_notification,
         )
     interpreted, holding_message = state_conjunction(interpreted, entities)
+    if holding_message is None:
+        interpreted, holding_message = whole_set_state(interpreted, entities)
+    if holding_message is None:
+        holding_message = interpreted.situation_message
     reading = (
         implicit_notification_reading(interpreted.trigger, entities, holding_message)
         if frame.implicit_notification
@@ -855,6 +1077,58 @@ def compose_event_automation(
         return None
     trace = replace(trace, grounding="typed" if interpreted.typed else "established_parser")
     return build_automation(interpreted, reading, entities, raw_text, trace)
+
+
+def _change_outcome(
+    interpreted: EventInterpretation,
+    frame: EventActionFrame,
+    notification_only: bool,
+    trace: CompositionTrace,
+) -> CompositionOutcome | None:
+    """A change by an amount (7.9 W3) runs in HomeIntent's monitor runtime."""
+    grounded = interpreted.grounded
+    roles = grounded.roles if grounded is not None else None
+    if (
+        grounded is None or roles is None or roles.change is None
+        or grounded.status is not GroundingStatus.RESOLVED or len(grounded.candidates) != 1
+    ):
+        return None
+    failed = replace(trace, grounding="change", reason="change_action")
+    if not notification_only:
+        return CompositionOutcome(
+            OutcomeKind.UNSUPPORTED, trace=failed,
+            speech=(
+                "Eine Änderung um einen Betrag kann ich überwachen und melden, aber keine "
+                "Geräte dazu schalten."
+            ),
+        )
+    clause = (
+        _IMPLICIT_NOTIFICATION if frame.implicit_notification
+        else parse_notification_clause(frame.action_text.strip(" ,."))
+    )
+    if clause is None or clause.recipient_kind is not NotificationRecipientKind.CURRENT_USER or clause.message:
+        return CompositionOutcome(
+            OutcomeKind.UNSUPPORTED, trace=failed,
+            speech="Solche Änderungen melde ich nur dir selbst, mit meinem eigenen Text.",
+        )
+    change = roles.change
+    assert change.window_seconds is not None
+    sensor = grounded.candidates[0]
+    rule = RateRule(
+        entity_id=sensor.entity_id,
+        delta=change.delta,
+        unit=sensor.unit or ("%" if change.unit is ValueUnit.PERCENT else "°C"),
+        direction={
+            ChangeSense.FALL: ChangeDirection.FALL, ChangeSense.RISE: ChangeDirection.RISE,
+            ChangeSense.EITHER: ChangeDirection.EITHER,
+        }[change.sense],
+        window_seconds=change.window_seconds,
+    )
+    proposal = propose(rule, f"„{sensor.friendly_name}“")
+    return CompositionOutcome(
+        OutcomeKind.MONITOR, speech=proposal.preview, monitor=proposal,
+        trace=replace(trace, grounding="change"),
+    )
 
 
 def failure_outcome(

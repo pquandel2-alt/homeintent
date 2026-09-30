@@ -44,6 +44,14 @@ class ActionType(Enum):
     WAIT = auto()
     CHOOSE = auto()
     REGISTERED_SERVICE = auto()
+    # 7.9 W5: "alle 10 Minuten, bis das Tor zu ist" - ``then_steps`` repeated
+    # every ``delay_seconds`` while ``if_condition`` holds, at most
+    # ``max_repeats`` times (always bounded).
+    REPEAT = auto()
+    # 7.9 W5: "und wenn sie nach 15 Minuten immer noch offen ist, sag Anna
+    # Bescheid" - wait up to ``timeout_seconds`` for ``wait_condition`` (the
+    # end of the situation); only if it did not come, run ``then_steps``.
+    ESCALATE = auto()
 
 
 class ExecutionMode(Enum):
@@ -112,6 +120,7 @@ class ActionModel:
     service_domain: str | None = None  # REGISTERED_SERVICE, closed allow-list
     service_name: str | None = None  # REGISTERED_SERVICE, closed allow-list
     service_data: Mapping[str, object] = field(default_factory=dict)
+    max_repeats: int | None = None  # REPEAT - the upper bound the preview names
 
 
 @dataclass(frozen=True)

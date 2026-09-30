@@ -27,6 +27,7 @@ from .goal_run import (
     GoalRunStore,
     NotificationRecord,
 )
+from .rate_monitor import ChangeDirection, RateRule, evaluate_rate, finding_message
 from .user_context import BindingStatus, NotificationTargetKind, UserContextStore
 
 
@@ -37,6 +38,7 @@ class NotificationCategory(StrEnum):
     GARAGE_OPEN_WARNING = "garage_open_warning"
     APPLIANCE_FINISHED = "appliance_finished"
     GENERIC_MONITOR = "generic_monitor"
+    VALUE_CHANGE = "value_change"
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,7 @@ class NotificationModel:
     goal_id: str = ""
     run_id: str = ""
     dedupe_key: str = ""
+    detail: str = ""  # a complete, already rendered sentence (VALUE_CHANGE)
 
 
 @dataclass(frozen=True)
@@ -74,9 +77,20 @@ class MonitorGoalStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self._lock = asyncio.Lock()
+        # Entities watched by value-change goals (7.9 W3): every sensor
+        # state change asks this set first, so no disk read happens for
+        # sensors nobody watches.
+        self._watched: frozenset[str] | None = None
 
     async def async_load(self) -> tuple[MonitorRecord, ...]:
-        return tuple(await asyncio.to_thread(self._read))
+        records = tuple(await asyncio.to_thread(self._read))
+        self._watched = _watched_entities(records)
+        return records
+
+    async def async_watched_entities(self) -> frozenset[str]:
+        if self._watched is None:
+            await self.async_load()
+        return self._watched or frozenset()
 
     async def async_save(self, record: MonitorRecord) -> None:
         if record.goal.kind is not GoalKind.MONITOR_AND_NOTIFY:
@@ -88,6 +102,7 @@ class MonitorGoalStore:
             records = [item for item in records if item.goal.goal_id != record.goal.goal_id]
             records.append(record)
             await asyncio.to_thread(self._write, records)
+            self._watched = _watched_entities(records)
 
     async def async_delete(self, goal_id: str) -> bool:
         async with self._lock:
@@ -96,6 +111,7 @@ class MonitorGoalStore:
             if len(remaining) == len(records):
                 return False
             await asyncio.to_thread(self._write, remaining)
+            self._watched = _watched_entities(remaining)
             return True
 
     def _read(self) -> list[MonitorRecord]:
@@ -153,6 +169,32 @@ class MonitorGoalStore:
 
 FreshEntities = Callable[[], Awaitable[list[EntitySnapshot]]]
 DeliverNotification = Callable[[NotificationModel, RenderedNotification], Awaitable[bool]]
+# (entity_id, start, end) -> recorded (time, numeric value) samples.
+ReadHistory = Callable[[str, datetime, datetime], Awaitable[list[tuple[datetime, float]]]]
+
+
+def rate_rule_of(goal: GoalModel) -> RateRule | None:
+    """The value-change rule of a monitor goal (7.9 W3), if it is one."""
+    trigger = goal.trigger
+    if (
+        trigger is None or trigger.kind != "value_change" or trigger.entity_id is None
+        or trigger.delta is None or trigger.window_seconds is None or trigger.direction is None
+    ):
+        return None
+    try:
+        direction = ChangeDirection(trigger.direction)
+    except ValueError:
+        return None
+    return RateRule(
+        trigger.entity_id, trigger.delta, trigger.unit or "", direction, trigger.window_seconds
+    )
+
+
+def _watched_entities(records: Iterable[MonitorRecord]) -> frozenset[str]:
+    return frozenset(
+        rule.entity_id for record in records
+        if record.enabled and (rule := rate_rule_of(record.goal)) is not None
+    )
 
 
 @dataclass
@@ -162,7 +204,110 @@ class MonitorGoalRuntime:
     user_contexts: UserContextStore
     refresh_entities: FreshEntities
     deliver: DeliverNotification
+    read_history: ReadHistory | None = None
     _locks: dict[str, asyncio.Lock] = field(default_factory=lambda: _empty_locks(), init=False)
+
+    async def async_process_value_change(
+        self,
+        entity_id: str,
+        value: float,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> tuple[GoalRun, ...]:
+        """A watched sensor changed (7.9 W3): compare with its window."""
+        if entity_id not in await self.store.async_watched_entities() or self.read_history is None:
+            return ()
+        now = occurred_at or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            raise ValueError("Monitor events require timezone-aware timestamps")
+        results: list[GoalRun] = []
+        for record in await self.store.async_load():
+            rule = rate_rule_of(record.goal)
+            if not record.enabled or rule is None or rule.entity_id != entity_id:
+                continue
+            if record.last_delivery_at is not None and now - datetime.fromisoformat(
+                record.last_delivery_at
+            ) < timedelta(seconds=rule.window_seconds):
+                continue  # at most one message per window
+            samples = await self.read_history(
+                entity_id, now - timedelta(seconds=rule.window_seconds), now
+            )
+            finding = evaluate_rate(rule, samples, value, now)
+            if finding is None:
+                continue
+            lock = self._locks.setdefault(record.goal.goal_id, asyncio.Lock())
+            async with lock:
+                entities = await self.refresh_entities()
+                name = next(
+                    (item.friendly_name for item in entities if item.entity_id == entity_id), entity_id
+                )
+                detail = finding_message(rule, f"„{name}“", finding)
+                result = await self._async_notify(
+                    record, f"{entity_id}:{now.isoformat()}", now,
+                    NotificationCategory.VALUE_CHANGE, (entity_id,), (name,), detail,
+                )
+                if result is not None:
+                    results.append(result)
+        return tuple(results)
+
+    async def _async_notify(
+        self,
+        record: MonitorRecord,
+        occurrence: str,
+        now: datetime,
+        category: "NotificationCategory",
+        entity_ids: tuple[str, ...],
+        names: tuple[str, ...],
+        detail: str,
+    ) -> GoalRun | None:
+        goal = record.goal
+        dedupe_base = f"{goal.goal_id}:{occurrence}"
+        if await self.run_store.async_seen_idempotency_key(dedupe_base):
+            return None
+        run = GoalRun.start(
+            goal, user_id=goal.provenance.user_id, person_entity_id=None,
+            idempotency_key=dedupe_base, now=now,
+        )
+        notifications: list[NotificationRecord] = []
+        for person_id in goal.recipient_person_ids:
+            binding = self.user_contexts.resolve_notification_targets(person_id)
+            if binding.status is not BindingStatus.RESOLVED:
+                code = (
+                    FailureCode.NOTIFICATION_TARGET_AMBIGUOUS
+                    if binding.status is BindingStatus.AMBIGUOUS
+                    else FailureCode.NOTIFICATION_TARGET_MISSING
+                )
+                failed = replace(
+                    run, updated_at=now.isoformat(), status=GoalRunStatus.FAILURE,
+                    failures=(code,), evidence=(binding.reason or code.value,),
+                )
+                await self.run_store.async_append(failed)
+                return failed
+            for target in binding.targets:
+                dedupe = f"{dedupe_base}:{category.value}:{person_id}:{target.target_id}"
+                model = NotificationModel(
+                    person_id, target.target_id, target.kind, category,
+                    goal.notification_severity, entity_ids, names, (), now.isoformat(),
+                    goal.goal_id, run.run_id, dedupe, detail,
+                )
+                delivered = await self.deliver(model, render_notification(model))
+                notifications.append(NotificationRecord(
+                    person_id, target.target_id, target.channel,
+                    goal.notification_severity.value, delivered, dedupe, category.value,
+                ))
+        delivered_all = bool(notifications) and all(item.delivered for item in notifications)
+        completed = replace(
+            run, updated_at=now.isoformat(), notifications=tuple(notifications),
+            status=GoalRunStatus.SUCCESS if delivered_all else GoalRunStatus.FAILURE,
+            failures=() if delivered_all else (FailureCode.SERVICE_ERROR,),
+            selected_targets=entity_ids, evidence=("recorder_window", detail),
+        )
+        await self.run_store.async_append(completed)
+        if delivered_all:
+            await self.store.async_save(
+                replace(record, last_delivery_at=now.isoformat(), last_dedupe_key=dedupe_base)
+            )
+        return completed
 
     async def async_process_person_transition(
         self,
@@ -304,6 +449,8 @@ def render_notification(model: NotificationModel) -> RenderedNotification:
         return RenderedNotification("Tür nicht verriegelt", f"{names} ist nicht verriegelt.")
     if model.category is NotificationCategory.GARAGE_OPEN_WARNING:
         return RenderedNotification("Garage noch offen", f"{names} ist noch offen.")
+    if model.category is NotificationCategory.VALUE_CHANGE and model.detail:
+        return RenderedNotification("HomeIntent", model.detail)
     return RenderedNotification("HomeIntent Hinweis", f"Aktueller Hinweis: {names}.")
 
 
@@ -397,7 +544,7 @@ def _bounded_cooldown(value: object) -> int:
 
 
 __all__ = (
-    "MonitorGoalRuntime", "MonitorGoalStore", "MonitorRecord",
+    "MonitorGoalRuntime", "MonitorGoalStore", "MonitorRecord", "rate_rule_of",
     "NotificationCategory", "NotificationModel", "RenderedNotification",
     "render_notification",
 )

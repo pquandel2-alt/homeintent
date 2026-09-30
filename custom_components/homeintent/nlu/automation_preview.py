@@ -23,6 +23,8 @@ own spoken-response helpers already take.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .device_ontology import entity_genera, genus
 from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
@@ -310,6 +312,15 @@ def _speak_condition_leaf(
     if condition.type is ConditionType.ENTITY:
         target = _speak_target(condition.target, entity_by_id, area_name_by_id)
         return f"{target} den Zustand „{condition.raw_state}“ hat"
+    if condition.type is ConditionType.UNCHANGED_TODAY and condition.target is not None:
+        from ..notification_language import describe_unchanged_today
+
+        assert condition.state is not None
+        phrase = describe_unchanged_today(
+            condition.target, condition.state, None, list(entity_by_id.values())
+        )
+        if phrase is not None:
+            return phrase.subordinate
     if condition.type is ConditionType.CALENDAR_EVENT:
         return f"der Kalendertitel „{condition.raw_state}“ enthält"
     if condition.type is ConditionType.TEMPLATE:
@@ -497,15 +508,102 @@ def _speak_action_step(
     return _speak_action_leaf(step, entity_by_id, area_name_by_id)
 
 
-def _notification_actions(model: AutomationModel) -> tuple[ActionModel, ...] | None:
-    """All actions, if the automation does nothing but addressed notifications."""
-    leaves = tuple(
-        step for step in model.actions
-        if isinstance(step, ActionModel)
-        and step.type is ActionType.NOTIFY
-        and step.recipient is not None
+def _is_notify(step: object) -> bool:
+    return (
+        isinstance(step, ActionModel) and step.type is ActionType.NOTIFY and step.recipient is not None
     )
-    return leaves if leaves and len(leaves) == len(model.actions) else None
+
+
+def _notification_actions(model: AutomationModel) -> tuple[ActionModel, ...] | None:
+    """The first notifications, if the automation does nothing but addressed
+    notifications - also repeated or escalated ones (7.9 W5)."""
+    leaves: list[ActionModel] = []
+    for step in model.actions:
+        if not isinstance(step, ActionModel):
+            return None
+        if _is_notify(step):
+            leaves.append(step)
+        elif step.type is ActionType.REPEAT and step.then_steps and all(_is_notify(s) for s in step.then_steps):
+            leaves.extend(s for s in step.then_steps if isinstance(s, ActionModel))
+        elif step.type is ActionType.ESCALATE and step.then_steps and all(_is_notify(s) for s in step.then_steps):
+            continue
+        else:
+            return None
+    return tuple(leaves) if leaves else None
+
+
+def _recipient_phrase(action: ActionModel) -> str:
+    from .action_model import NotificationRecipientKind
+
+    recipient = action.recipient
+    assert recipient is not None
+    if recipient.kind is NotificationRecipientKind.CURRENT_USER:
+        return "dir" + (f" an dein Gerät „{recipient.label}“" if recipient.label else "")
+    if recipient.kind is NotificationRecipientKind.HOUSEHOLD:
+        return "euch"
+    return f"an „{recipient.label or 'das gewählte Gerät'}“"
+
+
+def _speak_follow_ups(model: AutomationModel, entities: list[EntitySnapshot]) -> str:
+    """Repetition and escalation, said exactly (7.9 W5): how often, how long,
+    up to which bound, and who gets the second message."""
+    from ..notification_language import describe_holding_state, spoken_duration
+    from .automation_model import TriggerModel, TriggerType
+
+    def holding(node: ConditionNode | None) -> str:
+        leaf = node.condition if node is not None else None
+        if leaf is None or leaf.target is None or leaf.state is None:
+            return "der Zustand anhält"
+        phrase = describe_holding_state(
+            TriggerModel(TriggerType.STATE, target=leaf.target, state=leaf.state), entities
+        )
+        return phrase.subordinate if phrase is not None else "der Zustand anhält"
+
+    complement = {
+        SemanticState.ON: SemanticState.OFF, SemanticState.OFF: SemanticState.ON,
+        SemanticState.OPEN: SemanticState.CLOSED, SemanticState.CLOSED: SemanticState.OPEN,
+    }
+    parts: list[str] = []
+    for step in model.actions:
+        if not isinstance(step, ActionModel):
+            continue
+        if step.type is ActionType.REPEAT and step.delay_seconds and step.max_repeats:
+            total = spoken_duration(step.delay_seconds * step.max_repeats)
+            parts.append(
+                f"Danach wiederhole ich sie alle {spoken_duration(step.delay_seconds)}, solange "
+                f"{holding(step.if_condition)} – höchstens {step.max_repeats}-mal, also längstens {total}."
+            )
+        if step.type is ActionType.ESCALATE and step.timeout_seconds:
+            leaf = step.wait_condition.condition if step.wait_condition is not None else None
+            still = (
+                replace(step.wait_condition, condition=replace(leaf, state=complement[leaf.state]))
+                if step.wait_condition is not None and leaf is not None and leaf.state in complement
+                else None
+            )
+            situation = holding(still)
+            words = situation.rsplit(" ", 2)
+            question = (
+                f"Ist {words[0]} nach {spoken_duration(step.timeout_seconds)} immer noch {words[1]}"
+                if len(words) == 3 and words[2] == "ist"
+                else f"Wenn nach {spoken_duration(step.timeout_seconds)} immer noch {situation}"
+            )
+            for second in step.then_steps:
+                if not isinstance(second, ActionModel) or second.recipient is None:
+                    continue
+                parts.append(
+                    f"{question}, sende ich eine Push-Benachrichtigung {_recipient_phrase(second)}: "
+                    f"„{second.message}“"
+                )
+    kinds = {step.type for step in model.actions if isinstance(step, ActionModel)}
+    if parts:
+        # A running repetition or wait lives in Home Assistant's memory.
+        what = " und ".join(
+            word for kind, word in (
+                (ActionType.REPEAT, "die Wiederholung"), (ActionType.ESCALATE, "das Warten"),
+            ) if kind in kinds
+        )
+        parts.append(f"Startet Home Assistant währenddessen neu, bricht {what} ab.")
+    return " ".join(parts)
 
 
 def _render_notification_preview(
@@ -575,8 +673,12 @@ def _render_notification_preview(
                 "niemand zuhause ist", _nobody_home_spoken(nobody, entity_by_id)
             )
         when = situation + "".join(f" und {text}" for text in extra_conditions)
+        # Several parts: whichever begins last.  A whole set ("alle Fenster
+        # zu", 7.9 W1) is one part with one trigger.
         sentence = (
             f"Sobald {when}, egal was davon zuletzt eintritt, {action_text}"
+            if model.situation_parts > 1
+            else f"Sobald {when}, {action_text}"
         )
     else:
         described = [
@@ -594,6 +696,9 @@ def _render_notification_preview(
         sentence = f"Wenn {trigger_text}, {action_text}"
     if not (ends_with_message and sentence.endswith("“")):
         sentence += "."  # a quoted message already carries its own full stop
+    follow_ups = _speak_follow_ups(model, entities)
+    if follow_ups:
+        sentence += f" {follow_ups}"
     if model.once and not one_shot_time:
         sentence += " Diese Automation wird nach der ersten Ausführung automatisch gelöscht."
     elif model.max_runs == 1:
@@ -607,6 +712,8 @@ def _render_notification_preview(
             f" Fällt der Zeitpunkt in die Ruhezeit von {model.quiet_start_hour:02d}:00 "
             f"bis {model.quiet_end_hour:02d}:00 Uhr, wird die Erinnerung auf deren Ende verschoben."
         )
+    for note in model.notes:
+        sentence += f" {note}"
     return f"{sentence} Soll ich das so einrichten?"
 
 
@@ -691,4 +798,6 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
             f"{model.quiet_start_hour:02d}:00 bis {model.quiet_end_hour:02d}:00 Uhr, "
             "wird die Erinnerung auf deren Ende verschoben."
         )
+    for note in model.notes:
+        sentence = f"{sentence} {note}"
     return f"Automation erkannt: {sentence} Soll diese Automation erstellt werden?"

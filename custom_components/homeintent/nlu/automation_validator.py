@@ -156,6 +156,9 @@ def _field_missing(obj: object, name: str) -> bool:
 # set is structurally malformed (UNKNOWN_TRIGGER/CONDITION/ACTION), the
 # defense-in-depth equivalent of "grammar named this a STATE trigger but no
 # constructor ever populated `state`".
+# 7.9 W5: the upper bound of a spoken repetition ("alle 10 Minuten, bis ...").
+MAX_REPEATS = 48
+
 _TRIGGER_REQUIRED_FIELDS: dict[TriggerType, tuple[str, ...]] = {
     TriggerType.STATE: ("target", "state"),
     TriggerType.NUMERIC_STATE: ("target", "comparator", "threshold"),
@@ -181,6 +184,7 @@ _CONDITION_REQUIRED_FIELDS: dict[ConditionType, tuple[str, ...]] = {
     ConditionType.ENTITY: ("target", "raw_state"),
     ConditionType.CALENDAR_EVENT: ("raw_state",),
     ConditionType.TEMPLATE: ("raw_state",),
+    ConditionType.UNCHANGED_TODAY: ("target", "state"),
 }
 
 _ACTION_REQUIRED_FIELDS: dict[ActionType, tuple[str, ...]] = {
@@ -197,6 +201,8 @@ _ACTION_REQUIRED_FIELDS: dict[ActionType, tuple[str, ...]] = {
     ActionType.WAIT: ("wait_condition",),
     ActionType.CHOOSE: ("if_condition", "then_steps"),
     ActionType.REGISTERED_SERVICE: ("target", "service_domain", "service_name"),
+    ActionType.REPEAT: ("if_condition", "then_steps", "delay_seconds", "max_repeats"),
+    ActionType.ESCALATE: ("wait_condition", "timeout_seconds", "then_steps"),
 }
 
 _PERCENT_ACTION_TYPES = frozenset({ActionType.SET_BRIGHTNESS, ActionType.SET_POSITION, ActionType.SET_FAN_SPEED})
@@ -368,11 +374,22 @@ def _validate_action_leaf(action: ActionModel) -> AutomationValidationError | No
         return AutomationValidationError.INVALID_PARAMETER
     if action.type is ActionType.WAIT and action.wait_condition is not None:
         return _validate_condition_node(action.wait_condition, depth=1)
-    if action.type is ActionType.CHOOSE:
-        assert action.if_condition is not None
-        error = _validate_condition_node(action.if_condition, depth=1)
+    if action.type is ActionType.REPEAT and not (
+        action.max_repeats is not None and 1 <= action.max_repeats <= MAX_REPEATS
+        and action.delay_seconds is not None and action.delay_seconds >= 60
+    ):
+        # Always bounded, never faster than once a minute (7.9 W5).
+        return AutomationValidationError.INVALID_PARAMETER
+    if action.type is ActionType.ESCALATE:
+        assert action.wait_condition is not None
+        error = _validate_condition_node(action.wait_condition, depth=1)
         if error is not None:
             return error
+    if action.type in {ActionType.CHOOSE, ActionType.REPEAT, ActionType.ESCALATE}:
+        if action.if_condition is not None:
+            error = _validate_condition_node(action.if_condition, depth=1)
+            if error is not None:
+                return error
         for step in (*action.then_steps, *action.else_steps):
             error = _validate_action_step(step)
             if error is not None:

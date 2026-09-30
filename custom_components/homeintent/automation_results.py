@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .automation_composition import CompositionTrace, EventClarification
 from .automation_summary import AutomationSummary
+from .rate_monitor import MonitorProposal
 from .nlu.automation_model import AutomationModel, TriggerModel
 from .nlu.automation_validator import AutomationValidationError
 
@@ -52,4 +53,13 @@ class AutomationToggleMatchResult:
 
     automation: AutomationSummary | None
     enable: bool
+    response_text: str
+
+
+@dataclass(frozen=True)
+class MonitorProposalResult:
+    """A monitoring request only HomeIntent's own runtime can run (7.9 W3):
+    staged for an explicit "Ja" like every automation."""
+
+    proposal: MonitorProposal
     response_text: str

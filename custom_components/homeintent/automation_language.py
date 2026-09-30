@@ -496,6 +496,11 @@ class ValueUnit(Enum):
     PERCENT = auto()
     DEGREE = auto()
     NONE = auto()
+    # Power and energy (7.9 W4): kept apart - "10 kWh" is never "10 kW".
+    WATT = auto()
+    KILOWATT = auto()
+    WATT_HOUR = auto()
+    KILOWATT_HOUR = auto()
 
 
 @dataclass(frozen=True)
@@ -537,6 +542,18 @@ class EventRoles:
     # "aufgeht" a moment.  A state joined with another state ("und niemand
     # zuhause ist") holds whenever both are true (7.8.3).
     stative: bool = False
+    # Inactivity (7.9 W2): "wenn sich im Flur 12 Stunden nichts bewegt",
+    # "wenn die Haustür zwei Tage nicht geöffnet wurde".  ``absent`` is the
+    # state that did *not* occur (motion ON, door OPEN); ``state`` is then
+    # its rest state and ``for_seconds`` the spoken span.  ``until`` is a
+    # check time instead of a span ("bis 10 Uhr keine Bewegung im Bad"),
+    # ``agent`` a person named as the one who should have moved (only
+    # motion is observable, the preview says so).
+    absent: SemanticState | None = None
+    until: tuple[int, int] | None = None
+    agent: str | None = None
+    # A change by an amount ("um 3 Grad innerhalb einer Stunde", 7.9 W3).
+    change: "RelativeChange | None" = None
 
     @property
     def numeric(self) -> bool:
@@ -622,7 +639,17 @@ _AT_LEAST_WORDS = ("mindestens", "wenigstens")
 _AT_MOST_WORDS = ("höchstens", "maximal", "nicht mehr als")
 
 _NUMBER_TOKEN_RE = re.compile(r"^[-−]?\d+(?:[.,]\d+)?$")
-_UNIT_WORDS = {"prozent": ValueUnit.PERCENT, "%": ValueUnit.PERCENT, "grad": ValueUnit.DEGREE}
+_UNIT_WORDS = {
+    "prozent": ValueUnit.PERCENT, "%": ValueUnit.PERCENT, "grad": ValueUnit.DEGREE,
+    "watt": ValueUnit.WATT, "w": ValueUnit.WATT,
+    "kilowatt": ValueUnit.KILOWATT, "kw": ValueUnit.KILOWATT,
+    "wattstunden": ValueUnit.WATT_HOUR, "wattstunde": ValueUnit.WATT_HOUR, "wh": ValueUnit.WATT_HOUR,
+    "kilowattstunden": ValueUnit.KILOWATT_HOUR, "kilowattstunde": ValueUnit.KILOWATT_HOUR,
+    "kwh": ValueUnit.KILOWATT_HOUR,
+}
+# A counting period for energy ("heute", "diese Woche", 7.9 W4): only a meter
+# that restarts with that period can answer it.
+METER_PERIOD_WORDS = {"heute": "daily", "täglich": "daily", "woche": "weekly", "monat": "monthly"}
 _ARTICLE_NUMBERS = frozenset({"ein", "eine", "eins", "einer", "einen", "einem"})
 
 _RELATIVE_CHANGE_RE = re.compile(
@@ -637,7 +664,7 @@ _DURATION_RE = re.compile(
     # Duration modifiers stack: "seit mehr als", "schon länger als" (7.8.3).
     r"(?:\b(?:seit|länger\s+als|mehr\s+als|über|mindestens|für|schon)\s+)*"
     r"(?:(?P<number>-?\d+|[a-zäöüß]+)\s+|(?P<half>eine\s+halbe|einer\s+halben)\s+)"
-    r"(?P<unit>sekunden?|minuten?|stunden?)\b(?:\s+lang)?",
+    r"(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag)\b(?:\s+lang)?",
     re.IGNORECASE,
 )
 _DOWN_RE = re.compile(
@@ -731,7 +758,10 @@ def _numeric_value(word: str) -> float | None:
 
 def _duration_seconds(match: re.Match[str]) -> int | None:
     unit = match.group("unit").casefold()
-    multiplier = 1 if unit.startswith("sekunde") else 60 if unit.startswith("minute") else 3600
+    multiplier = (
+        1 if unit.startswith("sekunde") else 60 if unit.startswith("minute")
+        else 86400 if unit.startswith("tag") else 3600
+    )
     if match.group("half") is not None:
         return multiplier // 2 if multiplier >= 60 else None
     raw = match.group("number")
@@ -816,6 +846,13 @@ def read_event_roles(event_text: str) -> EventRoles:
     )
     text, conditions = _extract_conditions(source)
     if _RELATIVE_CHANGE_RE.search(text):
+        change = read_relative_change(text)
+        if change is not None:
+            reading, subject_words = change
+            return EventRoles(
+                source, subject_words=subject_words, unit=reading.unit, change=reading,
+                conditions=conditions,
+            )
         return EventRoles(source, unsupported="relative_change", conditions=conditions)
 
     presence = _presence(text)
@@ -909,6 +946,14 @@ def read_event_roles(event_text: str) -> EventRoles:
                 state = SemanticState.OPEN
             elif any(key in _DOWN_POSITION_WORDS for key in keys) and any(k in _FULL_TRAVEL for k in keys):
                 state = SemanticState.CLOSED
+        if state is None and len(keys) >= 2 and keys[-1] in _STATIVE_COPULAS and keys[-2] in (
+            _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
+        ):
+            # "wenn alle Rollläden unten sind": the position word as the
+            # predicate right before the copula is the end position (7.9 W1);
+            # elsewhere ("die Fenster oben") it stays a place.
+            state = SemanticState.OPEN if keys[-2] in _UP_POSITION_WORDS else SemanticState.CLOSED
+            consumed.add(len(keys) - 2)
         full_travel = state is not None and any(key in _FULL_TRAVEL for key in keys)
         if "bewegung" in keys and any(
             key in _MOTION_VERBS for key in keys
@@ -942,14 +987,43 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         if _is_comparator_word(key, keys, index):
             continue
+        if (
+            key in _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
+            and state is not None and value is None and not full_travel and not motion
+        ):
+            # "wenn oben kein Fenster mehr offen ist": the state comes from
+            # another word, so "oben/unten" is the place (7.9 W1).
+            subject.append(word)
+            continue
         if key in _PREDICATE_WORDS and key not in _SUBJECT_KEEP:
             continue
         if key in _STATE_WORDS:
             continue
         subject.append(word)
+    subject_words = _trim_articles(tuple(subject))
+    absent: SemanticState | None = None
+    until: tuple[int, int] | None = None
+    agent: str | None = None
+    negated = any(key in _ABSENCE_WORDS for key in keys)
+    if negated and value is None:
+        until = _until_time(text)
+        if "bewegung" in keys and state is None:
+            motion, state = True, SemanticState.ON
+        running = state is None and any(key in _RUN_VERBS for key in keys)
+        if running:
+            # "wenn die Waschmaschine heute nicht lief": an appliance run
+            # that did not happen - grounding asks "bis wann" if unsaid.
+            state = SemanticState.ON
+        if (for_seconds is not None or until is not None or running) and state in _COMPLEMENT_STATES:
+            # Something did not happen for a span / until a time: the
+            # entity stayed in the opposite (rest) state (7.9 W2).
+            absent, state = state, _COMPLEMENT_STATES[state]
+            subject_words, agent = _absence_subject(subject_words)
+    if state is not None and value is None and not motion and absent is None:
+        subject_words, state = _aggregate_reading(subject_words, state)
     return EventRoles(
         source=source,
-        subject_words=_trim_articles(tuple(subject)),
+        subject_words=subject_words,
         comparator=comparator if value is not None else None,
         value=value,
         unit=unit,
@@ -961,8 +1035,199 @@ def read_event_roles(event_text: str) -> EventRoles:
         direction=direction,
         for_seconds=for_seconds,
         conditions=conditions,
-        stative=state is not None and value is None and not motion and _is_stative(keys),
+        stative=(
+            state is not None and value is None and not motion and absent is None
+            and _is_stative(keys)
+        ),
+        absent=absent,
+        until=until,
+        agent=agent,
     )
+
+
+# --- changes by an amount (7.9 W3) ---------------------------------------------------
+
+
+class ChangeSense(Enum):
+    FALL = auto()
+    RISE = auto()
+    EITHER = auto()
+
+
+@dataclass(frozen=True)
+class RelativeChange:
+    """"um 3 Grad innerhalb einer Stunde fällt": amount, unit, sense and the
+    window (``None`` when unsaid - never assumed, grounding asks)."""
+
+    delta: float
+    unit: ValueUnit
+    sense: ChangeSense
+    window_seconds: int | None
+
+
+_CHANGE_AMOUNT_RE = re.compile(
+    r"\bum\s+(?:(?:mindestens|mehr\s+als|über)\s+)?(?P<amount>\d+(?:[.,]\d+)?|[a-zäöüß]+)\s+"
+    r"(?P<unit>grad|prozent|%)\b",
+    re.IGNORECASE,
+)
+_CHANGE_WINDOW_RE = re.compile(
+    r"\b(?:innerhalb|binnen)\s+(?:von\s+)?(?P<count>\d+|[a-zäöüß]+)\s+(?P<unit>minuten?|stunden?)\b"
+    r"|\bin\s+(?:(?:weniger\s+als|unter)\s+)?(?P<count2>\d+|[a-zäöüß]+)\s+(?P<unit2>minuten?|stunden?)\b",
+    re.IGNORECASE,
+)
+_FALL_VERBS = frozenset({"fällt", "sinkt", "abfällt", "absinkt", "runtergeht", "abnimmt", "fallen", "sinken"})
+_RISE_VERBS = frozenset({"steigt", "ansteigt", "zunimmt", "hochgeht", "steigen", "klettert"})
+_EITHER_VERBS = frozenset({"ändert", "verändert", "schwankt", "springt"})
+_CHANGE_FILLERS = frozenset({"sich", "um", "mindestens", "mehr", "als", "über", "plötzlich", "schnell", "stark"})
+
+
+def _amount(raw: str) -> float | None:
+    if raw.replace(",", "").replace(".", "").isdigit():
+        return float(raw.replace(",", "."))
+    if raw.casefold() in {"ein", "eine", "einen", "einem", "einer"}:
+        return 1.0
+    number = german_number(raw)
+    return float(number) if number is not None else None
+
+
+def read_relative_change(text: str) -> tuple[RelativeChange, tuple[str, ...]] | None:
+    """The change and the remaining subject words, or ``None``."""
+    amount = _CHANGE_AMOUNT_RE.search(text)
+    if amount is None:
+        return None
+    delta = _amount(amount.group("amount"))
+    if delta is None or delta <= 0:
+        return None
+    unit = _UNIT_WORDS[amount.group("unit").casefold()]
+    window_seconds: int | None = None
+    rest = text[:amount.start()] + " " + text[amount.end():]
+    window = _CHANGE_WINDOW_RE.search(rest)
+    if window is not None:
+        count_raw = window.group("count") or window.group("count2")
+        unit_raw = (window.group("unit") or window.group("unit2")).casefold()
+        count = 1.0 if count_raw.casefold() in {"einer", "einem", "eine", "ein"} else _amount(count_raw)
+        if count is None or count <= 0:
+            return None
+        window_seconds = int(count * (3600 if unit_raw.startswith("stunde") else 60))
+        rest = rest[:window.start()] + " " + rest[window.end():]
+    words = [word.strip(",.;:!?") for word in rest.split()]
+    keys = {word.casefold() for word in words}
+    if keys & _FALL_VERBS:
+        sense = ChangeSense.FALL
+    elif keys & _RISE_VERBS:
+        sense = ChangeSense.RISE
+    elif keys & _EITHER_VERBS:
+        sense = ChangeSense.EITHER
+    else:
+        return None
+    subject = tuple(
+        word for word in words
+        if word and word.casefold() not in _FALL_VERBS | _RISE_VERBS | _EITHER_VERBS | _CHANGE_FILLERS
+    )
+    return RelativeChange(delta, unit, sense, window_seconds), _trim_articles(subject)
+
+
+# --- inactivity (7.9 W2) ------------------------------------------------------------
+
+_ABSENCE_WORDS = frozenset({"nicht", "nichts", "keine", "kein", "keinerlei"})
+_RUN_VERBS = frozenset({"lief", "läuft", "gelaufen", "lief?", "lief.", "lief,"})
+_ABSENCE_FILLERS = frozenset({
+    "nicht", "nichts", "keine", "kein", "keinerlei", "lang", "lange", "hatte", "hat",
+    "gab", "gibt", "war", "wurde", "worden", "mehr", "bis", "uhr", "sich", "bewegung",
+    "lief", "läuft", "gelaufen", "ist", "heute",
+})
+_UNTIL_RE = re.compile(r"\bbis\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*uhr\b", re.IGNORECASE)
+
+
+def _until_time(text: str) -> tuple[int, int] | None:
+    match = _UNTIL_RE.search(text)
+    if match is None:
+        return None
+    hour, minute = int(match.group("hour")), int(match.group("minute") or 0)
+    return (hour, minute) if hour < 24 and minute < 60 else None
+
+
+def _absence_subject(words: tuple[str, ...]) -> tuple[tuple[str, ...], str | None]:
+    """Drop the negation and its verbal material; a leading name before the
+    place ("Oma ... im Bad") is the agent, not a device."""
+    kept: list[str] = []
+    for word in words:
+        key = word.casefold()
+        if key in _ABSENCE_FILLERS or _UNTIL_RE.fullmatch(key) or key.isdigit():
+            continue
+        kept.append(word)
+    agent: str | None = None
+    if (
+        len(kept) >= 2 and kept[0][:1].isupper()
+        and kept[1].casefold() in {"im", "in", "am", "auf"}
+    ):
+        agent, kept = kept[0], kept[1:]
+    return _trim_articles(tuple(kept)), agent
+
+
+# --- the whole household away (7.9 W1) ------------------------------------------------
+
+# "niemand (mehr) zuhause ist", "keiner daheim ist", "alle weg sind", "alle
+# aus dem Haus sind": a negated or universal quantifier over the people of
+# the house plus an absence predicate - one meaning, "niemand zuhause".
+# Read from closed word classes, never from whole sentences.
+_NOBODY_QUANTIFIERS = frozenset({"niemand", "keiner"})
+_EVERYBODY_QUANTIFIERS = frozenset({"alle"})
+_HOME_PREDICATES = frozenset({"zuhause", "zu hause", "daheim", "im haus"})
+_AWAY_PREDICATES = frozenset({
+    "weg", "fort", "unterwegs", "aus dem haus", "außer haus", "nicht zuhause",
+    "nicht zu hause", "nicht daheim", "das haus verlassen", "verlassen",
+    "weggegangen", "gegangen",
+})
+_PEOPLE_FILLERS = frozenset({"noch", "schon", "dann", "gerade", "mehr", "wir", "jetzt"})
+_PRESENCE_COPULAS = frozenset({"ist", "sind", "haben", "hat"})
+
+
+def is_nobody_home_phrase(text: str) -> bool:
+    keys = [
+        word.casefold() for word in text.strip(" ,.!?").split()
+        if word.casefold() not in _PEOPLE_FILLERS
+    ]
+    if len(keys) < 3 or keys[-1] not in _PRESENCE_COPULAS:
+        return False
+    quantifier, predicate = keys[0], " ".join(keys[1:-1])
+    if quantifier in _NOBODY_QUANTIFIERS:
+        return predicate in _HOME_PREDICATES
+    return quantifier in _EVERYBODY_QUANTIFIERS and predicate in _AWAY_PREDICATES
+
+
+# --- whole-set states (7.9 W1) ------------------------------------------------------
+
+_NEGATIVE_DETERMINERS = frozenset({"kein", "keine", "keiner", "keines", "keinen", "keinem"})
+_LAST_WORDS = frozenset({"letzte", "letzter", "letztes", "letzten"})
+_COMPLEMENT_STATES = {
+    SemanticState.ON: SemanticState.OFF, SemanticState.OFF: SemanticState.ON,
+    SemanticState.OPEN: SemanticState.CLOSED, SemanticState.CLOSED: SemanticState.OPEN,
+}
+
+
+def _aggregate_reading(
+    words: tuple[str, ...], state: SemanticState
+) -> tuple[tuple[str, ...], SemanticState]:
+    """"kein Licht (mehr) an" = "alle Lichter aus"; "das letzte Fenster zu" =
+    "alle Fenster zu".  The negation belongs to the quantifier and inverts
+    the state - it never becomes a negated command.  The result carries
+    "alle", which grounding reads as the whole-set quantifier."""
+    keys = [word.casefold() for word in words]
+    if any(key in _NEGATIVE_DETERMINERS for key in keys) and state in _COMPLEMENT_STATES:
+        rest = tuple(
+            word for word, key in zip(words, keys)
+            if key not in _NEGATIVE_DETERMINERS and key != "mehr"
+        )
+        return ("alle", *rest), _COMPLEMENT_STATES[state]
+    if any(key in _LAST_WORDS for key in keys):
+        rest = tuple(
+            word for index, (word, key) in enumerate(zip(words, keys))
+            if key not in _LAST_WORDS
+            and not (key in {"der", "die", "das"} and index + 1 < len(keys) and keys[index + 1] in _LAST_WORDS)
+        )
+        return ("alle", *rest), state
+    return words, state
 
 
 # A predicate adjective or participle with a stative copula ("offen ist",
@@ -970,7 +1235,7 @@ def read_event_roles(event_text: str) -> EventRoles:
 _STATIVE_COPULAS = frozenset({"ist", "sind", "steht", "stehen", "bleibt", "bleiben", "ist?"})
 _EVENT_AUXILIARIES = frozenset({"wird", "werden", "worden", "wurde", "wurden"})
 _STATIVE_PREDICATES = frozenset({
-    "offen", "geöffnet", "auf", "zu", "geschlossen", "an", "aus", "ein", "eingeschaltet",
+    "offen", "geöffnet", "auf", "zu", "geschlossen", "an", "aus", "ein", "eingeschaltet", "oben", "unten",
     "ausgeschaltet", "angeschaltet",
 })
 
@@ -1058,7 +1323,11 @@ def _trim_articles(words: tuple[str, ...]) -> tuple[str, ...]:
 __all__ = (
     "ClauseOrder",
     "ConditionSpan",
+    "ChangeSense",
+    "RelativeChange",
+    "read_relative_change",
     "and_reversed_candidates",
+    "is_nobody_home_phrase",
     "EventReference",
     "EventRoles",
     "PERSONAL_ANAPHORS",

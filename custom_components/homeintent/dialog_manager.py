@@ -38,6 +38,7 @@ class DialogTaskKind(StrEnum):
     RECURRENCE_CHOICE = "recurrence_choice"
     LEARNING_OFFER = "learning_offer"
     UNKNOWN_WORD = "unknown_word"
+    MONITOR_CONFIRMATION = "monitor_confirmation"
 
 
 class DialogPriority(IntEnum):

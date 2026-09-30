@@ -337,8 +337,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         return build_entity_snapshots(hass, entry)
 
+    async def _read_history(entity_id, start, end):
+        from .history_query import async_get_numeric_samples
+
+        return await async_get_numeric_samples(hass, entity_id, start, end)
+
     entry.runtime_data.monitor_runtime = MonitorGoalRuntime(
-        monitor_goals, goal_runs, user_contexts, _fresh_entities, _deliver_monitor
+        monitor_goals, goal_runs, user_contexts, _fresh_entities, _deliver_monitor,
+        read_history=_read_history,
     )
     from .event_runtime import SituationRuntime
 

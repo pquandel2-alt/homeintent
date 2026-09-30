@@ -29,19 +29,20 @@ from .automation_composition import (
     EventClarification,
     OutcomeKind,
     Readers,
-    compose_event_automation,
     log_composition_trace,
     resolve_event_clarification,
     unsupported_text,
 )
 from .automation_grounding import GroundingStatus, ground_event
 from .automation_language import only_quoted_connectors, read_event_roles
+from .automation_followup import compose_with_followups
 from .automation_results import (
     AutomationClarificationResult,
     AutomationDraftMatchResult,
     AutomationDeletionMatchResult,
     AutomationMatchResult,
     AutomationToggleMatchResult,
+    MonitorProposalResult,
 )
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.semantic_compiler import empty_comparison_answer
@@ -1810,7 +1811,7 @@ class NluEngine:
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
         document: LanguageDocument | None = None,
-    ) -> UnderstandingOutcome[AutomationMatchResult | AutomationClarificationResult]:
+    ) -> UnderstandingOutcome[AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult]:
         """Canonical V8 boundary for a trigger/condition/action turn."""
         document = document or analyse_language(text, entities)
         result = self.match_automation(text, entities, world_model, context)
@@ -3229,7 +3230,7 @@ class NluEngine:
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """Match a combined spoken automation sentence ("Wenn das
         Küchenfenster geöffnet wird, schalte das Küchenlicht ein.") into an
         ``AutomationModel`` (Integration Wave Migration Step 3). Called live
@@ -3556,7 +3557,7 @@ class NluEngine:
         entities: list[EntitySnapshot],
         world_model: WorldModel | None,
         context: ConversationContext | None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """"einmalig"/"dreimal" qualify the whole automation, not a clause."""
         text, once, max_runs = _strip_run_limits(text)
         result = self.compose_event_automation(text, entities, world_model, context)
@@ -3595,7 +3596,7 @@ class NluEngine:
         if _NEGATED_NOTIFICATION_RE.search(stripped):
             return None
         stripped, _, _ = _strip_run_limits(stripped)
-        outcome = compose_event_automation(
+        outcome = compose_with_followups(
             stripped, entities, self._composition_readers(entities, world_model, context)
         )
         return outcome.kind if outcome is not None else None
@@ -3606,9 +3607,9 @@ class NluEngine:
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """7.2.0 compositional EVENT clause + ACTION clause reading (both orders)."""
-        outcome = compose_event_automation(
+        outcome = compose_with_followups(
             text, entities, self._composition_readers(entities, world_model, context)
         )
         return self._composition_result(outcome)
@@ -3616,10 +3617,12 @@ class NluEngine:
     @staticmethod
     def _composition_result(
         outcome: CompositionOutcome | None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         if outcome is None:
             return None
         log_composition_trace(outcome.trace)
+        if outcome.kind is OutcomeKind.MONITOR and outcome.monitor is not None:
+            return MonitorProposalResult(outcome.monitor, outcome.speech or outcome.monitor.preview)
         if outcome.kind is OutcomeKind.AUTOMATION and outcome.model is not None:
             # The engine's validator stays the single validation authority.
             validation_error = validate_automation(outcome.model)
@@ -3642,7 +3645,7 @@ class NluEngine:
         text: str,
         pending: EventClarification,
         entities: list[EntitySnapshot],
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """Continue a clarified event-notification draft ("Die linke.")."""
         return self._composition_result(
             resolve_event_clarification(

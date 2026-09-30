@@ -57,6 +57,7 @@ from .engine import (
     AutomationMatchResult,
     AutomationToggleMatchResult,
     CommandPlan,
+    MonitorProposalResult,
     MatchResult,
     _AUTOMATION_DELETE_RE,
     _AUTOMATION_DISABLE_RE,
@@ -158,6 +159,7 @@ from .nlu.stt_repair import join_split_compounds
 from .controllers.learning import LearningController
 from .controllers.routines import RoutineController, RoutineSelection
 from .controllers.goals import GoalController
+from .controllers.monitoring import MonitoringController
 from .controllers.automation_management import AutomationManagementController
 from .controllers.automations import AutomationController
 from .controllers.notifications import NotificationController
@@ -451,6 +453,7 @@ class NluConversationEntity(
             entities=lambda: build_entity_snapshots(self.hass, self.entry),
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
         )
+        self._monitoring = MonitoringController(runtime=runtime)
         self._comfort = ComfortController(
             hass=lambda: self.hass,
             entry=entry,
@@ -896,6 +899,17 @@ class NluConversationEntity(
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.MONITOR_CONFIRMATION
+        ):
+            handled = await self._monitoring.async_handle_monitor_confirmation(
+                user_input, response, active_task
+            )
+            if handled is not None:
+                return handled
 
         if (
             active_dialog is None
@@ -2256,6 +2270,9 @@ class NluConversationEntity(
                 user_input, response, result
             )
 
+        if isinstance(result, MonitorProposalResult):
+            return self._monitoring.stage_value_monitor(user_input, response, result)
+
         if isinstance(result, AutomationClarificationResult):
             return self._automations.handle_clarification_result(
                 user_input, response, result
@@ -2351,6 +2368,7 @@ class NluConversationEntity(
         return self._engine.event_reading_kind(text, entities, self._world_model) in (
             OutcomeKind.AUTOMATION,
             OutcomeKind.CLARIFY,
+            OutcomeKind.MONITOR,
         )
 
     def _automation_store(self) -> AutomationExecutor:

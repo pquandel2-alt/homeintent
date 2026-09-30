@@ -137,6 +137,13 @@ class NotificationController:
             nonlocal resolver, failure
             if isinstance(step, ActionGroup):
                 return replace(step, steps=tuple(materialize(child) for child in step.steps))
+            if step.then_steps or step.else_steps:
+                # Nested steps (CHOOSE, 7.9 REPEAT/ESCALATE) notify later, too.
+                step = replace(
+                    step,
+                    then_steps=tuple(materialize(child) for child in step.then_steps),
+                    else_steps=tuple(materialize(child) for child in step.else_steps),
+                )
             recipient = step.recipient
             if (
                 step.type is not ActionType.NOTIFY
