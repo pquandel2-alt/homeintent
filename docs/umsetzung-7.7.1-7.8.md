@@ -176,7 +176,7 @@ behoben sind.
 | Arbiter-Shadow | 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT |
 | Shadow-Vergleich | 2022 EQUIVALENT, 0 SAFETY_DRIFT |
 | Entwicklungs-Benchmark 7.7 | 443/503 (7.7.0: 442), `unsafe_execution_count` 0 (siehe unten) |
-| Live-Testbett | 161/161 ohne Proaktiv (neu: sechs Szenarien `s771-*`) |
+| Live-Testbett | 161/161 ohne Proaktiv (neu: sechs Szenarien `s771-*`), Proaktiv 7/7, Push-Matrix 35/35, README-Beispiele wie 7.7.0 |
 | Satzmuster | 173 (unverändert) |
 | Pyright voll/Strict, Pyflakes | 0 |
 
@@ -407,6 +407,9 @@ Arbiter-Shadow; keine parallele Struktur.
 | Arbiter-Shadow | 2062 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT |
 | Shadow-Vergleich | 2039 EQUIVALENT |
 | Sprachverständnis-Gate | 463 passed |
+| Live-Testbett (echtes HA 2026.9.2) | 174/174: 167 ohne Proaktiv (davon 6 neue `s78-*`, 6 neue `s771-*`) und Proaktiv 7/7; ein erster Lauf fand „auf drei Viertel“ (behoben) |
+| Push-Matrix | 35/35 |
+| README-Beispiele | wie 7.7.0: drei bekannte Nicht-Sätze (Konfigurationszeilen, Listenzustand) |
 | Latenzbudgets (V9, Automationssprache, V10, V11, V12, Learning Center) | eingehalten |
 | Satzmuster | 173 (unverändert) |
 | Pyright voll/Strict, Pyflakes | 0 |

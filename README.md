@@ -2168,7 +2168,7 @@ Korpus-Signaturen: 0 Änderungen gegenüber 7.7.1
 Dialog-Shadow gegen 7.7.1: 238 Dialoge / 477 Turns, 12 gewollte Abweichungen; Shadow-Vergleich 2039 EQUIVALENT
 Arbiter-Shadow 2062 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
 Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107 (held-out 32/36), unsafe_execution_count 0
-Live-Testbett LIVE_RESULT
+Live-Testbett 174/174 (167 + Proaktiv 7; neu: s78-* je Cluster), Push-Matrix 35/35, README-Beispiele wie 7.7.0
 Ganzer Turn 5000 Entitäten p50 31 ms, p90 92 ms, p95 108 ms, p99 128 ms
 Pyright 0 Fehler (voll und alle Strict-Profile)
 Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
