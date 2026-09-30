@@ -486,6 +486,17 @@ def _render_notification_preview(
         sentence = f"Zum Zeitpunkt „{model.calendar_schedule.spoken}“ {action_text}"
     elif trigger is not None and trigger.type is TriggerType.RELATIVE_TIME:
         sentence = f"In {_format_delay(trigger.relative_offset_seconds)} {action_text}"
+    elif model.situation is not None:
+        # One combined situation, whichever part of it begins last (7.8.3).
+        extra_conditions = [
+            _speak_condition_node(c, entity_by_id, area_name_by_id)
+            for c in model.conditions
+            if _is_time_window(c)
+        ]
+        when = model.situation + "".join(f" und {text}" for text in extra_conditions)
+        sentence = (
+            f"Sobald {when}, egal was davon zuletzt eintritt, {action_text}"
+        )
     else:
         described = [
             describe_event(item, entities) for item in model.triggers
@@ -516,6 +527,18 @@ def _render_notification_preview(
             f"bis {model.quiet_end_hour:02d}:00 Uhr, wird die Erinnerung auf deren Ende verschoben."
         )
     return f"{sentence} Soll ich das so einrichten?"
+
+
+def _is_time_window(node: "ConditionNode") -> bool:
+    from .condition_model import ConditionType
+
+    leaves = [node.condition] if node.condition is not None else [
+        child.condition for child in node.children
+    ]
+    return bool(leaves) and all(
+        leaf is not None and leaf.type in {ConditionType.TIME, ConditionType.WEEKDAY}
+        for leaf in leaves
+    )
 
 
 def _speak_measured_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> str | None:

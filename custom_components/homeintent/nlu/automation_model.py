@@ -259,6 +259,10 @@ class AutomationModel:
     calendar_schedule: CalendarSchedule | None = None
     quiet_start_hour: int | None = None
     quiet_end_hour: int | None = None
+    # A combination of lasting states ("ein Fenster offen ist und niemand
+    # zuhause ist", 7.8.3) that holds whichever part begins last; spoken by
+    # the preview instead of listing every generated trigger and condition.
+    situation: str | None = None
 
 
 def resolve_relative_schedule(model: AutomationModel, now: datetime) -> AutomationModel:

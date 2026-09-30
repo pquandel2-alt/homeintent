@@ -730,6 +730,24 @@ def _with_duration(phrase: StateEventPhrase, trigger: TriggerModel) -> StateEven
     )
 
 
+def describe_holding_state(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """"ein Fenster offen ist" / "Ein Fenster ist offen." - the state itself,
+    not the moment it began."""
+    phrase = describe_state_event(trigger, entities)
+    if phrase is None or trigger.state not in _STATE_ADJECTIVES:
+        return None
+    suffix = f" {_PARTICIPLES.get(trigger.state, '')} wird"
+    if not phrase.subordinate.endswith(suffix):
+        return None
+    subject = phrase.subordinate[: -len(suffix)]
+    adjective = _STATE_ADJECTIVES[trigger.state]
+    return StateEventPhrase(
+        f"{subject} {adjective} ist", f"{sentence_initial(subject)} ist {adjective}."
+    )
+
+
 def describe_presence_event(
     trigger: TriggerModel, entities: Sequence[EntitySnapshot]
 ) -> StateEventPhrase | None:
@@ -937,6 +955,7 @@ def message_from_trigger_text(trigger_text: str) -> str:
 
 __all__ = (
     "DEFAULT_NOTIFICATION_MESSAGE",
+    "describe_holding_state",
     "DEFAULT_NOTIFICATION_TITLE",
     "DEFAULT_REMINDER_MESSAGE",
     "NotificationClause",

@@ -56,13 +56,25 @@ from .automation_monitoring import segment_monitoring
 from .automation_notification import notification_action
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.action_model import ActionGroup, ActionModel, ActionType, NotificationRecipientKind
-from .nlu.automation_model import AutomationModel, NumericComparator, TriggerModel, TriggerType
+from .nlu.automation_model import (
+    AutomationModel,
+    NumericComparator,
+    PresenceEvent,
+    TriggerModel,
+    TriggerTarget,
+    TriggerType,
+)
 from .nlu.automation_validator import AutomationValidationError, validate_automation
 from .nlu.condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator
 from .nlu.measurement import MeasurementProperty, TravelDirection
 from .nlu.semantic_state import SemanticState
 from .nlu.normalize import german_number
-from .notification_language import NotificationClause, parse_notification_clause, trigger_message
+from .notification_language import (
+    NotificationClause,
+    describe_holding_state,
+    parse_notification_clause,
+    trigger_message,
+)
 
 # "Achte darauf, ob ...": the monitoring verb itself asks to tell the speaker.
 _IMPLICIT_NOTIFICATION = NotificationClause(NotificationRecipientKind.CURRENT_USER)
@@ -149,6 +161,7 @@ class EventInterpretation:
     grounded: GroundedEvent | None = None
     typed: bool = False
     alternatives: tuple[TriggerModel, ...] = ()
+    situation: str | None = None  # spoken combined state (``state_conjunction``)
 
 
 _UNSUPPORTED_TEXT = {
@@ -302,6 +315,109 @@ def interpret_event_clause(
             if legacy is not None:
                 return EventInterpretation(legacy, ())
     return EventInterpretation(None, embedded, grounded)
+
+
+def _nobody_home(node: ConditionNode) -> bool:
+    """"niemand zuhause": NOT(any person at home)."""
+    if node.operator is not LogicalOperator.NOT or len(node.children) != 1:
+        return False
+    leaf = node.children[0].condition
+    return (
+        leaf is not None
+        and leaf.type is ConditionType.PRESENCE
+        and leaf.raw_state == "home"
+        and (leaf.target is None or leaf.target.entity_id is None)
+    )
+
+
+def state_conjunction(
+    interpreted: EventInterpretation, entities: Sequence[EntitySnapshot]
+) -> tuple[EventInterpretation, str | None]:
+    """"wenn ein Fenster offen ist und niemand zuhause ist" (7.8.3).
+
+    Two lasting states joined by "und" hold whenever both are true - also
+    when the *second* one begins (everybody leaves while a window is still
+    open).  Home Assistant needs that as: one trigger per state becoming
+    true, and every state as a condition.  Only states with a deterministic
+    "becoming true" trigger are completed (nobody home: each person leaves;
+    an entity state); a moment ("geöffnet wird"), a duration ("seit 10
+    Minuten") or a time window stays exactly as spoken.
+
+    Returns the completed interpretation and a message describing the
+    combined situation, or the unchanged interpretation and ``None``.
+    """
+    trigger = interpreted.trigger
+    grounded = interpreted.grounded
+    if (
+        trigger is None
+        or trigger.type is not TriggerType.STATE
+        or trigger.for_seconds is not None
+        or trigger.state is None
+        or interpreted.alternatives
+        or not interpreted.conditions
+        or grounded is None
+        or grounded.roles is None
+        or not grounded.roles.stative
+        or not grounded.candidates
+    ):
+        return interpreted, None
+    extra: list[TriggerModel] = []
+    situation: list[tuple[str, str]] = []
+    for node in interpreted.conditions:
+        if _nobody_home(node):
+            people = sorted(
+                (entity for entity in entities if entity.domain == "person"),
+                key=lambda entity: entity.entity_id,
+            )
+            if not people:
+                continue
+            extra.extend(
+                TriggerModel(
+                    type=TriggerType.PRESENCE,
+                    target=TriggerTarget(domain="person", entity_id=person.entity_id),
+                    zone_id="home",
+                    presence_event=PresenceEvent.LEAVE,
+                )
+                for person in people
+            )
+            situation.append(("niemand zuhause ist", "Niemand ist zuhause."))
+            continue
+        leaf = node.condition
+        if (
+            node.operator is None
+            and leaf is not None
+            and leaf.type is ConditionType.STATE
+            and leaf.target is not None
+            and leaf.state is not None
+        ):
+            state_trigger = TriggerModel(type=TriggerType.STATE, target=leaf.target, state=leaf.state)
+            extra.append(state_trigger)
+            holding = describe_holding_state(state_trigger, entities)
+            if holding is None:
+                return interpreted, None
+            situation.append((holding.subordinate, holding.sentence))
+    if not extra:
+        return interpreted, None
+    first = describe_holding_state(trigger, entities)
+    if first is None:
+        return interpreted, None
+    # The event's own state, for any one of its entities (a list in one
+    # Home Assistant state condition would require *all* of them).
+    holds = tuple(
+        ConditionNode(condition=ConditionModel(
+            type=ConditionType.STATE, target=target_for([entity], entities), state=trigger.state,
+        ))
+        for entity in sorted(grounded.candidates, key=lambda item: item.entity_id)
+    )
+    own = holds[0] if len(holds) == 1 else ConditionNode(operator=LogicalOperator.OR, children=holds)
+    parts = (first.subordinate, *(item[0] for item in situation))
+    completed = replace(
+        interpreted,
+        conditions=(own, *interpreted.conditions),
+        alternatives=(trigger, *extra),
+        situation=" und ".join(parts),
+    )
+    return completed, " ".join((first.sentence, *(item[1] for item in situation)))
 
 
 def temporal_interpretation(temporal: TemporalEvent) -> EventInterpretation:
@@ -465,6 +581,7 @@ def read_actions(
     entities: Sequence[EntitySnapshot],
     readers: Readers,
     trailing_message: str | None = None,
+    default_message: str | None = None,
 ) -> ActionReading | None:
     """Every coordinated action chunk must be understood - none is dropped."""
     whole_notification = parse_notification_clause(text.strip(" ,.")) is not None
@@ -479,7 +596,10 @@ def read_actions(
         if clause is not None:
             if clause.reminder or clause.test:
                 return None
-            message = clause.message or trailing_message or trigger_message(trigger, "", entities)
+            message = (
+                clause.message or trailing_message or default_message
+                or trigger_message(trigger, "", entities)
+            )
             action = notification_action(clause, message, tuple(entities))
             if action is None:
                 return ActionReading((), clause, clause.recipient_name or "diese Person")
@@ -506,10 +626,12 @@ def read_actions(
 
 
 def implicit_notification_reading(
-    trigger: TriggerModel | None, entities: Sequence[EntitySnapshot]
+    trigger: TriggerModel | None,
+    entities: Sequence[EntitySnapshot],
+    default_message: str | None = None,
 ) -> ActionReading:
     """NOTIFY the speaker - the action a monitoring verb implies (7.8.3)."""
-    message = trigger_message(trigger, "", entities)
+    message = default_message or trigger_message(trigger, "", entities)
     action = notification_action(_IMPLICIT_NOTIFICATION, message, tuple(entities))
     if action is None:
         return ActionReading((), _IMPLICIT_NOTIFICATION, "dich")
@@ -586,7 +708,7 @@ def build_automation(
     )
     model = AutomationModel(
         triggers=triggers, conditions=interpreted.conditions,
-        actions=reading.steps, source_text=source_text,
+        actions=reading.steps, source_text=source_text, situation=interpreted.situation,
     )
     canonical = (
         _canonical(interpreted.trigger, reading.notification, interpreted.conditions, interpreted.grounded)
@@ -661,10 +783,14 @@ def compose_event_automation(
             grounded, frame.action_text, frame.trailing_message, raw_text, trace, interpreted.conditions,
             implicit_notification=frame.implicit_notification,
         )
+    interpreted, holding_message = state_conjunction(interpreted, entities)
     reading = (
-        implicit_notification_reading(interpreted.trigger, entities)
+        implicit_notification_reading(interpreted.trigger, entities, holding_message)
         if frame.implicit_notification
-        else read_actions(frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message)
+        else read_actions(
+            frame.action_text, interpreted.trigger, entities, readers, frame.trailing_message,
+            holding_message,
+        )
     )
     if reading is None:
         return None

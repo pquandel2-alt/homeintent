@@ -533,6 +533,10 @@ class EventRoles:
     # "es"/"er"/"sie" (agreement is checked in grounding), "member" for
     # "eins/eines davon" and a prohibition's "kein" (any member of the set).
     reference: str | None = None
+    # "offen ist/steht/bleibt" names a lasting state, "geöffnet wird" or
+    # "aufgeht" a moment.  A state joined with another state ("und niemand
+    # zuhause ist") holds whenever both are true (7.8.3).
+    stative: bool = False
 
     @property
     def numeric(self) -> bool:
@@ -943,6 +947,25 @@ def read_event_roles(event_text: str) -> EventRoles:
         direction=direction,
         for_seconds=for_seconds,
         conditions=conditions,
+        stative=state is not None and value is None and not motion and _is_stative(keys),
+    )
+
+
+# A predicate adjective or participle with a stative copula ("offen ist",
+# "geöffnet sind", "an bleibt"); "wird/werden" and event verbs are moments.
+_STATIVE_COPULAS = frozenset({"ist", "sind", "steht", "stehen", "bleibt", "bleiben", "ist?"})
+_EVENT_AUXILIARIES = frozenset({"wird", "werden", "worden", "wurde", "wurden"})
+_STATIVE_PREDICATES = frozenset({
+    "offen", "geöffnet", "auf", "zu", "geschlossen", "an", "aus", "ein", "eingeschaltet",
+    "ausgeschaltet", "angeschaltet",
+})
+
+
+def _is_stative(keys: list[str]) -> bool:
+    return (
+        bool(set(keys) & _STATIVE_COPULAS)
+        and not set(keys) & _EVENT_AUXILIARIES
+        and bool(set(keys) & _STATIVE_PREDICATES)
     )
 
 

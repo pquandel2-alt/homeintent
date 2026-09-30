@@ -71,12 +71,6 @@ _REGRESSION = [
      {"cover.garagentor"}, "open", 600, []),
     ("Benachrichtige mich, sobald das Garagentor geöffnet wird.",
      {"cover.garagentor"}, "open", None, []),
-    ("Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
-     WINDOWS, "on", None, [NOBODY_HOME]),
-    ("Sag mir Bescheid, wenn irgendein Fenster offen ist und keiner zuhause ist.",
-     WINDOWS, "on", None, [NOBODY_HOME]),
-    ("Achte darauf, dass kein Fenster offen bleibt, wenn niemand zuhause ist.",
-     WINDOWS, "on", None, [NOBODY_HOME]),
     ("Informiere mich, wenn ein Fenster seit mehr als 20 Minuten offen ist.",
      WINDOWS, "on", 1200, []),
     ("Behalte die Haustür im Auge und melde dich, wenn sie nachts geöffnet wird.",
@@ -96,6 +90,122 @@ def test_monitoring_and_notification_requests(
     assert trigger.get("for") == ({"seconds": seconds} if seconds else None), text
     assert automation.get("conditions", []) == conditions, text
     _notifies_speaker(automation)
+
+
+# --- a window open while nobody is home: both orders -------------------------
+
+_WINDOW_AND_AWAY = (
+    "Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
+    "Sag mir Bescheid, wenn irgendein Fenster offen ist und keiner zuhause ist.",
+    "Achte darauf, dass kein Fenster offen bleibt, wenn niemand zuhause ist.",
+    "Warne mich, wenn die Fenster offen sind und niemand zuhause ist.",
+)
+PEOPLE = ("person.anna", "person.lena", "person.philipp")
+
+
+@pytest.mark.parametrize("text", _WINDOW_AND_AWAY)
+def test_window_open_and_nobody_home_holds_in_both_orders(monkeypatch, tmp_path, text):
+    automation = _create(monkeypatch, tmp_path, text)
+    window_trigger, *leave_triggers = automation["triggers"]
+    assert _entities(window_trigger) == WINDOWS and window_trigger["to"] == "on"
+    assert [(item["entity_id"], item["from"]) for item in leave_triggers] == [
+        (person, "home") for person in PEOPLE
+    ]
+    any_window, nobody = automation["conditions"]
+    assert any_window["condition"] == "or"
+    assert {leaf["entity_id"] for leaf in any_window["conditions"]} == WINDOWS
+    assert nobody == NOBODY_HOME
+    assert automation["actions"][0]["data"]["message"] == "Ein Fenster ist offen. Niemand ist zuhause."
+    _notifies_speaker(automation)
+
+
+def _fires(automation: dict, states: dict[str, str], changed: str, before: str) -> bool:
+    """Minimal Home Assistant semantics for the generated state triggers and
+    state/or/not conditions: does the change of ``changed`` from ``before``
+    to its value in ``states`` run the actions?"""
+    def triggered(trigger: dict) -> bool:
+        if changed not in _entities(trigger):
+            return False
+        if "to" in trigger and states[changed] != trigger["to"]:
+            return False
+        if "from" in trigger and before != trigger["from"]:
+            return False
+        return states[changed] != before
+
+    def holds(condition: dict) -> bool:
+        kind = condition["condition"]
+        if kind == "state":
+            return all(states[entity] == condition["state"] for entity in _entities(condition))
+        if kind == "or":
+            return any(holds(child) for child in condition["conditions"])
+        if kind == "not":
+            return not any(holds(child) for child in condition["conditions"])
+        raise AssertionError(kind)
+
+    return any(triggered(item) for item in automation["triggers"]) and all(
+        holds(item) for item in automation.get("conditions", [])
+    )
+
+
+def test_home_assistant_runs_it_whichever_part_begins_last(monkeypatch, tmp_path):
+    automation = _create(monkeypatch, tmp_path, _WINDOW_AND_AWAY[0])
+    closed = {window: "off" for window in WINDOWS}
+    home = {person: "home" for person in PEOPLE}
+    away = {person: "not_home" for person in PEOPLE}
+    kitchen = "binary_sensor.kuechenfenster"
+    # Everybody leaves while the kitchen window is still open.
+    last_one_leaves = {**closed, kitchen: "on", **away}
+    assert _fires(automation, last_one_leaves, "person.lena", "home")
+    # A window opens while the house is empty.
+    assert _fires(automation, {**closed, kitchen: "on", **away}, kitchen, "off")
+    # Not while somebody is still home, and not with every window closed.
+    assert not _fires(automation, {**closed, kitchen: "on", **home, "person.lena": "not_home"},
+                      "person.lena", "home")
+    assert not _fires(automation, {**closed, **away}, "person.lena", "home")
+
+
+def test_a_moment_stays_a_moment(monkeypatch, tmp_path):
+    automation = _create(
+        monkeypatch, tmp_path,
+        "Benachrichtige mich, wenn ein Fenster geöffnet wird und niemand zuhause ist.",
+    )
+    [trigger] = automation["triggers"]
+    assert _entities(trigger) == WINDOWS
+    assert automation["conditions"] == [NOBODY_HOME]
+
+
+def test_a_duration_is_not_completed(monkeypatch, tmp_path):
+    automation = _create(
+        monkeypatch, tmp_path,
+        # "keiner": the V10 monitor-goal route claims "niemand" + "Fenster" first.
+        "Informiere mich, wenn ein Fenster seit 20 Minuten offen ist und keiner zuhause ist.",
+    )
+    [trigger] = automation["triggers"]
+    assert trigger["for"] == {"seconds": 1200}
+    assert automation["conditions"] == [NOBODY_HOME]
+
+
+def test_two_device_states_hold_in_both_orders(monkeypatch, tmp_path):
+    automation = _create(
+        monkeypatch, tmp_path,
+        "Melde dich, wenn das Garagentor offen ist und die Stehlampe an ist.",
+    )
+    assert [(item["entity_id"], item["to"]) for item in automation["triggers"]] == [
+        ("cover.garagentor", "open"), ("light.stehlampe", "on"),
+    ]
+    assert automation["conditions"] == [
+        {"condition": "state", "entity_id": "cover.garagentor", "state": "open"},
+        {"condition": "state", "entity_id": "light.stehlampe", "state": "on"},
+    ]
+
+
+def test_preview_speaks_the_situation_not_the_trigger_list(monkeypatch, tmp_path):
+    house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
+    preview = house.say(_WINDOW_AND_AWAY[0])
+    assert preview.speech.startswith(
+        "Sobald ein Fenster offen ist und niemand zuhause ist, egal was davon zuletzt eintritt,"
+    )
+    assert "person." not in preview.speech and "binary_sensor" not in preview.speech
 
 
 # --- constructions, not sentences --------------------------------------------
