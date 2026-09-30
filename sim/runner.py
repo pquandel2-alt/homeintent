@@ -158,6 +158,7 @@ class Runner:
                 n for n in log.get("notifications", [])
                 if ("notify_to" not in expect or n.get("target") == expect["notify_to"])
                 and ("notify_match" not in expect or _norm(expect["notify_match"]) in _norm(n.get("message")))
+                and ("notify_exact" not in expect or n.get("message") == expect["notify_exact"])
             ]
             if len(sent) != expect["notify_count"]:
                 problems.append(

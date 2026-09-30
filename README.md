@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.8.3** (Überwachungsaufträge: „Überwache das Garagentor und melde dich, wenn …“, eine Bedeutung für jede Formulierung)
+- Aktuelle Version: **7.9.0** (Überwachungsaufträge vollständig: Gesamtzustände, Inaktivität, Änderungsraten, Verbrauch, Wiederholen und Eskalieren, Überwachungen verwalten)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,37 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.0 neu?
+
+**HomeIntent überwacht und meldet** – für jede Überwachung gibt es eine
+korrekte Automation oder eine ehrliche Antwort, was fehlt:
+
+- **Gesamtzustände:** „Sag mir Bescheid, wenn alle Fenster zu sind.“ ·
+  „Melde dich, sobald kein Licht mehr an ist.“ – die Nachricht kommt, wenn das
+  letzte Mitglied den Zustand erreicht; die Vorschau nennt die Anzahl.
+- **Ausbleiben:** „wenn sich im Flur 12 Stunden nichts bewegt“, „wenn die
+  Haustür zwei Tage nicht geöffnet wurde“, „wenn bis 10 Uhr keine Bewegung im
+  Flur war“ – mit dem Hinweis, was ein Neustart bewirkt.
+- **Änderungen:** „wenn die Temperatur im Keller innerhalb einer Stunde um
+  3 Grad fällt“ – das überwacht HomeIntent selbst (Home Assistant bräuchte
+  dafür neue Helfer); ohne Zeitraum fragt HomeIntent nach.
+- **Leistung und Verbrauch:** W, kW, Wh und kWh sauber getrennt; „heute“ nur
+  mit einem Verbrauchszähler mit täglichem Zyklus – sonst sagt HomeIntent,
+  welcher Helfer fehlt.
+- **Wiederholen und Eskalieren:** „Erinnere mich alle 10 Minuten, bis das
+  Garagentor zu ist.“ (höchstens 12-mal, das wird gesagt) · „…, und wenn sie
+  nach 15 Minuten immer noch offen ist, sag Anna Bescheid.“
+- **Zwei Sätze:** „Überwache das Garagentor.“ – „Wann soll ich mich melden?“
+  – „Wenn es länger als 10 Minuten offen ist.“
+- **„Etwas Ungewöhnliches“** wird nicht erfunden: HomeIntent nennt, was die
+  proaktive Erkennung wirklich kennt, und bietet an, es einzuschalten.
+- **Verwalten:** „Welche Überwachungen laufen?“ · „Stopp die
+  Fensterüberwachung.“ · „Pausiere die Garagen-Meldung bis morgen um 7 Uhr.“
+
+Standard ist die Home-Assistant-Automation (in HA sichtbar, die gesprochene
+Vorschau steht in ihrer Beschreibung); nur Änderungsraten laufen in HomeIntent
+selbst. Details: `docs/umsetzung-7.9.md`.
 
 ## Was ist in Version 7.8.3 neu?
 
@@ -2253,16 +2284,16 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.8.3:
+Geprüfter Release-Stand von Version 7.9.0:
 
 ```text
-6830 passed, 12 skipped, 0 failed (Stub-Suite, lokal)
+7189 passed, 12 skipped, 0 failed (Stub-Suite, lokal)
 Sprachverständnis-Gate: 463 passed
-Korpus-Signaturen: 0 Änderungen gegenüber 7.8.2 (Baseline um 49 neue Testsätze ergänzt)
-Arbiter-Shadow 2078 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2055 EQUIVALENT
-Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107, unsafe_execution_count 0
-Live-Testbett 179/179 (inklusive Proaktiv; neu: mon-window-away, mon-window-away-anna, mon-routing-niemand, mon-garage-duration), check_log 0 Befunde
-Automationssprache 5000 Entitäten p95 16,6 ms
+Korpus-Signaturen: 0 Änderungen gegenüber 7.8.3 (Baseline um 116 neue Testsätze ergänzt)
+Arbiter-Shadow 2087 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2064 EQUIVALENT
+Entwicklungs-Benchmark 7.7 459/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 186/186 (inklusive Proaktiv; neu: m79-w1-all-windows, m79-w2-no-motion, m79-w3-rate, m79-w5-repeat, m79-w5-escalate, m79-w6-two-turns, m79-w8-list-stop), check_log 0 Befunde
+Automationssprache 5000 Entitäten p95 18,6 ms
 Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
 Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
 ```
@@ -2304,7 +2335,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.8.3.json
+  --check docs/perf/corpus-signatures-7.9.0.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

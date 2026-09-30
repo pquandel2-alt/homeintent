@@ -666,11 +666,12 @@ S("m79-w5-repeat", "Proaktiv", "W5: Wiederholung jede Minute, bis das Tor zu ist
   service("haus_sim.clear_log"),
   service("cover.open_cover", {"entity_id": "cover.garagentor"}),
   wait(75),
-  check(notify_count=2, notify_to="notify.handy_philipp_nachricht", notify_match="noch offen"),
+  # Exakt die Erinnerung: V12 meldet das offene Tor (Proaktiv) mit eigener Frage.
+  check(notify_count=2, notify_to="notify.handy_philipp_nachricht", notify_exact="Das Garagentor ist noch offen."),
   service("cover.close_cover", {"entity_id": "cover.garagentor"}), wait(10),
   service("haus_sim.clear_log"),
   wait(60),
-  check(notify_count=0, notify_match="noch offen"))
+  check(notify_count=0, notify_exact="Das Garagentor ist noch offen."))
 S("m79-w5-escalate", "Proaktiv", "W5: Eskalation an Anna nach 1 Minute",
   service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
   say("Melde dich, wenn die Haustür offen ist, und wenn sie nach 1 Minute immer noch offen ist, sag Anna Bescheid.",
