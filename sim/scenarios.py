@@ -768,3 +768,10 @@ S("s78-b7-dialog", L78, "B7: neue Frage beendet die offene Bestätigung ausdrüc
   say("Öffne das Garagentor.", no_calls=True),
   say("Wie warm ist es im Büro?", no_calls=True, any=["verworfen"]),
   say("Ja.", no_calls=True))
+
+L781 = "Sicherheit 7.8.1"
+S("s781-ellipsis-unknown", L781, "Ellipse mit unbekanntem Objekt schaltet nie das vorherige Gerät",
+  say("Mach das Flurlicht an.", calls=["light.flurlicht:turn_on"]),
+  say("Und Blumenkohl aus.", no_calls=True, any=["finde ich nicht"]),
+  say("Mach das Flurlicht an.", calls=["light.flurlicht:turn_on"]),
+  say("Oben auch.", calls=["light.flurlicht_oben:turn_on"], only_calls=True))

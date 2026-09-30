@@ -411,8 +411,12 @@ def test_ambiguous_executable_meaning_never_executes(particle):
         EntitySnapshot("light.b", "Leselampe", "light", "off", area_id="wohnzimmer", area_name="Wohnzimmer",
                        capabilities=frozenset({"TURN_ON", "TURN_OFF"})),
     ]
-    house = HouseConversation(pytest.MonkeyPatch(), entities=entities, options=AUTO)
-    assert writes(house.say(f"Mach die Leselampe {particle}.")) == []
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, entities=entities, options=AUTO)
+        assert writes(house.say(f"Mach die Leselampe {particle}.")) == []
+    finally:
+        patch.undo()
 
 
 @given(st.sampled_from(["Ich gehe schlafen.", "Starte die Schlafroutine.", "Gute Nacht."]),
@@ -428,21 +432,25 @@ def test_learned_binding_never_reaches_unexposed_targets(sentence, level):
         EntitySnapshot("script.gute_nacht", "Gute Nacht", "script", "off"),
         EntitySnapshot("light.a", "Licht", "light", "on", capabilities=frozenset({"TURN_ON", "TURN_OFF"})),
     ]
-    house = HouseConversation(pytest.MonkeyPatch(), entities=entities, options={"implicit_action_level": level})
-    hass = house.entity.hass
-    hass.data.pop("script", None)
-    _ha_stub.register_script(hass, "script.gute_nacht", [
-        {"action": "vacuum.start", "target": {"entity_id": "vacuum.robbi"}},
-    ])
-    hass.states._states["vacuum.robbi"] = types.SimpleNamespace(
-        entity_id="vacuum.robbi", state="docked", attributes={"friendly_name": "Robbi"},
-    )
-    asyncio.run(house.entity._runtime_data.bindings.async_bind(
-        BindingKind.ROUTINE, "sleep", "script.gute_nacht", confirmed=True, now=datetime(2026, 9, 28),
-    ))
-    first = house.say(sentence)
-    second = house.say("Ja.")
-    assert writes(first) == [] and writes(second) == [], (first.speech, second.speech)
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, entities=entities, options={"implicit_action_level": level})
+        hass = house.entity.hass
+        hass.data.pop("script", None)
+        _ha_stub.register_script(hass, "script.gute_nacht", [
+            {"action": "vacuum.start", "target": {"entity_id": "vacuum.robbi"}},
+        ])
+        hass.states._states["vacuum.robbi"] = types.SimpleNamespace(
+            entity_id="vacuum.robbi", state="docked", attributes={"friendly_name": "Robbi"},
+        )
+        asyncio.run(house.entity._runtime_data.bindings.async_bind(
+            BindingKind.ROUTINE, "sleep", "script.gute_nacht", confirmed=True, now=datetime(2026, 9, 28),
+        ))
+        first = house.say(sentence)
+        second = house.say("Ja.")
+        assert writes(first) == [] and writes(second) == [], (first.speech, second.speech)
+    finally:
+        patch.undo()
 
 
 _ALIAS_WORDS = st.sampled_from(["Kuschelecke", "Zauberkasten", "Omalicht", "Bluna", "Knuffel"])
@@ -463,21 +471,25 @@ def test_learned_alias_never_reaches_beyond_its_exposed_target(word, frame, targ
     from homeintent.bindings import BindingKind
 
     entities = [e for e in _ENTITIES if exposed or e.entity_id != target]
-    house = HouseConversation(pytest.MonkeyPatch(), entities=entities, options=AUTO)
-    asyncio.run(house.entity._runtime_data.bindings.async_bind(
-        BindingKind.ALIAS, word, target, confirmed=True, now=datetime(2026, 9, 28), data={"spoken": word},
-    ))
-    sentence = frame.format(w=word)
-    turn = house.say(sentence)
-    written = {
-        entity for domain, service, data in turn.calls
-        if (domain, service) not in READ_SERVICES for entity in _ids(data)
-    }
-    allowed = ({target} if exposed else set()) | ({"light.kuechenlicht"} if "Küchenlicht" in sentence else set())
-    assert written <= allowed, (sentence, written, turn.speech)
-    # "Kannst du … einschalten?" is a polite request, not a question.
-    if " nicht " in sentence or sentence.startswith("Ist ") or "Minuten" in sentence:
-        assert written == set(), (sentence, turn.speech)
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, entities=entities, options=AUTO)
+        asyncio.run(house.entity._runtime_data.bindings.async_bind(
+            BindingKind.ALIAS, word, target, confirmed=True, now=datetime(2026, 9, 28), data={"spoken": word},
+        ))
+        sentence = frame.format(w=word)
+        turn = house.say(sentence)
+        written = {
+            entity for domain, service, data in turn.calls
+            if (domain, service) not in READ_SERVICES for entity in _ids(data)
+        }
+        allowed = ({target} if exposed else set()) | ({"light.kuechenlicht"} if "Küchenlicht" in sentence else set())
+        assert written <= allowed, (sentence, written, turn.speech)
+        # "Kannst du … einschalten?" is a polite request, not a question.
+        if " nicht " in sentence or sentence.startswith("Ist ") or "Minuten" in sentence:
+            assert written == set(), (sentence, turn.speech)
+    finally:
+        patch.undo()
 
 
 @given(st.sampled_from(["Kinoabend", "Feierabend"]), st.sampled_from([e.entity_id for e in _ENTITIES if e.domain in {"lock", "cover", "alarm_control_panel"}]))
@@ -494,14 +506,18 @@ def test_macro_never_bypasses_confirmation_of_critical_steps(name, target):
         "cover": f"Öffne {entity.friendly_name}.",
         "alarm_control_panel": f"Schalte {entity.friendly_name} aus.",
     }[entity.domain]
-    house = HouseConversation(pytest.MonkeyPatch(), options=AUTO)
-    asyncio.run(house.entity._runtime_data.bindings.async_bind(
-        BindingKind.MACRO, name, "macro", confirmed=True, scope=BindingScope.HOUSEHOLD,
-        now=datetime(2026, 9, 28), data={"spoken": name, "body": body, "entity_ids": [target]},
-    ))
-    direct = HouseConversation(pytest.MonkeyPatch(), options=AUTO).say(body)
-    via_macro = house.say(f"{name}.")
-    assert bool(writes(via_macro)) <= bool(writes(direct)), (body, via_macro.speech)
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, options=AUTO)
+        asyncio.run(house.entity._runtime_data.bindings.async_bind(
+            BindingKind.MACRO, name, "macro", confirmed=True, scope=BindingScope.HOUSEHOLD,
+            now=datetime(2026, 9, 28), data={"spoken": name, "body": body, "entity_ids": [target]},
+        ))
+        direct = HouseConversation(patch, options=AUTO).say(body)
+        via_macro = house.say(f"{name}.")
+        assert bool(writes(via_macro)) <= bool(writes(direct)), (body, via_macro.speech)
+    finally:
+        patch.undo()
 
 
 def _ids(data: dict) -> list[str]:
@@ -613,14 +629,18 @@ def test_learned_default_choice_never_bypasses_confirmation(sentence):
 
     from homeintent.bindings import BindingKind, BindingScope, normalize_key
 
-    house = HouseConversation(pytest.MonkeyPatch(), options=AUTO)
-    key = normalize_key("lock.gartentor_schloss|lock.haustuerschloss @ ueberall")
-    asyncio.run(house.entity._runtime_data.bindings.async_bind(
-        BindingKind.DEFAULT_CHOICE, key, "lock.haustuerschloss",
-        confirmed=True, scope=BindingScope.USER, user_id="admin", now=datetime(2026, 9, 28),
-    ))
-    turn = house.say(sentence)
-    assert _written(turn) == set(), (sentence, turn.speech)
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, options=AUTO)
+        key = normalize_key("lock.gartentor_schloss|lock.haustuerschloss @ ueberall")
+        asyncio.run(house.entity._runtime_data.bindings.async_bind(
+            BindingKind.DEFAULT_CHOICE, key, "lock.haustuerschloss",
+            confirmed=True, scope=BindingScope.USER, user_id="admin", now=datetime(2026, 9, 28),
+        ))
+        turn = house.say(sentence)
+        assert _written(turn) == set(), (sentence, turn.speech)
+    finally:
+        patch.undo()
 
 
 def test_habit_learning_never_learns_what_a_sentence_means():
@@ -758,6 +778,31 @@ def test_ellipsis_with_a_new_object_never_writes_to_the_previous_target(first, s
     _opening, follow = _dialog(f"Mach {first_name} an.", f"Und {second_name} {switch[0]}.")
     assert first_id not in _written(follow) or first_id == second_id, (follow.text, follow.speech)
     assert _written(follow) <= {second_id}, (follow.text, follow.speech)
+
+
+_UNKNOWN_OBJECTS = st.sampled_from([
+    "Deckenfluter", "Blumenkohl", "Wackeldackel", "Kuckucksuhr", "Quastenflosser", "Fliegenpilz",
+])
+
+
+@given(st.sampled_from(_SWITCH_LIGHTS), _UNKNOWN_OBJECTS, ON_OFF, st.sampled_from(["Und ", "", "Jetzt "]))
+def test_ellipsis_with_an_unknown_object_never_writes_to_the_previous_target(first, word, switch, lead):
+    """7.8.1: "Mach das Flurlicht an." -> "Und Deckenfluter aus." with a
+    Deckenfluter HomeIntent does not know (not exposed): the unknown new
+    object is never replaced by the previous target."""
+    first_id, first_name = first
+    entities = [entity for entity in _ENTITIES if word.casefold() not in entity.friendly_name.casefold()]
+    assume(any(entity.entity_id == first_id for entity in entities))
+    patch = pytest.MonkeyPatch()
+    try:
+        house = HouseConversation(patch, entities=entities, options=AUTO)
+        _COUNTER[0] += 1
+        house.conversation_id = f"prop-unknown-{_COUNTER[0]}"
+        house.say(f"Mach {first_name} an.")
+        follow = house.say(f"{lead}{word} {switch[0]}.")
+    finally:
+        patch.undo()
+    assert _written(follow) == set(), (follow.text, follow.speech)
 
 
 _SIDED = [

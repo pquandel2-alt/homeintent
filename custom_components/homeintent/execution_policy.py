@@ -17,6 +17,7 @@ from .const import (
     IMPLICIT_ACTION_LEVELS,
     CONF_MAX_ACTION_TARGETS,
     CONF_READ_ONLY_ENTITIES,
+    CONF_SELECTED_ENTITIES,
 )
 from .effect_graph import (
     PlanEffects,
@@ -30,6 +31,22 @@ from .entities import EntitySnapshot
 from .plan_origin import UNATTENDED_ORIGINS, PlanOrigin
 from .risk import RiskLevel, classify_service_plan
 from .service_call import ServiceCallPlan
+
+
+def _exposure_hint(options: Mapping[str, object]) -> str:
+    """Where the missing release is made (7.8.1): a fixed HomeIntent
+    selection hides devices that are exposed to Assist later."""
+    if options.get(CONF_SELECTED_ENTITIES):
+        return (
+            "HomeIntent nutzt eine feste Geräteauswahl, die diese Geräte nicht enthält, "
+            "auch wenn sie in Assist freigegeben sind. Ergänze sie in den Optionen von "
+            "HomeIntent unter der Geräteauswahl oder leere die Auswahl, dann gilt die "
+            "Assist-Freigabe."
+        )
+    return (
+        "Freigeben kannst du sie in Home Assistant unter Einstellungen, "
+        "Sprachassistenten, Entitäten freigeben."
+    )
 
 
 class PolicyOutcome(Enum):
@@ -174,11 +191,17 @@ def evaluate_service_plan(
         )
     if effects is not None and effect_targets:
         exposed = {entity.entity_id for entity in entities}
+        # effective_targets leaves out entities Home Assistant does not know:
+        # a step on them switches nothing (7.8.1).
         unexposed = sorted(effect_targets - exposed)
         if unexposed:
             # The exposure list is the user's configuration: no confirmation
             # can override it.
-            return decide(PolicyOutcome.DENY, describe_unexposed(effects, unexposed))
+            return decide(
+                PolicyOutcome.DENY,
+                f"{describe_unexposed(effects, unexposed, (entity.friendly_name for entity in entities))} "
+                f"{_exposure_hint(options)}",
+            )
     admin_only_ids = _id_set(options, CONF_ADMIN_ONLY_ENTITIES)
     if not is_admin and all_ids & admin_only_ids:
         return decide(
@@ -287,15 +310,17 @@ def validate_automation_action_targets(
     HomeIntent (documented in the README).
     """
     if effects is not None:
-        if effects.effective_targets and exposed_ids is not None:
-            unexposed = sorted(effects.effective_targets - set(exposed_ids))
+        # An automation runs later: an entity that is missing today may
+        # exist then, so every named entity counts here.
+        if effects.referenced_targets and exposed_ids is not None:
+            unexposed = sorted(effects.referenced_targets - set(exposed_ids))
             if unexposed:
                 return describe_unexposed(effects, unexposed)
         if not effects.complete:
             return f"{describe_unknown(effects)} Die Automation habe ich nicht angelegt."
         target_ids = frozenset(
             {item for item in target_ids if item not in set(effects.roots)}
-            | effects.effective_targets
+            | effects.referenced_targets
         )
     configured_users = options.get(CONF_CONTROL_USER_IDS, ())
     allowed_users = (

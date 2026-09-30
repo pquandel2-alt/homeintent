@@ -2304,16 +2304,28 @@ class NluConversationEntity(
         if contract is not None:
             fields, entities, previous = contract
             timed: Any = None
+            unknown_object = False
             kept: list[tuple[str, Any]] = []
             for source, payload in payloads:
                 written = _written_entities(payload, entities)
                 reason = violation(fields, written, previous) if written else None
                 if reason == "time" and timed is None:
                     timed = payload
+                if reason == "object" and fields.unknown and not fields.targets:
+                    unknown_object = True
                 kept.append((source, None if reason else payload))
             payloads = kept
             if timed is not None and all(payload is None for _source, payload in payloads):
                 return _TimedFollowup(timed)
+            if unknown_object and all(payload is None for _source, payload in payloads):
+                # "Und Deckenfluter aus." with an unknown Deckenfluter (7.8.1).
+                return MatchResult(
+                    plan=None,
+                    response_text=(
+                        f"Ein Gerät „{' '.join(fields.unknown)}“ finde ich nicht. "
+                        "Ich habe nichts ausgeführt."
+                    ),
+                )
         candidates = context_candidates(payloads)
         decision = arbitrate(candidates)
         if decision.writes:

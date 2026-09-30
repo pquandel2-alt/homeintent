@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.8.0** (Sprachverständnis: Rahmen, Kurzbefehle, Ellipsen, Automationssprache; ganzer Turn bei 5000 Entitäten p95 ≈ 110 ms)
+- Aktuelle Version: **7.8.1** (Skripte und Gruppen: gelöschte Geräte blockieren nicht mehr, Freigabe-Hinweis nennt Ursache und Ort; Ellipse mit unbekanntem Objekt schaltet nie das vorherige Gerät)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,35 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.8.1 neu?
+
+**Skripte, Szenen und Gruppen gegen die echte Freigabe** (Rückmeldung aus
+dem Betrieb: „Aktiviere Schlafen“ und „Schalte Ambiente ein“ wurden
+abgelehnt, obwohl die Geräte freigegeben waren).
+
+- **Gelöschte Geräte blockieren nicht mehr:** Nennt ein Skript eine Entität,
+  die Home Assistant nicht mehr kennt (gelöscht, umbenannt, deaktiviert),
+  schaltet dieser Schritt nichts. Sie zählt deshalb nicht mehr als „nicht
+  freigegeben“; das Skript läuft, die Erfolgsmeldung zählt nur, was es
+  wirklich gibt. Beim Anlegen einer Automation zählt sie weiter, denn die
+  läuft später, wenn die Entität wieder da sein kann.
+- **Die Ablehnung nennt Ursache und Ort:** Teilt ein verstecktes Gerät den
+  Namen mit einem freigegebenen (zweite Entität desselben Geräts, Gruppe und
+  Lampe gleichen Namens), steht die Entitäts-ID dabei: „Kücheninsel
+  (light.kuecheninsel_2)“. Nutzt HomeIntent eine feste Geräteauswahl, sagt
+  die Antwort das und wo sie ergänzt oder geleert wird; sonst, wo in Home
+  Assistant freigegeben wird.
+- Unverändert: Ein vorhandenes, nicht freigegebenes Gerät in einem Skript
+  wird nie geschaltet, auch nicht nach „Ja“.
+- **Ellipse mit unbekanntem Objekt:** „Mach das Flurlicht an.“ → „Und
+  Deckenfluter aus.“ mit einem Deckenfluter, den HomeIntent nicht kennt (zum
+  Beispiel nicht freigegeben), schaltete das Flurlicht aus. Ein unbekanntes
+  Substantiv an Objektstelle ist jetzt ein neues, unbekanntes Objekt: „Ein
+  Gerät „Deckenfluter“ finde ich nicht. Ich habe nichts ausgeführt.“ Gefunden
+  hat das die Nightly-Property-Suite, nachdem ein Testleck behoben war (Tests
+  setzten ihren Geräte-Patch nicht zurück); neue Invariante und
+  Live-Szenario `s781-ellipsis-unknown`.
 
 ## Was ist in Version 7.8.0 neu?
 
@@ -550,6 +579,9 @@ liefen los) zeigte die Lücke. Jetzt:
   auflöst. Details: [Skripte, Szenen und Gruppen](#skripte-szenen-und-gruppen-transitive-prüfung-seit-731).
 - **Freigabe gilt transitiv:** Schaltet ein Skript ein nicht freigegebenes
   Gerät, lehnt HomeIntent ab und nennt es – auch ein „Ja“ ändert das nicht.
+  Entitäten, die Home Assistant nicht kennt, schalten nichts und zählen
+  nicht (seit 7.8.1). Die Antwort sagt, wo freigegeben wird (feste
+  HomeIntent-Auswahl oder Assist).
 - **Risiko = höchste Wirkung:** Ein Schloss im Skript macht das Skript HIGH,
   eine Alarmanlage CRITICAL; ein reines Lichtskript bleibt LOW.
 - **Nicht prüfbare Schritte** (Vorlagen, `event:`, `shell_command` …) gelten
@@ -2158,17 +2190,17 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.8.0:
+Geprüfter Release-Stand von Version 7.8.1:
 
 ```text
-6365 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+6438 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
 Sprachverständnis-Gate: 463 passed
-Property-Suite: 39 Sicherheitsinvarianten, CI- und Nightly-Profil 0 Verletzungen
-Korpus-Signaturen: 0 Änderungen gegenüber 7.7.1
-Dialog-Shadow gegen 7.7.1: 238 Dialoge / 477 Turns, 12 gewollte Abweichungen; Shadow-Vergleich 2039 EQUIVALENT
-Arbiter-Shadow 2062 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
+Property-Suite: 40 Sicherheitsinvarianten, CI- und Nightly-Profil 0 Verletzungen
+Korpus-Signaturen: 0 Änderungen gegenüber 7.8.0 (und 7.7.1)
+Dialog-Shadow gegen 7.8.0: 238 Dialoge / 477 Turns, 0 Abweichungen
+Arbiter-Shadow 2076 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2050 EQUIVALENT
 Entwicklungs-Benchmark 7.7 458/503, 7.8 102/107 (held-out 32/36), unsafe_execution_count 0
-Live-Testbett 174/174 (167 + Proaktiv 7; neu: s78-* je Cluster), Push-Matrix 35/35, README-Beispiele wie 7.7.0
+Live-Testbett 175/175 (168 + Proaktiv 7; neu: s781-ellipsis-unknown), Push-Matrix 35/35, README-Beispiele wie 7.7.0
 Ganzer Turn 5000 Entitäten p50 31 ms, p90 92 ms, p95 108 ms, p99 128 ms
 Pyright 0 Fehler (voll und alle Strict-Profile)
 Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
@@ -2211,7 +2243,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.8.0.json
+  --check docs/perf/corpus-signatures-7.8.1.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

@@ -424,3 +424,120 @@ Arbiter-Shadow; keine parallele Struktur.
 - Die Konversation hält weiter mehrere Router; die Oberfläche ist
   gemeinsam, die Pläne entstehen weiter in den Engine-Compilern
   (Schuld aus 7.7, Abschnitt 9).
+
+---
+
+# Nachtrag – 7.8.1: Skripte und Gruppen gegen die echte Freigabe
+
+**Rückmeldung aus dem Betrieb:** „Aktiviere Schlafen“ → „Das Skript
+„Schlafen“ schaltet auch Geräte, die für HomeIntent nicht freigegeben sind:
+Samsung 8 Series (43), light.musikanlage und Poleraum Leuchtschrift. Ich habe
+nichts ausgeführt.“; „Schalte Ambiente ein“ → dieselbe Ablehnung für
+„Kücheninsel“ – obwohl die Geräte in Assist freigegeben sind.
+
+**Ursachen.**
+
+1. `light.musikanlage` erschien ohne Namen: Home Assistant kennt die Entität
+   nicht (mehr). Der EffectGraph zählte sie trotzdem als wirksames Ziel, und
+   die Policy verglich mit der Freigabeliste – ein gelöschtes Gerät
+   blockierte das ganze Skript, obwohl der Schritt nichts schaltet.
+2. Freigegeben „in Assist“ heißt für HomeIntent nur dann freigegeben, wenn
+   keine feste Geräteauswahl in den HomeIntent-Optionen gespeichert ist
+   (bekannte Falle F6: 7.1.2 hat die damalige Freigabe beim Speichern der
+   Optionen eingefroren; Home Assistant zeigt dazu eine Reparaturmeldung).
+   Die Ablehnung sagte das nicht.
+3. Ein verstecktes Gerät mit dem Namen eines freigegebenen (zweite Entität
+   desselben Geräts, Gruppe und Lampe gleichen Namens) war in der Antwort
+   nicht vom freigegebenen zu unterscheiden.
+
+**Regeln.**
+
+- `PlanEffects.missing`: Ziele, die Home Assistant beim Aufbau des Graphen
+  nicht kennt. `effective_targets` lässt sie aus (sie schalten nichts);
+  `referenced_targets` behält sie. Der Graph wird direkt vor dem Schalten
+  neu gebaut, ein inzwischen wieder vorhandenes Gerät wird also geprüft.
+- Automationen prüfen weiter `referenced_targets`: sie laufen später, wenn
+  die Entität wieder existieren kann.
+- Die Ablehnung nennt bei Namensgleichheit die Entitäts-ID und sagt, wo
+  freigegeben wird: feste HomeIntent-Auswahl (ergänzen oder leeren) oder
+  Assist.
+- Unverändert: Ein vorhandenes, nicht freigegebenes Gerät wird nie
+  geschaltet, auch nicht nach „Ja“; alle Risiko-, Admin-, Nur-Lesen- und
+  Zielzahlregeln gelten auf den wirksamen Zielen.
+
+**Dateien.** `effect_graph.py` (`missing`, `referenced_targets`,
+`describe_unexposed` mit Namensabgleich, `summarize_effects`),
+`execution_policy.py` (`_exposure_hint`, Automationspfad),
+`tests/_ha_stub.py` (Skript- und Szenenziele existieren im Stub-HA wie in
+einem echten), `tests/test_exposure_781.py` (6 Tests).
+
+**Live geprüft** (echtes Home Assistant, Skript mit `light.stehlampe` und
+einer gelöschten Entität): „Aktiviere Schlafen“ → „Schlafen ausgeführt:
+1 Licht.“; Skript mit nicht freigegebener Kücheninsel → Ablehnung mit
+Freigabe-Hinweis. Die rohe Antwort enthält kein vorangestelltes Wort.
+
+## Ellipse mit unbekanntem Objekt (Befund der Nightly-Suite)
+
+**Befund.** Ein Nightly-Lauf meldete
+`test_ellipsis_with_a_new_object_never_writes_to_the_previous_target`; einzeln
+war der Test grün. Ursache der Instabilität: Fünf Invarianten legten eigene
+Testhäuser an und setzten ihren Patch der Geräteliste nie zurück; das
+gemeinsame Testhaus sprach danach mit einer fremden Liste. In dieser Liste
+fehlte ein Gerät – und damit zeigte sich ein echter Fehler seit 7.8.0:
+„Mach das Flurlicht an.“ → „Und Deckenfluter aus.“ mit einem Deckenfluter, den
+HomeIntent nicht kennt, schaltete das Flurlicht aus. Das unbekannte Wort fiel
+als Rest weg, der Ellipsen-Vertrag sah kein neues Objekt.
+
+**Regel.** `EllipsisFields.unknown`: ein unbekanntes Substantiv an
+Objektstelle – großgeschrieben im Satzinneren, oder in der verblosen Kurzform
+„Deckenfluter aus.“ das einzige unbekannte Wort ohne Bezugswort und ohne
+Frage. Verben und Adverbien im Rest („pausieren“, „Kannst“, „nochmal“,
+„andere“) sind keine Objekte. Mit einem unbekannten Objekt verletzt jede
+schreibende Kontextlesart den Vertrag („object“); bleibt keine Lesart übrig,
+antwortet HomeIntent „Ein Gerät „…“ finde ich nicht. Ich habe nichts
+ausgeführt.“ Lesarten über Ort oder Gattung („Bürolicht“ → Licht im Büro)
+bleiben, sie nennen ein bekanntes Objekt.
+
+**Grenze.** Kleingeschriebene Eingaben („und deckenfluter aus“) erkennt die
+Regel nur in der Kurzform; im Satzinneren fehlt ohne Großschreibung das
+Unterscheidungsmerkmal zu Verben. Übliche Spracherkennung schreibt Substantive
+groß.
+
+**Dateien.** `nlu/ellipsis_contract.py`, `conversation.py`
+(`_arbitrate_context_readings`), `tests/test_safety_properties.py` (Patches
+werden zurückgesetzt; neue Invariante
+`test_ellipsis_with_an_unknown_object_never_writes_to_the_previous_target`,
+Gegenprobe: ohne die Regel rot), `tests/test_ellipsis_781.py`,
+`sim/scenarios.py` (`s781-ellipsis-unknown`).
+
+## Pflichtläufe 7.8.1
+
+| Prüfung | Ergebnis |
+|---|---|
+| Stub-Suite | 6438 passed, 12 skipped |
+| Property-Suite | 40 Invarianten, CI- und Nightly-Profil 0 Verletzungen |
+| Korpus-Signaturen | 0 Änderungen (Baseline um 7 neue Testsätze ergänzt, `corpus-signatures-7.8.1.json`) |
+| Dialog-Shadow gegen 7.8.0 | 238 Dialoge / 477 Turns, 0 Abweichungen |
+| Arbiter-Shadow | 2076 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT |
+| Shadow-Vergleich | 2050 EQUIVALENT |
+| Entwicklungs-Benchmark 7.7 / 7.8 | 458/503 / 102/107 (held-out 32/36), unsafe 0 – unverändert |
+| Live-Testbett | 175/175: 168 ohne Proaktiv und Proaktiv 7/7 |
+| Push-Matrix | 35/35 (Wiederholung, siehe unten) |
+| Pyright voll/Strict, Pyflakes | 0 |
+| Satzmuster | 173 (unverändert) |
+
+Ein erster Proaktiv-Lauf lief gleichzeitig mit einem Einzelszenario gegen
+dasselbe Home Assistant; dabei fiel `pro-washer` aus und die verspätete
+Meldung landete in der Push-Matrix (33/35). Wiederholt mit frischem Home
+Assistant und ohne parallelen Lauf: Proaktiv 7/7, Push-Matrix 35/35.
+Das Szenario `s781-ellipsis-unknown` fiel im ersten Live-Lauf im dritten
+Schritt aus: Nach einer Fehlermeldung verwirft HomeIntent den Dialogkontext,
+„Und wieder aus.“ hatte keinen Bezug mehr – bestehendes Verhalten, falsch im
+Szenario angenommen. Der sicherheitsrelevante Schritt („Und Blumenkohl aus.“
+schaltet nichts) bestand; das Szenario prüft danach „Oben auch.“ mit neuem
+Bezug und besteht live.
+
+**Bewusst offen.** „Schalte ‹Skript› ein“ startet ein Skript weiter nicht
+(bestehender Vertrag seit 2026-08-20: Skripte laufen mit
+starten/ausführen/aktivieren); die Antwort darauf („… lässt sich nur ein-
+und ausschalten“) ist widersprüchlich und wird separat entschieden.

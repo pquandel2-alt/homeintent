@@ -8,7 +8,10 @@ the fields it does **not** name itself:
   is never ignored,
 * a change of place carries the kind/role of the predecessor and never
   widens the set (no floor set instead of one device),
-* a time makes the follow-up time-bound; it never runs now.
+* a time makes the follow-up time-bound; it never runs now,
+* a word in object position that names nothing HomeIntent knows ("Und
+  Deckenfluter aus." when the Deckenfluter is not exposed) is an unknown new
+  object: the previous target is never substituted for it (7.8.1).
 
 ``violation`` checks a context reading against these rules. Every context
 reader of the conversation passes through it, so no reader can substitute
@@ -33,6 +36,15 @@ _SIDE_WORDS = {
     "big": ("gross",), "small": ("klein",), "middle": ("mittlere", "mitte"),
 }
 _ALL_WORDS = frozenset({"alle", "allen", "saemtliche", "beide", "beiden", "ueberall"})
+# Rest words that never name an object of a follow-up ("Und nochmal.",
+# "Die andere auch.", "Ruhig wieder aus.").
+_NEUTRAL_REST = frozenset({
+    "noch", "nochmal", "nochmals", "mal", "einmal", "andere", "anderen", "anderer", "anderes",
+    "wieder", "auch", "bitte", "doch", "eben", "schnell", "kurz", "gleich", "sofort", "jetzt",
+    "dann", "und", "aus", "an", "ein", "so", "genauso", "ebenso", "ebenfalls", "danke", "okay",
+    "gerne", "halt", "einfach", "ruhig", "mehr", "weniger", "etwas", "bisschen", "ganz",
+    "komplett", "zurueck", "oder", "aber", "dafuer", "bei", "fuer", "mit", "von", "zu",
+})
 
 
 @dataclass(frozen=True)
@@ -43,6 +55,8 @@ class EllipsisFields:
     value: bool
     time: bool
     all: bool
+    # Words in the sentence that name nothing HomeIntent knows.
+    unknown: tuple[str, ...] = ()
 
     @property
     def names_object(self) -> bool:
@@ -52,8 +66,37 @@ class EllipsisFields:
 _SENSOR_GENERA = frozenset(item.key for item in GENERA if item.sensor)
 
 
+def _first_word_start(text: str) -> int:
+    stripped = text.lstrip(" \t\"„‚'«»")
+    return len(text) - len(stripped)
+
+
+def _unknown_objects(text: str, fields: Sequence[object], rest: Sequence[object]) -> tuple[str, ...]:
+    """Unknown nouns in object position. A noun is capitalised; inside the
+    sentence that tells it from verbs and adverbs ("Und Deckenfluter aus.").
+    A capitalised first word counts only in the verbless short form
+    "Deckenfluter aus." - one unknown word, no reference, no question."""
+    words = [
+        token for token in rest
+        if getattr(token, "is_word", False) and len(getattr(token, "key", "")) >= 3
+        and getattr(token, "key", "") not in _NEUTRAL_REST and getattr(token, "text", "")[:1].isupper()
+    ]
+    first = _first_word_start(text)
+    inner = [token for token in words if getattr(token, "start", 0) > first]
+    if inner:
+        return tuple(getattr(token, "text", "") for token in inner)
+    kinds = {getattr(item, "kind", "") for item in fields}
+    if (
+        len(words) == 1 and len([token for token in rest if getattr(token, "is_word", False)]) == 1
+        and "reference" not in kinds and "verb" not in kinds and kinds & {"particle", "value"}
+        and not text.rstrip().endswith("?")
+    ):
+        return (getattr(words[0], "text", ""),)
+    return ()
+
+
 def ellipsis_fields(text: str, entities: Sequence[EntitySnapshot]) -> EllipsisFields:
-    fields, _rest = utterance_fields(text, entities)
+    fields, rest = utterance_fields(text, entities)
     # "die Temperatur auf 22 Grad": a measured property names what changes,
     # not a new object.
     fields = [
@@ -73,6 +116,7 @@ def ellipsis_fields(text: str, entities: Sequence[EntitySnapshot]) -> EllipsisFi
         value=any(item.kind == "value" for item in fields),
         time=any(item.kind == "time" for item in fields),
         all=bool({word.strip(".,!?") for word in words} & _ALL_WORDS),
+        unknown=_unknown_objects(text, fields, rest),
     )
 
 
@@ -108,6 +152,9 @@ def violation(
     targets = list(written)
     if fields.time and immediate:
         return "time"
+    if fields.unknown and not fields.targets:
+        # A new object HomeIntent does not know is never the previous one.
+        return "object"
     for entity in targets:
         if fields.targets and not any(_matches_target(entity, target) for target in fields.targets):
             return "object"
