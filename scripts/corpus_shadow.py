@@ -14,8 +14,8 @@ sentence-like literal of the test suite), each from its own source tree.
 Release baseline (replaces the legacy/V7 divergence report, 7.7 B5): a
 compact digest per sentence, checked in CI; a changed signature fails.
 
-    python scripts/corpus_shadow.py --write-baseline docs/perf/corpus-signatures-7.7.0.json
-    python scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.7.0.json
+    python scripts/corpus_shadow.py --write-baseline docs/perf/corpus-signatures-7.9.0.json
+    python scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.9.0.json
 
 Per sentence it records the behaviour signature of ``NluEngine.understand``
 (writes, targets, domains, risk, confirmation, response) and the grounded
@@ -63,7 +63,7 @@ def _sentences() -> list[str]:
 
 def _dump(root: Path, sentences: list[str]) -> dict[str, object]:
     sys.path.insert(0, str(root / "custom_components"))
-    sys.path.insert(0, str(SCRIPT_ROOT / "tests"))
+    sys.path.insert(0, str(root / "tests"))
     import _ha_stub
 
     _ha_stub.install()

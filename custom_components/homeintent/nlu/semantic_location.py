@@ -248,12 +248,16 @@ def resolve_semantic_location(
         }
         if spoken
     }
+    folded = text.casefold()
     mentioned = [
         (match.group(0), canonical)
         for spoken, canonical in sorted(
             search_names, key=lambda item: len(item[0]), reverse=True
         )
-        if (match := re.search(rf"\b{re.escape(spoken)}\b", text, re.I))
+        # A literal pre-check keeps the per-name pattern off the hot path
+        # for the hundreds of areas a large house has (7.8 B8).
+        if spoken.casefold() in folded
+        and (match := re.search(rf"\b{re.escape(spoken)}\b", text, re.I))
     ]
     if not mentioned:
         return None

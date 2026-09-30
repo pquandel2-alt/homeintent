@@ -39,6 +39,7 @@ from .device_ontology import (
     lookup_genus_word,
     negative_phrase,
 )
+from .german_morphology import dative_location_phrase
 from .normalize import german_number
 from .place_model import LEVEL_WORDS, Place, PlaceKind, PlaceLexicon, PlaceMention, build_place_lexicon
 
@@ -127,6 +128,8 @@ class TargetDescription:
     mass: bool = False
     token_start: int = 0
     token_end: int = 0
+    # The spoken head word as said ("Leselicht"), for honest answers.
+    surface: str = ""
 
     @property
     def genus_key(self) -> str | None:
@@ -418,6 +421,7 @@ def describe_with_residue(
             universal=universal,
             token_start=positions[start],
             token_end=positions[end - 1] + 1,
+            surface=str(getattr(tokens[positions[end - 1]], "text", "")),
         ))
         del position
 
@@ -616,6 +620,32 @@ def resolve_description(
             candidates = local
             place = source_area
             used_source_area = True
+    elif (
+        place is None
+        and source_area is not None
+        and source_area.kind is PlaceKind.AREA
+        and description.quantity is Quantity.ONE
+        and candidates
+        and not any(source_area.contains(entity) for entity in candidates)
+    ):
+        # The speaker's room limits a command without a place (7.7.1 A5):
+        # nothing fitting there is said, a device elsewhere is only offered,
+        # never chosen silently.
+        here = replace(description, place=source_area)
+        offered = sorted(candidates, key=lambda entity: entity.entity_id)[:3]
+        options = " oder ".join(
+            f"{entity.friendly_name}"
+            + (f" {dative_location_phrase(entity.area_name)}" if entity.area_name else "")
+            for entity in offered
+        )
+        return TargetResolution(
+            ResolutionOutcome.NONE, here, tuple(offered),
+            message=(
+                f"{_none_message(here)} Meinst du {options}? "
+                "Dann sag es bitte mit dem Raum. Ich habe nichts ausgeführt."
+            ),
+            used_source_area=True,
+        )
     candidates.sort(key=lambda entity: entity.entity_id)
     described = replace(description, place=place)
     if not candidates:
@@ -628,6 +658,12 @@ def resolve_description(
             sensors = all(entity.domain in {"binary_sensor", "sensor"} for entity in present)
             if sensors:
                 sentence = f"{listed} kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht."
+            elif all(entity.domain == "alarm_control_panel" for entity in present):
+                # Disarming needs the code (7.8 B6), never "nur abfragen".
+                sentence = (
+                    f"{listed} schalte ich per Sprache nicht unscharf, dafür braucht "
+                    "Home Assistant den Code. Bitte nutze das Bedienfeld."
+                )
             elif len(present) == 1:
                 # The actual reason from the device's capabilities, never a
                 # blanket "unterstützt die Aktion nicht" (7.3.3).
@@ -695,9 +731,13 @@ def _none_message(description: TargetDescription) -> str:
     noun = negative_phrase(key, plural=description.is_plural or description.universal)
     if description.universal:
         noun = "keine passenden Geräte"
+    if description.name_filters and description.surface and description.place is None:
+        # A spoken name that fits nothing: the word as said, never a word
+        # part in brackets (7.8 B7).
+        return f"Ein Gerät „{description.surface}“ finde ich nicht."
     qualifier = ""
     if description.name_filters:
-        qualifier = f" ({', '.join(description.name_filters)})"
+        qualifier = f" mit „{description.surface}“" if description.surface else ""
     return f"{_place_phrase(description.place)} gibt es {noun}{qualifier}."
 
 
@@ -929,6 +969,14 @@ def hidden_name_mentions(
     """
     words = _name_words(text)
     if not words:
+        return ()
+    present = set(words)
+    hidden = [
+        (domain, name) for domain, name in hidden
+        if (first := _name_words(name)[:1]) and first[0] in present
+    ]
+    if not hidden:
+        # Nothing hidden is spoken: skip scanning every exposed name (7.8 B8).
         return ()
     exposed_keys: set[tuple[str, ...]] = set()
     for entity in exposed:

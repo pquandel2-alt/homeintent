@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from functools import partial
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, Literal, Sequence
 
 from homeassistant.components import conversation
@@ -30,6 +30,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .automation_executor import AutomationExecutor
+from .automation_composition import OutcomeKind
 from .alias_learning import (
     AliasLearningDraft,
     parse_alias_learning,
@@ -56,6 +57,7 @@ from .engine import (
     AutomationMatchResult,
     AutomationToggleMatchResult,
     CommandPlan,
+    MonitorProposalResult,
     MatchResult,
     _AUTOMATION_DELETE_RE,
     _AUTOMATION_DISABLE_RE,
@@ -71,6 +73,7 @@ from .hass_entities import (
 )
 from .history_query import parse_history_query
 from .household_query import match_household_query
+from .monitoring_management import parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
 from .proactive_dialog import V12_TASK_KINDS
@@ -85,7 +88,10 @@ from .nlu.place_model import build_place_lexicon
 from .nlu.device_ontology import analyse_word, lookup_genus_word
 from .nlu.target_resolution import genus_members, hidden_device_text, hidden_name_mentions
 from .nlu.situation_views import answer_situation_view
-from .nlu.utterance_meaning import render_maintain
+from .nlu.utterance_meaning import render_maintain, render_non_executable
+from .nlu.self_correction import render_correction, utterance_fields
+from .nlu.surface import prepare_surface
+from .nlu.ellipsis_contract import EllipsisFields, ellipsis_fields, violation
 from .nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from .nlu.action_model import NotificationRecipient, NotificationRecipientKind
 from .notification_request import NotificationRequest
@@ -138,7 +144,8 @@ from .security_control import (
 )
 from .nlu.word_cues import has_word
 from .extended_device_query import match_extended_device_query
-from .world_model import WorldModel, build_world_model as assemble_world_model
+from .structure_cache import SHARED as STRUCTURE_CACHE, structure_key
+from .world_model import WorldModel
 from .undo import is_undo_request
 from .runtime_data import HomeIntentRuntimeData
 from .execution_context import begin_turn, end_turn
@@ -153,6 +160,7 @@ from .nlu.stt_repair import join_split_compounds
 from .controllers.learning import LearningController
 from .controllers.routines import RoutineController, RoutineSelection
 from .controllers.goals import GoalController
+from .controllers.monitoring import MonitoringController
 from .controllers.automation_management import AutomationManagementController
 from .controllers.automations import AutomationController
 from .controllers.notifications import NotificationController
@@ -229,6 +237,50 @@ _COMMAND_ANSWER_TASK_KINDS = frozenset({
 # own docstring for why): a single-match toggle executes immediately, so
 # only an error text is needed here, mirroring the ordinary command path's
 # own ``FAILED_TO_HANDLE`` wording.
+
+
+@dataclass(frozen=True)
+class _TimedFollowup:
+    """A follow-up whose own time must not run now (7.7.1 A3)."""
+
+    payload: Any
+
+
+def _written_entities(payload: Any, entities: Sequence[EntitySnapshot]) -> list[EntitySnapshot]:
+    """The devices a context reading would write to."""
+    plans = []
+    if isinstance(payload, CommandPlan):
+        plans = [item.plan for item in payload.commands if getattr(item, "plan", None) is not None]
+    elif getattr(payload, "plan", None) is not None:
+        plans = [payload.plan]
+    ids: set[str] = set()
+    for plan in plans:
+        value = getattr(plan, "entity_id", None)
+        if isinstance(value, str):
+            ids.add(value)
+        elif isinstance(value, (list, tuple)):
+            ids.update(item for item in value if isinstance(item, str))
+    return [entity for entity in entities if entity.entity_id in ids]
+
+
+_TIMED_PHRASES = {
+    "turn_on": ("Schalte", "ein"), "turn_off": ("Schalte", "aus"),
+    "open_cover": ("Öffne", ""), "close_cover": ("Schließe", ""),
+}
+
+
+def timed_followup_text(payload: Any, text: str, entities: Sequence[EntitySnapshot]) -> str | None:
+    """"Morgen früh wieder an" after the hall light -> a complete time-bound
+    command for the ordinary scheduling path; never an immediate write."""
+    plan = getattr(payload, "plan", None)
+    phrase = _TIMED_PHRASES.get(getattr(plan, "service", ""))
+    written = _written_entities(payload, entities)
+    time = next((item.text for item in utterance_fields(text, entities)[0] if item.kind == "time"), None)
+    if phrase is None or not written or time is None:
+        return None
+    names = " und ".join(entity.friendly_name for entity in written)
+    verb, particle = phrase
+    return f"{verb} {names} {time} {particle}".strip() + "."
 
 
 def _with_session_conversation_id(
@@ -402,6 +454,7 @@ class NluConversationEntity(
             entities=lambda: build_entity_snapshots(self.hass, self.entry),
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
         )
+        self._monitoring = MonitoringController(runtime=runtime, automation_store=self._automation_store)
         self._comfort = ComfortController(
             hass=lambda: self.hass,
             entry=entry,
@@ -589,17 +642,23 @@ class NluConversationEntity(
         # Preferences only add a confirmed contextual alias to the existing
         # snapshots. Rebuild the same authoritative NOW view; no second
         # resolver or WorldModel is introduced.
-        self._world_model = assemble_world_model(entities, devices)
+        # Index and house graph depend only on the registry/exposure/alias
+        # structure; they are rebuilt when it changes, states stay live (7.8 B8).
+        structure = structure_key(entities, devices)
+        self._world_model = STRUCTURE_CACHE.world_model(entities, devices, structure)
+        world_model = self._world_model
         try:
             configured_relations = parse_relation_specs(
                 self.entry.options.get(CONF_HOUSE_RELATIONS)
             )
-            self._house_graph = self._world_model.build_house_graph(
-                configured_relations
-            )
         except ValueError:
             # Invalid migrated configuration never weakens language safety.
-            self._house_graph = self._world_model.build_house_graph()
+            configured_relations = ()
+        self._house_graph = STRUCTURE_CACHE.house_graph(
+            hash((structure, configured_relations)),
+            lambda: world_model.build_house_graph(configured_relations),
+            entities,
+        )
         self._world_model = self._world_model.with_house_graph(self._house_graph)
         understanding_context = UnderstandingContext(source_area=conversation_area)
         localized_text = materialize_local_reference(
@@ -622,6 +681,17 @@ class NluConversationEntity(
                 localized_text = (
                     f"{replacement.group('verb')} {replacement.group('rest')}"
                 )
+        # One shared surface for every reader of the turn (7.7.1/7.8):
+        # self correction, frames, short commands, operable device,
+        # coordination. An abort or an unclear correction runs nothing.
+        surface = prepare_surface(localized_text, entities)
+        if surface.stops:
+            response.async_set_speech(render_correction(surface.correction))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        localized_text = surface.text
+        frames = surface.frames
         wake = wake_request(localized_text)
         if wake is not None:
             # "Weck mich um sieben mit Licht": a wake request is a timed
@@ -653,6 +723,8 @@ class NluConversationEntity(
         if localized_text != user_input.text:
             user_input = replace(user_input, text=localized_text)
         language_document = analyse_language(user_input.text, entities)
+        if frames.found:
+            language_document = replace(language_document, pragmatics=frames)
         if conversation_area is not None and (
             pending is None or pending.last_area is None
         ):
@@ -676,11 +748,22 @@ class NluConversationEntity(
             dialog_evidence, document=language_document, reply=reply,
             contextual_followup=contextual,
         )
-        if active_dialog is not None and arbitrate_dialog(dialog_evidence_for(
-            active_dialog.kind.name,
-            supersedable=False,
-            drops_on_new_sentence=active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION,
-        )).kind is DecisionKind.SUPERSEDE_DIALOG:
+        opening_decision = (
+            arbitrate_dialog(dialog_evidence_for(
+                active_dialog.kind.name,
+                supersedable=False,
+                drops_on_new_sentence=active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION,
+            ))
+            if active_dialog is not None
+            else None
+        )
+        if opening_decision is not None and opening_decision.kind is DecisionKind.SUPERSEDE_DIALOG:
+            if opening_decision.reason == "new_question_drops_question":
+                # Answer the question, say that the open one is gone (7.8 B7).
+                self._append_to_turn(
+                    user_input.conversation_id,
+                    "Die offene Rückfrage habe ich verworfen; es wurde nichts ausgeführt.",
+                )
             # A full new sentence instead of "Ja"/"Nein" drops the open
             # proposal (nothing runs) and is understood on its own.
             self._context_store.clear(user_input.conversation_id)
@@ -821,6 +904,55 @@ class NluConversationEntity(
         if (
             active_dialog is None
             and active_task is not None
+            and active_task.kind is DialogTaskKind.MONITOR_EVENT
+        ):
+            # "Überwache das Garagentor." -> "Wenn es offen ist." (7.9 W6):
+            # the answer is read with the object as antecedent.  A complete
+            # other request ends the open question without effect.
+            combined = self._monitoring.open_monitor_text(user_input, active_task)
+            if combined is not None:
+                self._monitoring.cancel_open_monitor(user_input, active_task)
+                if self._event_reading_claims(combined, entities):
+                    return await self._async_handle_message_inner(
+                        replace(user_input, text=combined), chat_log
+                    )
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.MONITOR_DELETE
+        ):
+            handled = await self._monitoring.async_handle_monitor_delete(
+                user_input, response, active_task
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.UNUSUAL_OPT_IN
+        ):
+            handled = await self._monitoring.async_handle_unusual_opt_in(
+                user_input, response, active_task
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is None
+            and active_task is not None
+            and active_task.kind is DialogTaskKind.MONITOR_CONFIRMATION
+        ):
+            handled = await self._monitoring.async_handle_monitor_confirmation(
+                user_input, response, active_task
+            )
+            if handled is not None:
+                return handled
+
+        if (
+            active_dialog is None
+            and active_task is not None
             and active_task.kind is DialogTaskKind.RECURRENCE_CHOICE
         ):
             handled = self._automations.handle_recurrence_choice(
@@ -861,6 +993,14 @@ class NluConversationEntity(
             if handled is not None:
                 return handled
 
+        if language_document.utterance.modality in {Modality.IRREALIS, Modality.DELIBERATION}:
+            # "Hätte ich doch …" / "Ich überlege, ob …" (7.7.1 A2): a past that
+            # did not happen or thinking aloud is never an operation, whatever
+            # router would read the verb.
+            response.async_set_speech(render_non_executable(language_document.utterance.modality))
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         if (
             active_dialog is None
             and language_document.utterance.modality is Modality.MAINTAIN
@@ -1173,7 +1313,10 @@ class NluConversationEntity(
             if learning_result is not None:
                 return learning_result
             plan_result = await self._goals.async_handle_goal_turn(
-                user_input, response, language_document, entities, direct_understanding
+                user_input, response, language_document, entities, direct_understanding,
+                event_reading_claims=lambda: self._event_reading_claims(
+                    user_input.text, entities
+                ),
             )
             if plan_result is not None:
                 return plan_result
@@ -1460,6 +1603,14 @@ class NluConversationEntity(
             ))
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
+            )
+
+        monitoring_request = parse_monitoring_management(user_input.text)
+        if monitoring_request is not None:
+            # "Welche Überwachungen laufen?", "Stopp die Fensterüberwachung"
+            # (7.9 W8): automations and HomeIntent monitors, in plain words.
+            return await self._monitoring.async_handle_management(
+                user_input, response, monitoring_request, entities, dt_util.now()
             )
 
         routine_request = interpret_routine_binding(user_input.text, entities)
@@ -1926,7 +2077,30 @@ class NluConversationEntity(
                         user_input.text, entities, pending
                     )),
                 )
-                result = self._arbitrate_context_readings(readings)
+                result = self._arbitrate_context_readings(
+                    readings,
+                    contract=(
+                        ellipsis_fields(user_input.text, entities),
+                        entities,
+                        pending.last_entities if pending is not None else (),
+                    ),
+                )
+                if isinstance(result, _TimedFollowup):
+                    timed_text = timed_followup_text(result.payload, user_input.text, entities)
+                    if timed_text is None:
+                        response.async_set_speech(
+                            "Mit der Zeitangabe kann ich den Folgeauftrag nicht sicher bilden. "
+                            "Sag ihn bitte vollständig, zum Beispiel: Schalte das Flurlicht morgen um 7 Uhr ein."
+                        )
+                        return conversation.ConversationResult(
+                            response=response, conversation_id=user_input.conversation_id
+                        )
+                    # The rebuilt sentence names its target itself; it is
+                    # read without the context, so it cannot loop back here.
+                    self._context_store.clear(user_input.conversation_id)
+                    return await self._async_handle_message_inner(
+                        replace(user_input, text=timed_text), chat_log
+                    )
             if result is None and _AUTOMATION_DELETE_RE.search(user_input.text):
                 # V5.28 "Automation Deletion": checked before the query gate
                 # below - "Lösche die Automation für X" also contains the
@@ -2118,6 +2292,18 @@ class NluConversationEntity(
                 user_input, response, result, entities
             )
 
+        if isinstance(
+            result, (AutomationMatchResult, AutomationDraftMatchResult, AutomationClarificationResult)
+        ) and not await self._automations.async_may_create(user_input):
+            # Refused before any preview, not after "Ja" (7.8 B5).
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                "Das Erstellen von Automationen ist nur für Administratoren erlaubt.",
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
         if isinstance(result, AutomationMatchResult):
             decided = self._automations.decide_recurrence(user_input, response, result, entities, pending)
             if isinstance(decided, conversation.ConversationResult):
@@ -2129,6 +2315,17 @@ class NluConversationEntity(
         if isinstance(result, AutomationDraftMatchResult):
             return self._automations.handle_draft_match_result(
                 user_input, response, result
+            )
+
+        if isinstance(result, MonitorProposalResult):
+            return self._monitoring.stage_value_monitor(user_input, response, result)
+
+        if isinstance(result, AutomationClarificationResult) and result.vague_situation:
+            return self._monitoring.answer_unusual(user_input, response, self.entry.options)
+
+        if isinstance(result, AutomationClarificationResult) and result.monitored_object:
+            return self._monitoring.stage_open_monitor(
+                user_input, response, result.monitored_object, result.response_text
             )
 
         if isinstance(result, AutomationClarificationResult):
@@ -2168,9 +2365,43 @@ class NluConversationEntity(
         return [step for step in sequence if isinstance(step, dict)]
 
 
-    def _arbitrate_context_readings(self, readings: Sequence[tuple[str, Any]]) -> Any:
-        """Discourse connections as arbiter candidates (7.7, B3)."""
+    def _arbitrate_context_readings(
+        self,
+        readings: Sequence[tuple[str, Any]],
+        contract: tuple[EllipsisFields, list[EntitySnapshot], Sequence[EntitySnapshot]] | None = None,
+    ) -> Any:
+        """Discourse connections as arbiter candidates (7.7, B3).
+
+        Every writing reading must keep the ellipsis contract (7.7.1 A3): a
+        newly named object, side or time is never replaced by the previous
+        target, and the target set never widens.
+        """
         payloads = [(source, read()) for source, read in readings]
+        if contract is not None:
+            fields, entities, previous = contract
+            timed: Any = None
+            unknown_object = False
+            kept: list[tuple[str, Any]] = []
+            for source, payload in payloads:
+                written = _written_entities(payload, entities)
+                reason = violation(fields, written, previous) if written else None
+                if reason == "time" and timed is None:
+                    timed = payload
+                if reason == "object" and fields.unknown and not fields.targets:
+                    unknown_object = True
+                kept.append((source, None if reason else payload))
+            payloads = kept
+            if timed is not None and all(payload is None for _source, payload in payloads):
+                return _TimedFollowup(timed)
+            if unknown_object and all(payload is None for _source, payload in payloads):
+                # "Und Deckenfluter aus." with an unknown Deckenfluter (7.8.1).
+                return MatchResult(
+                    plan=None,
+                    response_text=(
+                        f"Ein Gerät „{' '.join(fields.unknown)}“ finde ich nicht. "
+                        "Ich habe nichts ausgeführt."
+                    ),
+                )
         candidates = context_candidates(payloads)
         decision = arbitrate(candidates)
         if decision.writes:
@@ -2179,6 +2410,21 @@ class NluConversationEntity(
             return MatchResult(plan=None, response_text=ambiguous_reading_text(decision))
         return next((payload for _source, payload in payloads if payload is not None), None)
 
+
+    def _event_reading_claims(self, text: str, entities: list[EntitySnapshot]) -> bool:
+        """Routing rule for monitoring requests (7.8.3).
+
+        One meaning, one source: when the sentence-based event reader
+        understands a request completely or asks a targeted device question
+        about it, the automation path owns it - never a second reading with
+        a different meaning.  Structural: it asks the reader, it keeps no
+        list of sentences or words for either side.
+        """
+        return self._engine.event_reading_kind(text, entities, self._world_model) in (
+            OutcomeKind.AUTOMATION,
+            OutcomeKind.CLARIFY,
+            OutcomeKind.MONITOR,
+        )
 
     def _automation_store(self) -> AutomationExecutor:
         """The one executor of automations.yaml (its lock guards every write)."""

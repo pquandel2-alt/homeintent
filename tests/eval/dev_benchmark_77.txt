@@ -204,7 +204,7 @@ mehrturn :: Schalte das Schlafzimmerlicht an || Und das im Kinderzimmer auch :: 
 mehrturn heldout :: Öffne das Garagentor || Wie warm ist es draußen? :: confirm || answer
 
 # ---------------------------------------------------------------- Ellipsen
-ellipse :: Schalte das Küchenlicht an || Im Büro auch :: call=turn.turn_on:light.kuechenlicht || call=turn.turn_on:light.buerolicht,light.deckenfluter_buero,light.schreibtischlampe
+ellipse :: Schalte das Küchenlicht an || Im Büro auch :: call=turn.turn_on:light.kuechenlicht || call=turn.turn_on:light.buerolicht  # 7.7.1 A3: Rolle statt Raummenge
 ellipse :: Wie warm ist es im Wohnzimmer? || Und oben? :: answer || nowrite
 ellipse :: Mach die Stehlampe an || Heller :: call=turn.turn_on:light.stehlampe || call=light.turn_on:light.stehlampe
 ellipse heldout :: Dimme das Schlafzimmerlicht auf 40 Prozent || Auf 20 :: call=light.turn_on:light.schlafzimmerlicht brightness_pct=40 || call=light.turn_on:light.schlafzimmerlicht brightness_pct=20
@@ -280,19 +280,19 @@ stt :: wie warm ist es im kinderzimmer :: answer say=20,1
 stt heldout :: schalte das esszimmer licht an :: call=turn.turn_on:light.esszimmer_pendelleuchte
 
 # ---------------------------------------------------------------- Selbstkorrekturen (nie beide Teile ausführen, nie raten)
-selbstkorrektur :: Schalte das Licht im Flur, äh nein, im Büro an :: nowrite
+selbstkorrektur :: Schalte das Licht im Flur, äh nein, im Büro an :: call=turn.turn_on:light.buerolicht,light.deckenfluter_buero,light.schreibtischlampe  # 7.7.1 A1
 selbstkorrektur :: Mach das Küchenlicht an, nein, das Bürolicht :: call=turn.turn_on:light.buerolicht
 selbstkorrektur :: Stell die Heizung auf 21, ach nein, auf 22 Grad :: nowrite
-selbstkorrektur heldout :: Fahr den Küchenrollladen runter, äh, den im Esszimmer :: nowrite
+selbstkorrektur heldout :: Fahr den Küchenrollladen runter, äh, den im Esszimmer :: call=cover.close_cover:cover.esszimmer_rollladen  # 7.7.1 A1
 selbstkorrektur :: Schalte die Stehlampe, ich meine die Leselampe, an :: nowrite
-selbstkorrektur :: Mach das Licht im Bad an, äh nein, doch lieber im Flur :: nowrite
+selbstkorrektur :: Mach das Licht im Bad an, äh nein, doch lieber im Flur :: call=turn.turn_on:light.flurlicht  # 7.7.1 A1
 selbstkorrektur :: Schalte das Küchenlicht ein || Nein, ich meinte das Bürolicht :: call=turn.turn_on:light.kuechenlicht || -
 selbstkorrektur heldout :: Dimme die Stehlampe auf 30, nein 40 Prozent :: call=light.turn_on:light.stehlampe brightness_pct=40
 selbstkorrektur :: Öffne das Garagentor, nein, doch nicht :: nowrite
 selbstkorrektur :: Schließ die Haustür ab, ähm, das Gartentor meine ich :: nowrite
 selbstkorrektur :: Wie warm ist es im Büro, äh, im Wohnzimmer? :: nowrite
-selbstkorrektur heldout :: Mach alle Lichter aus, äh, nur unten :: nowrite
-selbstkorrektur :: Schalte den Fernseher, nein, das Radio aus :: nowrite
+selbstkorrektur heldout :: Mach alle Lichter aus, äh, nur unten :: call=turn.turn_off:light.buerolicht,light.deckenfluter_buero,light.esszimmer_pendelleuchte,light.flurlicht,light.gaeste_wc_licht,light.kuecheninsel,light.kuechenlicht,light.schreibtischlampe,light.stehlampe,light.wohnzimmer_deckenlicht,light.wohnzimmer_led_streifen  # 7.7.1 A1
+selbstkorrektur :: Schalte den Fernseher, nein, das Radio aus :: call=turn.turn_off:media_player.kuechenradio  # 7.7.1 A1
 selbstkorrektur :: Stell den Rollladen auf 50, äh, 60 Prozent :: nowrite
 selbstkorrektur :: Wie warm ist es im Büro? || Nein, ich meinte das Schlafzimmer :: answer || answer
 
@@ -541,7 +541,7 @@ mehrdeutig :: Schalte das Deckenlicht an :: call=turn.turn_on:light.wohnzimmer_d
 mehrdeutig heldout :: Stell die Temperatur auf 20 Grad :: clarify
 mehrdeutig :: Mach das Licht im Bad an :: call=turn.turn_on:light.badezimmerlicht,light.spiegelschrank
 mehrdeutig :: Fahr den Rollladen auf 40 Prozent :: clarify
-negation :: Lass das Flurlicht aus :: call=turn.turn_off:light.flurlicht  # festgelegt: "Lass X aus" schaltet aus (tests/conftest.py)
+negation :: Lass das Flurlicht aus :: nowrite say=lasse  # 7.7.1 A2: "Lass X aus" ist Beibehaltung
 negation :: Schalte weder das Küchenlicht noch das Bürolicht ein :: nowrite
 negation heldout :: Mach das Licht bitte nicht an :: nowrite
 negation :: Ich möchte nicht, dass die Rollläden runtergehen :: nowrite

@@ -116,6 +116,25 @@ class SituationRuntime:
                 )
             except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
                 _LOGGER.exception("HomeIntent monitor goal evaluation failed")
+        if (
+            monitor_runtime is not None
+            and entity.domain == "sensor"
+            and isinstance(previous, str)
+            and previous != entity.state
+        ):
+            try:
+                value = float(entity.state)
+            except ValueError:
+                value = None
+            if value is not None:
+                try:
+                    # Changes by an amount (7.9 W3) are HomeIntent's own monitors.
+                    await monitor_runtime.async_process_value_change(
+                        entity.entity_id, value,
+                        occurred_at=getattr(raw_event, "time_fired", None) or dt_util.utcnow(),
+                    )
+                except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
+                    _LOGGER.exception("HomeIntent value-change monitor evaluation failed")
         proactive = self._runtime_data.proactive_context
         if proactive is not None:
             try:

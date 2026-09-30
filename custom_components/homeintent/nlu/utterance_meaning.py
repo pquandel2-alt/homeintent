@@ -120,7 +120,55 @@ def _maintain_in_clause(
     last = tokens[words[-1]].canonical
     object_words: list[int]
     state: SemanticState | None
-    if first in MAINTAIN_VERB_FORMS:
+    verb_at = next(
+        (
+            position for position, index in enumerate(words)
+            if position > 0 and tokens[index].canonical in MAINTAIN_VERB_FORMS
+            and position + 1 < len(words)
+        ),
+        None,
+    )
+    stay_at = next(
+        (
+            position for position, index in enumerate(words)
+            if position > 0 and tokens[index].canonical in _STAY_VERBS
+        ),
+        None,
+    )
+    if first not in MAINTAIN_VERB_FORMS and verb_at is not None and tokens[words[verb_at - 1]].canonical not in {"du", "ihr", "wir", "sie", "ich", "man"}:
+        # Object first: "Den Fernseher lass bitte aus" (7.7.1 A2).
+        rest = [
+            index for index in words[verb_at + 1:]
+            if tokens[index].canonical not in _TRAILING_DISCOURSE | {"ruhig", "einfach", "bitte", "mal", "doch"}
+        ]
+        if len(rest) != 1:
+            return None
+        state = STATE_COMPLEMENT_WORDS.get(tokens[rest[0]].canonical)
+        object_words = words[:verb_at]
+    elif first not in MAINTAIN_VERB_FORMS and stay_at is not None:
+        # "Der Fernseher bleibt aus", "Das Licht soll an bleiben".
+        head = words[:stay_at]
+        tail = words[stay_at + 1:]
+        if tokens[words[stay_at]].canonical == "bleiben":
+            # "... soll an bleiben": the state stands before the infinitive.
+            if tail or not head:
+                return None
+            state = STATE_COMPLEMENT_WORDS.get(tokens[head[-1]].canonical)
+            head = head[:-1]
+            while head and tokens[head[-1]].canonical in _STAY_MODALS | {"ruhig", "bitte", "einfach", "so"} - {"so"}:
+                head = head[:-1]
+            object_words = head
+        else:
+            tail = [index for index in tail if tokens[index].canonical not in {"bitte", "ruhig", "einfach", "mal", "noch"}]
+            if len(tail) != 1:
+                return None
+            state = STATE_COMPLEMENT_WORDS.get(tokens[tail[0]].canonical)
+            object_words = head
+        while object_words and tokens[object_words[-1]].canonical in _STAY_MODALS:
+            object_words = object_words[:-1]
+        if not object_words or tokens[object_words[0]].canonical in {"es", "ich", "du", "wir", "alles"}:
+            return None
+    elif first in MAINTAIN_VERB_FORMS:
         # Imperative first: "Lass(t) das Licht an", "Lassen Sie ... an".
         body = words[1:]
         if first == "lassen":
@@ -171,6 +219,8 @@ def _maintain_in_clause(
 
 
 _MANNER_COPULA = frozenset({"ist", "sind", "war", "waren"})
+_STAY_VERBS = frozenset({"bleibt", "bleiben", "bleibe"})
+_STAY_MODALS = frozenset({"soll", "sollen", "muss", "muessen", "darf", "duerfen", "kann", "koennen"})
 
 
 def _merge_manner_clauses(
@@ -202,24 +252,30 @@ def maintain_frames(
     )
 
 
-_STATE_PREDICATES = {
-    SemanticState.ON: "bleibt an",
-    SemanticState.ACTIVE: "läuft weiter",
-    SemanticState.OFF: "bleibt aus",
-    SemanticState.OPEN: "bleibt offen",
-    SemanticState.CLOSED: "bleibt zu",
-    SemanticState.UNKNOWN: "bleibt, wie es ist",
+_STATE_COMPLEMENTS = {
+    SemanticState.ON: "an",
+    SemanticState.ACTIVE: "laufen",
+    SemanticState.OFF: "aus",
+    SemanticState.OPEN: "offen",
+    SemanticState.CLOSED: "zu",
+    SemanticState.UNKNOWN: "so, wie es ist",
 }
+_ACCUSATIVE_ARTICLE = {"der": "den", "ein": "einen", "mein": "meinen", "unser": "unseren", "dein": "deinen"}
+
+
+def _accusative(object_text: str) -> str:
+    first, _, rest = object_text.partition(" ")
+    article = _ACCUSATIVE_ARTICLE.get(first.casefold(), first.casefold() if rest else first)
+    return f"{article} {rest}".strip() if rest else object_text
 
 
 def render_maintain(frames: Sequence[MaintainFrame]) -> str:
     """German confirmation that nothing is changed for kept objects."""
     parts = [
-        f"{frame.object_text[:1].upper()}{frame.object_text[1:]} "
-        f"{_STATE_PREDICATES.get(frame.state, 'bleibt, wie es ist')}."
+        f"{_accusative(frame.object_text)} {_STATE_COMPLEMENTS.get(frame.state, 'so, wie es ist')}"
         for frame in frames
     ]
-    return "In Ordnung. " + " ".join(parts) + " Ich ändere nichts."
+    return "In Ordnung, ich lasse " + " und ".join(parts) + ". Ich ändere nichts."
 
 
 @dataclass(frozen=True)
@@ -270,3 +326,17 @@ def release_frame(source: str, tokens: Sequence[_Token]) -> ReleaseFrame | None:
             if len(rest) == 1 and rest[0] in PERMITTED_STATES:
                 return ReleaseFrame(text_of(0, index), PERMITTED_STATES[rest[0]])
     return None
+
+
+def render_non_executable(modality: object) -> str:
+    """Answer for an irrealis or a deliberation (7.7.1 A2): nothing runs."""
+    name = getattr(modality, "name", "")
+    if name == "DELIBERATION":
+        return (
+            "Du überlegst noch, deshalb ändere ich nichts. "
+            "Wenn du dich entschieden hast, sag es mir einfach direkt."
+        )
+    return (
+        "Das klingt nach etwas, das schon vorbei ist, deshalb ändere ich jetzt nichts. "
+        "Wenn ich es jetzt tun soll, sag es mir einfach direkt."
+    )

@@ -37,6 +37,10 @@ def test_action_type_covers_all_documented_types():
         "WAIT",
         "CHOOSE",
         "REGISTERED_SERVICE",
+        # 7.9 W5: bounded repetition and escalation - new typed actions,
+        # generated to HA repeat/wait_template only from these fields.
+        "REPEAT",
+        "ESCALATE",
     }
 
 

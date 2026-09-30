@@ -10,6 +10,8 @@ Home Assistant instance.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -295,8 +297,12 @@ ACTIVATION_TIMESTAMP_DOMAINS = frozenset({"scene", "button", "input_button"})
 STATELESS_ACTION_DOMAINS = ACTIVATION_TIMESTAMP_DOMAINS | frozenset({"notify", "script"})
 
 
+@lru_cache(maxsize=65536)
 def normalize_for_compare(text: str) -> str:
     """Lowercase + collapse whitespace, for the 'Normalized exact' tier.
+
+    Pure over its argument; cached because every turn compares the same
+    registry names again (7.8 B8).
 
     Deliberately does not fold umlauts/punctuation - normalize.py already
     documents that boundary (semantic decisions belong in resolution, not

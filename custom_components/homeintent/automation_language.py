@@ -31,7 +31,7 @@ Home-Assistant-free and strictly typed.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable
 
@@ -152,6 +152,16 @@ class EventActionFrame:
     # "Benachrichtige mich, sobald X, mit dem Text: Y" - text dictated after
     # the event clause still belongs to the notification.
     trailing_message: str | None = None
+    # Monitoring frames (7.8.3, ``automation_monitoring``): the monitored
+    # object an anaphor in the event clause refers to ("Überwache das
+    # Garagentor und melde dich, wenn *es* ..."), a notification implied by
+    # the monitoring verb itself ("Achte darauf, ob ..."), conditions spoken
+    # after the event ("..., dass kein Fenster offen bleibt, wenn niemand
+    # zuhause ist") and a prohibition whose violation is the event
+    # ("kein Fenster" -> any window).
+    reference: "EventReference | None" = None
+    implicit_notification: bool = False
+    extra_conditions: tuple["ConditionSpan", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -486,6 +496,11 @@ class ValueUnit(Enum):
     PERCENT = auto()
     DEGREE = auto()
     NONE = auto()
+    # Power and energy (7.9 W4): kept apart - "10 kWh" is never "10 kW".
+    WATT = auto()
+    KILOWATT = auto()
+    WATT_HOUR = auto()
+    KILOWATT_HOUR = auto()
 
 
 @dataclass(frozen=True)
@@ -510,16 +525,106 @@ class EventRoles:
     half: bool = False
     state: SemanticState | None = None
     motion: bool = False
+    # "jemand ist im Büro" / "niemand mehr im Schlafzimmer" (7.8 B5): room
+    # presence, read by the room's presence or motion detector.
+    occupancy: bool = False
     full_travel: bool = False  # "ganz/komplett offen" -> a state, not a percentage
     direction: TravelDirection | None = None
     for_seconds: int | None = None
     unsupported: str | None = None  # relative change / rate - understood, not buildable
     presence: PresenceEvent | None = None
     conditions: tuple[ConditionSpan, ...] = field(default_factory=tuple)
+    # How the subject was obtained from a monitored object (7.8.3):
+    # "es"/"er"/"sie" (agreement is checked in grounding), "member" for
+    # "eins/eines davon" and a prohibition's "kein" (any member of the set).
+    reference: str | None = None
+    # "offen ist/steht/bleibt" names a lasting state, "geöffnet wird" or
+    # "aufgeht" a moment.  A state joined with another state ("und niemand
+    # zuhause ist") holds whenever both are true (7.8.3).
+    stative: bool = False
+    # Inactivity (7.9 W2): "wenn sich im Flur 12 Stunden nichts bewegt",
+    # "wenn die Haustür zwei Tage nicht geöffnet wurde".  ``absent`` is the
+    # state that did *not* occur (motion ON, door OPEN); ``state`` is then
+    # its rest state and ``for_seconds`` the spoken span.  ``until`` is a
+    # check time instead of a span ("bis 10 Uhr keine Bewegung im Bad"),
+    # ``agent`` a person named as the one who should have moved (only
+    # motion is observable, the preview says so).
+    absent: SemanticState | None = None
+    until: tuple[int, int] | None = None
+    agent: str | None = None
+    # A change by an amount ("um 3 Grad innerhalb einer Stunde", 7.9 W3).
+    change: "RelativeChange | None" = None
 
     @property
     def numeric(self) -> bool:
         return self.value is not None
+
+
+# --- reference to a monitored object (7.8.3) -----------------------------------------
+
+
+@dataclass(frozen=True)
+class EventReference:
+    """The antecedent noun phrase a monitoring frame introduced.
+
+    ``words`` is the unchanged source noun phrase ("die Fenster"); ``member``
+    says the event is about any one of it even without a partitive word (a
+    prohibition "dass kein Fenster ..." is violated by any window).
+    """
+
+    words: tuple[str, ...]
+    member: bool = False
+
+
+# Personal pronouns in subject position.  Agreement with the antecedent's
+# grammatical gender is checked where the noun is known (grounding).
+PERSONAL_ANAPHORS = frozenset({"es", "er", "sie"})
+_DEMONSTRATIVE_ANAPHORS = frozenset({"dieses", "diese", "dieser", "dies", "das"})
+# "eins", "eines davon", "irgendeins von ihnen", "welches": one member.
+_MEMBER_HEADS = frozenset({
+    "eins", "eines", "einer", "eine", "irgendeins", "irgendeines", "irgendeiner",
+    "irgendeine", "welches", "welcher", "welche", "jedes", "jeder", "jede",
+})
+_MEMBER_TAILS = frozenset({"davon", "von", "ihnen", "denen", "den", "der", "dieser", "diesen"})
+
+
+def reference_kind(subject_words: tuple[str, ...]) -> str | None:
+    """How a subject refers back, or ``None`` when it names something itself.
+
+    Only pure reference material counts: "es", "eins davon", or no subject
+    at all.  A subject with a noun of its own ("das Tor") is never replaced.
+    """
+    keys = [word.casefold().strip(",.;:!?") for word in subject_words]
+    keys = [key for key in keys if key]
+    if not keys:
+        return "empty"
+    if len(keys) == 1 and keys[0] in PERSONAL_ANAPHORS:
+        return keys[0]
+    if len(keys) == 1 and keys[0] in _DEMONSTRATIVE_ANAPHORS:
+        return "demonstrative"
+    if keys[0] in _MEMBER_HEADS and all(key in _MEMBER_TAILS for key in keys[1:]):
+        return "member"
+    return None
+
+
+def resolve_reference(roles: EventRoles, reference: EventReference | None) -> EventRoles:
+    """Bind a pronoun, partitive or missing subject to the monitored object.
+
+    Deterministic and structural: the antecedent's own source words become
+    the subject; nothing is guessed when there is no antecedent or when the
+    event names a subject of its own.
+    """
+    if reference is None or roles.presence is not None:
+        return roles
+    kind = reference_kind(roles.subject_words)
+    if kind is None:
+        # "dass kein Fenster offen bleibt": the prohibition's own noun, any member.
+        return replace(roles, reference="member") if reference.member else roles
+    if not reference.words:
+        return roles
+    if reference.member and kind in {"empty", "demonstrative"}:
+        kind = "member"
+    return replace(roles, subject_words=reference.words, reference=kind)
 
 
 _ABOVE_WORDS = (
@@ -534,7 +639,17 @@ _AT_LEAST_WORDS = ("mindestens", "wenigstens")
 _AT_MOST_WORDS = ("höchstens", "maximal", "nicht mehr als")
 
 _NUMBER_TOKEN_RE = re.compile(r"^[-−]?\d+(?:[.,]\d+)?$")
-_UNIT_WORDS = {"prozent": ValueUnit.PERCENT, "%": ValueUnit.PERCENT, "grad": ValueUnit.DEGREE}
+_UNIT_WORDS = {
+    "prozent": ValueUnit.PERCENT, "%": ValueUnit.PERCENT, "grad": ValueUnit.DEGREE,
+    "watt": ValueUnit.WATT, "w": ValueUnit.WATT,
+    "kilowatt": ValueUnit.KILOWATT, "kw": ValueUnit.KILOWATT,
+    "wattstunden": ValueUnit.WATT_HOUR, "wattstunde": ValueUnit.WATT_HOUR, "wh": ValueUnit.WATT_HOUR,
+    "kilowattstunden": ValueUnit.KILOWATT_HOUR, "kilowattstunde": ValueUnit.KILOWATT_HOUR,
+    "kwh": ValueUnit.KILOWATT_HOUR,
+}
+# A counting period for energy ("heute", "diese Woche", 7.9 W4): only a meter
+# that restarts with that period can answer it.
+METER_PERIOD_WORDS = {"heute": "daily", "täglich": "daily", "woche": "weekly", "monat": "monthly"}
 _ARTICLE_NUMBERS = frozenset({"ein", "eine", "eins", "einer", "einen", "einem"})
 
 _RELATIVE_CHANGE_RE = re.compile(
@@ -546,9 +661,10 @@ _RELATIVE_CHANGE_RE = re.compile(
     re.IGNORECASE,
 )
 _DURATION_RE = re.compile(
-    r"(?:\b(?:seit|länger\s+als|mehr\s+als|mindestens|für|schon)\s+)?"
+    # Duration modifiers stack: "seit mehr als", "schon länger als" (7.8.3).
+    r"(?:\b(?:seit|länger\s+als|mehr\s+als|über|mindestens|für|schon)\s+)*"
     r"(?:(?P<number>-?\d+|[a-zäöüß]+)\s+|(?P<half>eine\s+halbe|einer\s+halben)\s+)"
-    r"(?P<unit>sekunden?|minuten?|stunden?)\b(?:\s+lang)?",
+    r"(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag)\b(?:\s+lang)?",
     re.IGNORECASE,
 )
 _DOWN_RE = re.compile(
@@ -642,7 +758,10 @@ def _numeric_value(word: str) -> float | None:
 
 def _duration_seconds(match: re.Match[str]) -> int | None:
     unit = match.group("unit").casefold()
-    multiplier = 1 if unit.startswith("sekunde") else 60 if unit.startswith("minute") else 3600
+    multiplier = (
+        1 if unit.startswith("sekunde") else 60 if unit.startswith("minute")
+        else 86400 if unit.startswith("tag") else 3600
+    )
     if match.group("half") is not None:
         return multiplier // 2 if multiplier >= 60 else None
     raw = match.group("number")
@@ -660,9 +779,23 @@ def _duration_seconds(match: re.Match[str]) -> int | None:
     return amount * multiplier if amount > 0 else None
 
 
+# A time window qualifying the event ("wenn sie nachts geöffnet wird",
+# "zwischen 22 und 6 Uhr") is a condition read by the established condition
+# grammar, never part of the subject (7.8.3).
+_TIME_WINDOW_CONDITION_RE = re.compile(
+    r"\b(?:nur\s+)?(?:nachts|abends|morgens|vormittags|mittags|nachmittags)\b"
+    r"|\bzwischen\s+\d{1,2}(?::\d{2})?\s+(?:uhr\s+)?und\s+\d{1,2}(?::\d{2})?\s+uhr\b",
+    re.IGNORECASE,
+)
+
+
 def _extract_conditions(text: str) -> tuple[str, tuple[ConditionSpan, ...]]:
     """Pull time/weekday prepositional conditions out of the event clause."""
     spans: list[ConditionSpan] = []
+    window = _TIME_WINDOW_CONDITION_RE.search(text)
+    if window is not None:
+        spans.append(ConditionSpan(window.group(0)))
+        text = (text[:window.start()] + " " + text[window.end():]).strip()
     time_match = _TIME_CONDITION_RE.search(text)
     if time_match is not None and not re.match(r"\s*(?:um)\b", text[: time_match.start()][-4:]):
         spans.append(ConditionSpan(time_match.group(0)))
@@ -686,6 +819,20 @@ def condition_split_candidates(text: str) -> tuple[tuple[str, ConditionSpan], ..
     return tuple(candidates)
 
 
+_PLAIN_AND_RE = re.compile(r"\s+und\s+", re.IGNORECASE)
+
+
+def and_reversed_candidates(text: str) -> tuple[tuple[str, str], ...]:
+    """Every "<condition> und <event>" decomposition (condition spoken first)."""
+    candidates: list[tuple[str, str]] = []
+    for match in _PLAIN_AND_RE.finditer(text):
+        left = text[:match.start()].strip(" ,")
+        right = text[match.end():].strip(" ,.")
+        if left and right:
+            candidates.append((left, right))
+    return tuple(candidates)
+
+
 def read_event_roles(event_text: str) -> EventRoles:
     """Decompose one event clause into semantic roles.
 
@@ -699,6 +846,13 @@ def read_event_roles(event_text: str) -> EventRoles:
     )
     text, conditions = _extract_conditions(source)
     if _RELATIVE_CHANGE_RE.search(text):
+        change = read_relative_change(text)
+        if change is not None:
+            reading, subject_words = change
+            return EventRoles(
+                source, subject_words=subject_words, unit=reading.unit, change=reading,
+                conditions=conditions,
+            )
         return EventRoles(source, unsupported="relative_change", conditions=conditions)
 
     presence = _presence(text)
@@ -774,6 +928,7 @@ def read_event_roles(event_text: str) -> EventRoles:
     # STATE ---------------------------------------------------------------------
     state: SemanticState | None = None
     motion = False
+    occupancy = False
     full_travel = False
     if value is None:
         for index, key in enumerate(keys):
@@ -791,6 +946,14 @@ def read_event_roles(event_text: str) -> EventRoles:
                 state = SemanticState.OPEN
             elif any(key in _DOWN_POSITION_WORDS for key in keys) and any(k in _FULL_TRAVEL for k in keys):
                 state = SemanticState.CLOSED
+        if state is None and len(keys) >= 2 and keys[-1] in _STATIVE_COPULAS and keys[-2] in (
+            _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
+        ):
+            # "wenn alle Rollläden unten sind": the position word as the
+            # predicate right before the copula is the end position (7.9 W1);
+            # elsewhere ("die Fenster oben") it stays a place.
+            state = SemanticState.OPEN if keys[-2] in _UP_POSITION_WORDS else SemanticState.CLOSED
+            consumed.add(len(keys) - 2)
         full_travel = state is not None and any(key in _FULL_TRAVEL for key in keys)
         if "bewegung" in keys and any(
             key in _MOTION_VERBS for key in keys
@@ -804,6 +967,10 @@ def read_event_roles(event_text: str) -> EventRoles:
             key in _MOTION_VERBS for key in keys
         ):
             motion, state = True, SemanticState.ON
+        if state is None and "jemand" in keys and set(keys) & _PRESENT_VERBS:
+            motion, occupancy, state = True, True, SemanticState.ON
+        elif state is None and set(keys) & {"niemand", "keiner"} and set(keys) & _PRESENT_VERBS:
+            motion, occupancy, state = True, True, SemanticState.OFF
 
     subject: list[str] = []
     for index, word in enumerate(words):
@@ -812,30 +979,303 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         if key in _FULL_TRAVEL or key in _MOTION_VERBS or key in {
             "sich", "etwas", "bewegt", "auslöst", "ausgelöst", "anschlägt", "reagiert",
-        } or key in _DETECTOR_EVENT_VERBS or (motion and key == "bewegung"):
+        } or key in _DETECTOR_EVENT_VERBS or (motion and key == "bewegung") or (
+            occupancy and key in _PRESENT_VERBS | {"jemand", "niemand", "keiner", "mehr"}
+        ):
             if key == "etwas":
                 subject.append(word)
             continue
         if _is_comparator_word(key, keys, index):
+            continue
+        if (
+            key in _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
+            and state is not None and value is None and not full_travel and not motion
+        ):
+            # "wenn oben kein Fenster mehr offen ist": the state comes from
+            # another word, so "oben/unten" is the place (7.9 W1).
+            subject.append(word)
             continue
         if key in _PREDICATE_WORDS and key not in _SUBJECT_KEEP:
             continue
         if key in _STATE_WORDS:
             continue
         subject.append(word)
+    subject_words = _trim_articles(tuple(subject))
+    if state is None and value is None:
+        detector = _substance_detector(subject_words, keys)
+        if detector is not None:
+            # "wenn Wasser austritt" names what a detector reports (7.9 W7).
+            subject_words, state = detector, SemanticState.ON
+    absent: SemanticState | None = None
+    until: tuple[int, int] | None = None
+    agent: str | None = None
+    negated = any(key in _ABSENCE_WORDS for key in keys)
+    if negated and value is None:
+        until = _until_time(text)
+        if "bewegung" in keys and state is None:
+            motion, state = True, SemanticState.ON
+        running = state is None and any(key in _RUN_VERBS for key in keys)
+        if running:
+            # "wenn die Waschmaschine heute nicht lief": an appliance run
+            # that did not happen - grounding asks "bis wann" if unsaid.
+            state = SemanticState.ON
+        if (for_seconds is not None or until is not None or running) and state in _COMPLEMENT_STATES:
+            # Something did not happen for a span / until a time: the
+            # entity stayed in the opposite (rest) state (7.9 W2).
+            absent, state = state, _COMPLEMENT_STATES[state]
+            subject_words, agent = _absence_subject(subject_words)
+    if state is not None and value is None and not motion and absent is None:
+        subject_words, state = _aggregate_reading(subject_words, state)
     return EventRoles(
         source=source,
-        subject_words=_trim_articles(tuple(subject)),
+        subject_words=subject_words,
         comparator=comparator if value is not None else None,
         value=value,
         unit=unit,
         half=half,
         state=state,
         motion=motion,
+        occupancy=occupancy,
         full_travel=full_travel,
         direction=direction,
         for_seconds=for_seconds,
         conditions=conditions,
+        stative=(
+            state is not None and value is None and not motion and absent is None
+            and _is_stative(keys)
+        ),
+        absent=absent,
+        until=until,
+        agent=agent,
+    )
+
+
+# --- changes by an amount (7.9 W3) ---------------------------------------------------
+
+
+class ChangeSense(Enum):
+    FALL = auto()
+    RISE = auto()
+    EITHER = auto()
+
+
+@dataclass(frozen=True)
+class RelativeChange:
+    """"um 3 Grad innerhalb einer Stunde fällt": amount, unit, sense and the
+    window (``None`` when unsaid - never assumed, grounding asks)."""
+
+    delta: float
+    unit: ValueUnit
+    sense: ChangeSense
+    window_seconds: int | None
+
+
+_CHANGE_AMOUNT_RE = re.compile(
+    r"\bum\s+(?:(?:mindestens|mehr\s+als|über)\s+)?(?P<amount>\d+(?:[.,]\d+)?|[a-zäöüß]+)\s+"
+    r"(?P<unit>grad|prozent|%)\b",
+    re.IGNORECASE,
+)
+_CHANGE_WINDOW_RE = re.compile(
+    r"\b(?:innerhalb|binnen)\s+(?:von\s+)?(?P<count>\d+|[a-zäöüß]+)\s+(?P<unit>minuten?|stunden?)\b"
+    r"|\bin\s+(?:(?:weniger\s+als|unter)\s+)?(?P<count2>\d+|[a-zäöüß]+)\s+(?P<unit2>minuten?|stunden?)\b",
+    re.IGNORECASE,
+)
+_FALL_VERBS = frozenset({"fällt", "sinkt", "abfällt", "absinkt", "runtergeht", "abnimmt", "fallen", "sinken"})
+_RISE_VERBS = frozenset({"steigt", "ansteigt", "zunimmt", "hochgeht", "steigen", "klettert"})
+_EITHER_VERBS = frozenset({"ändert", "verändert", "schwankt", "springt"})
+_CHANGE_FILLERS = frozenset({"sich", "um", "mindestens", "mehr", "als", "über", "plötzlich", "schnell", "stark"})
+
+
+def _amount(raw: str) -> float | None:
+    if raw.replace(",", "").replace(".", "").isdigit():
+        return float(raw.replace(",", "."))
+    if raw.casefold() in {"ein", "eine", "einen", "einem", "einer"}:
+        return 1.0
+    number = german_number(raw)
+    return float(number) if number is not None else None
+
+
+def read_relative_change(text: str) -> tuple[RelativeChange, tuple[str, ...]] | None:
+    """The change and the remaining subject words, or ``None``."""
+    amount = _CHANGE_AMOUNT_RE.search(text)
+    if amount is None:
+        return None
+    delta = _amount(amount.group("amount"))
+    if delta is None or delta <= 0:
+        return None
+    unit = _UNIT_WORDS[amount.group("unit").casefold()]
+    window_seconds: int | None = None
+    rest = text[:amount.start()] + " " + text[amount.end():]
+    window = _CHANGE_WINDOW_RE.search(rest)
+    if window is not None:
+        count_raw = window.group("count") or window.group("count2")
+        unit_raw = (window.group("unit") or window.group("unit2")).casefold()
+        count = 1.0 if count_raw.casefold() in {"einer", "einem", "eine", "ein"} else _amount(count_raw)
+        if count is None or count <= 0:
+            return None
+        window_seconds = int(count * (3600 if unit_raw.startswith("stunde") else 60))
+        rest = rest[:window.start()] + " " + rest[window.end():]
+    words = [word.strip(",.;:!?") for word in rest.split()]
+    keys = {word.casefold() for word in words}
+    if keys & _FALL_VERBS:
+        sense = ChangeSense.FALL
+    elif keys & _RISE_VERBS:
+        sense = ChangeSense.RISE
+    elif keys & _EITHER_VERBS:
+        sense = ChangeSense.EITHER
+    else:
+        return None
+    subject = tuple(
+        word for word in words
+        if word and word.casefold() not in _FALL_VERBS | _RISE_VERBS | _EITHER_VERBS | _CHANGE_FILLERS
+    )
+    return RelativeChange(delta, unit, sense, window_seconds), _trim_articles(subject)
+
+
+# --- what a detector reports (7.9 W7) -------------------------------------------------
+
+# A substance plus an appearing verb names the detector's report: "wenn
+# Wasser austritt" = the water detector reports water.  Closed classes.
+_SUBSTANCE_DETECTORS = {"wasser": "Wassermelder", "rauch": "Rauchmelder", "gas": "Gasmelder"}
+_APPEARING_VERBS = frozenset({
+    "austritt", "ausläuft", "ausgetreten", "ausgelaufen", "entsteht", "aufsteigt", "auftritt",
+    "erkannt", "gemeldet", "festgestellt", "da",
+})
+
+
+def _substance_detector(
+    words: tuple[str, ...], keys: list[str]
+) -> tuple[str, ...] | None:
+    if not any(key in _APPEARING_VERBS for key in keys):
+        return None
+    substances = [word for word in words if word.casefold() in _SUBSTANCE_DETECTORS]
+    if len(substances) != 1:
+        return None
+    rest = tuple(
+        word for word in words
+        if word.casefold() not in _SUBSTANCE_DETECTORS and word.casefold() not in _APPEARING_VERBS
+    )
+    return (*rest, _SUBSTANCE_DETECTORS[substances[0].casefold()])
+
+
+# --- inactivity (7.9 W2) ------------------------------------------------------------
+
+_ABSENCE_WORDS = frozenset({"nicht", "nichts", "keine", "kein", "keinerlei"})
+_RUN_VERBS = frozenset({"lief", "läuft", "gelaufen", "lief?", "lief.", "lief,"})
+_ABSENCE_FILLERS = frozenset({
+    "nicht", "nichts", "keine", "kein", "keinerlei", "lang", "lange", "hatte", "hat",
+    "gab", "gibt", "war", "wurde", "worden", "mehr", "bis", "uhr", "sich", "bewegung",
+    "lief", "läuft", "gelaufen", "ist", "heute",
+})
+_UNTIL_RE = re.compile(r"\bbis\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*uhr\b", re.IGNORECASE)
+
+
+def _until_time(text: str) -> tuple[int, int] | None:
+    match = _UNTIL_RE.search(text)
+    if match is None:
+        return None
+    hour, minute = int(match.group("hour")), int(match.group("minute") or 0)
+    return (hour, minute) if hour < 24 and minute < 60 else None
+
+
+def _absence_subject(words: tuple[str, ...]) -> tuple[tuple[str, ...], str | None]:
+    """Drop the negation and its verbal material; a leading name before the
+    place ("Oma ... im Bad") is the agent, not a device."""
+    kept: list[str] = []
+    for word in words:
+        key = word.casefold()
+        if key in _ABSENCE_FILLERS or _UNTIL_RE.fullmatch(key) or key.isdigit():
+            continue
+        kept.append(word)
+    agent: str | None = None
+    if (
+        len(kept) >= 2 and kept[0][:1].isupper()
+        and kept[1].casefold() in {"im", "in", "am", "auf"}
+    ):
+        agent, kept = kept[0], kept[1:]
+    return _trim_articles(tuple(kept)), agent
+
+
+# --- the whole household away (7.9 W1) ------------------------------------------------
+
+# "niemand (mehr) zuhause ist", "keiner daheim ist", "alle weg sind", "alle
+# aus dem Haus sind": a negated or universal quantifier over the people of
+# the house plus an absence predicate - one meaning, "niemand zuhause".
+# Read from closed word classes, never from whole sentences.
+_NOBODY_QUANTIFIERS = frozenset({"niemand", "keiner"})
+_EVERYBODY_QUANTIFIERS = frozenset({"alle"})
+_HOME_PREDICATES = frozenset({"zuhause", "zu hause", "daheim", "im haus"})
+_AWAY_PREDICATES = frozenset({
+    "weg", "fort", "unterwegs", "aus dem haus", "außer haus", "nicht zuhause",
+    "nicht zu hause", "nicht daheim", "das haus verlassen", "verlassen",
+    "weggegangen", "gegangen",
+})
+_PEOPLE_FILLERS = frozenset({"noch", "schon", "dann", "gerade", "mehr", "wir", "jetzt"})
+_PRESENCE_COPULAS = frozenset({"ist", "sind", "haben", "hat"})
+
+
+def is_nobody_home_phrase(text: str) -> bool:
+    keys = [
+        word.casefold() for word in text.strip(" ,.!?").split()
+        if word.casefold() not in _PEOPLE_FILLERS
+    ]
+    if len(keys) < 3 or keys[-1] not in _PRESENCE_COPULAS:
+        return False
+    quantifier, predicate = keys[0], " ".join(keys[1:-1])
+    if quantifier in _NOBODY_QUANTIFIERS:
+        return predicate in _HOME_PREDICATES
+    return quantifier in _EVERYBODY_QUANTIFIERS and predicate in _AWAY_PREDICATES
+
+
+# --- whole-set states (7.9 W1) ------------------------------------------------------
+
+_NEGATIVE_DETERMINERS = frozenset({"kein", "keine", "keiner", "keines", "keinen", "keinem"})
+_LAST_WORDS = frozenset({"letzte", "letzter", "letztes", "letzten"})
+_COMPLEMENT_STATES = {
+    SemanticState.ON: SemanticState.OFF, SemanticState.OFF: SemanticState.ON,
+    SemanticState.OPEN: SemanticState.CLOSED, SemanticState.CLOSED: SemanticState.OPEN,
+}
+
+
+def _aggregate_reading(
+    words: tuple[str, ...], state: SemanticState
+) -> tuple[tuple[str, ...], SemanticState]:
+    """"kein Licht (mehr) an" = "alle Lichter aus"; "das letzte Fenster zu" =
+    "alle Fenster zu".  The negation belongs to the quantifier and inverts
+    the state - it never becomes a negated command.  The result carries
+    "alle", which grounding reads as the whole-set quantifier."""
+    keys = [word.casefold() for word in words]
+    if any(key in _NEGATIVE_DETERMINERS for key in keys) and state in _COMPLEMENT_STATES:
+        rest = tuple(
+            word for word, key in zip(words, keys)
+            if key not in _NEGATIVE_DETERMINERS and key != "mehr"
+        )
+        return ("alle", *rest), _COMPLEMENT_STATES[state]
+    if any(key in _LAST_WORDS for key in keys):
+        rest = tuple(
+            word for index, (word, key) in enumerate(zip(words, keys))
+            if key not in _LAST_WORDS
+            and not (key in {"der", "die", "das"} and index + 1 < len(keys) and keys[index + 1] in _LAST_WORDS)
+        )
+        return ("alle", *rest), state
+    return words, state
+
+
+# A predicate adjective or participle with a stative copula ("offen ist",
+# "geöffnet sind", "an bleibt"); "wird/werden" and event verbs are moments.
+_STATIVE_COPULAS = frozenset({"ist", "sind", "steht", "stehen", "bleibt", "bleiben", "ist?"})
+_EVENT_AUXILIARIES = frozenset({"wird", "werden", "worden", "wurde", "wurden"})
+_STATIVE_PREDICATES = frozenset({
+    "offen", "geöffnet", "auf", "zu", "geschlossen", "an", "aus", "ein", "eingeschaltet", "oben", "unten",
+    "ausgeschaltet", "angeschaltet",
+})
+
+
+def _is_stative(keys: list[str]) -> bool:
+    return (
+        bool(set(keys) & _STATIVE_COPULAS)
+        and not set(keys) & _EVENT_AUXILIARIES
+        and bool(set(keys) & _STATIVE_PREDICATES)
     )
 
 
@@ -847,9 +1287,18 @@ _LEAVE_RE = re.compile(
     r"\b(?:das\s+haus|die\s+wohnung)\s+verl(?:ässt|asse|assen|ässt)\b"
     r"|\bweg(?:geh\w*|gegangen|fähr\w*|fahr\w*|gefahren)\b"
     r"|\baus\s+dem\s+haus\s+geh\w*\b"
-    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b",
+    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b"
+    # "wenn ich gehe", "wenn Anna geht": intransitive "gehen" closing the
+    # clause (verb-final) means leaving; with a separated particle ("auf
+    # geht", "aus geht") it is a device state, never presence (7.8.3).
+    r"|(?<!\bauf\s)(?<!\bzu\s)(?<!\baus\s)(?<!\ban\s)(?<!\bvor\s)(?<!\bein\s)"
+    r"\bgeh(?:e|st|t|en)\s*$",
     re.IGNORECASE,
 )
+_PRESENT_VERBS = frozenset({
+    "ist", "sind", "da", "kommt", "betritt", "reinkommt", "hereinkommt", "rein", "herein",
+    "anwesend", "drin", "befindet",
+})
 _PRESENCE_FILLERS = frozenset({
     "hat", "habe", "hast", "ist", "bin", "bist", "sind", "wieder", "gerade", "dann",
     "irgendwann", "endlich",
@@ -905,7 +1354,16 @@ def _trim_articles(words: tuple[str, ...]) -> tuple[str, ...]:
 __all__ = (
     "ClauseOrder",
     "ConditionSpan",
+    "ChangeSense",
+    "RelativeChange",
+    "read_relative_change",
+    "and_reversed_candidates",
+    "is_nobody_home_phrase",
+    "EventReference",
     "EventRoles",
+    "PERSONAL_ANAPHORS",
+    "reference_kind",
+    "resolve_reference",
     "ActionCheck",
     "EventActionFrame",
     "PreparedText",

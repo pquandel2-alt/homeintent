@@ -23,6 +23,8 @@ own spoken-response helpers already take.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .device_ontology import entity_genera, genus
 from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
@@ -294,7 +296,14 @@ def _speak_condition_leaf(
             return f"es {abs(condition.offset_minutes)} Minuten {comparator} dem {event} ist"
         return f"es {comparator} dem {event} ist"
     if condition.type is ConditionType.PRESENCE:
-        who = _speak_target(condition.target, entity_by_id, area_name_by_id) if condition.target is not None else "jemand"
+        if condition.target is not None:
+            who = _speak_target(condition.target, entity_by_id, area_name_by_id)
+        elif len(condition.person_entity_ids) == 1:
+            who = _people_spoken(condition, entity_by_id)
+        elif condition.person_entity_ids:
+            who = f"jemand von {_people_spoken(condition, entity_by_id)}"
+        else:
+            who = "jemand"
         raw_state = condition.raw_state or "unbekannt"
         state = _PRESENCE_RAW_STATE_SPOKEN_DE.get(raw_state, raw_state)
         return f"{who} {state} ist"
@@ -303,11 +312,50 @@ def _speak_condition_leaf(
     if condition.type is ConditionType.ENTITY:
         target = _speak_target(condition.target, entity_by_id, area_name_by_id)
         return f"{target} den Zustand „{condition.raw_state}“ hat"
+    if condition.type is ConditionType.UNCHANGED_TODAY and condition.target is not None:
+        from ..notification_language import describe_unchanged_today
+
+        assert condition.state is not None
+        phrase = describe_unchanged_today(
+            condition.target, condition.state, None, list(entity_by_id.values())
+        )
+        if phrase is not None:
+            return phrase.subordinate
     if condition.type is ConditionType.CALENDAR_EVENT:
         return f"der Kalendertitel „{condition.raw_state}“ enthält"
     if condition.type is ConditionType.TEMPLATE:
         return "der angegebene Kalenderzeitraum erfüllt ist"
     return "eine unbekannte Bedingung erfüllt ist"
+
+
+def _people_spoken(condition: ConditionModel, entity_by_id: dict[str, EntitySnapshot]) -> str:
+    names = [
+        entity_by_id[person].friendly_name if person in entity_by_id else person
+        for person in condition.person_entity_ids
+    ]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} und {names[-1]}"
+
+
+def _nobody_home_spoken(condition: ConditionModel, entity_by_id: dict[str, EntitySnapshot]) -> str:
+    """"niemand zuhause ist" - naming the people it is about once they are
+    bound (``presence_scope``, 7.8.3), so the "Ja" is given knowingly."""
+    if not condition.person_entity_ids:
+        return "niemand zuhause ist"
+    if len(condition.person_entity_ids) == 1:
+        return f"{_people_spoken(condition, entity_by_id)} nicht zuhause ist"
+    return f"keiner von {_people_spoken(condition, entity_by_id)} zuhause ist"
+
+
+def _bound_nobody_home(model: AutomationModel) -> ConditionModel | None:
+    for node in model.conditions:
+        if node.operator is LogicalOperator.NOT and len(node.children) == 1:
+            leaf = node.children[0].condition
+            if (
+                leaf is not None and leaf.type is ConditionType.PRESENCE
+                and leaf.target is None and leaf.raw_state == "home" and leaf.person_entity_ids
+            ):
+                return leaf
+    return None
 
 
 def _speak_condition_node(
@@ -328,10 +376,48 @@ def _speak_condition_node(
             # AutomationConditionParser's own lexical-negation special case
             # ("niemand [mehr] zuhause ist" - see its docstring) - rendered
             # back the same idiomatic way, not "nicht (jemand zuhause ist)".
-            return "niemand zuhause ist"
+            return _nobody_home_spoken(child.condition, entity_by_id)
         return f"nicht ({_speak_condition_node(child, entity_by_id, area_name_by_id)})"
+    if node.operator is LogicalOperator.OR:
+        existential = _speak_existential(node, entity_by_id)
+        if existential is not None:
+            return existential
     joiner = " und " if node.operator is LogicalOperator.AND else " oder "
     return joiner.join(f"({_speak_condition_node(c, entity_by_id, area_name_by_id)})" for c in node.children)
+
+
+def _speak_existential(node: ConditionNode, entity_by_id: dict[str, EntitySnapshot]) -> str | None:
+    """"ein Fenster offen ist" - an OR of one state per device (the reading
+    of "ein/irgendein X", 7.8.3) is spoken as the phrase it came from."""
+    # Function-local: these modules live outside nlu/ and import it.
+    from ..automation_grounding import target_for
+    from ..notification_language import describe_holding_state
+    from .automation_model import TriggerModel, TriggerType
+
+    leaves = [child.condition for child in node.children if child.operator is None]
+    if len(leaves) != len(node.children) or len(leaves) < 2:
+        return None
+    from .ha_automation_generator import resolve_target_entities
+
+    states = {leaf.state for leaf in leaves if leaf is not None and leaf.type is ConditionType.STATE}
+    everything = list(entity_by_id.values())
+    members: list[EntitySnapshot] = []
+    for leaf in leaves:
+        resolved = (
+            resolve_target_entities(leaf.target, everything)
+            if leaf is not None and leaf.target is not None else []
+        )
+        if len(resolved) != 1:
+            return None
+        members.append(resolved[0])
+    if len(states) != 1:
+        return None
+    state = next(iter(states))
+    phrase = describe_holding_state(
+        TriggerModel(TriggerType.STATE, target=target_for(members, everything), state=state),
+        everything,
+    )
+    return phrase.subordinate if phrase is not None else None
 
 
 _OPEN_CLOSE_DOMAINS = frozenset({"cover"})
@@ -422,15 +508,102 @@ def _speak_action_step(
     return _speak_action_leaf(step, entity_by_id, area_name_by_id)
 
 
-def _notification_actions(model: AutomationModel) -> tuple[ActionModel, ...] | None:
-    """All actions, if the automation does nothing but addressed notifications."""
-    leaves = tuple(
-        step for step in model.actions
-        if isinstance(step, ActionModel)
-        and step.type is ActionType.NOTIFY
-        and step.recipient is not None
+def _is_notify(step: object) -> bool:
+    return (
+        isinstance(step, ActionModel) and step.type is ActionType.NOTIFY and step.recipient is not None
     )
-    return leaves if leaves and len(leaves) == len(model.actions) else None
+
+
+def _notification_actions(model: AutomationModel) -> tuple[ActionModel, ...] | None:
+    """The first notifications, if the automation does nothing but addressed
+    notifications - also repeated or escalated ones (7.9 W5)."""
+    leaves: list[ActionModel] = []
+    for step in model.actions:
+        if not isinstance(step, ActionModel):
+            return None
+        if _is_notify(step):
+            leaves.append(step)
+        elif step.type is ActionType.REPEAT and step.then_steps and all(_is_notify(s) for s in step.then_steps):
+            leaves.extend(s for s in step.then_steps if isinstance(s, ActionModel))
+        elif step.type is ActionType.ESCALATE and step.then_steps and all(_is_notify(s) for s in step.then_steps):
+            continue
+        else:
+            return None
+    return tuple(leaves) if leaves else None
+
+
+def _recipient_phrase(action: ActionModel) -> str:
+    from .action_model import NotificationRecipientKind
+
+    recipient = action.recipient
+    assert recipient is not None
+    if recipient.kind is NotificationRecipientKind.CURRENT_USER:
+        return "dir" + (f" an dein Gerät „{recipient.label}“" if recipient.label else "")
+    if recipient.kind is NotificationRecipientKind.HOUSEHOLD:
+        return "euch"
+    return f"an „{recipient.label or 'das gewählte Gerät'}“"
+
+
+def _speak_follow_ups(model: AutomationModel, entities: list[EntitySnapshot]) -> str:
+    """Repetition and escalation, said exactly (7.9 W5): how often, how long,
+    up to which bound, and who gets the second message."""
+    from ..notification_language import describe_holding_state, spoken_duration
+    from .automation_model import TriggerModel, TriggerType
+
+    def holding(node: ConditionNode | None) -> str:
+        leaf = node.condition if node is not None else None
+        if leaf is None or leaf.target is None or leaf.state is None:
+            return "der Zustand anhält"
+        phrase = describe_holding_state(
+            TriggerModel(TriggerType.STATE, target=leaf.target, state=leaf.state), entities
+        )
+        return phrase.subordinate if phrase is not None else "der Zustand anhält"
+
+    complement = {
+        SemanticState.ON: SemanticState.OFF, SemanticState.OFF: SemanticState.ON,
+        SemanticState.OPEN: SemanticState.CLOSED, SemanticState.CLOSED: SemanticState.OPEN,
+    }
+    parts: list[str] = []
+    for step in model.actions:
+        if not isinstance(step, ActionModel):
+            continue
+        if step.type is ActionType.REPEAT and step.delay_seconds and step.max_repeats:
+            total = spoken_duration(step.delay_seconds * step.max_repeats)
+            parts.append(
+                f"Danach wiederhole ich sie alle {spoken_duration(step.delay_seconds)}, solange "
+                f"{holding(step.if_condition)} – höchstens {step.max_repeats}-mal, also längstens {total}."
+            )
+        if step.type is ActionType.ESCALATE and step.timeout_seconds:
+            leaf = step.wait_condition.condition if step.wait_condition is not None else None
+            still = (
+                replace(step.wait_condition, condition=replace(leaf, state=complement[leaf.state]))
+                if step.wait_condition is not None and leaf is not None and leaf.state in complement
+                else None
+            )
+            situation = holding(still)
+            words = situation.rsplit(" ", 2)
+            question = (
+                f"Ist {words[0]} nach {spoken_duration(step.timeout_seconds)} immer noch {words[1]}"
+                if len(words) == 3 and words[2] == "ist"
+                else f"Wenn nach {spoken_duration(step.timeout_seconds)} immer noch {situation}"
+            )
+            for second in step.then_steps:
+                if not isinstance(second, ActionModel) or second.recipient is None:
+                    continue
+                parts.append(
+                    f"{question}, sende ich eine Push-Benachrichtigung {_recipient_phrase(second)}: "
+                    f"„{second.message}“"
+                )
+    kinds = {step.type for step in model.actions if isinstance(step, ActionModel)}
+    if parts:
+        # A running repetition or wait lives in Home Assistant's memory.
+        what = " und ".join(
+            word for kind, word in (
+                (ActionType.REPEAT, "die Wiederholung"), (ActionType.ESCALATE, "das Warten"),
+            ) if kind in kinds
+        )
+        parts.append(f"Startet Home Assistant währenddessen neu, bricht {what} ab.")
+    return " ".join(parts)
 
 
 def _render_notification_preview(
@@ -486,6 +659,27 @@ def _render_notification_preview(
         sentence = f"Zum Zeitpunkt „{model.calendar_schedule.spoken}“ {action_text}"
     elif trigger is not None and trigger.type is TriggerType.RELATIVE_TIME:
         sentence = f"In {_format_delay(trigger.relative_offset_seconds)} {action_text}"
+    elif model.situation is not None:
+        # One combined situation, whichever part of it begins last (7.8.3).
+        extra_conditions = [
+            _speak_condition_node(c, entity_by_id, area_name_by_id)
+            for c in model.conditions
+            if _is_time_window(c)
+        ]
+        situation = model.situation
+        nobody = _bound_nobody_home(model)
+        if nobody is not None:
+            situation = situation.replace(
+                "niemand zuhause ist", _nobody_home_spoken(nobody, entity_by_id)
+            )
+        when = situation + "".join(f" und {text}" for text in extra_conditions)
+        # Several parts: whichever begins last.  A whole set ("alle Fenster
+        # zu", 7.9 W1) is one part with one trigger.
+        sentence = (
+            f"Sobald {when}, egal was davon zuletzt eintritt, {action_text}"
+            if model.situation_parts > 1
+            else f"Sobald {when}, {action_text}"
+        )
     else:
         described = [
             describe_event(item, entities) for item in model.triggers
@@ -502,6 +696,9 @@ def _render_notification_preview(
         sentence = f"Wenn {trigger_text}, {action_text}"
     if not (ends_with_message and sentence.endswith("“")):
         sentence += "."  # a quoted message already carries its own full stop
+    follow_ups = _speak_follow_ups(model, entities)
+    if follow_ups:
+        sentence += f" {follow_ups}"
     if model.once and not one_shot_time:
         sentence += " Diese Automation wird nach der ersten Ausführung automatisch gelöscht."
     elif model.max_runs == 1:
@@ -515,7 +712,21 @@ def _render_notification_preview(
             f" Fällt der Zeitpunkt in die Ruhezeit von {model.quiet_start_hour:02d}:00 "
             f"bis {model.quiet_end_hour:02d}:00 Uhr, wird die Erinnerung auf deren Ende verschoben."
         )
+    for note in model.notes:
+        sentence += f" {note}"
     return f"{sentence} Soll ich das so einrichten?"
+
+
+def _is_time_window(node: "ConditionNode") -> bool:
+    from .condition_model import ConditionType
+
+    leaves = [node.condition] if node.condition is not None else [
+        child.condition for child in node.children
+    ]
+    return bool(leaves) and all(
+        leaf is not None and leaf.type in {ConditionType.TIME, ConditionType.WEEKDAY}
+        for leaf in leaves
+    )
 
 
 def _speak_measured_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> str | None:
@@ -587,4 +798,6 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
             f"{model.quiet_start_hour:02d}:00 bis {model.quiet_end_hour:02d}:00 Uhr, "
             "wird die Erinnerung auf deren Ende verschoben."
         )
+    for note in model.notes:
+        sentence = f"{sentence} {note}"
     return f"Automation erkannt: {sentence} Soll diese Automation erstellt werden?"

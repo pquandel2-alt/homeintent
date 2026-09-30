@@ -371,6 +371,117 @@ S("push-window-automation", "Push", "Benachrichtige mich sobald ein Fenster geö
   say(YES, settle=3),
   set_("binary_sensor.wohnzimmerfenster", "on", settle=3),
   check(notify="fenster"))
+# 7.8.3: Überwachungsaufträge - geprüft wird die Wirkung (Anzahl, Empfänger
+# und Text der Push-Nachrichten), nicht nur die Vorschau.
+PUSH_BOTH = options(
+    agent_notify_targets=["notify.handy_philipp_nachricht", "notify.handy_anna_nachricht"],
+    agent_delivery_channels=["push"], allow_non_admin_automations=True,
+)
+BIND_PHONES = [
+    service("homeintent.bind_user_context", {"user_id": "$admin_user_id", "person_entity_id": "person.philipp", "notification_targets": ["notify.handy_philipp_nachricht"], "preferred_notification_target": "notify.handy_philipp_nachricht", "confirmed": True}),
+    service("homeintent.bind_user_context", {"user_id": "$anna_user_id", "person_entity_id": "person.anna", "notification_targets": ["notify.handy_anna_nachricht"], "preferred_notification_target": "notify.handy_anna_nachricht", "confirmed": True}),
+]
+AWAY_MESSAGE = "niemand ist zuhause"
+
+
+def window_while_away(user: str, phone: str) -> list[dict[str, Any]]:
+    return [
+        # Frühere Testautomationen (auch aus Wiederholungsläufen) würden
+        # dieselbe Nachricht ein zweites Mal senden: Wirkung zählt genau.
+        service("haus_sim.reset", {"full": True}),
+        say("Beobachte die Fenster und warne mich, wenn eins offen ist und niemand zuhause ist.",
+            user=user, no_calls=True, all=["egal was davon zuletzt eintritt", "anna", "philipp"]),
+        say(YES, user=user, settle=3, any=["erstellt"]),
+        # Ausgangslage: Küchen- und Badfenster sind im Testhaus offen.
+        set_("binary_sensor.kuechenfenster", "off"), set_("binary_sensor.badezimmerfenster", "off"),
+        # 1. Küchenfenster auf, danach gehen alle: genau eine Nachricht.
+        service("haus_sim.clear_log"),
+        set_("binary_sensor.kuechenfenster", "on", settle=2),
+        check(notify_count=0, notify_to=phone, notify_match=AWAY_MESSAGE),
+        set_("device_tracker.handy_philipp", "not_home", settle=2),
+        check(notify_count=0, notify_to=phone, notify_match=AWAY_MESSAGE),
+        set_("device_tracker.handy_anna", "not_home", settle=3),
+        check(notify_count=1, notify_to=phone, notify_match=AWAY_MESSAGE),
+        # 2. Alle Fenster zu, alle gehen: keine Nachricht.
+        set_("binary_sensor.kuechenfenster", "off"),
+        set_("device_tracker.handy_philipp", "home"), set_("device_tracker.handy_anna", "home", settle=2),
+        service("haus_sim.clear_log"),
+        set_("device_tracker.handy_philipp", "not_home"), set_("device_tracker.handy_anna", "not_home", settle=3),
+        check(notify_count=0, notify_to=phone, notify_match=AWAY_MESSAGE),
+        # 3. Haus leer, dann Fenster auf: eine Nachricht.
+        service("haus_sim.clear_log"),
+        set_("binary_sensor.kuechenfenster", "on", settle=3),
+        check(notify_count=1, notify_to=phone, notify_match=AWAY_MESSAGE),
+        set_("binary_sensor.kuechenfenster", "off"),
+        set_("device_tracker.handy_philipp", "home"), set_("device_tracker.handy_anna", "home", settle=2),
+    ]
+
+
+S("mon-window-away", "Push", "7.8.3: Fenster offen und niemand zuhause, beide Reihenfolgen",
+  PUSH_BOTH, *BIND_PHONES,
+  *window_while_away("admin", "notify.handy_philipp_nachricht"))
+S("mon-window-away-anna", "Push", "7.8.3: derselbe Auftrag von Anna geht an Annas Handy",
+  PUSH_BOTH, *BIND_PHONES,
+  *window_while_away("anna", "notify.handy_anna_nachricht"))
+S("mon-routing-niemand", "Push", "7.8.3: „niemand“ und „keiner“ ergeben dieselbe Automation",
+  PUSH_BOTH, *BIND_PHONES,
+  say("Sag mir Bescheid, wenn das Garagentor offen ist und niemand zuhause ist.",
+      no_calls=True, all=["egal was davon zuletzt eintritt"], none=["haushalt"]),
+  say(YES, settle=2, any=["erstellt"]))
+# 7.9: Überwachungsaufträge vollständig - je Welle die echte Push-Nachricht.
+S("m79-w1-all-windows", "Überwachung", "W1: Nachricht erst, wenn alle Fenster zu sind",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Sag mir Bescheid, wenn alle Fenster zu sind.", no_calls=True, all=["alle 6 fenster geschlossen"]),
+  say(YES, settle=3, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  set_("binary_sensor.badezimmerfenster", "off", settle=2),
+  check(notify_count=0, notify_match="alle 6 fenster"),
+  set_("binary_sensor.kuechenfenster", "off", settle=3),
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht", notify_match="alle 6 fenster sind geschlossen"))
+S("m79-w2-no-motion", "Überwachung", "W2: 30 Sekunden keine Bewegung im Flur",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn sich im Flur 30 Sekunden nichts bewegt.", no_calls=True, all=["startet home assistant neu"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  set_("binary_sensor.bewegung_flur", "on", settle=2),
+  set_("binary_sensor.bewegung_flur", "off", settle=1),
+  wait(15),
+  check(notify_count=0, notify_match="keine bewegung"),
+  wait(25),
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht", notify_match="keine bewegung"))
+S("m79-w3-rate", "Überwachung", "W3: Temperatur fällt um 3 Grad (läuft in HomeIntent)",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn die Temperatur im Keller innerhalb von 10 Minuten um 3 Grad fällt.",
+      no_calls=True, all=["das überwache ich selbst", "solange homeintent läuft"]),
+  say(YES, settle=2, any=["eingerichtet"]),
+  set_("sensor.temperatur_keller", 18.5, settle=4),
+  service("haus_sim.clear_log"),
+  set_("sensor.temperatur_keller", 17.0, settle=4),
+  check(notify_count=0, notify_match="temperatur keller"),
+  set_("sensor.temperatur_keller", 15.0, settle=4),
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht", notify_match="um 3,5 °c gefallen"),
+  set_("sensor.temperatur_keller", 14.0, settle=4),
+  check(notify_count=1, notify_match="temperatur keller"))
+S("m79-w6-two-turns", "Überwachung", "W6: Bezug über zwei Sätze",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Überwache das Garagentor.", no_calls=True, any=["wann soll ich mich"]),
+  say("Wenn es offen ist.", no_calls=True, any=["soll ich das so einrichten"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}), wait(10),
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht", notify_match="garagentor"),
+  service("cover.close_cover", {"entity_id": "cover.garagentor"}), wait(8))
+S("m79-w8-list-stop", "Überwachung", "W8: Überwachungen auflisten und stoppen",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Überwache die Haustür und melde dich, wenn sie geöffnet wird.", no_calls=True),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Welche Überwachungen laufen?", type="query_answer", all=["haustür"], none=["binary_sensor"]),
+  say("Stopp die Haustür-Überwachung.", any=["ausgeschaltet"]),
+  service("haus_sim.clear_log"),
+  set_("binary_sensor.haustuer", "on", settle=3),
+  check(notify_count=0, notify_match="haustür"),
+  set_("binary_sensor.haustuer", "off"),
+  say("Welche Überwachungen laufen?", type="query_answer", all=["ausgeschaltet"]))
 S("reminder-relative", "Push", "Erinnere mich in 20 Sekunden an die Waschmaschine",
   say("Erinnere mich in 20 Sekunden an die Waschmaschine."),
   say(YES), wait(26),
@@ -547,6 +658,49 @@ S("pro-standing", "Proaktiv", "Daueranweisung: niemand zuhause → Licht aus",
   say("Welche Daueranweisungen gibt es?", any=["wohnzimmer", "licht"]))
 S("pro-standing-never-auto", "Proaktiv", "Daueranweisung für Garage wird abgelehnt (NEVER_AUTO)",
   say("Wenn niemand zuhause ist und das Garagentor offen ist, darfst du es automatisch schließen.", any=["nichts gespeichert", "nie automatisch"]))
+S("m79-w5-repeat", "Proaktiv", "W5: Wiederholung jede Minute, bis das Tor zu ist",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Wenn das Garagentor offen ist, erinnere mich jede Minute, bis es zu ist.", no_calls=True,
+      all=["höchstens 12-mal"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}),
+  wait(75),
+  # Exakt die Erinnerung: V12 meldet das offene Tor (Proaktiv) mit eigener Frage.
+  check(notify_count=2, notify_to="notify.handy_philipp_nachricht", notify_exact="Das Garagentor ist noch offen."),
+  service("cover.close_cover", {"entity_id": "cover.garagentor"}), wait(10),
+  service("haus_sim.clear_log"),
+  wait(60),
+  check(notify_count=0, notify_exact="Das Garagentor ist noch offen."))
+S("m79-w5-escalate", "Proaktiv", "W5: Eskalation an Anna nach 1 Minute",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn die Haustür offen ist, und wenn sie nach 1 Minute immer noch offen ist, sag Anna Bescheid.",
+      no_calls=True, all=["handy anna"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  set_("binary_sensor.haustuer", "on", settle=3),
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht"),
+  check(notify_count=0, notify_to="notify.handy_anna_nachricht"),
+  wait(65),
+  check(notify_count=1, notify_to="notify.handy_anna_nachricht", notify_match="seit 1 minute offen"),
+  set_("binary_sensor.haustuer", "off"),
+  service("haus_sim.clear_log"),
+  set_("binary_sensor.haustuer", "on", settle=3),
+  set_("binary_sensor.haustuer", "off", settle=1),
+  wait(65),
+  check(notify_count=0, notify_to="notify.handy_anna_nachricht"))
+S("mon-garage-duration", "Proaktiv", "7.8.3: Garagentor länger als 1 Minute offen → genau eine Nachricht",
+  PUSH_BOTH, *BIND_PHONES,
+  say("Überwache das Garagentor und melde dich, wenn es länger als 1 Minute offen ist.",
+      no_calls=True, all=["länger als 1 minute"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}),
+  wait(30),
+  check(notify_count=0, notify_to="notify.handy_philipp_nachricht", notify_match="seit 1 minute"),
+  wait(50),  # 6 s Fahrzeit + 60 s "for" + Reserve
+  check(notify_count=1, notify_to="notify.handy_philipp_nachricht", notify_match="seit 1 minute"),
+  service("cover.close_cover", {"entity_id": "cover.garagentor"}), wait(8))
 
 # ================================================ 15. Agent: Gedächtnis, Ziele, Routinen
 S("agent-smalltalk", "Agent", "Uhrzeit, Datum, Fähigkeiten",
@@ -710,3 +864,68 @@ S("s73-7-delay-plural", L73, "§7: Verzögerung in beliebiger Wortstellung, Plur
 S("s73-7-camera", L73, "Einfahrtkamera auf dem Fernseher (README-Gegenstück)",
   service("media_player.turn_on", {"entity_id": "media_player.wohnzimmer_tv"}),
   say("Zeig die Einfahrtkamera auf dem Fernseher im Wohnzimmer.", calls=["media_player.wohnzimmer_tv:play_media"]))
+
+# ========================================================= 7.7.1 Sicherheit (unabhängiger Test 7.7)
+L771 = "Sicherheit 7.7.1"
+S("s771-a1-correction", L771, "A1: Selbstkorrektur ohne Negationswort – nur der Ersatz",
+  say("Schalte das Küchenradio aus, ich meine den Fernseher im Wohnzimmer.",
+      not_calls=["media_player.kuechenradio:turn_off"]),
+  say("Licht im Kinderzimmer an, halt, im Schlafzimmer.",
+      not_calls=["light.kinderzimmerlicht:turn_on", "light.nachtlicht:turn_on"]),
+  say("Mach die Stehlampe an, nein, doch nicht.", no_calls=True))
+S("s771-a2-irrealis", L771, "A2: Irrealis, Abwägung, Beibehaltung schreiben nie",
+  say("Hätte ich doch die Heizung im Büro ausgeschaltet.", no_calls=True),
+  say("Ich überlege, ob ich den Mähroboter starten soll.", no_calls=True),
+  say("Den Fernseher lass bitte aus.", no_calls=True, any=["lasse"]))
+S("s771-a3-ellipsis", L771, "A3: Ellipse mit neuem Objekt, Seite, Zeit, Ort",
+  say("Fahr den linken Rollladen im Wohnzimmer hoch.", settle=4, calls=["cover.wohnzimmer_rollladen_links:open_cover"]),
+  say("Den rechten runter.", settle=4, calls=["cover.wohnzimmer_rollladen_rechts:close_cover"], only_calls=True),
+  say("Mach das Licht im Flur aus.", calls=["light.flurlicht:turn_off"]),
+  say("Morgen früh wieder an.", no_calls=True),
+  say("Nein."),
+  say("Mach das Licht im Flur an.", calls=["light.flurlicht:turn_on"]),
+  say("Oben auch.", calls=["light.flurlicht_oben:turn_on"], only_calls=True))
+S("s771-a4-coordination", L771, "A4: Ergänzungsstrich, gemeinsamer Kopf, Ort für alle Teile",
+  say("Schalte Garten- und Terrassenlicht ein.", calls=["light.terrassenlicht:turn_on"]),
+  say("Fahr Küche und Esszimmer Rollladen runter.", settle=4,
+      calls=["cover.kuechenrollladen:close_cover", "cover.esszimmer_rollladen:close_cover"]),
+  say("Mach im Wohnzimmer das Licht aus und fahr die Rollläden runter.", settle=4,
+      not_calls=["cover.schlafzimmer_rollladen:close_cover", "cover.kinderzimmer_rollladen:close_cover"]))
+S("s771-a5-satellite", L771, "A5: Satellitenraum ohne passendes Gerät – nur Angebot",
+  say("Schalte den Fernseher ein.", device="Badezimmer", no_calls=True, any=["badezimmer"]))
+S("s771-a6-informed", L771, "A6: Rückfrage nennt die kritische Wirkung des Skripts",
+  say("Starte das Skript Gute Nacht.", no_calls=True, any=["haustürschloss"]),
+  say("Nein.", no_calls=True))
+
+# ========================================================= 7.8 Sprachverständnis
+L78 = "Sprache 7.8"
+S("s78-b2-frames", L78, "B2: Höflichkeit, Dank und Begründung sind Rahmen",
+  say("Sei so lieb und schalte das Bürolicht ein.", calls=["light.buerolicht:turn_on"], only_calls=True),
+  say("Mach das Kellerlicht an, danke.", calls=["light.kellerlicht:turn_on"], only_calls=True),
+  say("Mach das Kellerlicht aus, wir essen gleich.", calls=["light.kellerlicht:turn_off"], only_calls=True))
+S("s78-b3-short", L78, "B3: Kurzbefehle und Werte ohne Einheit",
+  say("Markise raus.", settle=4, calls=["cover.markise:open_cover"], only_calls=True),
+  say("Heizung Schlafzimmer 18 Grad.", calls=["climate.heizung_schlafzimmer:set_temperature"], only_calls=True),
+  say("Stell die Heizung im Bad auf 23.", calls=["climate.heizung_badezimmer:set_temperature"], only_calls=True))
+S("s78-b4-ellipsis", L78, "B4: Ellipse übernimmt die Operation",
+  say("Stell die Heizung im Büro auf 20 Grad.", calls=["climate.heizung_buero:set_temperature"]),
+  say("Und in der Küche auf 18.", calls=["climate.heizung_kueche:set_temperature"], only_calls=True))
+S("s78-b5-presence", L78, "B5: Präsenz als Auslöser, verblose Aktion",
+  say("Wenn im Wohnzimmer jemand ist, mach die Stehlampe an.", no_calls=True, any=["automation"]),
+  say("Nein."),
+  say("Jeden Morgen um sieben die Kaffeemaschine an.", no_calls=True, any=["07:00"]),
+  say("Nein."))
+S("s78-b6-garage", L78, "B6: „Garage“ meint das Garagentor, mit Bestätigung",
+  say("Öffne die Garage.", no_calls=True, any=["garagentor"]),
+  say("Nein.", no_calls=True))
+S("s78-b7-dialog", L78, "B7: neue Frage beendet die offene Bestätigung ausdrücklich",
+  say("Öffne das Garagentor.", no_calls=True),
+  say("Wie warm ist es im Büro?", no_calls=True, any=["verworfen"]),
+  say("Ja.", no_calls=True))
+
+L781 = "Sicherheit 7.8.1"
+S("s781-ellipsis-unknown", L781, "Ellipse mit unbekanntem Objekt schaltet nie das vorherige Gerät",
+  say("Mach das Flurlicht an.", calls=["light.flurlicht:turn_on"]),
+  say("Und Blumenkohl aus.", no_calls=True, any=["finde ich nicht"]),
+  say("Mach das Flurlicht an.", calls=["light.flurlicht:turn_on"]),
+  say("Oben auch.", calls=["light.flurlicht_oben:turn_on"], only_calls=True))

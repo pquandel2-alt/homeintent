@@ -195,5 +195,6 @@ clarify :: Schick Onkel Herbert eine Nachricht, wenn die Haustür aufgeht.
 unsupported :: Sag mir Bescheid, wenn die Außentemperatur um 5 Grad fällt.
 unsupported :: Benachrichtige mich, wenn es im Wohnzimmer 3 Grad wärmer wird.
 unsupported :: Schick mir eine Nachricht, wenn der Rollladen im Wohnzimmer weitere 30 Prozent hochfährt.
-unsupported :: Gib mir Bescheid, wenn alle Fenster offen sind.
+# 7.9 W1: "alle Fenster offen" is a whole-set state (was: unsupported "aggregate").
+auto: state(binary_sensor.buero_fenster,binary_sensor.kuechenfenster,binary_sensor.schlafzimmer_fenster,binary_sensor.wohnzimmer_fenster)=open ; if: all state(binary_sensor.buero_fenster,binary_sensor.kuechenfenster,binary_sensor.schlafzimmer_fenster,binary_sensor.wohnzimmer_fenster)=open => notify(me) :: Gib mir Bescheid, wenn alle Fenster offen sind.
 unsupported :: Benachrichtige mich, wenn der Lautsprecher im Wohnzimmer 50 Prozent erreicht.

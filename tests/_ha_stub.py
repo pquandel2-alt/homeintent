@@ -581,7 +581,36 @@ class FakeEntityComponent:
         return self.entities.get(entity_id)
 
 
+def _referenced_entity_ids(value: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "entity_id":
+                items = item if isinstance(item, (list, tuple)) else [item]
+                found.update(str(entry) for entry in items if isinstance(entry, str) and "." in entry)
+            else:
+                found |= _referenced_entity_ids(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found |= _referenced_entity_ids(item)
+    return found
+
+
+def register_existing(hass: Any, entity_ids: Any) -> None:
+    """Devices a real script names exist in Home Assistant (exposed or
+    not); only a deleted entity has no state (7.8.1)."""
+    states = getattr(getattr(hass, "states", None), "_states", None)
+    if states is None:
+        return
+    for entity_id in entity_ids:
+        if entity_id not in states and not entity_id.startswith(("script.", "scene.", "automation.")):
+            states[entity_id] = types.SimpleNamespace(
+                entity_id=entity_id, state="off", attributes={},
+            )
+
+
 def register_script(hass: Any, entity_id: str, sequence: list[dict[str, Any]]) -> None:
+    register_existing(hass, _referenced_entity_ids(sequence))
     component = hass.data.setdefault("script", FakeEntityComponent())
     component.entities[entity_id] = types.SimpleNamespace(
         script=types.SimpleNamespace(sequence=sequence), raw_config={"sequence": sequence}
@@ -589,6 +618,7 @@ def register_script(hass: Any, entity_id: str, sequence: list[dict[str, Any]]) -
 
 
 def register_scene(hass: Any, entity_id: str, states: dict[str, Any]) -> None:
+    register_existing(hass, states)
     component = hass.data.setdefault("scene", FakeEntityComponent())
     component.entities[entity_id] = types.SimpleNamespace(
         scene_config=types.SimpleNamespace(states=states)

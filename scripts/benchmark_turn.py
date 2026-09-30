@@ -66,6 +66,11 @@ def main() -> int:
     parser.add_argument("--entities", type=int, default=5000)
     parser.add_argument("--iterations", type=int, default=5)
     parser.add_argument("--max-p95-ms", type=float)
+    parser.add_argument(
+        "--fresh-agent", action="store_true",
+        help="build a new conversation agent for every turn (the 7.7 method); "
+        "by default one agent answers all turns, as in Home Assistant",
+    )
     args = parser.parse_args()
     sys.path.insert(0, str(args.root.resolve() / "custom_components"))
     sys.path.insert(0, str(SCRIPT_ROOT / "tests"))
@@ -81,9 +86,10 @@ def main() -> int:
 
     entities = _enlarged(house_entities(), args.entities)
     samples: list[float] = []
+    shared = None if args.fresh_agent else HouseConversation(_MonkeyPatch(), entities=entities)
     for iteration in range(args.iterations + 1):
         for index, sentence in enumerate(SENTENCES):
-            house = HouseConversation(_MonkeyPatch(), entities=entities)
+            house = shared or HouseConversation(_MonkeyPatch(), entities=entities)
             house.conversation_id = f"bench-{iteration}-{index}"
             start = time.perf_counter()
             house.say(sentence)
@@ -91,10 +97,16 @@ def main() -> int:
             if iteration:  # the first round warms caches
                 samples.append(elapsed)
     samples.sort()
-    p95 = samples[max(0, int(len(samples) * 0.95) - 1)]
+
+    def percentile(share: float) -> float:
+        return samples[max(0, int(len(samples) * share + 0.5) - 1)]
+
+    p95 = percentile(0.95)
     print(
-        f"{len(entities)} Entitäten, {len(samples)} Turns: "
-        f"p50 {statistics.median(samples):.1f} ms, p95 {p95:.1f} ms, max {samples[-1]:.1f} ms"
+        f"{len(entities)} Entitäten, {len(samples)} Turns "
+        f"({'neuer Agent je Turn' if args.fresh_agent else 'ein Agent'}): "
+        f"p50 {statistics.median(samples):.1f} ms, p90 {percentile(0.90):.1f} ms, "
+        f"p95 {p95:.1f} ms, p99 {percentile(0.99):.1f} ms, max {samples[-1]:.1f} ms"
     )
     return 1 if args.max_p95_ms is not None and p95 > args.max_p95_ms else 0
 

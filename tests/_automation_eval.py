@@ -143,7 +143,10 @@ def _condition_signatures(node: ConditionNode, entities: list[EntitySnapshot], n
     prefix = "not " if negated else ""
     if condition.type is ConditionType.STATE:
         state = condition.state.name.casefold() if condition.state else "?"
-        return [f"{prefix}state({_ids(condition.target, entities)})={state}"]
+        # 7.9 W1: a whole-set condition ("alle Fenster zu") is marked, so it
+        # can never be confused with a single entity's state.
+        whole = "all " if condition.target is not None and condition.target.quantifier == "all" else ""
+        return [f"{prefix}{whole}state({_ids(condition.target, entities)})={state}"]
     if condition.type is ConditionType.NUMERIC:
         op = _OPS.get(condition.comparator, "?") if condition.comparator else "?"
         return [f"{prefix}num({_ids(condition.target, entities)}).state{op}{condition.threshold:g}"]

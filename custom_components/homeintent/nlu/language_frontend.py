@@ -94,6 +94,9 @@ class LanguageDocument:
     maintain: tuple[MaintainFrame | None, ...] = ()
     # "X muss nicht an sein" / "X kann aus": the state is no longer needed.
     release: ReleaseFrame | None = None
+    # Politeness, thanks, reasons, urgency around the request (7.8 B2);
+    # recorded, without effect on target or operation.
+    pragmatics: object | None = None
 
     @property
     def maintained(self) -> tuple[MaintainFrame, ...]:
@@ -201,16 +204,36 @@ def registry_name_spans(
     keys = [key for _index, key in words]
     present = set(keys)
     spans: set[tuple[int, int]] = set()
-    for entity in entities:
-        for name in (entity.friendly_name, *entity.aliases):
-            parts = normalize_for_compare(name).split()
-            if len(parts) < 2 or parts[0] not in present:
-                continue
+    table = _multiword_names(entities)
+    for first in present & table.keys():
+        for parts in table[first]:
             width = len(parts)
             for start in range(len(keys) - width + 1):
                 if keys[start:start + width] == parts:
                     spans.add((words[start][0], words[start + width - 1][0] + 1))
     return tuple(sorted(spans))
+
+
+_MULTIWORD_CACHE: list[tuple[tuple[int, object, object], dict[str, list[list[str]]]]] = []
+
+
+def _multiword_names(entities: Iterable[EntitySnapshot]) -> dict[str, list[list[str]]]:
+    """Multi-word names by their first word, once per entity list (7.8 B8)."""
+    items = entities if isinstance(entities, (list, tuple)) else tuple(entities)
+    marker = (len(items), items[0] if items else None, items[-1] if items else None)
+    for owner, table in _MULTIWORD_CACHE:
+        # Same snapshots (a tuple copy of the turn's list is the same list).
+        if owner[0] == marker[0] and owner[1] is marker[1] and owner[2] is marker[2]:
+            return table
+    entities = items
+    table: dict[str, list[list[str]]] = {}
+    for entity in entities:
+        for name in (entity.friendly_name, *entity.aliases):
+            parts = normalize_for_compare(name).split()
+            if len(parts) >= 2 and parts not in table.setdefault(parts[0], []):
+                table[parts[0]].append(parts)
+    _MULTIWORD_CACHE[:] = [(marker, table), *_MULTIWORD_CACHE[:3]]
+    return table
 
 
 def _inside_name(item: TemporalExpression, spans: Sequence[tuple[int, int]]) -> bool:

@@ -815,7 +815,9 @@ class DeviceController:
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
-        feedback = self._engine.failure_feedback(user_input.text, entities)
+        feedback = self._engine.failure_feedback(
+            user_input.text, entities, source_area=self._conversation_area(user_input)
+        )
         if not is_query and (feedback is None or feedback.startswith(_GENERIC_UNKNOWN_TARGET)):
             # An unknown device word is asked about, never guessed (7.4.1);
             # specific explanations (unknown floor, capabilities) still win.

@@ -64,10 +64,11 @@ def _say(agent: NluConversationEntity, text: str, user: str) -> str:
 
 def test_non_admin_cannot_create_automations_when_the_option_is_off(monkeypatch, tmp_path):
     agent = _agent(monkeypatch, tmp_path, {CONF_ALLOW_NON_ADMIN_AUTOMATIONS: False})
-    _say(agent, SENTENCE, "lena")
-    assert _say(agent, "Ja", "lena") == (
+    # 7.8 B5: refused before the preview, not after "Ja".
+    assert _say(agent, SENTENCE, "lena") == (
         "Das Erstellen von Automationen ist nur für Administratoren erlaubt."
     )
+    assert "Administratoren" not in _say(agent, "Ja", "lena")
 
 
 def test_admin_still_creates_automations_when_the_option_is_off(monkeypatch, tmp_path):

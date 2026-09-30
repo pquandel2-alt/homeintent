@@ -43,6 +43,7 @@ speaks this back to the user and persists nothing, exactly the same
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable
@@ -171,7 +172,7 @@ def resolve_automation_action_entity_ids(
                 entity.entity_id
                 for entity in _resolve_target_entities(step.target, entities)
             )
-        if step.type is ActionType.CHOOSE:
+        if step.type in {ActionType.CHOOSE, ActionType.REPEAT, ActionType.ESCALATE}:
             for child in (*step.then_steps, *step.else_steps):
                 visit(child)
 
@@ -378,6 +379,57 @@ def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> 
     return None, GenerationError.UNSUPPORTED_TRIGGER_TYPE
 
 
+_ENTITY_ID_RE = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
+
+
+def unchanged_today_template(
+    condition: ConditionModel, entities: list[EntitySnapshot]
+) -> tuple[str | None, GenerationError | None]:
+    """"bis 10 Uhr keine Bewegung im Bad" (7.9 W2): every entity is in its
+    rest state and has not changed since local midnight.  Built only from
+    validated entity ids and the closed raw-state vocabulary - never from
+    user text.  Home Assistant resets ``last_changed`` on a restart, which
+    the preview says."""
+    if condition.target is None or condition.state is None:
+        return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
+    candidates = _resolve_target_entities(condition.target, entities)
+    if not candidates:
+        return None, GenerationError.ENTITY_NOT_FOUND
+    parts: list[str] = []
+    for entity in candidates:
+        if not _ENTITY_ID_RE.match(entity.entity_id):
+            return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
+        unchanged = f"states.{entity.entity_id}.last_changed < today_at('00:00')"
+        if entity.domain == "sensor" and condition.state is SemanticState.INACTIVE:
+            # A program status sensor: any run changes it.
+            parts.append(unchanged)
+            continue
+        raw = _raw_state_for_semantic(entity.domain, entity.device_class, condition.state)
+        if raw is None:
+            return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
+        parts.append(f"is_state('{entity.entity_id}', '{raw}') and {unchanged}")
+    return " and ".join(parts), None
+
+
+def resolve_target_entities(target: TriggerTarget, entities: list[EntitySnapshot]) -> list[EntitySnapshot]:
+    """Public name of the generator's own target resolution (preview reuse)."""
+    return _resolve_target_entities(target, entities)
+
+
+def _presence_people(
+    condition: ConditionModel, entities: list[EntitySnapshot]
+) -> list[EntitySnapshot]:
+    """The people of a whole-house presence condition (``presence_scope``):
+    exactly the bound ones - all of them must still exist - or, unbound,
+    every ``person.*`` entity."""
+    if not condition.person_entity_ids:
+        return resolve_candidates(entities, Constraints(domain="person"))
+    by_id = {entity.entity_id: entity for entity in entities if entity.domain == "person"}
+    if any(person not in by_id for person in condition.person_entity_ids):
+        return []
+    return [by_id[person] for person in condition.person_entity_ids]
+
+
 def _generate_condition_leaf(condition: ConditionModel, entities: list[EntitySnapshot]) -> tuple[dict[str, Any] | None, GenerationError | None]:
     if condition.type is ConditionType.STATE:
         assert condition.target is not None and condition.state is not None
@@ -442,7 +494,7 @@ def _generate_condition_leaf(condition: ConditionModel, entities: list[EntitySna
             # zuhause") - OR across every known person entity, since HA's
             # own multi-entity ``state`` condition uses AND semantics, the
             # opposite of what "jemand" (someone, i.e. at least one) means.
-            person_entities = resolve_candidates(entities, Constraints(domain="person"))
+            person_entities = _presence_people(condition, entities)
             if not person_entities:
                 return None, GenerationError.ENTITY_NOT_FOUND
             return {
@@ -477,6 +529,12 @@ def _generate_condition_leaf(condition: ConditionModel, entities: list[EntitySna
     if condition.type is ConditionType.TEMPLATE:
         assert condition.raw_state is not None
         return {"condition": "template", "value_template": condition.raw_state}, None
+
+    if condition.type is ConditionType.UNCHANGED_TODAY:
+        template, error = unchanged_today_template(condition, entities)
+        if error is not None or template is None:
+            return None, error or GenerationError.UNSUPPORTED_CONDITION_TYPE
+        return {"condition": "template", "value_template": "{{ " + template + " }}"}, None
 
     # ConditionType.DEVICE lacks its integration-specific subtype schema.
     return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
@@ -580,6 +638,46 @@ def _generate_action_leaf(action: ActionModel, entities: list[EntitySnapshot]) -
         if action.timeout_seconds is not None:
             config["timeout"] = {"seconds": action.timeout_seconds}
         return config, None
+
+    if action.type is ActionType.REPEAT:
+        # 7.9 W5: bounded repetition - notify, wait the interval, and only
+        # repeat while the situation holds and the upper bound is not reached.
+        assert action.if_condition is not None and action.delay_seconds is not None
+        assert action.max_repeats is not None
+        condition, error = _generate_condition_node(action.if_condition, entities)
+        if error is not None:
+            return None, error
+        sequence, error = generate_ha_action_configs(action.then_steps, entities)
+        if error is not None or sequence is None:
+            return None, error or GenerationError.UNSUPPORTED_ACTION_TYPE
+        return {"repeat": {
+            "while": [
+                condition,
+                {"condition": "template", "value_template": f"{{{{ repeat.index <= {int(action.max_repeats)} }}}}"},
+            ],
+            "sequence": [*sequence, {"delay": {"seconds": int(action.delay_seconds)}}],
+        }}, None
+
+    if action.type is ActionType.ESCALATE:
+        # 7.9 W5: wait for the end of the situation; only a timeout escalates.
+        assert action.wait_condition is not None and action.timeout_seconds is not None
+        template, error = _condition_template(action.wait_condition, entities)
+        if error is not None or template is None:
+            return None, GenerationError.UNSUPPORTED_ACTION_TYPE
+        escalation, error = generate_ha_action_configs(action.then_steps, entities)
+        if error is not None:
+            return None, error
+        return {"sequence": [
+            {
+                "wait_template": "{{ " + template + " }}",
+                "timeout": {"seconds": int(action.timeout_seconds)},
+                "continue_on_timeout": True,
+            },
+            {
+                "if": [{"condition": "template", "value_template": "{{ not wait.completed }}"}],
+                "then": escalation,
+            },
+        ]}, None
 
     if action.type is ActionType.CHOOSE:
         assert action.if_condition is not None
@@ -695,7 +793,7 @@ def _condition_template(
         if condition.target is None:
             if condition.type is not ConditionType.PRESENCE or condition.raw_state is None:
                 return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
-            people = resolve_candidates(entities, Constraints(domain="person"))
+            people = _presence_people(condition, entities)
             if not people:
                 return None, GenerationError.ENTITY_NOT_FOUND
             raw = json.dumps(condition.raw_state)
@@ -771,6 +869,8 @@ def _condition_template(
         return f"is_state('sun.sun', '{state}')", None
     if condition.type is ConditionType.TEMPLATE and condition.raw_state is not None:
         return condition.raw_state.removeprefix("{{").removesuffix("}}").strip(), None
+    if condition.type is ConditionType.UNCHANGED_TODAY:
+        return unchanged_today_template(condition, entities)
     return None, GenerationError.UNSUPPORTED_CONDITION_TYPE
 
 
@@ -1041,6 +1141,13 @@ def generate_ha_automation_config(
         # Calendar events can overlap; queued prevents a second event from
         # being discarded while the first action sequence is still active.
         config["mode"] = "queued"
+    elif any(
+        isinstance(action, ActionModel) and action.type in {ActionType.REPEAT, ActionType.ESCALATE}
+        for action in model.actions
+    ):
+        # A new start of the situation restarts the reminder / escalation
+        # instead of being dropped with a warning (7.9 W5).
+        config["mode"] = "restart"
     if conditions:
         config["conditions"] = conditions
     return GenerationResult(config=config, error=None)

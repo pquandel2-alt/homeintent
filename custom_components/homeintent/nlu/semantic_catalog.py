@@ -107,6 +107,9 @@ STATE_ENTRIES = (
 STATE_COMPLEMENT_WORDS: dict[str, SemanticState] = {
     "an": SemanticState.ON,
     "eingeschaltet": SemanticState.ON,
+    # "Lass den Fernseher aus": keep it off (7.7.1 A2), not "turn off".
+    "aus": SemanticState.OFF,
+    "ausgeschaltet": SemanticState.OFF,
     "brennen": SemanticState.ON,
     "laufen": SemanticState.ACTIVE,
     "zu": SemanticState.CLOSED,

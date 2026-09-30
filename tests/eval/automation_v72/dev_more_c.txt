@@ -151,4 +151,5 @@ clarify :: Schick mir eine Nachricht, sobald es bei 50 % steht.
 clarify :: Gib mir Bescheid, wenn das Licht auf 30 Prozent gedimmt ist.
 clarify :: Sag mir Bescheid, wenn der Rollladen im Hobbyraum halb offen ist.
 unsupported :: Benachrichtige mich, wenn die Temperatur im Wohnzimmer innerhalb einer Stunde um 2 Grad fällt.
-unsupported :: Sag mir Bescheid, wenn alle Fenster zu sind.
+# 7.9 W1: "alle Fenster zu" is a whole-set state (was: unsupported "aggregate").
+auto: state(binary_sensor.buero_fenster,binary_sensor.kuechenfenster,binary_sensor.schlafzimmer_fenster,binary_sensor.wohnzimmer_fenster)=closed ; if: all state(binary_sensor.buero_fenster,binary_sensor.kuechenfenster,binary_sensor.schlafzimmer_fenster,binary_sensor.wohnzimmer_fenster)=closed => notify(me) :: Sag mir Bescheid, wenn alle Fenster zu sind.

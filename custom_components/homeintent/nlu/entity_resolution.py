@@ -336,10 +336,14 @@ def resolve_mentioned_target(
         )
         if ranked:
             best_score = ranked[0].score
+            best = [candidate for candidate in ranked if candidate.score == best_score]
+            # An exact complete name outranks names it contains ("Gute
+            # Nacht Test" over "Gute Nacht", 7.8 B7).
+            longest = max(len(normalize_for_compare(candidate.matched_name)) for candidate in best)
             matches = tuple(
                 candidate.entity
-                for candidate in ranked
-                if candidate.score == best_score
+                for candidate in best
+                if len(normalize_for_compare(candidate.matched_name)) == longest
             )
         else:
             pool = [

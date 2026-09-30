@@ -86,6 +86,14 @@ def decide(engine, text, entities, hass=None, options=None):
     from homeintent.execution_policy import PolicyOutcome, evaluate_service_plan
     from homeintent.plan_origin import PlanOrigin
 
+    from homeintent.arbitration import Decision, DecisionKind
+    from homeintent.nlu.surface import prepare_surface
+
+    # The arbiter reads the same frontend surface as the cascade (7.7.1).
+    surface = prepare_surface(text, list(entities))
+    if surface.stops:
+        return Decision(DecisionKind.NOTHING, (), "correction_stops"), None
+    text = surface.text
     candidates, question = collect_candidates(engine, text, entities)
     decision = arbitrate(candidates, explicit_question=question)
     payload = decision.chosen[0].payload if decision.writes else None

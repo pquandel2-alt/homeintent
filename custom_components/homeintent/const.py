@@ -11,6 +11,11 @@ CONF_MAX_ACTION_TARGETS = "max_action_targets"
 # What to do when a script/scene/group contains a step whose effect cannot
 # be determined statically: "deny" (default) or "confirm".
 CONF_EFFECT_GRAPH_UNKNOWN = "effect_graph_unknown"
+# 7.8.1: a named, exposed script/scene/group whose steps switch devices
+# that are not exposed (allow: run, confirm: ask first, deny: refuse).
+CONF_ROUTINE_UNEXPOSED = "routine_unexposed_effects"
+ROUTINE_UNEXPOSED_MODES = ("allow", "confirm", "deny")
+DEFAULT_ROUTINE_UNEXPOSED = "allow"
 EFFECT_GRAPH_UNKNOWN_OPTIONS = ("deny", "confirm")
 # 7.3.2 execution trace (ring buffer of executions, see execution_trace.py).
 CONF_TRACE_LIMIT = "trace_limit"

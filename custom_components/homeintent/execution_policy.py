@@ -17,6 +17,10 @@ from .const import (
     IMPLICIT_ACTION_LEVELS,
     CONF_MAX_ACTION_TARGETS,
     CONF_READ_ONLY_ENTITIES,
+    CONF_ROUTINE_UNEXPOSED,
+    CONF_SELECTED_ENTITIES,
+    DEFAULT_ROUTINE_UNEXPOSED,
+    ROUTINE_UNEXPOSED_MODES,
 )
 from .effect_graph import (
     PlanEffects,
@@ -30,6 +34,34 @@ from .entities import EntitySnapshot
 from .plan_origin import UNATTENDED_ORIGINS, PlanOrigin
 from .risk import RiskLevel, classify_service_plan
 from .service_call import ServiceCallPlan
+
+
+def _exposure_hint(options: Mapping[str, object]) -> str:
+    """Where the missing release is made (7.8.1): a fixed HomeIntent
+    selection hides devices that are exposed to Assist later."""
+    if options.get(CONF_SELECTED_ENTITIES):
+        return (
+            "HomeIntent nutzt eine feste Geräteauswahl, die diese Geräte nicht enthält, "
+            "auch wenn sie in Assist freigegeben sind. Ergänze sie in den Optionen von "
+            "HomeIntent unter der Geräteauswahl oder leere die Auswahl, dann gilt die "
+            "Assist-Freigabe."
+        )
+    return (
+        "Freigeben kannst du sie in Home Assistant unter Einstellungen, "
+        "Sprachassistenten, Entitäten freigeben."
+    )
+
+
+# Domains whose risk depends on what the device is (garage door, gate, water
+# valve) or that guard the house. HomeIntent cannot see an unexposed device's
+# class, so such an effect stays refused in every mode (7.8.2).
+GUARDED_UNEXPOSED_DOMAINS = frozenset({"lock", "alarm_control_panel", "cover", "valve"})
+
+
+def routine_unexposed_mode(options: Mapping[str, object]) -> str:
+    """allow | confirm | deny for unexposed devices inside a named routine."""
+    mode = str(options.get(CONF_ROUTINE_UNEXPOSED, DEFAULT_ROUTINE_UNEXPOSED))
+    return mode if mode in ROUTINE_UNEXPOSED_MODES else DEFAULT_ROUTINE_UNEXPOSED
 
 
 class PolicyOutcome(Enum):
@@ -81,6 +113,54 @@ def plan_is_composite(
     ))
 
 
+_EFFECT_VERBS = {
+    ("lock", "unlock"): "entriegelt", ("lock", "lock"): "verriegelt", ("lock", "open"): "öffnet",
+    ("cover", "open_cover"): "öffnet", ("cover", "close_cover"): "schließt",
+    ("cover", "set_cover_position"): "bewegt",
+    ("valve", "open_valve"): "öffnet", ("valve", "close_valve"): "schließt",
+    ("alarm_control_panel", "alarm_disarm"): "schaltet unscharf:",
+    ("button", "press"): "drückt",
+}
+_ROOT_KINDS = {
+    "script": "Das Skript", "scene": "Die Szene", "automation": "Die Automation",
+    "group": "Die Gruppe", "light": "Die Gruppe", "switch": "Die Gruppe", "cover": "Die Gruppe",
+}
+
+
+def describe_critical_effects(
+    effects: PlanEffects, entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...]
+) -> str | None:
+    """"Das Skript Schlafen entriegelt dabei Haustürschloss." - every effect
+    whose own risk is HIGH or CRITICAL, in the words of the question."""
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
+    parts: list[tuple[str, str, str]] = []
+    for effect in effects.effects:
+        if effect.domain in {"script", "scene", "automation", "group"}:
+            continue
+        plan = ServiceCallPlan(effect.domain, effect.service, list(effect.entity_ids))
+        if classify_service_plan(plan, entities) < RiskLevel.HIGH:
+            continue
+        targets = ", ".join(names.get(entity_id, entity_id) for entity_id in effect.entity_ids)
+        verb = _EFFECT_VERBS.get((effect.domain, effect.service), f"führt {effect.domain}.{effect.service} aus für")
+        suffix = ""
+        if verb.endswith(":"):
+            verb, suffix = "schaltet", " unscharf"
+        part = (verb, targets, suffix)
+        if part not in parts:
+            parts.append(part)
+    if not parts:
+        return None
+    root = effects.roots[0] if effects.roots else ""
+    kind = _ROOT_KINDS.get(root.split(".", 1)[0], "Die Aktion")
+    name = effects.names.get(root) or names.get(root) or root
+    rendered = [
+        f"{verb} dabei {targets}{suffix}" if index == 0 else f"{verb} {targets}{suffix}"
+        for index, (verb, targets, suffix) in enumerate(parts)
+    ]
+    listed = rendered[0] if len(rendered) == 1 else ", ".join(rendered[:-1]) + " und " + rendered[-1]
+    return f"{kind} {name} {listed}."
+
+
 def evaluate_service_plan(
     plan: ServiceCallPlan,
     entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],
@@ -124,13 +204,35 @@ def evaluate_service_plan(
             PolicyOutcome.DENY,
             "Dieser Benutzer darf HomeIntent nicht zur Gerätesteuerung verwenden.",
         )
+    unexposed_needs_confirmation = False
+    unexposed_note: str | None = None
     if effects is not None and effect_targets:
         exposed = {entity.entity_id for entity in entities}
+        # effective_targets leaves out entities Home Assistant does not know:
+        # a step on them switches nothing (7.8.1).
         unexposed = sorted(effect_targets - exposed)
         if unexposed:
-            # The exposure list is the user's configuration: no confirmation
-            # can override it.
-            return decide(PolicyOutcome.DENY, describe_unexposed(effects, unexposed))
+            # Exposing a script, scene or group exposes what it does, as in
+            # Home Assistant's own Assist (7.8.2) - only for a routine the
+            # user names right now and is present for, never for guarded
+            # domains, never for implicit, inferred or unattended plans.
+            mode = routine_unexposed_mode(options)
+            if (
+                mode == "deny"
+                or origin is not PlanOrigin.EXPLICIT_COMMAND
+                or not attended
+                or any(item.split(".", 1)[0] in GUARDED_UNEXPOSED_DOMAINS for item in unexposed)
+            ):
+                return decide(
+                    PolicyOutcome.DENY,
+                    f"{describe_unexposed(effects, unexposed, (entity.friendly_name for entity in entities))} "
+                    f"{_exposure_hint(options)}",
+                )
+            unexposed_needs_confirmation = mode == "confirm"
+            # Named in every question this plan still gets (risk, unknown step).
+            unexposed_note = describe_unexposed(
+                effects, unexposed, (entity.friendly_name for entity in entities), refused=False,
+            )
     admin_only_ids = _id_set(options, CONF_ADMIN_ONLY_ENTITIES)
     if not is_admin and all_ids & admin_only_ids:
         return decide(
@@ -163,7 +265,14 @@ def evaluate_service_plan(
         risk = max(risk, RiskLevel.HIGH)
         note = unknown_text
         unknown_needs_confirmation = True
+    if unexposed_note:
+        note = f"{note} {unexposed_note}" if note else unexposed_note
     if effects is not None:
+        # Informed consent (7.7.1 A6): a question about a script, scene,
+        # group or routine names every effect from HIGH risk upwards.
+        critical = describe_critical_effects(effects, entities)
+        if critical:
+            note = f"{note} {critical}" if note else critical
         followups = describe_followups(effects)
         if followups:
             note = f"{note} {followups}" if note else followups
@@ -199,7 +308,7 @@ def evaluate_service_plan(
         )
     configured_level = options.get(CONF_CONFIRMATION_LEVEL, "high")
     confirmation_level = _RISK_BY_OPTION.get(str(configured_level), RiskLevel.HIGH)
-    if risk >= confirmation_level or unknown_needs_confirmation:
+    if risk >= confirmation_level or unknown_needs_confirmation or unexposed_needs_confirmation:
         return decide(PolicyOutcome.CONFIRM, note=note)
     # Implicit Action Policy (7.3.3): a non-explicit origin is never looser
     # than the same explicit command; everything below only adds confirmations.
@@ -234,15 +343,17 @@ def validate_automation_action_targets(
     HomeIntent (documented in the README).
     """
     if effects is not None:
-        if effects.effective_targets and exposed_ids is not None:
-            unexposed = sorted(effects.effective_targets - set(exposed_ids))
+        # An automation runs later: an entity that is missing today may
+        # exist then, so every named entity counts here.
+        if effects.referenced_targets and exposed_ids is not None:
+            unexposed = sorted(effects.referenced_targets - set(exposed_ids))
             if unexposed:
                 return describe_unexposed(effects, unexposed)
         if not effects.complete:
             return f"{describe_unknown(effects)} Die Automation habe ich nicht angelegt."
         target_ids = frozenset(
             {item for item in target_ids if item not in set(effects.roots)}
-            | effects.effective_targets
+            | effects.referenced_targets
         )
     configured_users = options.get(CONF_CONTROL_USER_IDS, ())
     allowed_users = (

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .automation_composition import CompositionTrace, EventClarification
 from .automation_summary import AutomationSummary
+from .rate_monitor import MonitorProposal
 from .nlu.automation_model import AutomationModel, TriggerModel
 from .nlu.automation_validator import AutomationValidationError
 
@@ -27,6 +28,10 @@ class AutomationClarificationResult:
     response_text: str
     clarification: EventClarification | None = None
     trace: CompositionTrace | None = None
+    # An open monitoring request (7.9 W6): the next turn names the event.
+    monitored_object: tuple[str, ...] | None = None
+    # "etwas Ungewöhnliches" (7.9 W7): answered from the situation catalog.
+    vague_situation: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,4 +57,13 @@ class AutomationToggleMatchResult:
 
     automation: AutomationSummary | None
     enable: bool
+    response_text: str
+
+
+@dataclass(frozen=True)
+class MonitorProposalResult:
+    """A monitoring request only HomeIntent's own runtime can run (7.9 W3):
+    staged for an explicit "Ja" like every automation."""
+
+    proposal: MonitorProposal
     response_text: str

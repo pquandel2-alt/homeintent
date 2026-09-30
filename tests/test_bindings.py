@@ -174,7 +174,7 @@ def test_bound_routines_auto_runs_the_bound_routine_directly(monkeypatch):
 
 
 def test_choosing_a_routine_with_foreign_devices_is_refused_and_not_bound(monkeypatch):
-    house = _house(monkeypatch)
+    house = _house(monkeypatch, options={"routine_unexposed_effects": "deny"})
     house.say("Ich gehe schlafen.")
     refused = house.say("Gute Nacht.")
     assert refused.calls == [] and "Saugroboter" in refused.speech, refused.speech

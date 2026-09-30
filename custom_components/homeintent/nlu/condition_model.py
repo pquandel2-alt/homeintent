@@ -40,6 +40,10 @@ class ConditionType(Enum):
     ENTITY = auto()
     CALENDAR_EVENT = auto()
     TEMPLATE = auto()
+    # 7.9 W2: the entity has stayed in its rest ``state`` since midnight
+    # ("bis 10 Uhr keine Bewegung im Bad") - generated as a closed template
+    # from the entity id and state, never from user text.
+    UNCHANGED_TODAY = auto()
 
 
 class TimeComparator(Enum):
@@ -84,6 +88,9 @@ class ConditionModel:
     device_id: str | None = None  # DEVICE
     device_condition_type: str | None = None  # DEVICE
     raw_state: str | None = None  # ENTITY - closed vocabulary for non-binary domains (locks/vacuums/media players)
+    # PRESENCE without a target ("jemand/niemand zuhause"): exactly these
+    # people (``presence_scope``, 7.8.3). Empty = every ``person.*`` entity.
+    person_entity_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

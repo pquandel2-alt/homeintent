@@ -43,6 +43,18 @@ class Modality(Enum):
     UNCERTAIN = auto()
     # "Lass das Licht an": keep the current state; never an operation.
     MAINTAIN = auto()
+    # "Hätte ich doch das Licht ausgeschaltet", "Ich hätte ... sollen":
+    # a past that did not happen (7.7.1 A2); never an operation.
+    IRREALIS = auto()
+    # "Ich überlege, ob ich ...", "Vielleicht sollte ich ...": thinking
+    # aloud (7.7.1 A2); a suggestion at most, never an operation.
+    DELIBERATION = auto()
+
+
+NON_EXECUTABLE_MODALITIES = frozenset({
+    Modality.HYPOTHETICAL, Modality.UNCERTAIN, Modality.MAINTAIN,
+    Modality.IRREALIS, Modality.DELIBERATION,
+})
 
 
 class Polarity(Enum):
@@ -123,11 +135,7 @@ class SemanticUtterance:
     def safe_to_execute_directly(self) -> bool:
         return (
             self.speech_act is SpeechAct.COMMAND
-            and self.modality not in {
-                Modality.HYPOTHETICAL,
-                Modality.UNCERTAIN,
-                Modality.MAINTAIN,
-            }
+            and self.modality not in NON_EXECUTABLE_MODALITIES
             and self.polarity is Polarity.POSITIVE
         )
 
@@ -311,7 +319,95 @@ def is_contextual_followup(text: str) -> bool:
     return _CONTEXTUAL_FOLLOWUP_RE.search(normalize(text)) is not None
 
 
+# Konjunktiv II of haben/sein, the auxiliary of a past irrealis.
+_IRREALIS_AUXILIARY = frozenset({
+    "haette", "haetten", "haettest", "haettet", "waere", "waeren", "waerst", "waerest", "waeret",
+})
+# "hätte ... sollen/müssen": the modal infinitive substitutes the participle.
+_IRREALIS_CLOSERS = frozenset({
+    "sollen", "muessen", "koennen", "duerfen", "lassen", "haben", "sein", "gewesen", "gehabt",
+})
+# A wish ("ich hätte gern ...") or a polite shell ("Hättest du die Güte",
+# "Wäre super, wenn du ...") is no past.
+_IRREALIS_BLOCKERS = frozenset({"gern", "gerne", "lieber", "wenn", "falls", "ob", "guete", "lust", "zeit"})
+_PARTICIPLE_RE = re.compile(
+    r"^(?:(?:an|aus|ein|auf|zu|hoch|runter|herunter|rauf|ab|zurueck|los|weg|hin|her|"
+    r"hinauf|hinunter|heraus|raus|rein|durch|um|vor|nach|zusammen|fest|frei)?ge[a-z]{2,}(?:t|en)"
+    r"|[a-z]{3,}iert|(?:ver|ent|be|er|zer)[a-z]{3,}t)$"
+)
+# Thinking aloud (7.7.1 A2), stated over words: a verb of pondering with the
+# speaker as subject, or "sollte ich" with a hedge.
+_PONDER_VERBS = frozenset({"ueberlege", "ueberleg", "ueberlegen", "gruebel", "gruebele"})
+_DOUBT_FRAMES = (
+    ("frage", "mich"), ("weiss", "nicht"), ("weiss", "noch", "nicht"), ("bin", "nicht", "sicher"),
+    ("bin", "mir", "nicht", "sicher"), ("bin", "unsicher"), ("bin", "mir", "unsicher"),
+    ("bin", "unschluessig"), ("denke", "darueber", "nach"), ("denke", "drueber", "nach"),
+)
+_HEDGES = frozenset({"vielleicht", "eventuell", "besser", "lieber", "wohl", "mal"})
+_SELF_SUBJECTS = frozenset({"ich", "wir", "man"})
+
+
+def is_past_irrealis(text: str) -> bool:
+    """Konjunktiv II + participle / modal infinitive closing its clause.
+
+    Stated over word classes: an auxiliary "hätte/wäre" (not addressed to the
+    listener as a polite shell, not a wish) and a clause that ends in a past
+    participle or in "sollen/müssen/…".
+    """
+    for clause in re.split(r"[,;.!?]|\b(?:und|aber|dann)\b", text):
+        words = [normalize_for_compare_word(word) for word in re.findall(r"[\wäöüß]+", clause)]
+        auxiliaries = [index for index, word in enumerate(words) if word in _IRREALIS_AUXILIARY]
+        if not auxiliaries or len(words) < 3:
+            continue
+        first = auxiliaries[0]
+        if set(words[first:]) & _IRREALIS_BLOCKERS:
+            continue
+        if words[first] in {"haettest", "waerst", "waerest"} and first + 1 < len(words) and words[first + 1] == "du":
+            # "Hättest du ... ?" asks the listener; a question never writes,
+            # but it is no irrealis statement either.
+            continue
+        last = words[-1]
+        if last in _IRREALIS_CLOSERS or _PARTICIPLE_RE.match(last):
+            return True
+    return False
+
+
+def normalize_for_compare_word(word: str) -> str:
+    return (
+        word.casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    )
+
+
+def is_deliberation(text: str) -> bool:
+    words = [normalize_for_compare_word(word) for word in re.findall(r"[\wäöüß]+", text)]
+    for index, word in enumerate(words):
+        if word == "ich" and index + 1 < len(words) and words[index + 1] in _PONDER_VERBS:
+            return True
+        if word == "ich":
+            for frame in _DOUBT_FRAMES:
+                if tuple(words[index + 1:index + 1 + len(frame)]) == frame:
+                    # "Ich frage mich, ob das Fenster offen ist" asks about a
+                    # state; only a choice of the speaker is deliberation.
+                    rest = words[index + 1 + len(frame):]
+                    if "ob" in rest and set(rest[rest.index("ob") + 1:]) & _SELF_SUBJECTS:
+                        return True
+                    if frame[-1] == "nach":
+                        return True
+        if word in {"sollte", "soll"} and index + 1 < len(words) and words[index + 1] in _SELF_SUBJECTS:
+            if (index > 0 and words[index - 1] in _HEDGES) or (
+                index + 2 < len(words) and words[index + 2] in _HEDGES - {"mal"}
+            ):
+                return True
+        if word == "ob" and index + 2 < len(words) and words[index + 1] in _SELF_SUBJECTS and words[index + 2] in _HEDGES:
+            return True
+    return False
+
+
 def _modality(text: str) -> Modality:
+    if is_past_irrealis(text):
+        return Modality.IRREALIS
+    if is_deliberation(text):
+        return Modality.DELIBERATION
     if _HYPOTHETICAL_RE.search(text):
         return Modality.HYPOTHETICAL
     if _UNCERTAIN_RE.search(text):
@@ -449,7 +545,12 @@ def analyse_utterance(text: str) -> SemanticUtterance:
         # Natural-shell normalization intentionally removes constructions
         # such as "ich hätte gerne".  Modality is discourse information, so
         # classify it from both original and normalized text.
-        modality=Modality.POLITE if is_polite_request(text) else _modality(f"{text} {normalized}"),
+        modality=(
+            Modality.IRREALIS if is_past_irrealis(text)
+            else Modality.DELIBERATION if is_deliberation(text)
+            else Modality.POLITE if is_polite_request(text)
+            else _modality(f"{text} {normalized}")
+        ),
         polarity=(Polarity.NEGATIVE if _NEGATION_RE.search(normalized) else Polarity.POSITIVE),
         clauses=_clauses(normalized, speech_act),
     )

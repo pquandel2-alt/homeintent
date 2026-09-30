@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.7.0** (Architekturabschluss: eine Bedeutung, ein Entscheider, ein Schreibpfad)
+- Aktuelle Version: **7.9.0** (Überwachungsaufträge vollständig: Gesamtzustände, Inaktivität, Änderungsraten, Verbrauch, Wiederholen und Eskalieren, Überwachungen verwalten)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -42,7 +42,197 @@ Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
 
-## Was ist in Version 7.7.0 neu?
+## Was ist in Version 7.9.0 neu?
+
+**HomeIntent überwacht und meldet** – für jede Überwachung gibt es eine
+korrekte Automation oder eine ehrliche Antwort, was fehlt:
+
+- **Gesamtzustände:** „Sag mir Bescheid, wenn alle Fenster zu sind.“ ·
+  „Melde dich, sobald kein Licht mehr an ist.“ – die Nachricht kommt, wenn das
+  letzte Mitglied den Zustand erreicht; die Vorschau nennt die Anzahl.
+- **Ausbleiben:** „wenn sich im Flur 12 Stunden nichts bewegt“, „wenn die
+  Haustür zwei Tage nicht geöffnet wurde“, „wenn bis 10 Uhr keine Bewegung im
+  Flur war“ – mit dem Hinweis, was ein Neustart bewirkt.
+- **Änderungen:** „wenn die Temperatur im Keller innerhalb einer Stunde um
+  3 Grad fällt“ – das überwacht HomeIntent selbst (Home Assistant bräuchte
+  dafür neue Helfer); ohne Zeitraum fragt HomeIntent nach.
+- **Leistung und Verbrauch:** W, kW, Wh und kWh sauber getrennt; „heute“ nur
+  mit einem Verbrauchszähler mit täglichem Zyklus – sonst sagt HomeIntent,
+  welcher Helfer fehlt.
+- **Wiederholen und Eskalieren:** „Erinnere mich alle 10 Minuten, bis das
+  Garagentor zu ist.“ (höchstens 12-mal, das wird gesagt) · „…, und wenn sie
+  nach 15 Minuten immer noch offen ist, sag Anna Bescheid.“
+- **Zwei Sätze:** „Überwache das Garagentor.“ – „Wann soll ich mich melden?“
+  – „Wenn es länger als 10 Minuten offen ist.“
+- **„Etwas Ungewöhnliches“** wird nicht erfunden: HomeIntent nennt, was die
+  proaktive Erkennung wirklich kennt, und bietet an, es einzuschalten.
+- **Verwalten:** „Welche Überwachungen laufen?“ · „Stopp die
+  Fensterüberwachung.“ · „Pausiere die Garagen-Meldung bis morgen um 7 Uhr.“
+
+Standard ist die Home-Assistant-Automation (in HA sichtbar, die gesprochene
+Vorschau steht in ihrer Beschreibung); nur Änderungsraten laufen in HomeIntent
+selbst. Details: `docs/umsetzung-7.9.md`.
+
+## Was ist in Version 7.8.3 neu?
+
+**Überwachungsaufträge** – HomeIntent versteht, was es überwachen und wann es
+sich melden soll, und macht daraus eine Automation mit Push-Nachricht:
+
+- „Überwache das Garagentor und melde dich, wenn es länger als 10 Minuten
+  offen ist.“ · „Beobachte die Fenster und warne mich, wenn eins offen ist
+  und niemand zuhause ist.“ · „Achte darauf, ob …“ · „Behalte die Haustür im
+  Auge und melde dich, wenn sie nachts geöffnet wird.“
+- Erkannt werden Konstruktionen, keine Sätze: Überwachungsverben,
+  Benachrichtigungsverben, Konnektoren, Bezüge („es“, „sie“, „eins davon“,
+  mit Genus-Prüfung), gestapelte Dauerangaben („seit mehr als 20 Minuten“),
+  Tageszeitfenster („nachts“). „Prüfe, ob …“ bleibt eine einmalige Abfrage.
+- **Zustände gelten in beiden Reihenfolgen:** „wenn ein Fenster offen ist und
+  niemand zuhause ist“ meldet sich auch, wenn zuletzt jemand geht. Ein Moment
+  („geöffnet wird“) bleibt ein Moment.
+- **Eine Bedeutung, egal wie formuliert:** „niemand“, „keiner“, „warne“,
+  „sag Bescheid“, Wenn-Satz vorn oder hinten, mit oder ohne Überwachungsverb –
+  immer dieselbe Automation. Der satzbasierte Leser entscheidet zuerst; die
+  V10-Monitor-Goals behalten nur, was er nicht versteht.
+- **„Niemand zuhause“ meint genau eine Personenmenge:** den bestätigten
+  Haushalt, sonst alle Personen – die Vorschau nennt sie („keiner von Anna,
+  Lena und Philipp“).
+- „ein Fenster offen ist“ als Bedingung heißt jetzt „irgendeines“ (vorher
+  erzeugte Home Assistant daraus „alle“).
+- Nachfragen statt raten: Bezug ohne Antezedens, falsches Genus, unbekanntes
+  Gerät, Fensterkontakte und Fensterantriebe unter einem Wort.
+
+Details, Tabellen und alle Messwerte: `docs/umsetzung-7.8.3.md`.
+
+## Was ist in Version 7.8.2 neu?
+
+**Skripte, Szenen und Gruppen laufen, wenn du sie nennst** (Entscheidung aus
+dem Betrieb: „Schlafen“ schaltet alles aus und Fernseher und LED-Bettlicht
+ein, „Ambiente“ ist eine Lichtgruppe – beide wurden abgelehnt, weil sie auch
+nicht freigegebene Lichter schalten).
+
+- Neue Option `routine_unexposed_effects`: `allow` (Standard) führt ein
+  freigegebenes Skript, eine Szene oder Gruppe aus, die du ausdrücklich
+  nennst, auch wenn darin nicht freigegebene Geräte stecken – wie Home
+  Assistants eigenes Assist. `confirm` fragt vorher und nennt die Geräte,
+  `deny` lehnt ab wie bis 7.8.1.
+- Immer geschützt, in jedem Modus: nicht freigegebene Schlösser,
+  Alarmanlagen, Rollläden/Tore und Ventile im Skript; indirekte Aussagen
+  („Ich gehe schlafen“), abgeleitete Routinen, proaktive und zeitversetzte
+  Ausführungen und Automationen.
+- Unverändert: Risiko, Bestätigungsstufe, Nur-Admin, Nur-Lesen und maximale
+  Zielzahl gelten für alle wirksamen Ziele. Muss HomeIntent ohnehin
+  nachfragen (etwa bei einem Button im Skript), nennt die Frage auch die
+  nicht freigegebenen Geräte.
+
+## Was ist in Version 7.8.1 neu?
+
+**Skripte, Szenen und Gruppen gegen die echte Freigabe** (Rückmeldung aus
+dem Betrieb: „Aktiviere Schlafen“ und „Schalte Ambiente ein“ wurden
+abgelehnt, obwohl die Geräte freigegeben waren).
+
+- **Gelöschte Geräte blockieren nicht mehr:** Nennt ein Skript eine Entität,
+  die Home Assistant nicht mehr kennt (gelöscht, umbenannt, deaktiviert),
+  schaltet dieser Schritt nichts. Sie zählt deshalb nicht mehr als „nicht
+  freigegeben“; das Skript läuft, die Erfolgsmeldung zählt nur, was es
+  wirklich gibt. Beim Anlegen einer Automation zählt sie weiter, denn die
+  läuft später, wenn die Entität wieder da sein kann.
+- **Die Ablehnung nennt Ursache und Ort:** Teilt ein verstecktes Gerät den
+  Namen mit einem freigegebenen (zweite Entität desselben Geräts, Gruppe und
+  Lampe gleichen Namens), steht die Entitäts-ID dabei: „Kücheninsel
+  (light.kuecheninsel_2)“. Nutzt HomeIntent eine feste Geräteauswahl, sagt
+  die Antwort das und wo sie ergänzt oder geleert wird; sonst, wo in Home
+  Assistant freigegeben wird.
+- Unverändert: Ein vorhandenes, nicht freigegebenes Gerät in einem Skript
+  wird nie geschaltet, auch nicht nach „Ja“.
+- **Ellipse mit unbekanntem Objekt:** „Mach das Flurlicht an.“ → „Und
+  Deckenfluter aus.“ mit einem Deckenfluter, den HomeIntent nicht kennt (zum
+  Beispiel nicht freigegeben), schaltete das Flurlicht aus. Ein unbekanntes
+  Substantiv an Objektstelle ist jetzt ein neues, unbekanntes Objekt: „Ein
+  Gerät „Deckenfluter“ finde ich nicht. Ich habe nichts ausgeführt.“ Gefunden
+  hat das die Nightly-Property-Suite, nachdem ein Testleck behoben war (Tests
+  setzten ihren Geräte-Patch nicht zurück); neue Invariante und
+  Live-Szenario `s781-ellipsis-unknown`.
+
+## Was ist in Version 7.8.0 neu?
+
+**Sprachverständnis und Leistung** nach dem unabhängigen Test 7.7
+(Bericht: `docs/umsetzung-7.7.1-7.8.md`). Jede Verbesserung ist eine Regel
+über Struktur, Lexikon, Modalität, Diskurs oder Ontologie; die Zahl der
+Satzmuster steigt nicht (173).
+
+- **Ehrliche Restmeldung:** Kann das Gerät, was verlangt ist, nennt
+  HomeIntent den nicht verstandenen Teil („Den Teil „…“ habe ich nicht
+  verstanden.“) statt einer falschen Fähigkeitsmeldung.
+- **Höflichkeit, Dank, Begründung, Eile** sind Rahmen ohne Wirkung auf Ziel
+  und Operation: „Sei so lieb und …“, „Hättest du die Güte, … anzuschalten“,
+  „Magst du … runterfahren“, „Wäre super, wenn du …“, „…, danke“,
+  „…, wir essen gleich“, „…, fix“. Ein höflicher Konditionalsatz ist nie
+  eine Automation.
+- **Kurzbefehle:** „Büro an“, „Markise raus“, „Saugroboter los“, „Esszimmer
+  Rollladen halb“, „Heizung Schlafzimmer 18 Grad“, „heizung büro auf
+  einundzwanzig“; die Einheit folgt aus der Gattung („auf 23“ bei der
+  Heizung sind 23 °C).
+- **Ellipsen übernehmen die Operation:** „Und in der Küche auf 18“, „Im
+  Esszimmer ebenso“, „Dasselbe im Büro“, „Noch eins heller“.
+- **Automationen:** verblose Aktionen („Jeden Morgen um sieben die
+  Kaffeemaschine an“), Präsenz („Wenn im Wohnzimmer jemand ist …“), der Ort
+  des Auslösers begrenzt die Messgröße („draußen wärmer als 25 Grad“ →
+  Außentemperatur). Nicht-Admins ohne Freigabe hören die Ablehnung vor der
+  Vorschau.
+- **Gerät vor Raum/Kontakt:** „Öffne die Garage“ → Garagentor, „Mach die
+  Haustür zu“ → Haustürschloss, jeweils mit Bestätigung; die Alarmanlage
+  verweist auf den Code.
+- **Dialoge und Namen:** „Ja, mach“/„los“ bestätigen; eine neue Frage wird
+  beantwortet und die offene Sicherheitsfrage ausdrücklich verworfen; „Gute
+  Nacht Test“ schlägt „Gute Nacht“; „Vergiss die Sonnenlampe“ löscht den
+  Alias; „Schalte die Gruppe Treppe ein“.
+- **Leistung:** Entitätsindex, Weltmodell-Gruppen und Hausgraph werden je
+  Registry-/Freigabe-/Alias-Stand gecacht und bei jeder Änderung neu gebaut;
+  Zustände bleiben live. Ganzer Turn bei 5000 Entitäten: p50 ≈ 31 ms,
+  p95 ≈ 110 ms (7.7.1: p50 394 ms, p95 612 ms).
+- **Entwicklungs-Benchmark 7.8** (eigene Paraphrasen): dev 32 → 70/71,
+  zurückgehalten 13 → 32/36, `unsafe_execution_count` 0 – ein
+  Entwicklungswerkzeug, kein unabhängiger Nachweis.
+
+## Was war in Version 7.7.1 neu?
+
+**Sicherheit nach dem unabhängigen Test 7.7** (1005 blind erstellte Sätze,
+`docs/independent-test-7.7.md`). Dort wurde 15-mal ein harmloses Gerät
+geschaltet, das nach der Satzbedeutung nicht geschaltet werden durfte. Jede
+Ursache ist jetzt eine Regel mit eigener Sicherheitsinvariante
+(Bericht: `docs/umsetzung-7.7.1-7.8.md`):
+
+- **Selbstkorrektur ist Satzstruktur:** „Schalte das Radio aus, ich meine den
+  Fernseher“, „Licht im Kinderzimmer an, halt, im Schlafzimmer“. Ein
+  Korrekturmarker (nein, äh, halt, ich meine, sorry, Moment, also, lieber …)
+  trennt Widerruf und Ersatz. Der Ersatz ersetzt nur die Felder, die er
+  nennt (Ziel, Ort, Seite, Wert, Operation, Zeit). „…, nein, doch nicht“
+  führt nichts aus. Ist die Struktur unklar, fragt HomeIntent mit beiden
+  Lesarten. Der widerrufene Teil wird nie ausgeführt, beide Teile nie.
+- **Irrealis, Abwägung, Beibehaltung:** „Hätte ich doch …“, „Ich hätte …
+  sollen“, „Ich überlege, ob …“ und „Den Fernseher lass bitte aus“ schalten
+  nie. Beibehaltung wird bestätigt („Ich lasse den Fernseher aus“).
+  **Geändert:** „Lass X aus“ schaltet nicht mehr aus, sondern hält den
+  Zustand – wie „Lass X an“ seit 7.3.0.
+- **Ellipsen-Vertrag:** Eine Folgeäußerung übernimmt nur Felder, die sie
+  nicht selbst nennt. „Den rechten runter“ nach dem linken Rollladen fährt
+  den rechten, „Und das Deckenlicht aus“ nie die Stehlampe, „Morgen früh
+  wieder an“ wird ein zeitgebundener Auftrag mit Vorschau, „Oben auch“
+  überträgt die Rolle (Flurlicht → Flurlicht oben) und erweitert nie die
+  Menge.
+- **Aufzählungen ohne stille Teilausführung:** „Garten- und
+  Terrassenlicht“, „Küche und Esszimmer Rollladen“, „…, dann im Keller und
+  in der Waschküche“ werden vollständig gelesen; ein Ort des ersten Teils
+  („Im Wohnzimmer das Licht aus und die Rollläden runter“) gilt für die
+  folgenden Teile.
+- **Satellitenraum hat Vorrang:** Ohne Ortsangabe begrenzt der Raum des
+  Sprachsatelliten die Auswahl. Gibt es dort nichts Passendes, sagt
+  HomeIntent das und bietet das Gerät eines anderen Raums nur an.
+- **Informierte Bestätigung:** Jede Rückfrage zu Skript, Szene, Gruppe oder
+  Routine nennt die Wirkungen ab Risiko HIGH aus dem EffectGraph („Das
+  Skript Schlafen entriegelt dabei Haustürschloss. Soll ich …?“).
+
+## Was war in Version 7.7.0 neu?
 
 **Architekturabschluss.** Das Verhalten bleibt gleich, der Aufbau wird
 eindeutig (Bericht: `docs/architecture-completion-7.7.md`). Jede der Fragen
@@ -470,7 +660,11 @@ liefen los) zeigte die Lücke. Jetzt:
   und `device_id`/`area_id`/`floor_id`/`label_id` so, wie Home Assistant sie
   auflöst. Details: [Skripte, Szenen und Gruppen](#skripte-szenen-und-gruppen-transitive-prüfung-seit-731).
 - **Freigabe gilt transitiv:** Schaltet ein Skript ein nicht freigegebenes
-  Gerät, lehnt HomeIntent ab und nennt es – auch ein „Ja“ ändert das nicht.
+  Gerät, entscheidet seit 7.8.2 die Option `routine_unexposed_effects`
+  (Standard `allow`: ein ausdrücklich genanntes Skript läuft; Schlösser,
+  Alarm, Rollläden/Tore und Ventile nie). Entitäten, die Home Assistant nicht
+  kennt, schalten nichts und zählen nicht (seit 7.8.1). Eine Ablehnung sagt,
+  wo freigegeben wird (feste HomeIntent-Auswahl oder Assist).
 - **Risiko = höchste Wirkung:** Ein Schloss im Skript macht das Skript HIGH,
   eine Alarmanlage CRITICAL; ein reines Lichtskript bleibt LOW.
 - **Nicht prüfbare Schritte** (Vorlagen, `event:`, `shell_command` …) gelten
@@ -1834,8 +2028,19 @@ Domäne der Aktion (`button.press` auf eine Etage = alle Buttons dieser Etage).
 
 Für diese **wirksamen Ziele** gelten dieselben Regeln wie für direkte Befehle:
 
-- Ist ein wirksames Ziel nicht für HomeIntent freigegeben, lehnt HomeIntent ab
-  und nennt die Geräte. Eine Bestätigung kann das nicht überstimmen.
+- Nicht freigegebene wirksame Ziele regelt seit 7.8.2 die Option
+  `routine_unexposed_effects`:
+  - `allow` (Standard): Ein freigegebenes Skript, eine Szene oder Gruppe, die
+    du ausdrücklich nennst („Aktiviere Schlafen“, „Schalte Ambiente ein“),
+    läuft – wie bei Home Assistants eigenem Assist. Fragt HomeIntent aus
+    anderem Grund ohnehin nach (Risiko, nicht prüfbarer Schritt), nennt die
+    Frage die nicht freigegebenen Geräte.
+  - `confirm`: HomeIntent fragt vorher und nennt die Geräte.
+  - `deny`: HomeIntent lehnt ab und nennt die Geräte (Verhalten bis 7.8.1).
+  - In jedem Modus abgelehnt: nicht freigegebene Schlösser, Alarmanlagen,
+    Rollläden/Tore und Ventile (deren Art sieht HomeIntent ohne Freigabe
+    nicht), indirekte Aussagen, abgeleitete Routinen, proaktive und
+    zeitversetzte Ausführungen sowie Automationen.
 - Nur-Lesen, Nur-Admin und die maximale Zielzahl zählen die wirksamen Ziele.
 - Das Risiko ist das höchste Risiko aller wirksamen Effekte (Schloss im
   `choose`-Zweig → HIGH, Alarmanlage → CRITICAL).
@@ -2079,20 +2284,18 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
-Geprüfter Release-Stand von Version 7.7.0:
+Geprüfter Release-Stand von Version 7.9.0:
 
 ```text
-6328 passed, 12 skipped, 0 failed (Stub-Suite, lokal; CI mit hassil 3.11 und 3.12)
+7189 passed, 12 skipped, 0 failed (Stub-Suite, lokal)
 Sprachverständnis-Gate: 463 passed
-Property-Suite: 24 Sicherheitsinvarianten, 0 Verletzungen (neu: STT, Selbstkorrektur,
-  offener Dialog, gelernte Standardauswahl, keine gelernten Satzbedeutungen)
-Korpus-Signaturen: 3348 Sätze, 0 geänderte Signaturen gegenüber dem Stand vor dem Umbau
-Dialog-Shadow 226 Dialoge / 441 Turns 0 Abweichungen; Shadow-Vergleich 2022 EQUIVALENT
-Arbiter-Shadow 2045 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT
-Entwicklungs-Benchmark 442/503, unsafe_execution_count 0 (held-out erster Lauf 88/113)
-Pyright 0 Fehler (voll und alle Strict-Profile)
-Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173 (7.6.0: 212)
-Latenz 5000 Entitäten: understand p95 < 100 ms, Arbeit je Form gleich 7.6.1
+Korpus-Signaturen: 0 Änderungen gegenüber 7.8.3 (Baseline um 116 neue Testsätze ergänzt)
+Arbiter-Shadow 2087 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2064 EQUIVALENT
+Entwicklungs-Benchmark 7.7 459/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 186/186 (inklusive Proaktiv; neu: m79-w1-all-windows, m79-w2-no-motion, m79-w3-rate, m79-w5-repeat, m79-w5-escalate, m79-w6-two-turns, m79-w8-list-stop), check_log 0 Befunde
+Automationssprache 5000 Entitäten p95 18,6 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
 ```
 
 Live-Testbett und echte Home-Assistant-Tests laufen in CI; der vollständige
@@ -2132,7 +2335,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.7.0.json
+  --check docs/perf/corpus-signatures-7.9.0.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

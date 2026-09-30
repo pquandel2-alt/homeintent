@@ -35,6 +35,7 @@ from .degree_semantics import (
     temperature_value,
 )
 from .constraint_resolver import Constraints, resolve_candidates
+from .device_ontology import analyse_word, entity_genera
 from .entity_resolution import (
     ResolutionStatus,
     ResolveStatus,
@@ -1595,6 +1596,7 @@ class SemanticCommandCompiler:
                     for item in ranked_candidates
                     if top_score - item.score <= V7_ENTITY_AMBIGUITY_MARGIN
                 ]
+                selected_ranked = _prefer_complete_name(selected_ranked)
                 candidates = [item.entity for item in selected_ranked]
             elif source_area_applied:
                 selected_ranked = []
@@ -1614,6 +1616,19 @@ class SemanticCommandCompiler:
                         entity
                         for entity in candidates
                         if capability in entity.capabilities
+                    ]
+                # The speaker's room narrows the spoken kind; it never swaps
+                # it for another device of the same domain ("die Steckdose"
+                # is no garden pump, 7.7.1 A5).
+                spoken_genera = {
+                    key
+                    for word in re.findall(r"[\wäöüß]+", positive_text)
+                    if (spoken_word := analyse_word(word)) is not None and not spoken_word.universal
+                    for key in spoken_word.genera
+                }
+                if spoken_genera:
+                    candidates = [
+                        entity for entity in candidates if entity_genera(entity) & spoken_genera
                     ]
             else:
                 selected_ranked = []
@@ -2181,3 +2196,22 @@ class SemanticQueryCompiler:
             ),
             resolved_entities=list(query_result.entities),
         )
+
+
+def _prefer_complete_name(ranked: list) -> list:
+    """An exact complete name outranks the names it contains (7.8 B7):
+    "Gute Nacht Test" over "Gute Nacht" when both are said exactly."""
+    exact = [item for item in ranked if item.source != "fuzzy" and item.matched_name]
+    if len(exact) < 2 or len(exact) != len(ranked):
+        return ranked
+    names = {id(item): normalize_for_compare(item.matched_name).split() for item in exact}
+    longest = max(exact, key=lambda item: len(names[id(item)]))
+    long_words = names[id(longest)]
+
+    def contained(words: list[str]) -> bool:
+        return any(long_words[start:start + len(words)] == words for start in range(len(long_words)))
+
+    if all(item is longest or (len(names[id(item)]) < len(long_words) and contained(names[id(item)]))
+           for item in exact):
+        return [longest]
+    return ranked

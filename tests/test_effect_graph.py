@@ -111,11 +111,16 @@ def snap(entity_id: str, name: str | None = None, **kwargs: Any) -> EntitySnapsh
     return EntitySnapshot(entity_id, name or entity_id, domain, kwargs.pop("state", "off"), **kwargs)
 
 
+# The exposure-deny mode these tests were written for; "allow" (default since
+# 7.8.2) is covered in tests/test_routine_unexposed_782.py.
+DENY = {"routine_unexposed_effects": "deny"}
+
+
 def decide(plan: ServiceCallPlan, entities, sources: FakeSources, options=None, **kwargs):
     targets = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
     effects = build_plan_effects_from_sources(plan.domain, plan.service, targets, sources)
     return evaluate_service_plan(
-        plan, entities, options or {}, is_admin=kwargs.pop("is_admin", True),
+        plan, entities, options or DENY, is_admin=kwargs.pop("is_admin", True),
         user_id=kwargs.pop("user_id", "admin"), effects=effects, **kwargs,
     )
 
@@ -142,7 +147,7 @@ def test_confirmation_cannot_override_exposure():
     hass = HomeAssistant()
     _ha_stub.register_script(hass, "script.routine", sources.scripts["script.routine"])
     result = asyncio.run(async_execute_service_plan(
-        hass, SCRIPT, [snap("script.routine")], {}, is_admin=True, user_id="admin", confirmed=True,
+        hass, SCRIPT, [snap("script.routine")], DENY, is_admin=True, user_id="admin", confirmed=True,
     ))
     assert result.executed is False
     hass.services.async_call.assert_not_awaited()
@@ -337,7 +342,7 @@ def test_script_changed_between_preview_and_yes_is_checked_with_new_content():
         {"action": "light.turn_on", "target": {"entity_id": "light.a"}},
     ])
     preview = evaluate_service_plan(
-        SCRIPT, entities, {}, is_admin=True, user_id="admin", effects=build_plan_effects(hass, SCRIPT)
+        SCRIPT, entities, DENY, is_admin=True, user_id="admin", effects=build_plan_effects(hass, SCRIPT)
     )
     assert preview.outcome is PolicyOutcome.ALLOW
     _ha_stub.register_script(hass, "script.routine", [
@@ -345,7 +350,7 @@ def test_script_changed_between_preview_and_yes_is_checked_with_new_content():
         {"action": "vacuum.start", "target": {"entity_id": "vacuum.robbi"}},
     ])
     result = asyncio.run(async_execute_service_plan(
-        hass, SCRIPT, entities, {}, is_admin=True, user_id="admin", confirmed=True,
+        hass, SCRIPT, entities, DENY, is_admin=True, user_id="admin", confirmed=True,
     ))
     assert result.executed is False
     hass.services.async_call.assert_not_awaited()
@@ -512,7 +517,7 @@ def _owner_house(monkeypatch):
         )
         for entity_id, name, area, floor in OWNER_HOUSE
     ]
-    house = HouseConversation(monkeypatch, entities=entities)
+    house = HouseConversation(monkeypatch, entities=entities, options=DENY)
     hass = house.entity.hass
     hass.data.pop("script", None)
     hass.data.pop("scene", None)

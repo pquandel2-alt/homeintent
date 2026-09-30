@@ -66,7 +66,11 @@ def test_yes_and_no_answer_the_open_question():
 
 def test_a_full_new_sentence_drops_a_safety_question_and_runs_nothing_of_it():
     evidence = _evidence("Wie spät ist es eigentlich?", supersedable=False, drops_on_new_sentence=True)
-    assert arbitrate_dialog(evidence).kind is DecisionKind.CONTINUE_DIALOG  # a question
+    # 7.8 B7: a complete new question is answered; the safety question is
+    # dropped explicitly and nothing of it runs.
+    decision = arbitrate_dialog(evidence)
+    assert decision.kind is DecisionKind.SUPERSEDE_DIALOG and decision.chosen == ()
+    assert decision.reason == "new_question_drops_question"
     evidence = _evidence("Schalte das Küchenlicht ein.", supersedable=False, drops_on_new_sentence=True)
     decision = arbitrate_dialog(evidence)
     assert decision.kind is DecisionKind.SUPERSEDE_DIALOG and decision.chosen == ()

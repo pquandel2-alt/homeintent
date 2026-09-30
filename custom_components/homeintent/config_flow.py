@@ -79,6 +79,9 @@ from .const import (
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
     CONF_EFFECT_GRAPH_UNKNOWN,
+    CONF_ROUTINE_UNEXPOSED,
+    DEFAULT_ROUTINE_UNEXPOSED,
+    ROUTINE_UNEXPOSED_MODES,
     CONF_IMPLICIT_ACTION_LEVEL,
     IMPLICIT_ACTION_LEVELS,
     CONF_TRACE_DAYS,
@@ -292,6 +295,10 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_EFFECT_GRAPH_UNKNOWN,
                         default=defaults.get(CONF_EFFECT_GRAPH_UNKNOWN, "deny"),
                     ): vol.In(("deny", "confirm")),
+                    vol.Optional(
+                        CONF_ROUTINE_UNEXPOSED,
+                        default=defaults.get(CONF_ROUTINE_UNEXPOSED, DEFAULT_ROUTINE_UNEXPOSED),
+                    ): vol.In(ROUTINE_UNEXPOSED_MODES),
                     vol.Optional(
                         CONF_IMPLICIT_ACTION_LEVEL,
                         default=defaults.get(CONF_IMPLICIT_ACTION_LEVEL, "propose"),

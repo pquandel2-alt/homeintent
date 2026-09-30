@@ -103,6 +103,13 @@ class GoalTrigger:
     to_state: str | None = None
     household_person_ids: tuple[str, ...] = ()
     occurrence_id: str | None = None
+    # kind "value_change" (7.9 W3, ``rate_monitor.RateRule``): the sensor,
+    # the amount in its unit, "fall"/"rise"/"either" and the window.
+    entity_id: str | None = None
+    delta: float | None = None
+    unit: str | None = None
+    direction: str | None = None
+    window_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -191,6 +198,11 @@ class GoalModel:
                 "to_state": self.trigger.to_state,
                 "household_person_ids": list(self.trigger.household_person_ids),
                 "occurrence_id": self.trigger.occurrence_id,
+                "entity_id": self.trigger.entity_id,
+                "delta": self.trigger.delta,
+                "unit": self.trigger.unit,
+                "direction": self.trigger.direction,
+                "window_seconds": self.trigger.window_seconds,
             },
             "conditions": [
                 {
@@ -266,6 +278,11 @@ class GoalModel:
                 _optional_str(trigger_mapping.get("to_state")),
                 _strings(trigger_mapping.get("household_person_ids")),
                 _optional_str(trigger_mapping.get("occurrence_id")),
+                _optional_str(trigger_mapping.get("entity_id")),
+                _optional_float(trigger_mapping.get("delta")),
+                _optional_str(trigger_mapping.get("unit")),
+                _optional_str(trigger_mapping.get("direction")),
+                _optional_int(trigger_mapping.get("window_seconds")),
             )
         conditions = tuple(
             GoalCondition(
@@ -362,6 +379,10 @@ def _scope_from(value: object) -> GoalScope:
         _strings(mapping.get("excluded_entity_ids")),
         _strings(mapping.get("excluded_area_ids")),
     )
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 def _strings(value: object) -> tuple[str, ...]:

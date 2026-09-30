@@ -55,6 +55,7 @@ from ..goal_run import (
 from ..history_query import async_get_transition_evidence
 from ..memory import MemoryKind
 from ..monitor_goal import MonitorRecord
+from ..presence_scope import presence_scope, unusable_scope_text
 from ..nlu.action_model import ActionModel, ActionType
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
 from ..nlu.automation_model import (
@@ -420,7 +421,12 @@ class GoalController:
         language_document: LanguageDocument,
         entities: list[EntitySnapshot],
         direct_understanding: object | None = None,
+        event_reading_claims: Callable[[], bool] | None = None,
     ) -> conversation.ConversationResult | None:
+        """``event_reading_claims`` is the routing rule of 7.8.3: a monitoring
+        request the sentence-based event reader understands (or asks a device
+        question about) belongs to the automation path, which is the single
+        source of its meaning.  Monitor goals keep only what it cannot read."""
         manager = self._runtime.dialog_manager
         conversation_id = user_input.conversation_id
         active = manager.active(conversation_id)
@@ -989,9 +995,11 @@ class GoalController:
             if person_binding.status is BindingStatus.RESOLVED:
                 person_id = person_binding.person_entity_id
         area = self._conversation_area(user_input)
-        household = (
-            user_contexts.household.person_entity_ids if user_contexts is not None else ()
+        scope = presence_scope(
+            entities,
+            user_contexts.household.person_entity_ids if user_contexts is not None else (),
         )
+        household = scope.person_ids
         person_names: dict[str, list[str]] = {}
         for entity in entities:
             if entity.domain != "person":
@@ -1128,6 +1136,8 @@ class GoalController:
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
         if goal.kind is V10GoalKind.MONITOR_AND_NOTIFY:
+            if event_reading_claims is not None and event_reading_claims():
+                return None
             if goal.parameters.get("ambiguous_person_name"):
                 response.async_set_speech(
                     "Die genannte Person ist nicht eindeutig. Bitte wähle eine konkrete person.*-Entität."
@@ -1138,10 +1148,8 @@ class GoalController:
                 response.async_set_speech(
                     "Ich kann „ich“ noch keinem Home-Assistant-Benutzer und keiner person.*-Entität eindeutig zuordnen. Bitte konfiguriere diese Zuordnung einmalig."
                 )
-            elif goal.trigger.kind == "nobody_home" and not household:
-                response.async_set_speech(
-                    "Für „niemand zuhause“ ist noch kein bestätigter Haushalt aus person.*-Entitäten konfiguriert."
-                )
+            elif goal.trigger.kind == "nobody_home" and (unusable := unusable_scope_text(scope)):
+                response.async_set_speech(unusable)
             elif not goal.recipient_person_ids:
                 response.async_set_speech(
                     "Für den Empfänger fehlt eine eindeutige Personenzuordnung. Es wurde nichts gespeichert."

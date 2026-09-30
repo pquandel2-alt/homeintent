@@ -43,6 +43,9 @@ def test_condition_type_covers_all_documented_types():
         "ENTITY",
         "CALENDAR_EVENT",
         "TEMPLATE",
+        # 7.9 W2: "unchanged since midnight" ("bis 10 Uhr keine Bewegung"),
+        # a new typed condition - generated from entity ids only.
+        "UNCHANGED_TODAY",
     }
 
 

@@ -23,8 +23,10 @@ Everything that cannot be determined statically is reported as an
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping, Protocol, Sequence
+
+from .entities import normalize_for_compare
 
 MAX_DEPTH = 8
 
@@ -100,6 +102,9 @@ class PlanEffects:
 
     roots: tuple[str, ...]
     graphs: tuple[EffectGraph, ...] = ()
+    # Targets Home Assistant does not know right now (deleted, renamed or
+    # disabled entities): a step on them switches nothing (7.8.1).
+    missing: frozenset[str] = frozenset()
 
     @property
     def effects(self) -> tuple[Effect, ...]:
@@ -115,6 +120,12 @@ class PlanEffects:
 
     @property
     def effective_targets(self) -> frozenset[str]:
+        """What the plan switches now; unknown entities switch nothing."""
+        return self.referenced_targets - self.missing
+
+    @property
+    def referenced_targets(self) -> frozenset[str]:
+        """Every entity the steps name, including ones HA does not know."""
         return frozenset(entity_id for graph in self.graphs for entity_id in graph.effective_targets)
 
     @property
@@ -796,17 +807,35 @@ def _selector_phrase(selector: tuple[tuple[str, str], ...], names: Mapping[str, 
     return _join_names(parts, limit=3)
 
 
-def describe_unexposed(effects: PlanEffects, unexposed: Iterable[str]) -> str:
-    """User-facing denial: which foreign devices a routine would switch."""
+def describe_unexposed(
+    effects: PlanEffects,
+    unexposed: Iterable[str],
+    exposed_names: Iterable[str] = (),
+    *,
+    refused: bool = True,
+) -> str:
+    """User-facing denial: which foreign devices a routine would switch.
+
+    A hidden entity that shares its name with an exposed one (a second
+    entity of the same device, a group and its lamp) is named with its
+    entity id, so the user sees which one is missing (7.8.1)."""
     names = effects.names
     blocked = set(unexposed)
+    shared = {normalize_for_compare(name) for name in exposed_names}
+
+    def label(entity_id: str) -> str:
+        name = names.get(entity_id)
+        if name is None:
+            return entity_id
+        return f"{name} ({entity_id})" if normalize_for_compare(name) in shared else name
+
     labels: list[str] = []
     broad_steps: list[str] = []
     for effect in effects.effects:
         hit = [entity_id for entity_id in effect.entity_ids if entity_id in blocked]
         if not hit:
             continue
-        labels.extend(names.get(entity_id, entity_id) for entity_id in hit)
+        labels.extend(label(entity_id) for entity_id in hit)
         if effect.selector and effect.step_alias:
             verb = _DOMAIN_VERB_PLURAL.get(effect.domain, (f"wirkt auf alle Geräte ({effect.domain})", ""))[0]
             broad_steps.append(
@@ -823,7 +852,7 @@ def describe_unexposed(effects: PlanEffects, unexposed: Iterable[str]) -> str:
     )
     for sentence in dict.fromkeys(broad_steps):
         text += f" {sentence}"
-    return text + " Ich habe nichts ausgeführt."
+    return text + " Ich habe nichts ausgeführt." if refused else text
 
 
 def describe_unknown(effects: PlanEffects) -> str:
@@ -848,7 +877,9 @@ def summarize_effects(effects: PlanEffects) -> str | None:
     for effect in effects.effects:
         if effect.domain in {"script", "scene", "automation", "group"}:
             continue
-        counts.setdefault(effect.domain, set()).update(effect.entity_ids)
+        present = set(effect.entity_ids) - effects.missing
+        if present:
+            counts.setdefault(effect.domain, set()).update(present)
     if not counts:
         return None
     plural = {
@@ -1030,6 +1061,11 @@ def build_plan_effects(hass: Any, plan: Any) -> PlanEffects | None:
     the write, and the agent/proactive paths can all use it.
     """
     targets = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
-    return build_plan_effects_from_sources(
-        plan.domain, plan.service, targets, HassEffectSources(hass)
+    sources = HassEffectSources(hass)
+    effects = build_plan_effects_from_sources(plan.domain, plan.service, targets, sources)
+    if effects is None:
+        return None
+    missing = frozenset(
+        entity_id for entity_id in effects.referenced_targets if not sources.entity_exists(entity_id)
     )
+    return replace(effects, missing=missing) if missing else effects

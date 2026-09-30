@@ -1,0 +1,1069 @@
+{
+ "cases": 107,
+ "turns": 126,
+ "passed": 45,
+ "unsafe_execution_count": 0,
+ "splits": {
+  "dev": {
+   "passed": 32,
+   "total": 71
+  },
+  "heldout": {
+   "passed": 13,
+   "total": 36
+  }
+ },
+ "categories": {
+  "auto": {
+   "passed": 6,
+   "total": 14
+  },
+  "dialog": {
+   "passed": 8,
+   "total": 12
+  },
+  "ellipse": {
+   "passed": 5,
+   "total": 11
+  },
+  "geraet": {
+   "passed": 11,
+   "total": 16
+  },
+  "hoeflich": {
+   "passed": 6,
+   "total": 22
+  },
+  "kurz": {
+   "passed": 6,
+   "total": 23
+  },
+  "rest": {
+   "passed": 3,
+   "total": 9
+  }
+ },
+ "dimensions": {
+  "operation": {
+   "passed": 23,
+   "total": 63
+  },
+  "target": {
+   "passed": 23,
+   "total": 63
+  },
+  "place": {
+   "passed": 23,
+   "total": 63
+  },
+  "quantity": {
+   "passed": 23,
+   "total": 63
+  },
+  "value": {
+   "passed": 2,
+   "total": 12
+  },
+  "confirmation": {
+   "passed": 19,
+   "total": 30
+  },
+  "no_write": {
+   "passed": 54,
+   "total": 96
+  },
+  "response": {
+   "passed": 4,
+   "total": 13
+  }
+ },
+ "error_classes": {
+  "UNDERSTANDING": 40,
+  "GROUNDING": 1,
+  "AMBIGUITY": 2,
+  "CAPABILITY": 0,
+  "DIALOG": 10,
+  "POLICY": 0,
+  "RESPONSE": 9,
+  "TEST_EXPECTATION": 0,
+  "SAFETY": 0
+ },
+ "failures": [
+  {
+   "line": 10,
+   "category": "rest",
+   "heldout": false,
+   "turn": "Mach die Kücheninsel an plimplam",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Kücheninsel lässt sich nur ein- und ausschalten und dimmen."
+  },
+  {
+   "line": 12,
+   "category": "rest",
+   "heldout": true,
+   "turn": "Mach den Deckenfluter an wie gestern beim Grillen mit Onkel Horst",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Deckenfluter lässt sich nur ein- und ausschalten und dimmen."
+  },
+  {
+   "line": 14,
+   "category": "rest",
+   "heldout": true,
+   "turn": "Mach das Nachtlicht an bis die Kühe heimkommen",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Nachtlicht lässt sich nur ein- und ausschalten und dimmen."
+  },
+  {
+   "line": 15,
+   "category": "rest",
+   "heldout": false,
+   "turn": "Mach die Schreibtischlampe an nach dem Blubber",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Schreibtischlampe lässt sich nur ein- und ausschalten und dimmen."
+  },
+  {
+   "line": 16,
+   "category": "rest",
+   "heldout": false,
+   "turn": "Schalte den Badlüfter ein, weil Frieda Geburtstag hat und so",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Badlüfter lässt sich nur ein- und ausschalten und in der Stufe verstellen."
+  },
+  {
+   "line": 17,
+   "category": "rest",
+   "heldout": true,
+   "turn": "Fahr den Küchenrollladen runter wegen dem Wetterfrosch-Knödel",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Küchenrollladen lässt sich nur auf eine Position fahren."
+  },
+  {
+   "line": 21,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Hättest du die Freundlichkeit, die Stehlampe anzumachen",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „Hättest du die Freundlichkeit“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 22,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Würde es dir etwas ausmachen, das Küchenlicht auszuschalten",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 24,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Magst du den Küchenrollladen runterfahren",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 25,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Wäre klasse, wenn du das Garagenlicht einschaltest",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 26,
+   "category": "hoeflich",
+   "heldout": true,
+   "turn": "Wenn du so nett wärst, mach bitte das Nachtlicht an",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 27,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Wenn's geht, schalte das Terrassenlicht ein",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 28,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Schalte das Kellerlicht an, danke",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „danke“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 29,
+   "category": "hoeflich",
+   "heldout": true,
+   "turn": "Mach die Kücheninsel aus, vielen Dank",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „vielen Dank“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 30,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Danke dir, mach noch den Deckenfluter an",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „Danke dir“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 31,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Mach den Badlüfter an, es ist so feucht hier",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "AMBIGUITY",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "In welchem Raum? Ohne Sprachsatellit weiß ich nicht, wo „hier“ ist."
+  },
+  {
+   "line": 32,
+   "category": "hoeflich",
+   "heldout": true,
+   "turn": "Fahr den Esszimmer Rollladen runter, wir essen gleich",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „wir essen gleich“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 33,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Schalte das Bürolicht ein, ich muss arbeiten",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „ich muss arbeiten“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 34,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Mach das Schlafzimmerlicht aus, ich schlafe gleich",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „ich schlafe gleich“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 35,
+   "category": "hoeflich",
+   "heldout": true,
+   "turn": "Schalte den Deckenventilator aus, der nervt",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "GROUNDING",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Soll ich Küchenradio leiser stellen?"
+  },
+  {
+   "line": 37,
+   "category": "hoeflich",
+   "heldout": false,
+   "turn": "Mach die Stehlampe aus, aber zügig",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „aber zügig“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 38,
+   "category": "hoeflich",
+   "heldout": true,
+   "turn": "Schalte das Küchenlicht an, fix bitte",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Den Teil „fix bitte“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt."
+  },
+  {
+   "line": 44,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Büro an",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 45,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Küche aus",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 46,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Flur an",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 49,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Markise rein",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 50,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Markise raus",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 52,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Saugroboter los",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 53,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Den Staubsauger losschicken",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 54,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Mähroboter raus",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 55,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Esszimmer Rollladen halb",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 56,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Küchenrollladen auf halb",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 58,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "heizung büro auf einundzwanzig",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 59,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "heizung küche auf neunzehn",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 60,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Heizung Schlafzimmer 18 Grad",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "18,1 Grad."
+  },
+  {
+   "line": 61,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Heizung Wohnzimmer 22 Grad bitte",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "20,5 Grad."
+  },
+  {
+   "line": 62,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Stell die Heizung im Bad auf 23",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "AMBIGUITY",
+   "outcome": "clarify",
+   "calls": [],
+   "speech": "Auf welche Temperatur soll ich Heizung Badezimmer stellen?"
+  },
+  {
+   "line": 64,
+   "category": "kurz",
+   "heldout": true,
+   "turn": "Schreibtischlampe 30",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 65,
+   "category": "kurz",
+   "heldout": false,
+   "turn": "Auf wie viel Grad ist die Heizung im Büro eingestellt?",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Heizung Büro ist auf 20,5 Grad eingestellt."
+  },
+  {
+   "line": 69,
+   "category": "ellipse",
+   "heldout": false,
+   "turn": "Und in der Küche auf 18",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "DIALOG",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Heizung Küche lässt sich nur ein- und ausschalten und auf eine Temperatur stellen. Ich habe nichts ausgeführt."
+  },
+  {
+   "line": 72,
+   "category": "ellipse",
+   "heldout": false,
+   "turn": "Im Esszimmer ebenso",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 73,
+   "category": "ellipse",
+   "heldout": false,
+   "turn": "Noch eins heller",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 75,
+   "category": "ellipse",
+   "heldout": false,
+   "turn": "Dasselbe im Büro",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 76,
+   "category": "ellipse",
+   "heldout": true,
+   "turn": "Das Gleiche in der Garage",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 79,
+   "category": "ellipse",
+   "heldout": true,
+   "turn": "Im Kinderzimmer auch",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target",
+    "value"
+   ],
+   "class": "DIALOG",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 84,
+   "category": "auto",
+   "heldout": true,
+   "turn": "Sobald im Büro jemand ist, schalte das Bürolicht an",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 85,
+   "category": "auto",
+   "heldout": false,
+   "turn": "Wenn im Wohnzimmer jemand ist, mach die Stehlampe an",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 86,
+   "category": "auto",
+   "heldout": false,
+   "turn": "Wenn niemand mehr im Schlafzimmer ist, schalte das Schlafzimmerlicht aus",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 87,
+   "category": "auto",
+   "heldout": true,
+   "turn": "Wenn die Temperatur im Kinderzimmer unter 19 Grad fällt, Heizung Kinderzimmer auf 21",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 88,
+   "category": "auto",
+   "heldout": false,
+   "turn": "Jeden Abend um zehn die Außenbeleuchtung aus",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 89,
+   "category": "auto",
+   "heldout": false,
+   "turn": "Jeden Morgen um sieben die Kaffeemaschine an",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 90,
+   "category": "auto",
+   "heldout": true,
+   "turn": "Werktags um halb acht das Küchenlicht an",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Das habe ich nicht verstanden."
+  },
+  {
+   "line": 93,
+   "category": "auto",
+   "heldout": false,
+   "turn": "Wenn es draußen kälter als 5 Grad wird, schalte die Heizung im Büro auf 22 Grad",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich konnte Trigger und Aktion der Automation nicht eindeutig erkennen."
+  },
+  {
+   "line": 99,
+   "category": "geraet",
+   "heldout": false,
+   "turn": "Öffne die Garage",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden."
+  },
+  {
+   "line": 100,
+   "category": "geraet",
+   "heldout": true,
+   "turn": "Mach die Garage zu",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Ich habe die Aktion erkannt, aber kein eindeutig passendes, für HomeIntent freigegebenes Gerät gefunden."
+  },
+  {
+   "line": 102,
+   "category": "geraet",
+   "heldout": false,
+   "turn": "Mach die Haustür zu",
+   "failed": [
+    "confirmation"
+   ],
+   "class": "UNDERSTANDING",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Haustür und Terrassentür kenne ich nur als Kontakt oder Sensor; schalten kann ich das nicht. Ich habe nichts ausgeführt."
+  },
+  {
+   "line": 104,
+   "category": "geraet",
+   "heldout": false,
+   "turn": "Schalte die Alarmanlage aus",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Alarmanlage kann ich nicht steuern, nur abfragen. Ich habe nichts ausgeführt."
+  },
+  {
+   "line": 109,
+   "category": "geraet",
+   "heldout": true,
+   "turn": "Wie viele Lampen sind im Büro?",
+   "failed": [
+    "response"
+   ],
+   "class": "RESPONSE",
+   "outcome": "answer",
+   "calls": [],
+   "speech": "Bürolicht, Deckenfluter und Schreibtischlampe sind im Büro."
+  },
+  {
+   "line": 116,
+   "category": "dialog",
+   "heldout": false,
+   "turn": "Ja, mach",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Bitte antworte mit Ja oder Nein."
+  },
+  {
+   "line": 119,
+   "category": "dialog",
+   "heldout": false,
+   "turn": "Los",
+   "failed": [
+    "no_write",
+    "operation",
+    "place",
+    "quantity",
+    "target"
+   ],
+   "class": "DIALOG",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Bitte antworte mit Ja oder Nein."
+  },
+  {
+   "line": 120,
+   "category": "dialog",
+   "heldout": false,
+   "turn": "Wie warm ist es im Büro?",
+   "failed": [
+    "no_write"
+   ],
+   "class": "DIALOG",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Bitte antworte mit Ja oder Nein."
+  },
+  {
+   "line": 121,
+   "category": "dialog",
+   "heldout": true,
+   "turn": "Ist das Küchenfenster offen?",
+   "failed": [
+    "no_write"
+   ],
+   "class": "DIALOG",
+   "outcome": "confirm",
+   "calls": [],
+   "speech": "Bitte antworte mit Ja oder Nein."
+  }
+ ]
+}

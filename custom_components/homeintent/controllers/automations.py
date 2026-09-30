@@ -47,6 +47,7 @@ from ..nlu.automation_model import (
     TriggerType,
 )
 from ..nlu.automation_preview import render_automation_preview
+from ..notification_language import describe_event
 from ..nlu.automation_validator import validate_automation
 from ..nlu.context import (
     ConversationContext,
@@ -136,6 +137,24 @@ _NO_CONDITION_RE = re.compile(
 )
 
 
+def spoken_summary(preview: str) -> str:
+    """The preview without its framing question."""
+    text = preview.removeprefix("Automation erkannt: ")
+    for question in ("Soll ich das so einrichten?", "Soll diese Automation erstellt werden?"):
+        text = text.removesuffix(question)
+    return text.strip()
+
+
+def start_now(model: AutomationModel) -> AutomationModel:
+    """The same reminder, once, starting in a few seconds (7.9 W5)."""
+    return replace(
+        model,
+        triggers=(TriggerModel(type=TriggerType.RELATIVE_TIME, relative_offset_seconds=5),),
+        once=True,
+        ask_start=False,
+    )
+
+
 class AutomationController:
     """Handles every automation turn and pending automation dialog."""
 
@@ -183,6 +202,8 @@ class AutomationController:
     ) -> AutomationMatchResult | conversation.ConversationResult:
         """Once or recurring - never guessed (7.3.3, Q5)."""
         model = result.model
+        if model.ask_start and result.validation_error is None:
+            return self._decide_start(user_input, response, result, entities)
         if result.validation_error is not None or model.once or model.max_runs is not None:
             return result
         kinds = trigger_kinds(model.triggers)
@@ -226,6 +247,37 @@ class AutomationController:
             response=response, conversation_id=user_input.conversation_id
         )
 
+    def _decide_start(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        result: AutomationMatchResult,
+        entities: list[EntitySnapshot],
+    ) -> AutomationMatchResult | conversation.ConversationResult:
+        """"Erinnere mich alle 10 Minuten, bis das Tor zu ist" (7.9 W5): only
+        now, or every time the situation starts - asked, never guessed."""
+        said = recurrence_of(user_input.text)
+        if said is Recurrence.RECURRING:
+            return replace(result, model=replace(result.model, ask_start=False))
+        if said is Recurrence.ONCE:
+            return replace(result, model=start_now(result.model))
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id,
+            "recurrence-choice",
+            DialogTaskKind.RECURRENCE_CHOICE,
+            DialogPriority.SELECTION,
+            reason="Ob eine Erinnerung nur jetzt oder jedes Mal gilt, rate ich nicht.",
+            requested_by_user_id=conversation_user_id(user_input),
+            payload=result,
+        )
+        trigger = result.model.triggers[0] if result.model.triggers else None
+        phrase = describe_event(trigger, entities) if trigger is not None else None
+        situation = f"jedes Mal, wenn {phrase.subordinate}" if phrase is not None else "jedes Mal"
+        response.async_set_speech(f"Nur jetzt oder {situation}?")
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id
+        )
+
     def handle_recurrence_choice(
         self,
         user_input: conversation.ConversationInput,
@@ -258,10 +310,23 @@ class AutomationController:
             )
         manager.cancel(user_input.conversation_id, task.task_id)
         result = task.payload
-        if answer is Recurrence.ONCE:
+        if result.model.ask_start:
+            result = replace(
+                result,
+                model=start_now(result.model) if answer is Recurrence.ONCE
+                else replace(result.model, ask_start=False),
+            )
+            result = replace(result, validation_error=validate_automation(result.model))
+        elif answer is Recurrence.ONCE:
             result = replace(result, model=replace(result.model, max_runs=1))
         return self.handle_match_result(user_input, response, result, entities)
 
+
+    async def async_may_create(self, user_input: Any) -> bool:
+        """Whether this user may create automations at all (7.8 B5)."""
+        if bool(self.entry.options.get(CONF_ALLOW_NON_ADMIN_AUTOMATIONS, True)):
+            return True
+        return await user_is_admin(self.hass, user_input)
 
     async def _async_handle_automation_confirmation_reply(
         self,
@@ -398,10 +463,14 @@ class AutomationController:
                 response=response, conversation_id=user_input.conversation_id
             )
         assert generation_result.config is not None
+        # The spoken preview becomes the automation's description: visible in
+        # Home Assistant, and what "Welche Überwachungen laufen?" reads (7.9 W8).
+        described = dict(generation_result.config)
+        described.setdefault("description", spoken_summary(render_automation_preview(model, entities)))
 
         try:
             created_id = await self._automation_store().async_create_automation(
-                generation_result.config,
+                described,
                 automation_id=once_automation_id,
                 scheduled_for=model.scheduled_for,
                 once=model.once,
@@ -444,6 +513,10 @@ class AutomationController:
         """Store a valid automation preview, or report its validation error."""
         if result.validation_error is None:
             speaker_bound, failure = self._notifications.materialize_presence_speaker(result.model, user_input)
+            if failure is None:
+                speaker_bound, failure = self._notifications.materialize_presence_scope(
+                    speaker_bound, entities
+                )
             if failure is None:
                 materialized, failure = self._notifications.materialize_recipients(
                     speaker_bound, user_input, entities
@@ -545,6 +618,10 @@ class AutomationController:
             return None
         if isinstance(result, AutomationClarificationResult):
             return self.handle_clarification_result(user_input, response, result)
+        if not isinstance(result, AutomationMatchResult):
+            # A device answer never turns a draft into a HomeIntent monitor.
+            self._context_store.clear(user_input.conversation_id)
+            return None
         return self.handle_match_result(user_input, response, result, entities)
 
     def handle_draft_match_result(

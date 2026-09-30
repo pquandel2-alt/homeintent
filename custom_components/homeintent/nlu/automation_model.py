@@ -212,6 +212,11 @@ class TriggerModel:
     # ``delay_seconds`` this maps to Home Assistant's native trigger ``for``
     # field and therefore cancels when the state changes back early.
     for_seconds: int | None = None
+    # Inactivity (7.9 W2): the state that did *not* occur during
+    # ``for_seconds`` ("keine Bewegung" -> ON, "nicht geöffnet" -> OPEN);
+    # ``state`` is its rest state.  Used for wording only - Home Assistant
+    # evaluates the rest state with ``for``.
+    absent_state: SemanticState | None = None
     # "wenn die Waschmaschine fertig ist": the appliance the (power/running)
     # trigger stands for, used only to word previews and messages.
     appliance_label: str | None = None
@@ -259,6 +264,17 @@ class AutomationModel:
     calendar_schedule: CalendarSchedule | None = None
     quiet_start_hour: int | None = None
     quiet_end_hour: int | None = None
+    # A combination of lasting states ("ein Fenster offen ist und niemand
+    # zuhause ist", 7.8.3) that holds whichever part begins last; spoken by
+    # the preview instead of listing every generated trigger and condition.
+    situation: str | None = None
+    situation_parts: int = 1  # >1: "egal was davon zuletzt eintritt"
+    # Spoken honestly in the preview (7.9): what Home Assistant cannot do
+    # ("Startet Home Assistant neu, beginnt die Wartezeit von vorn.").
+    notes: tuple[str, ...] = ()
+    # "Erinnere mich alle 10 Minuten, bis das Tor zu ist" (7.9 W5): whether
+    # it holds only now or every time the situation starts is asked.
+    ask_start: bool = False
 
 
 def resolve_relative_schedule(model: AutomationModel, now: datetime) -> AutomationModel:

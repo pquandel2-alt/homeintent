@@ -59,6 +59,9 @@ class AutomationSummary:
     triggers: tuple[Mapping[str, Any], ...] = ()
     conditions: tuple[Mapping[str, Any], ...] = ()
     actions: tuple[Mapping[str, Any], ...] = ()
+    # The automation's own description (HomeIntent writes the spoken preview
+    # there since 7.9 W8).
+    description: str | None = None
 
 
 def automations_named(

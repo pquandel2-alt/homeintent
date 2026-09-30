@@ -261,6 +261,11 @@ def parse_forget(text: str) -> ForgetRequest | None:
         return ForgetRequest(activity.key, (BindingKind.PREFERENCE,)) if activity else None
     if rest in {"alles", "es", "das", "mich"} or len(rest.split()) > 3:
         return None
+    # "Vergiss die Sonnenlampe": the article is not part of the name (7.8 B7).
+    words = rest.split()
+    while len(words) > 1 and words[0] in {"der", "die", "das", "den", "dem", "mein", "meine", "meinen"}:
+        words = words[1:]
+    rest = " ".join(words)
     return ForgetRequest(normalize_key(rest), (BindingKind.ALIAS, BindingKind.MACRO, BindingKind.DEFAULT_CHOICE))
 
 

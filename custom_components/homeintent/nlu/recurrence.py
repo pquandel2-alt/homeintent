@@ -67,9 +67,9 @@ def is_conditional(text: str) -> bool:
 def answer_recurrence(text: str) -> Recurrence:
     """Answer to "Nur heute oder jeden Tag?"."""
     words = set(_words(text))
-    if words & {"jeden", "immer", "taeglich", "dauerhaft", "regelmaessig", "jedesmal", "jede"}:
+    if words & {"jeden", "immer", "taeglich", "dauerhaft", "regelmaessig", "jedesmal", "jede", "jedes"}:
         return Recurrence.RECURRING
-    if words & {"heute", "einmal", "einmalig", "nur", "diesmal"}:
+    if words & {"heute", "einmal", "einmalig", "nur", "diesmal", "jetzt", "sofort"}:
         return Recurrence.ONCE
     return Recurrence.UNSPECIFIED
 

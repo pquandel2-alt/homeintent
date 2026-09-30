@@ -22,26 +22,27 @@ from typing import Any, Mapping, Sequence
 
 from hassil import Intents
 
-from .areas import AreaResolveStatus, resolve_area_name
+from .areas import AreaResolveStatus, AreaSnapshot, resolve_area_name
 from .automation_summary import AutomationSummary
 from .automation_composition import (
     CompositionOutcome,
     EventClarification,
     OutcomeKind,
     Readers,
-    compose_event_automation,
     log_composition_trace,
     resolve_event_clarification,
     unsupported_text,
 )
 from .automation_grounding import GroundingStatus, ground_event
 from .automation_language import only_quoted_connectors, read_event_roles
+from .automation_followup import compose_with_followups
 from .automation_results import (
     AutomationClarificationResult,
     AutomationDraftMatchResult,
     AutomationDeletionMatchResult,
     AutomationMatchResult,
     AutomationToggleMatchResult,
+    MonitorProposalResult,
 )
 from .entities import EntitySnapshot, normalize_for_compare
 from .nlu.semantic_compiler import empty_comparison_answer
@@ -113,6 +114,7 @@ from .nlu.german_morphology import dative_location_phrase, sentence_initial
 from .nlu.semantic_exclusion import has_exclusion_clause, split_exclusion
 from .nlu.semantic_lexicon import SemanticKind, analyse_semantics
 from .nlu.semantic_state import SemanticState
+from .nlu.clause_reading import read_operation
 from .nlu.semantic_catalog import INTENT_BY_DOMAIN_ACTION
 from .nlu.semantic_interpreter import InterpreterResult, SemanticInterpreter
 from .nlu.repair_semantics import repaired_temporal_command
@@ -121,6 +123,7 @@ from .nlu.semantic_projection import project_independent_predicates
 from .nlu.semantic_utterance import (
     ClauseRole,
     Modality,
+    NON_EXECUTABLE_MODALITIES,
     Polarity,
     PragmaticDisposition,
     SpeechAct,
@@ -687,7 +690,9 @@ def _writes(payload: object) -> bool:
 _MEANT_PREFIX_RE = re.compile(r"^(?:nein[, ]+)?(?:ich\s+meinte|gemeint\s+war)\s+", re.IGNORECASE)
 _MODAL_REQUEST_RE = re.compile(
     r"\b(?:kannst|könntest|koenntest|würdest|wuerdest)\s+du\s+(?:\S+\s+){0,4}?"
-    r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden)\b",
+    r"(?:bescheid\s+(?:sagen|geben)|benachrichtigen|informieren|schicken|senden"
+    # 7.9 W6: "Kannst du das Garagentor überwachen?" asks for a monitor.
+    r"|überwachen|beobachten|im\s+(?:auge|blick)\s+behalten)\b",
     re.IGNORECASE,
 )
 _WH_QUESTION_RE = re.compile(
@@ -695,8 +700,13 @@ _WH_QUESTION_RE = re.compile(
     re.IGNORECASE,
 )
 _NEGATED_NOTIFICATION_RE = re.compile(
+    # The negation must belong to the notification verb's own clause: the
+    # skipped words never cross a comma or a subordinator, so "Melde dich,
+    # wenn keiner zuhause ist" (the "keiner" belongs to the event, 7.8.3)
+    # is no refusal while "Melde dich bitte nicht, wenn ..." still is.
     r"\b(?:benachrichtig\w*|informier\w*|schick\w*|send\w*|sag\w*|gib|meld\w*)\s+"
-    r"(?:\S+\s+){0,2}?(?:nicht|nie|niemals|keine?[nmrs]?|bloß\s+nicht)\b"
+    r"(?:(?!(?:wenn|sobald|falls|ob|dass)\b)[^\s,]+\s+){0,2}?"
+    r"(?:nicht|nie|niemals|keine?[nmrs]?|bloß\s+nicht)\b"
     r"|\b(?:keine|kein)\s+(?:push[\s-]?)?(?:nachricht|benachrichtigung|meldung)\w*\b"
     r"|\bnicht\s+(?:mehr\s+)?(?:benachrichtigt|informiert)\b",
     re.IGNORECASE,
@@ -749,6 +759,51 @@ def _names_its_target(
         if name
     )
 
+
+_REST_IGNORED = frozenset({
+    "bitte", "mal", "doch", "noch", "jetzt", "gleich", "sofort", "und", "so", "auch", "den",
+    "die", "das", "der", "dem", "ein", "eine", "einen", "im", "in", "am", "an", "aus",
+})
+
+
+def _unexplained_rest(text: str, mentioned: Sequence[EntitySnapshot]) -> str | None:
+    """The unexplained words of a command whose operation every mentioned
+    device supports, or ``None`` when the operation itself is the problem."""
+    if not mentioned:
+        return None
+    normalized = normalize(text)
+    actions, _words = read_operation(normalized)
+    if not actions or not all(
+        any((entity.domain, action) in INTENT_BY_DOMAIN_ACTION for action in actions)
+        for entity in mentioned
+    ):
+        return None
+    name_words = {
+        word
+        for entity in mentioned
+        for name in (entity.friendly_name, *entity.aliases, entity.area_name or "")
+        for word in normalize_for_compare(name).replace("-", " ").split()
+    }
+    rest = [
+        token for token in analyse_semantics(normalized).unexplained_tokens
+        if normalize_for_compare(token) not in name_words | _REST_IGNORED
+    ]
+    return " ".join(rest) if rest else None
+
+
+
+def _strip_run_limits(text: str) -> tuple[str, bool, int | None]:
+    """Remove "einmalig"/"dreimal": they qualify the automation, not a clause."""
+    repeat_match = _AUTOMATION_REPEAT_RE.search(text)
+    max_runs: int | None = None
+    if repeat_match is not None:
+        raw_count = (repeat_match.group("separate") or repeat_match.group("joined")).casefold()
+        max_runs = int(raw_count) if raw_count.isdigit() else _REPEAT_COUNTS[raw_count]
+        text = re.sub(r"\s+", " ", _AUTOMATION_REPEAT_RE.sub(" ", text)).strip()
+    once = bool(_AUTOMATION_ONCE_RE.search(text))
+    if once:
+        text = re.sub(r"\s+", " ", _AUTOMATION_ONCE_RE.sub(" ", text)).strip()
+    return text, once, max_runs
 
 class NluEngine:
     """Loads all intent YAML files once at construction; ``match()`` is
@@ -1031,9 +1086,14 @@ class NluEngine:
         elif ontology_result is not None:
             result = ontology_result
             authority = UnderstandingAuthority.V8_SEMANTIC
-        return self._direct_understanding_outcome(
-            text, document, interpreted, result, entities, authority
-        )
+        # The honest failure sentence knows the speaker's room (7.7.1 A5).
+        self._feedback_source_area = context.source_area if context is not None else None
+        try:
+            return self._direct_understanding_outcome(
+                text, document, interpreted, result, entities, authority
+            )
+        finally:
+            self._feedback_source_area = None
 
     def understand_need(
         self,
@@ -1165,7 +1225,7 @@ class NluEngine:
         utterance = document.utterance
         if (
             utterance.speech_act in {SpeechAct.AUTOMATION, SpeechAct.CONFIRMATION}
-            or utterance.modality in {Modality.HYPOTHETICAL, Modality.UNCERTAIN, Modality.MAINTAIN}
+            or utterance.modality in NON_EXECUTABLE_MODALITIES
             or utterance.polarity is not Polarity.POSITIVE
             or (
                 document.source_text.rstrip().endswith("?")
@@ -1213,7 +1273,9 @@ class NluEngine:
         if not document.utterance.safe_to_execute_directly:
             # Asking which device is meant is safe for any command shape.
             return _ambiguous_kind_question(document, entities) if document.temporal else None
-        compiled = compile_ontology_command(document, entities)
+        compiled = compile_ontology_command(
+            document, entities, source_area=getattr(self, "_feedback_source_area", None)
+        )
         if compiled is not None and compiled.message is not None:
             return compiled.message
         return _ambiguous_kind_question(document, entities)
@@ -1751,7 +1813,7 @@ class NluEngine:
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
         document: LanguageDocument | None = None,
-    ) -> UnderstandingOutcome[AutomationMatchResult | AutomationClarificationResult]:
+    ) -> UnderstandingOutcome[AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult]:
         """Canonical V8 boundary for a trigger/condition/action turn."""
         document = document or analyse_language(text, entities)
         result = self.match_automation(text, entities, world_model, context)
@@ -1791,9 +1853,19 @@ class NluEngine:
         )
 
 
-    def failure_feedback(self, text: str, entities: list[EntitySnapshot] | None = None) -> str | None:
+    def failure_feedback(
+        self,
+        text: str,
+        entities: list[EntitySnapshot] | None = None,
+        *,
+        source_area: AreaSnapshot | None = None,
+    ) -> str | None:
         """Best-effort explanation after every deterministic parser failed."""
-        feedback = self.understanding_feedback(text, entities)
+        self._feedback_source_area = source_area
+        try:
+            feedback = self.understanding_feedback(text, entities)
+        finally:
+            self._feedback_source_area = None
         return feedback.speech if feedback is not None else None
 
     def understanding_feedback(
@@ -1891,6 +1963,25 @@ class NluEngine:
                         "Bitte nenne das Gerät genauer.",
                         {"entity_ids": tuple(entity.entity_id for entity in candidates)},
                     )
+            if mentioned and all(entity.domain == "alarm_control_panel" for entity in mentioned):
+                # Disarming needs the code; never a false "nur abfragen" (7.8 B6).
+                names = " und ".join(entity.friendly_name for entity in mentioned)
+                return UnderstandingFeedback(
+                    ParseFailureReason.UNSUPPORTED_CAPABILITY,
+                    f"{names} schalte ich per Sprache nicht unscharf, dafür braucht Home Assistant "
+                    "den Code. Bitte nutze das Bedienfeld. Ich habe nichts ausgeführt.",
+                    {"entity_ids": tuple(entity.entity_id for entity in mentioned)},
+                )
+            rest = _unexplained_rest(text, mentioned)
+            if mentioned and rest:
+                # The device can do what was asked; a part of the sentence
+                # was not understood (7.8 B1). Say that part, never a
+                # capability the device has.
+                return UnderstandingFeedback(
+                    ParseFailureReason.INCOMPLETE_REQUEST,
+                    f"Den Teil „{rest}“ habe ich nicht verstanden. Ich habe deshalb nichts ausgeführt.",
+                    {"entity_ids": tuple(entity.entity_id for entity in mentioned)},
+                )
             if mentioned:
                 return UnderstandingFeedback(
                     ParseFailureReason.UNSUPPORTED_CAPABILITY,
@@ -3141,7 +3232,7 @@ class NluEngine:
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """Match a combined spoken automation sentence ("Wenn das
         Küchenfenster geöffnet wird, schalte das Küchenlicht ein.") into an
         ``AutomationModel`` (Integration Wave Migration Step 3). Called live
@@ -3468,17 +3559,9 @@ class NluEngine:
         entities: list[EntitySnapshot],
         world_model: WorldModel | None,
         context: ConversationContext | None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """"einmalig"/"dreimal" qualify the whole automation, not a clause."""
-        repeat_match = _AUTOMATION_REPEAT_RE.search(text)
-        max_runs: int | None = None
-        if repeat_match is not None:
-            raw_count = (repeat_match.group("separate") or repeat_match.group("joined")).casefold()
-            max_runs = int(raw_count) if raw_count.isdigit() else _REPEAT_COUNTS[raw_count]
-            text = re.sub(r"\s+", " ", _AUTOMATION_REPEAT_RE.sub(" ", text)).strip()
-        once = bool(_AUTOMATION_ONCE_RE.search(text))
-        if once:
-            text = re.sub(r"\s+", " ", _AUTOMATION_ONCE_RE.sub(" ", text)).strip()
+        text, once, max_runs = _strip_run_limits(text)
         result = self.compose_event_automation(text, entities, world_model, context)
         if isinstance(result, AutomationMatchResult) and (once or max_runs is not None):
             model = replace(result.model, once=once, max_runs=max_runs, source_text=source_text)
@@ -3489,15 +3572,46 @@ class NluEngine:
             return AutomationMatchResult(model, response_text, validation_error)
         return result
 
+    def event_reading_kind(
+        self,
+        text: str,
+        entities: list[EntitySnapshot],
+        world_model: WorldModel | None = None,
+        context: ConversationContext | None = None,
+    ) -> OutcomeKind | None:
+        """What the sentence-based event reader makes of ``text`` (7.8.3).
+
+        It is the single source of a monitoring request's meaning: a
+        complete reading (``AUTOMATION``) or a targeted device question
+        (``CLARIFY``) claims the sentence for the automation path before any
+        other path may give it a different meaning.  The same guards as
+        ``match_automation`` apply first, so a question or a negated
+        notification is never claimed.
+        """
+        stripped, _ = strip_automation_shell(text)
+        utterance = analyse_utterance(stripped)
+        if utterance.speech_act is SpeechAct.QUERY and (
+            _WH_QUESTION_RE.match(stripped)
+            or not (_SAY_REQUEST_RE.match(stripped) or _MODAL_REQUEST_RE.search(stripped))
+        ):
+            return None
+        if _NEGATED_NOTIFICATION_RE.search(stripped):
+            return None
+        stripped, _, _ = _strip_run_limits(stripped)
+        outcome = compose_with_followups(
+            stripped, entities, self._composition_readers(entities, world_model, context)
+        )
+        return outcome.kind if outcome is not None else None
+
     def compose_event_automation(
         self,
         text: str,
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
         context: ConversationContext | None = None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """7.2.0 compositional EVENT clause + ACTION clause reading (both orders)."""
-        outcome = compose_event_automation(
+        outcome = compose_with_followups(
             text, entities, self._composition_readers(entities, world_model, context)
         )
         return self._composition_result(outcome)
@@ -3505,10 +3619,12 @@ class NluEngine:
     @staticmethod
     def _composition_result(
         outcome: CompositionOutcome | None,
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         if outcome is None:
             return None
         log_composition_trace(outcome.trace)
+        if outcome.kind is OutcomeKind.MONITOR and outcome.monitor is not None:
+            return MonitorProposalResult(outcome.monitor, outcome.speech or outcome.monitor.preview)
         if outcome.kind is OutcomeKind.AUTOMATION and outcome.model is not None:
             # The engine's validator stays the single validation authority.
             validation_error = validate_automation(outcome.model)
@@ -3524,6 +3640,8 @@ class NluEngine:
             response_text=outcome.speech or unsupported_text(None),
             clarification=outcome.clarification,
             trace=outcome.trace,
+            monitored_object=outcome.monitored_object,
+            vague_situation=outcome.vague_situation,
         )
 
     def resolve_event_clarification(
@@ -3531,7 +3649,7 @@ class NluEngine:
         text: str,
         pending: EventClarification,
         entities: list[EntitySnapshot],
-    ) -> AutomationMatchResult | AutomationClarificationResult | None:
+    ) -> AutomationMatchResult | AutomationClarificationResult | MonitorProposalResult | None:
         """Continue a clarified event-notification draft ("Die linke.")."""
         return self._composition_result(
             resolve_event_clarification(
