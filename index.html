@@ -51,6 +51,41 @@ const root=new THREE.Group();scene.add(root);
 const mat=(c,o=.72,metal=.15,rough=.34)=>new THREE.MeshPhysicalMaterial({color:c,transparent:true,opacity:o,metalness:metal,roughness:rough,side:THREE.DoubleSide});
 const floorMat=mat(0x2b2130,.74,.12,.42),wallMat=mat(0xb9a9c1,.16,.05,.24);
 const floor=new THREE.Mesh(new THREE.BoxGeometry(10,.35,7),floorMat);floor.position.y=-.2;root.add(floor);
+const architectural=new THREE.Group();root.add(architectural);
+const stone=new THREE.MeshPhysicalMaterial({color:0xddd3c9,roughness:.62,metalness:.02});
+const wood=new THREE.MeshPhysicalMaterial({color:0x6e4f3f,roughness:.46,metalness:.02});
+const darkMetal=new THREE.MeshPhysicalMaterial({color:0x1b1a20,roughness:.24,metalness:.7});
+const glass=new THREE.MeshPhysicalMaterial({color:0xa8d8ef,transparent:true,opacity:.18,roughness:.06,metalness:.05,transmission:.72,thickness:.35,ior:1.45});
+const warmFabric=new THREE.MeshPhysicalMaterial({color:0x9a716e,roughness:.8});
+function cube(g,x,y,z,w,h,d,m){let q=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);q.position.set(x,y,z);g.add(q);return q}
+const terrace=cube(architectural,4.35,-.3,.2,2.1,.18,5.9,stone);
+for(let z=-2.35;z<=2.35;z+=.47)cube(architectural,4.35,-.18,z,1.75,.035,.31,wood);
+const glassWall=cube(architectural,4.05,1.25,-2.95,2.8,2.55,.055,glass);
+for(let x=3.1;x<=5.05;x+=.65)cube(architectural,x,1.25,-2.91,.035,2.55,.07,darkMetal);
+const kitchenBack=cube(architectural,-2.7,.8,-2.7,3.2,1.55,.38,stone);
+const counterTop=cube(architectural,-2.45,1.08,-1.15,2.5,.12,.95,stone);
+const counterBody=cube(architectural,-2.45,.55,-1.15,2.35,1,.82,wood);
+for(let i=0;i<3;i++){let leg=cube(architectural,.3+i*.55,.46,1.78,.07,.85,.07,darkMetal);let seat=new THREE.Mesh(new THREE.CylinderGeometry(.24,.24,.08,24),wood);seat.position.set(.3+i*.55,.9,1.78);architectural.add(seat)}
+const sofaBase=cube(architectural,2.55,.42,-1.25,2.45,.55,1.05,warmFabric);
+const sofaBack=cube(architectural,2.55,.92,-1.66,2.45,.72,.22,warmFabric);
+const sofaArm1=cube(architectural,1.37,.72,-1.25,.18,.7,1.05,warmFabric),sofaArm2=cube(architectural,3.73,.72,-1.25,.18,.7,1.05,warmFabric);
+const rug=cube(architectural,2.0,.03,.55,3.2,.035,2.0,new THREE.MeshPhysicalMaterial({color:0x4a3c4d,roughness:.95}));
+const coffeeTop=cube(architectural,2.0,.43,.45,1.25,.09,.72,stone);
+for(let sx of [-.48,.48])for(let sz of [-.22,.22])cube(architectural,2+sx,.22,.45+sz,.045,.42,.045,darkMetal);
+const tvPanel=cube(architectural,4.72,1.25,.7,.1,1.65,2.5,wood);
+const tv=cube(architectural,4.61,1.38,.7,.06,1.05,1.85,new THREE.MeshPhysicalMaterial({color:0x08090d,roughness:.08,metalness:.5}));
+const bed=cube(architectural,-2.6,.42,1.9,2.5,.55,1.75,new THREE.MeshPhysicalMaterial({color:0xd2c7c2,roughness:.9}));
+const bedHead=cube(architectural,-3.7,.85,1.9,.16,1.25,1.8,warmFabric);
+const pillow1=cube(architectural,-3.1,.78,1.55,.62,.18,.52,stone),pillow2=cube(architectural,-3.1,.78,2.25,.62,.18,.52,stone);
+function bulb(x,y,z,c=0xffc49a){let stem=cube(architectural,x,y-.45,z,.025,.9,.025,darkMetal);let b=new THREE.Mesh(new THREE.SphereGeometry(.13,18,18),emissive(c,6));b.position.set(x,y-.92,z);architectural.add(b);let l=new THREE.PointLight(c,5,4,2);l.position.copy(b.position);architectural.add(l)}
+bulb(-2.45,3.05,-1.15);bulb(2.05,3.0,.45,0xffa892);
+const windowFrames=[];[-1.2,.2,1.6].forEach(x=>{let g=cube(architectural,x,1.4,-3.12,1.18,2.05,.035,glass);windowFrames.push(g);cube(architectural,x,1.4,-3.09,.035,2.12,.055,darkMetal)});
+const smartSpeaker=new THREE.Mesh(new THREE.CylinderGeometry(.2,.22,.55,32),new THREE.MeshPhysicalMaterial({color:0x24222a,roughness:.3,metalness:.4}));smartSpeaker.position.set(3.85,.32,.95);architectural.add(smartSpeaker);
+const speakerRing=new THREE.Mesh(new THREE.TorusGeometry(.16,.018,8,32),new THREE.MeshBasicMaterial({color:0x9b7cff}));speakerRing.rotation.x=Math.PI/2;speakerRing.position.set(3.85,.61,.95);architectural.add(speakerRing);
+const thermostat=cube(architectural,.58,1.55,-.08,.08,.5,.5,new THREE.MeshPhysicalMaterial({color:0xe8e1df,roughness:.2,metalness:.15}));
+const thermostatGlow=new THREE.PointLight(0x86cfff,2.5,2,2);thermostatGlow.position.set(.35,1.55,-.08);architectural.add(thermostatGlow);
+const roofOutline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(10.3,3.25,7.3)),new THREE.LineBasicMaterial({color:0xd9c7df,transparent:true,opacity:.09}));roofOutline.position.y=1.28;architectural.add(roofOutline);
+
 const base=new THREE.Mesh(new THREE.BoxGeometry(10.5,.25,7.5),mat(0x17101c,.9,.35,.35));base.position.y=-.52;root.add(base);
 function wall(x,z,w,d,h=2.8){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);m.position.set(x,h/2,z);root.add(m);return m}
 const walls=[wall(-4.8,0,.18,6.6),wall(0,-3.25,9.7,.18),wall(.5,.3,.14,4.6,2.4),wall(2.7,1.0,4.2,.14,2.2),wall(-2.2,1.35,.14,3.7,2.15)];
@@ -69,9 +104,15 @@ function progress(){const r=section.getBoundingClientRect(),max=section.offsetHe
 function resize(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<800?1.35:1.8))}
 addEventListener("scroll",progress,{passive:true});addEventListener("resize",resize);if(matchMedia("(pointer:fine)").matches)addEventListener("pointermove",e=>{mouseX=(e.clientX/innerWidth-.5);mouseY=(e.clientY/innerHeight-.5)});
 const clock=new THREE.Clock();function animate(){requestAnimationFrame(animate);scrollP+=((reduced?0:targetP)-scrollP)*.07;const p=scrollP,t=clock.getElapsedTime();
-let a=Math.max(0,Math.min(1,p/.78)),angle=.62-a*.78;camera.position.x=Math.sin(angle)*(mobile?15:17)+mouseX*.45;camera.position.z=Math.cos(angle)*(mobile?15:17);camera.position.y=8.4-a*2.4-mouseY*.25;camera.lookAt(0,1.1,0);
-root.rotation.y=.12+mouseX*.035;root.position.y=Math.sin(t*.55)*.035;
-let explode=Math.max(0,Math.min(1,(p-.26)/.25));floor.position.y=-.2-explode*.8;base.position.y=-.52-explode*1.1;walls.forEach((w,i)=>w.position.y=(w.geometry.parameters.height/2)+explode*(1.2+i*.17));sofa.position.y=.48+explode*1.7;island.position.y=.55+explode*1.25;garage.position.y=.65+explode*2.1;table.position.y=.35+explode*1.5;nodes.forEach((n,i)=>n.position.y=[1.1,1.2,1.25,1.1][i]+explode*(2.4+i*.25));
+let a=Math.max(0,Math.min(1,p/.78));
+let cp;
+if(p<.22){let q=p/.22;cp=new THREE.Vector3(mix(mobile?11:13,mobile?8.5:10,q),mix(9.4,7.1,q),mix(mobile?16:18,mobile?13:14,q))}
+else if(p<.48){let q=(p-.22)/.26;cp=new THREE.Vector3(mix(mobile?8.5:10,mobile?2.5:3.5,q),mix(7.1,6.1,q),mix(mobile?13:14,mobile?14:15.5,q))}
+else if(p<.72){let q=(p-.48)/.24;cp=new THREE.Vector3(mix(mobile?2.5:3.5,mobile?-6:-8,q),mix(6.1,8.7,q),mix(mobile?14:15.5,mobile?12:13,q))}
+else{let q=(p-.72)/.28;cp=new THREE.Vector3(mix(mobile?-6:-8,0,q),mix(8.7,11.5,q),mix(mobile?12:13,mobile?17:20,q))}
+camera.position.set(cp.x+mouseX*.38,cp.y-mouseY*.22,cp.z);let lookY=p<.48?1.05:mix(1.05,2.1,clamp((p-.48)/.3));camera.lookAt(0,lookY,0);
+root.rotation.y=.08+mouseX*.025;root.position.y=Math.sin(t*.55)*.025;architectural.rotation.y=Math.sin(t*.18)*.008;
+let explode=Math.max(0,Math.min(1,(p-.26)/.25));architectural.children.forEach((o,i)=>{if(o.userData.baseY===undefined)o.userData.baseY=o.position.y;o.position.y=o.userData.baseY+explode*((i%5)*.16+.18)});floor.position.y=-.2-explode*.8;base.position.y=-.52-explode*1.1;walls.forEach((w,i)=>w.position.y=(w.geometry.parameters.height/2)+explode*(1.2+i*.17));sofa.position.y=.48+explode*1.7;island.position.y=.55+explode*1.25;garage.position.y=.65+explode*2.1;table.position.y=.35+explode*1.5;nodes.forEach((n,i)=>n.position.y=[1.1,1.2,1.25,1.1][i]+explode*(2.4+i*.25));
 core.rotation.x=t*.3;core.rotation.y=t*.45;core.scale.setScalar(1+Math.sin(t*2)*.035);rings.forEach((r,i)=>{r.rotation.z=t*(.18+i*.06)*(i%2?1:-1)});
 paths.forEach((o,i)=>{o.tube.material.opacity=.1+explode*.34;pulses[i].visible=p>.16&&p<.82;let u=(t*.22+i*.21)%1;pulses[i].position.copy(o.curve.getPoint(u))});particles.rotation.y=t*.012;particles.rotation.x=t*.004;
 let vanish=Math.max(0,Math.min(1,(p-.78)/.18));root.scale.setScalar(1-vanish*.72);root.traverse(o=>{if(o.material&&o.material.transparent&&!o.userData.baseOpacity)o.userData.baseOpacity=o.material.opacity});root.traverse(o=>{if(o.material&&o.material.transparent)o.material.opacity=(o.userData.baseOpacity??.5)*(1-vanish)});
