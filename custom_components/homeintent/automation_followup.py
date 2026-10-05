@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Sequence
 
+from .missing_part import MissingPart, PartRequest
 from .automation_composition import (
     CompositionOutcome,
     OutcomeKind,
@@ -192,10 +193,16 @@ def _state_reading(
         trigger is None or trigger.type is not TriggerType.STATE or trigger.state not in _COMPLEMENT
         or reading.conditions or trigger.target is None
     ):
-        question = reading.grounded.question if reading.grounded is not None else None
+        grounded = reading.grounded
+        question = grounded.question if grounded is not None else None
         return CompositionOutcome(
             OutcomeKind.CLARIFY if question else OutcomeKind.UNSUPPORTED,
             speech=question or f"„{text}“ kann ich keinem Gerätezustand zuordnen.",
+            part=(
+                PartRequest(grounded.missing, question or "", replaces=grounded.roles.subject_words)
+                if grounded is not None and grounded.missing is not None and grounded.roles is not None
+                else None
+            ),
         )
     return trigger
 
@@ -394,9 +401,14 @@ def _compose_escalation(
     second = notification_action(clause, message, tuple(entities))
     if second is None:
         who = clause.recipient_name or "diese Person"
+        question = f"Ich finde kein eindeutiges Benachrichtigungsziel für {who}. Wen soll ich benachrichtigen?"
         return CompositionOutcome(
             OutcomeKind.CLARIFY,
-            speech=f"Ich finde kein eindeutiges Benachrichtigungsziel für {who}. Wen soll ich benachrichtigen?",
+            speech=question,
+            part=(
+                PartRequest(MissingPart.RECIPIENT, question, replaces=tuple(who.split()))
+                if clause.recipient_name else None
+            ),
         )
     escalate = ActionModel(
         type=ActionType.ESCALATE,

@@ -3647,6 +3647,7 @@ class NluEngine:
             trace=outcome.trace,
             monitored_object=outcome.monitored_object,
             vague_situation=outcome.vague_situation,
+            part=outcome.part,
         )
 
     def resolve_event_clarification(

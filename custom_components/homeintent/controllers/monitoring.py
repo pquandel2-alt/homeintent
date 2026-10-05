@@ -9,6 +9,7 @@ automation preview, never stored before.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -41,8 +42,13 @@ from ..rate_monitor import describe_rule
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..proactive_model import SituationKind
 from ..automation_ownership import async_management_refusal, async_owner_name, may_manage
+from ..missing_part import MissingPart, PartRequest
 from ..security_control import conversation_user_id, user_is_admin
 from ..user_context import BindingStatus
+
+
+# "bis gestern um 7 Uhr" etc.: the stale time is replaced by the answer.
+_CLOCK_TAIL_RE = re.compile(r"\s+bis\b.*$", re.IGNORECASE)
 
 
 class MonitoringController:
@@ -85,7 +91,10 @@ class MonitoringController:
         targets = contexts.resolve_notification_targets(binding.person_entity_id)
         if targets.status is not BindingStatus.RESOLVED:
             response.async_set_speech(
-                "Welches bestätigte Gerät soll ich für diese Push-Benachrichtigung verwenden?"
+                # A statement, not a question: the answer is a setting, not a
+                # reply in this conversation (7.9.1 A6).
+                "Für dich sind mehrere Push-Geräte bestätigt. Lege im Learning Center fest, "
+                "welches ich für Meldungen nehmen soll; ich habe nichts eingerichtet."
                 if targets.status is BindingStatus.AMBIGUOUS
                 else "Für dich ist noch kein bestätigtes Push-Ziel konfiguriert."
             )
@@ -248,7 +257,7 @@ class MonitoringController:
             return say(f"Soll ich die Überwachung „{monitor.label.rstrip('.')}“ löschen?")
         # PAUSE
         if request.hour is None or request.day_offset is None:
-            return say("Bis wann? Sag zum Beispiel: „Pausiere die Garagen-Meldung bis morgen um 7 Uhr.“")
+            return say(self._ask_until(user_input, "Bis wann? Sag zum Beispiel: „bis morgen um 7 Uhr“."))
         if monitor.automation_id is None or store is None:
             return say(
                 "Überwachungen, die ich selbst ausführe, kann ich ausschalten, aber nicht zeitlich "
@@ -258,13 +267,29 @@ class MonitoringController:
             hour=request.hour, minute=request.minute, second=0, microsecond=0
         )
         if resume <= now:
-            return say("Dieser Zeitpunkt liegt schon in der Vergangenheit. Bis wann soll ich pausieren?")
+            return say(self._ask_until(
+                user_input, "Dieser Zeitpunkt liegt schon in der Vergangenheit. Bis wann soll ich pausieren?"
+            ))
         await store.async_pause_automation_until(monitor.automation_id, resume)
         day = "morgen" if request.day_offset == 1 else "heute" if request.day_offset == 0 else resume.strftime("%d.%m.")
         return say(
             f"Pausiert bis {day} um {resume:%H:%M} Uhr: „{monitor.label.rstrip('.')}“. Danach schalte ich "
             "sie automatisch wieder ein."
         )
+
+    def _ask_until(self, user_input: conversation.ConversationInput, question: str) -> str:
+        """"Bis wann?" opens a typed dialog: the answer is the time (7.9.1 A6)."""
+        original = _CLOCK_TAIL_RE.sub("", user_input.text).strip().rstrip(".!?")
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id,
+            "monitor-part",
+            DialogTaskKind.MONITOR_PART,
+            DialogPriority.FOLLOWUP,
+            reason="Eine Rückfrage nach der Uhrzeit ist offen.",
+            requested_by_user_id=conversation_user_id(user_input),
+            payload=PartRequest(MissingPart.UNTIL, question, original_text=f"{original}."),
+        )
+        return question
 
     async def async_handle_monitor_delete(
         self,

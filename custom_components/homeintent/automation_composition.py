@@ -27,6 +27,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable, Sequence
 
+from .missing_part import MissingPart, PartRequest
 from .automation_grounding import (
     GroundedEvent,
     GroundingStatus,
@@ -178,6 +179,8 @@ class CompositionOutcome:
     # "wenn etwas Ungewöhnliches passiert" (7.9 W7): no event of its own -
     # answered from the proactive situation catalog, never invented.
     vague_situation: bool = False
+    # The one part a question asks for (7.9.1 A6).
+    part: PartRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -999,13 +1002,17 @@ def build_automation(
 ) -> CompositionOutcome:
     assert interpreted.trigger is not None
     if reading.unresolved_recipient is not None:
+        question = (
+            f"Ich finde kein eindeutiges Benachrichtigungsziel für {reading.unresolved_recipient}. "
+            "Wen soll ich benachrichtigen?"
+        )
         return CompositionOutcome(
             OutcomeKind.CLARIFY,
-            speech=(
-                f"Ich finde kein eindeutiges Benachrichtigungsziel für {reading.unresolved_recipient}. "
-                "Wen soll ich benachrichtigen?"
-            ),
+            speech=question,
             trace=replace(trace, grounding="recipient", reason="recipient_unresolved"),
+            part=PartRequest(
+                MissingPart.RECIPIENT, question, replaces=tuple(reading.unresolved_recipient.split())
+            ),
         )
     triggers = (
         tuple(
@@ -1194,7 +1201,14 @@ def failure_outcome(
         status in {GroundingStatus.MISSING_SUBJECT, GroundingStatus.NOT_FOUND}
         or (status is GroundingStatus.UNSUPPORTED and grounded.question)
     ):
-        return CompositionOutcome(OutcomeKind.CLARIFY, speech=grounded.question, trace=failed)
+        part = (
+            PartRequest(
+                grounded.missing, grounded.question or "",
+                replaces=grounded.roles.subject_words if grounded.roles is not None else (),
+            )
+            if grounded.missing is not None else None
+        )
+        return CompositionOutcome(OutcomeKind.CLARIFY, speech=grounded.question, trace=failed, part=part)
     return CompositionOutcome(OutcomeKind.UNSUPPORTED, speech=unsupported_text(reason), trace=failed)
 
 

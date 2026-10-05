@@ -1181,6 +1181,9 @@ _ABSENCE_FILLERS = frozenset({
 _UNTIL_RE = re.compile(r"\bbis\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*uhr\b", re.IGNORECASE)
 
 
+_CLOCK_TOKEN_RE = re.compile(r"\d{1,2}:\d{2}")
+
+
 def _until_time(text: str) -> tuple[int, int] | None:
     match = _UNTIL_RE.search(text)
     if match is None:
@@ -1195,7 +1198,7 @@ def _absence_subject(words: tuple[str, ...]) -> tuple[tuple[str, ...], str | Non
     kept: list[str] = []
     for word in words:
         key = word.casefold()
-        if key in _ABSENCE_FILLERS or _UNTIL_RE.fullmatch(key) or key.isdigit():
+        if key in _ABSENCE_FILLERS or _UNTIL_RE.fullmatch(key) or key.isdigit() or _CLOCK_TOKEN_RE.fullmatch(key):
             continue
         kept.append(word)
     agent: str | None = None

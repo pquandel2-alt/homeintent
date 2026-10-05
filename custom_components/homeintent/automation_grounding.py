@@ -45,6 +45,7 @@ from .nlu.measurement import (
     is_valid_value,
     percent_property_for_domain,
 )
+from .missing_part import MissingPart
 from .nlu.place_model import Place, PlaceKind, PlaceLexicon, build_place_lexicon
 from .nlu.semantic_state import SemanticState
 from .nlu.target_resolution import genus_members
@@ -97,6 +98,9 @@ class GroundedEvent:
     # "alle Fenster zu" (7.9 W1): the trigger fires when any member reaches
     # the state; the whole set must be in it (a condition over all members).
     aggregate: bool = False
+    # The one part the question asks for (7.9.1 A6): the answer in the
+    # next turn is read as exactly this part.
+    missing: MissingPart | None = None
 
 
 _ANY_WORDS = frozenset({
@@ -629,7 +633,7 @@ def _ground_energy(
                 "Ab wann soll ich den Verbrauch zählen – heute, diese Woche oder diesen Monat? "
                 "Einen Gesamtzähler rechne ich nicht selbst um."
             ),
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.PERIOD,
         )
     meters = [e for e in energy if str(e.attributes.get("meter_period", "")).casefold() == period]
     if len(meters) == 1:
@@ -716,7 +720,7 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
             question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät meinst du?",
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.DEVICE,
         )
     if roles.motion and subject.noun is None:
         detector = "bewegungsmelder"
@@ -795,7 +799,7 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             return GroundedEvent(
                 GroundingStatus.NOT_FOUND,
                 question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
-                subject=subject, roles=roles,
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
             )
         if not candidates:
             # Not a device we can type - leave it to the established parsers
@@ -841,12 +845,12 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                     "Ohne ihn kann ich nicht erkennen, ob sich dort etwas bewegt. "
                     "Welchen Melder soll ich stattdessen nehmen?"
                 ),
-                subject=subject, roles=roles,
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
             )
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
             question=f"Ich finde{where} kein passendes Gerät für „{noun}“. Welches Gerät meinst du?",
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.DEVICE,
         )
     if aggregate:
         if not candidates:
@@ -898,7 +902,7 @@ def _ground_change(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Gro
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
             question=f"Ich finde{where} keinen Sensor „{noun}“, der in {unit} misst. Welchen Sensor meinst du?",
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.DEVICE,
         )
     if len(candidates) > 1:
         ordered = sorted(candidates, key=lambda item: item.friendly_name)
@@ -915,7 +919,7 @@ def _ground_change(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Gro
                 "In welchem Zeitraum? Sag zum Beispiel: „…, wenn die Temperatur innerhalb "
                 "einer Stunde um 3 Grad fällt.“"
             ),
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.WINDOW,
         )
     return GroundedEvent(GroundingStatus.RESOLVED, candidates=tuple(candidates), subject=subject, roles=roles)
 
@@ -971,7 +975,7 @@ def _ground_appliance_idle(
                 f"Bis wann soll ich prüfen, ob {spoken} gelaufen ist? Sag zum Beispiel: "
                 f"„Melde dich, wenn {spoken} bis 20 Uhr nicht gelaufen ist.“"
             ),
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.UNTIL,
         )
     evidence = running or status
     if len(evidence) != 1 or (roles.for_seconds is not None and not running):

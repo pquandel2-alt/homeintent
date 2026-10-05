@@ -670,9 +670,26 @@ class AutomationController:
     ) -> conversation.ConversationResult:
         """Ask the one open question of an automation draft - nothing runs.
 
-        Only a device choice keeps the draft; the answer ("Die linke.")
-        continues exactly this automation and nothing else.
+        A device choice keeps the draft; the answer ("Die linke.")
+        continues exactly this automation and nothing else. A question for
+        one missing part ("In welchem Zeitraum?") opens a typed dialog
+        whose answer is read only as that part (7.9.1 A6).
         """
+        if result.clarification is None and result.part is not None:
+            self._context_store.clear(user_input.conversation_id)
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "monitor-part",
+                DialogTaskKind.MONITOR_PART,
+                DialogPriority.FOLLOWUP,
+                reason=f"Eine Rückfrage nach dem {result.part.spoken_part} ist offen.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=replace(result.part, original_text=user_input.text),
+            )
+            response.async_set_speech(result.response_text)
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         if result.clarification is not None:
             self._context_store.set(
                 user_input.conversation_id,

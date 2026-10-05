@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .automation_composition import CompositionTrace, EventClarification
+from .missing_part import PartRequest
 from .automation_summary import AutomationSummary
 from .rate_monitor import MonitorProposal
 from .nlu.automation_model import AutomationModel, TriggerModel
@@ -32,6 +33,8 @@ class AutomationClarificationResult:
     monitored_object: tuple[str, ...] | None = None
     # "etwas Ungewöhnliches" (7.9 W7): answered from the situation catalog.
     vague_situation: bool = False
+    # The one missing part the question asks for (7.9.1 A6).
+    part: PartRequest | None = None
 
 
 @dataclass(frozen=True)

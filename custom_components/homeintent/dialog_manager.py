@@ -42,6 +42,8 @@ class DialogTaskKind(StrEnum):
     MONITOR_EVENT = "monitor_event"
     UNUSUAL_OPT_IN = "unusual_opt_in"
     MONITOR_DELETE = "monitor_delete"
+    # 7.9.1 A6: a question for exactly one part of a monitoring request.
+    MONITOR_PART = "monitor_part"
 
 
 class DialogPriority(IntEnum):
