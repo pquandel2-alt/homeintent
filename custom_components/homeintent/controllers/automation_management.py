@@ -36,9 +36,11 @@ from ..automation_structure_edit import (
     AutomationEditSection,
     AutomationStructureEditRequest,
 )
+from .automations import access_openings_for
 from ..engine import AutomationDeletionMatchResult, AutomationToggleMatchResult, NluEngine
 from ..entities import EntitySnapshot
 from ..execution_context import user_facing_error
+from ..nlu.automation_access import describe_access_refusal
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
 from ..nlu.context import (
     ConversationContext,
@@ -1098,6 +1100,17 @@ class AutomationManagementController:
         if not actions:
             response.async_set_speech(
                 "Die neue Aktion habe ich nicht eindeutig verstanden. Bitte nenne eine vollständige Geräteaktion."
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        openings = access_openings_for(
+            getattr(self._automation_store(), "_hass", None), tuple(actions), entities
+        )
+        if openings:
+            # An edit never sneaks an opening into an automation (7.9.1 A1).
+            response.async_set_speech(
+                f"{describe_access_refusal(openings)} Die Automation bleibt unverändert."
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id

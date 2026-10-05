@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from .automation_access import access_openings, describe_access_refusal
 from .device_ontology import entity_genera, genus
 from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
@@ -65,10 +66,15 @@ _PLURAL_NOUN_DE = {
     "Rollladen": "Rollläden", "Heizung": "Heizungen", "Sensor": "Sensoren",
     "Medienplayer": "Medienplayer", "Ventil": "Ventile", "Fenster": "Fenster",
     "Tür": "Türen", "Gerät": "Geräte", "Steckdose": "Steckdosen",
+    "Garagentor": "Garagentore", "Tor": "Tore", "Markise": "Markisen",
+    "Jalousie": "Jalousien", "Vorhang": "Vorhänge", "Raffstore": "Raffstores",
 }
 _DEVICE_CLASS_NOUN_DE = {
     "window": "Fenster", "door": "Tür", "garage_door": "Garagentor", "opening": "Öffnung",
     "motion": "Bewegungsmelder", "occupancy": "Anwesenheitssensor",
+    # Cover classes (7.9.1 A1): a garage door is never called "Rollladen".
+    "garage": "Garagentor", "gate": "Tor", "awning": "Markise", "shutter": "Rollladen",
+    "blind": "Jalousie", "curtain": "Vorhang", "shade": "Rollo",
 }
 _WEEKDAY_SPOKEN_DE = {
     "mon": "Montag", "tue": "Dienstag", "wed": "Mittwoch", "thu": "Donnerstag",
@@ -114,6 +120,25 @@ def _format_delay(seconds: int | None) -> str:
         minutes = seconds // 60
         return "1 Minute" if minutes == 1 else f"{minutes} Minuten"
     return f"{seconds} Sekunden"
+
+
+def _cover_noun(members: list[EntitySnapshot]) -> str | None:
+    """The most specific device kind every member shares, from the
+    ontology (device class first, then name), or ``None``."""
+    classes = {member.device_class for member in members}
+    if len(classes) == 1 and None not in classes:
+        named = _DEVICE_CLASS_NOUN_DE.get(next(iter(classes)) or "")
+        if named is not None:
+            return named
+    if not members:
+        return None
+    shared = frozenset.intersection(*(entity_genera(member) for member in members)) - {"device"}
+    label = min(
+        (genus(key) for key in shared),
+        key=lambda item: (item.parent is None, item.key),
+        default=None,
+    )
+    return label.singular if label is not None else None
 
 
 def _speak_target(
@@ -167,6 +192,14 @@ def _speak_target(
             and (target.device_class is None or entity.device_class == target.device_class)
             and target.area_id is not None and entity.area_id == target.area_id
         ]
+        if target.device_class is None and target.domain == "cover":
+            # The domain alone says "Rollladen"; the devices it resolves to
+            # say what they are (Garagentor, Markise, Tor) - 7.9.1 A1.
+            noun = _cover_noun(members) or _cover_noun([
+                entity for entity in entity_by_id.values()
+                if entity.domain == "cover" and target.floor_id is not None
+                and entity.floor_id == target.floor_id
+            ]) or noun
         if (
             prefer_name and target.quantifier is None and len(members) == 1
             and not target.exclude_entity_ids
@@ -761,6 +794,10 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
     already-resolved ``entity_id``s, never to re-resolve or guess anything
     new.
     """
+    openings = access_openings(model.actions, entities)
+    if openings:
+        # Same rule as the validator (7.9.1 A1): never offered for a "Ja".
+        return f"{describe_access_refusal(openings)} Ich habe nichts angelegt."
     entity_by_id = _entity_lookup(entities)
     area_name_by_id = _area_name_lookup(entities)
     notification_actions = _notification_actions(model)

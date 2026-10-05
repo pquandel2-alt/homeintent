@@ -46,6 +46,12 @@ from ..nlu.automation_model import (
     TriggerModel,
     TriggerType,
 )
+from ..nlu.automation_access import (
+    AccessOpening,
+    access_openings,
+    describe_access_refusal,
+    notice_instead_of_opening,
+)
 from ..nlu.automation_preview import render_automation_preview
 from ..notification_language import describe_event
 from ..nlu.automation_validator import validate_automation
@@ -145,6 +151,38 @@ def spoken_summary(preview: str) -> str:
     return text.strip()
 
 
+def access_openings_for(
+    hass: HomeAssistant | None,
+    actions: tuple[Any, ...] | list[Any],
+    entities: list[EntitySnapshot],
+) -> tuple[AccessOpening, ...]:
+    """Every access the automation ``actions`` would open (7.9.1 A1),
+    including through the scripts and scenes they run (static effect
+    graph). Shared by new automations and action edits. Without ``hass``
+    only the direct actions are checked."""
+    probe = AutomationModel(triggers=(), actions=tuple(actions))
+    controlled_ids = resolve_automation_action_entity_ids(probe, entities)
+    composite_ids = sorted(
+        entity.entity_id for entity in entities
+        if entity.entity_id in controlled_ids
+        and is_composite_entity(entity.entity_id, entity.attributes)
+    )
+    effects = (
+        build_plan_effects(hass, ServiceCallPlan("homeassistant", "turn_on", composite_ids))
+        if composite_ids and hass is not None else None
+    )
+    roots: dict[str, str] = {}
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
+    if effects is not None:
+        for graph in effects.graphs:
+            for effect in graph.effects:
+                for entity_id in effect.entity_ids:
+                    roots.setdefault(entity_id, names.get(graph.root, graph.root))
+    return access_openings(
+        probe.actions, entities, effects.effects if effects is not None else (), roots
+    )
+
+
 def start_now(model: AutomationModel) -> AutomationModel:
     """The same reminder, once, starting in a few seconds (7.9 W5)."""
     return replace(
@@ -192,6 +230,70 @@ class AutomationController:
     def _automation_store(self) -> AutomationExecutor:
         return self._executor()
 
+    def access_openings_of(
+        self, model: AutomationModel, entities: list[EntitySnapshot]
+    ) -> tuple[AccessOpening, ...]:
+        """Every access this automation would open (7.9.1 A1)."""
+        return access_openings_for(self.hass, model.actions, entities)
+
+    def _guard_access(
+        self, model: AutomationModel, entities: list[EntitySnapshot]
+    ) -> tuple[AutomationModel | None, str | None]:
+        """``(model, None)`` when nothing opens an access; otherwise
+        ``(offer, refusal)`` - the notification offered instead (or
+        ``None`` when nothing sensible remains) and the spoken refusal."""
+        openings = self.access_openings_of(model, entities)
+        if not openings:
+            return model, None
+        offer = notice_instead_of_opening(model, entities)
+        return offer, describe_access_refusal(openings)
+
+    def offer_preview(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        model: AutomationModel,
+        entities: list[EntitySnapshot],
+        requested_by_user_id: str | None,
+    ) -> None:
+        """Store ``model`` for a "Ja" and speak its preview - the one place
+        every confirmed automation passes before it may be offered.
+
+        An automation that would open an access is never offered (7.9.1
+        A1): HomeIntent says so and offers a notification instead.
+        """
+        offer, refusal = self._guard_access(model, entities)
+        prefix = ""
+        if refusal is not None:
+            if offer is None:
+                self._context_store.clear(user_input.conversation_id)
+                response.async_set_speech(
+                    f"{refusal} Ich habe nichts angelegt. Ich kann dich stattdessen "
+                    "benachrichtigen, dann entscheidest du selbst."
+                )
+                return
+            offer, failure = self._notifications.materialize_recipients(offer, user_input, entities)
+            if failure is not None:
+                self._context_store.clear(user_input.conversation_id)
+                response.async_set_speech(f"{refusal} Ich habe nichts angelegt.")
+                return
+            model = offer
+            prefix = f"{refusal} Stattdessen melde ich es dir, dann entscheidest du selbst. "
+        self._context_store.set(
+            user_input.conversation_id,
+            ConversationContext(
+                last_command=None,
+                last_entities=(),
+                last_area=None,
+                pending_clarification=None,
+                pending_automation_confirmation=PendingAutomationConfirmation(
+                    model=model,
+                    requested_by_user_id=requested_by_user_id,
+                ),
+            ),
+        )
+        response.async_set_speech(prefix + render_automation_preview(model, entities))
+
     def decide_recurrence(
         self,
         user_input: conversation.ConversationInput,
@@ -231,6 +333,10 @@ class AutomationController:
                 return replace(result, model=once_model, validation_error=None)
         if recurrence is Recurrence.ONCE:
             return replace(result, model=replace(model, max_runs=1))
+        if self.access_openings_of(model, entities):
+            # Refused (or turned into a notification) by offer_preview -
+            # nothing to ask about "nur heute oder jeden Tag" (7.9.1 A1).
+            return result
         self._runtime.dialog_manager.create(
             user_input.conversation_id,
             "recurrence-choice",
@@ -261,6 +367,8 @@ class AutomationController:
             return replace(result, model=replace(result.model, ask_start=False))
         if said is Recurrence.ONCE:
             return replace(result, model=start_now(result.model))
+        if self.access_openings_of(result.model, entities):
+            return result
         self._runtime.dialog_manager.create(
             user_input.conversation_id,
             "recurrence-choice",
@@ -386,6 +494,18 @@ class AutomationController:
             response.async_set_error(
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
                 "Das Erstellen von Automationen ist nur für Administratoren erlaubt.",
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
+        openings = self.access_openings_of(confirmation.model, entities)
+        if openings:
+            # Defense in depth (7.9.1 A1): whatever path stored this draft,
+            # an automation that opens an access is never written.
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                f"{describe_access_refusal(openings)} Ich habe nichts angelegt.",
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
@@ -531,21 +651,9 @@ class AutomationController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            result = replace(result, model=materialized)
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=result.model,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
+            self.offer_preview(
+                user_input, response, materialized, entities, conversation_user_id(user_input)
             )
-            response.async_set_speech(render_automation_preview(result.model, entities))
         else:
             self._context_store.clear(user_input.conversation_id)
             response.async_set_speech(result.response_text)
@@ -665,20 +773,9 @@ class AutomationController:
             self._world_model,
         )
         if revised is not None and revised.validation_error is None:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=revised.model,
-                        requested_by_user_id=pending.requested_by_user_id,
-                    ),
-                ),
+            self.offer_preview(
+                user_input, response, revised.model, entities, pending.requested_by_user_id
             )
-            response.async_set_speech(render_automation_preview(revised.model, entities))
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
@@ -717,20 +814,9 @@ class AutomationController:
             self._context_store.clear(user_input.conversation_id)
             response.async_set_speech(completed.response_text)
         else:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=completed.model,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
+            self.offer_preview(
+                user_input, response, completed.model, entities, conversation_user_id(user_input)
             )
-            response.async_set_speech(render_automation_preview(completed.model, entities))
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
@@ -902,19 +988,7 @@ class AutomationController:
                 + validation_error.name
             )
         else:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model, conversation_user_id(user_input)
-                    ),
-                ),
-            )
-            response.async_set_speech(render_automation_preview(model, entities))
+            self.offer_preview(user_input, response, model, entities, conversation_user_id(user_input))
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
