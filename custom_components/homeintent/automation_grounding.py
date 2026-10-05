@@ -547,7 +547,9 @@ def _missing_subject_question(roles: EventRoles) -> str:
     if roles.value is None:
         return "Welches Gerät meinst du?"
     number = f"{roles.value:g}".replace(".", ",")
-    unit = {ValueUnit.PERCENT: " Prozent", ValueUnit.DEGREE: " Grad"}.get(roles.unit or ValueUnit.NONE, "")
+    unit = {ValueUnit.PERCENT: " Prozent", ValueUnit.DEGREE: " Grad", ValueUnit.PPM: " ppm"}.get(
+        roles.unit or ValueUnit.NONE, ""
+    )
     comparator = roles.comparator or NumericComparator.EQUAL
     if comparator is NumericComparator.EQUAL:
         return f"Was soll {number}{unit} erreichen?"
@@ -574,6 +576,8 @@ def _sensor_unit_ok(entity: EntitySnapshot, unit: ValueUnit) -> bool:
         return entity.unit in {"W", "kW"}
     if unit in _ENERGY_UNITS:
         return entity.unit in {"Wh", "kWh"}
+    if unit is ValueUnit.PPM:
+        return entity.unit == "ppm"
     return entity.unit == "%"
 
 

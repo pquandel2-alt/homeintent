@@ -670,10 +670,31 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_LEAVE_RE::492440ce4c",
+   "id": "custom_components/homeintent/automation_language.py::_LEAVE_RE::00f0a47c05",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_LEAVE_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_GO_FINAL_RE::ad8245ec02",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_GO_FINAL_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_VALUE_BEFORE_VERB_RE::ac9b2e0c49",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_VALUE_BEFORE_VERB_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_NUMBER_WORD_RE::caf5b0b18d",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_NUMBER_WORD_RE",
+   "klasse": "STRUCTURAL",
    "quelle": "heuristik"
   },
   {
@@ -5102,9 +5123,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 382,
+  "LEXICAL": 383,
   "MORPHOLOGICAL": 38,
-  "STRUCTURAL": 134,
+  "STRUCTURAL": 136,
   "SEMANTIC_SENTENCE_PATTERN": 173
  }
 }

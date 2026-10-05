@@ -36,6 +36,7 @@ from enum import Enum, auto
 from typing import Callable
 
 from .nlu.automation_lexicon import rejoin_stt, resolve_repairs
+from .nlu.device_ontology import lookup_genus_word
 from .nlu.automation_model import NumericComparator, PresenceEvent, SunEvent
 from .nlu.lexicon import weekday_vocabulary
 from .nlu.measurement import TravelDirection
@@ -501,6 +502,8 @@ class ValueUnit(Enum):
     KILOWATT = auto()
     WATT_HOUR = auto()
     KILOWATT_HOUR = auto()
+    # Concentration (7.9.1 A3): "über 1200 ppm" only for sensors in ppm.
+    PPM = auto()
 
 
 @dataclass(frozen=True)
@@ -646,6 +649,7 @@ _UNIT_WORDS = {
     "wattstunden": ValueUnit.WATT_HOUR, "wattstunde": ValueUnit.WATT_HOUR, "wh": ValueUnit.WATT_HOUR,
     "kilowattstunden": ValueUnit.KILOWATT_HOUR, "kilowattstunde": ValueUnit.KILOWATT_HOUR,
     "kwh": ValueUnit.KILOWATT_HOUR,
+    "ppm": ValueUnit.PPM,
 }
 # A counting period for energy ("heute", "diese Woche", 7.9 W4): only a meter
 # that restarts with that period can answer it.
@@ -1287,14 +1291,33 @@ _LEAVE_RE = re.compile(
     r"\b(?:das\s+haus|die\s+wohnung)\s+verl(?:ässt|asse|assen|ässt)\b"
     r"|\bweg(?:geh\w*|gegangen|fähr\w*|fahr\w*|gefahren)\b"
     r"|\baus\s+dem\s+haus\s+geh\w*\b"
-    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b"
-    # "wenn ich gehe", "wenn Anna geht": intransitive "gehen" closing the
-    # clause (verb-final) means leaving; with a separated particle ("auf
-    # geht", "aus geht") it is a device state, never presence (7.8.3).
-    r"|(?<!\bauf\s)(?<!\bzu\s)(?<!\baus\s)(?<!\ban\s)(?<!\bvor\s)(?<!\bein\s)"
+    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b",
+    re.IGNORECASE,
+)
+# "wenn ich gehe", "wenn Anna geht": intransitive "gehen" closing the clause
+# (verb-final) means leaving; with a separated particle ("auf geht", "aus
+# geht") it is a device state, never presence (7.8.3).
+_GO_FINAL_RE = re.compile(
+    r"(?<!\bauf\s)(?<!\bzu\s)(?<!\baus\s)(?<!\ban\s)(?<!\bvor\s)(?<!\bein\s)"
     r"\bgeh(?:e|st|t|en)\s*$",
     re.IGNORECASE,
 )
+# A comparator-value phrase before the verb ("über 24 Grad geht", "unter
+# 10 geht", "auf über 1200 ppm geht") makes "gehen" a value predicate - the
+# measured value goes somewhere, nobody leaves (7.9.1 A3).
+_VALUE_BEFORE_VERB_RE = re.compile(
+    r"\b(?:" + "|".join(
+        re.escape(word).replace("\\ ", r"\s+")
+        for word in sorted(
+            {"über", "ueber", "unter", "auf", "bis", "mehr als", "weniger als", "höher als",
+             "niedriger als", "größer als", "kleiner als", "oberhalb von", "unterhalb von",
+             "mindestens", "höchstens", "maximal"},
+            key=len, reverse=True,
+        )
+    ) + r")\s+[-−]?\d",
+    re.IGNORECASE,
+)
+_NUMBER_WORD_RE = re.compile(r"\d")
 _PRESENT_VERBS = frozenset({
     "ist", "sind", "da", "kommt", "betritt", "reinkommt", "hereinkommt", "rein", "herein",
     "anwesend", "drin", "befindet",
@@ -1305,9 +1328,24 @@ _PRESENCE_FILLERS = frozenset({
 })
 
 
+def _goes_away(text: str) -> re.Match[str] | None:
+    """Verb-final "gehen" read as leaving - never after a comparator-value
+    phrase and never with a measured value or a device as subject: "die
+    Temperatur … über 24 Grad geht" is a threshold (7.9.1 A3)."""
+    match = _GO_FINAL_RE.search(text)
+    if match is None:
+        return None
+    before = text[:match.start()]
+    if _VALUE_BEFORE_VERB_RE.search(before) or _NUMBER_WORD_RE.search(before):
+        return None
+    if any(lookup_genus_word(word.strip(",.;:!?")) for word in before.split()):
+        return None
+    return match
+
+
 def _presence(text: str) -> tuple[PresenceEvent, tuple[int, int]] | None:
     arrive = _ARRIVE_RE.search(text)
-    leave = _LEAVE_RE.search(text)
+    leave = _LEAVE_RE.search(text) or _goes_away(text)
     if (arrive is None) == (leave is None):
         return None
     match = arrive or leave
