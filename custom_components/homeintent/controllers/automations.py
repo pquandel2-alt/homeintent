@@ -595,6 +595,7 @@ class AutomationController:
                 scheduled_for=model.scheduled_for,
                 once=model.once,
                 max_runs=model.max_runs,
+                owner_user_id=current_user_id,
             )
         except Exception as err:  # noqa: BLE001 - a YAML write + service call can fail in ways beyond HomeAssistantError; must not propagate as "Unexpected error during intent recognition"
             _LOGGER.error("Automation creation failed: %s", err)

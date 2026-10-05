@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 import _ha_stub  # noqa: E402
+from _users import as_user, install_users  # noqa: E402
 
 _ha_stub.install()
 
@@ -57,8 +58,12 @@ def _agent(monkeypatch, automations=(AUTOMATION,)):
 
 
 def _run(agent, text, conversation_id="edit-1"):
+    # Editing needs the owner or an administrator (7.9.1 A2): the edit
+    # mechanics run as an administrator.
+    install_users(agent.hass)
     return asyncio.run(agent._async_handle_message(
-        ConversationInput(text=text, conversation_id=conversation_id), chat_log=None
+        ConversationInput(text=text, conversation_id=conversation_id, context=as_user("admin")),
+        chat_log=None,
     ))
 
 

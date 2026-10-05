@@ -870,6 +870,7 @@ class GoalController:
                                     automation_id=created_id,
                                     scheduled_for=execute_at,
                                     once=True,
+                                    owner_user_id=actor_id,
                                 )
                                 created_ids.append(created_id)
                         except Exception as err:  # noqa: BLE001 - transactional executor reports heterogeneous HA/I/O failures

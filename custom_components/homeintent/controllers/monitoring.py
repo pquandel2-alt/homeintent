@@ -40,16 +40,28 @@ from ..monitoring_management import MonitoringOperation, MonitoringRequest
 from ..rate_monitor import describe_rule
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..proactive_model import SituationKind
-from ..security_control import conversation_user_id
+from ..automation_ownership import async_management_refusal, async_owner_name, may_manage
+from ..security_control import conversation_user_id, user_is_admin
 from ..user_context import BindingStatus
 
 
 class MonitoringController:
     """Stages and confirms HomeIntent-run monitors."""
 
-    def __init__(self, *, runtime: Any, automation_store: Callable[[], Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        runtime: Any,
+        automation_store: Callable[[], Any] | None = None,
+        hass: Callable[[], Any] | None = None,
+    ) -> None:
         self._runtime = runtime
         self._automation_store = automation_store
+        self._hass_of = hass
+
+    @property
+    def _hass(self) -> Any:
+        return self._hass_of() if self._hass_of is not None else None
 
     def stage_value_monitor(
         self,
@@ -167,6 +179,11 @@ class MonitoringController:
         goals = self._runtime.monitor_goals
         records = await goals.async_load() if goals is not None else ()
         monitors = collect_monitors(automations, records, entities)
+        is_admin = await user_is_admin(self._hass, user_input)
+        actor = conversation_user_id(user_input)
+        if request.operation is MonitoringOperation.LIST and not is_admin:
+            # Non-administrators see their own monitors (7.9.1 A2).
+            monitors = [item for item in monitors if may_manage(item.owner_user_id, actor, False)]
         chosen = matching(monitors, request.subject, entities)
         spoken_subject = f" für „{request.subject}“" if request.subject else ""
 
@@ -179,8 +196,17 @@ class MonitoringController:
         if request.operation is MonitoringOperation.LIST:
             if not chosen:
                 return say(f"Gerade läuft keine Überwachung{spoken_subject}.", query=True)
+            owners: dict[str | None, str] = {}
+            if is_admin:
+                for item in chosen:
+                    if item.owner_user_id not in owners:
+                        owners[item.owner_user_id] = (
+                            await async_owner_name(self._hass, item.owner_user_id) or "ohne Eigentümer"
+                        )
             parts = [
-                f"„{item.label.rstrip('.')}“" + ("" if item.enabled else " (ausgeschaltet)")
+                f"„{item.label.rstrip('.')}“"
+                + (f" (von {owners[item.owner_user_id]})" if is_admin and item.owner_user_id != actor else "")
+                + ("" if item.enabled else " (ausgeschaltet)")
                 for item in chosen
             ]
             head = "Es läuft eine Überwachung" if len(chosen) == 1 else f"Es laufen {len(chosen)} Überwachungen"
@@ -194,6 +220,11 @@ class MonitoringController:
                 + ". Welche meinst du? Nenne sie bitte genauer."
             )
         monitor = chosen[0]
+        refusal = await async_management_refusal(
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung"
+        )
+        if refusal is not None:
+            return say(refusal)
         if request.operation is MonitoringOperation.STOP:
             if monitor.automation_id is not None and store is not None:
                 await store.async_disable_automation(monitor.automation_id)
@@ -256,6 +287,12 @@ class MonitoringController:
         self._runtime.dialog_manager.cancel(conversation_id, getattr(task, "task_id", ""))
         if reply is ConfirmationReply.NO:
             response.async_set_speech("In Ordnung, die Überwachung bleibt.")
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+        refusal = await async_management_refusal(
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung"
+        )
+        if refusal is not None:
+            response.async_set_speech(refusal)
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
         if monitor.automation_id is not None and self._automation_store is not None:
             await self._automation_store().async_delete_automation(monitor.automation_id)
@@ -422,6 +459,8 @@ class Monitor:
     entity_ids: frozenset[str]
     automation_id: str | None = None
     goal_id: str | None = None
+    # 7.9.1 A2: who set it up (``None`` for older ones: administrators only).
+    owner_user_id: str | None = None
 
 
 def _notifies(actions: Any) -> bool:
@@ -451,6 +490,7 @@ def collect_monitors(
         found.append(Monitor(
             label, bool(automation.enabled), frozenset(automation.referenced_entity_ids),
             automation_id=automation.automation_id,
+            owner_user_id=getattr(automation, "owner_user_id", None),
         ))
     for record in records:
         rule = rate_rule_of(record.goal)
@@ -460,11 +500,12 @@ def collect_monitors(
             )
             found.append(Monitor(
                 label, record.enabled, frozenset({rule.entity_id}), goal_id=record.goal.goal_id,
+                owner_user_id=record.goal.provenance.user_id,
             ))
         elif record.goal.provenance.source_utterance:
             found.append(Monitor(
                 record.goal.provenance.source_utterance, record.enabled, frozenset(),
-                goal_id=record.goal.goal_id,
+                goal_id=record.goal.goal_id, owner_user_id=record.goal.provenance.user_id,
             ))
     return found
 

@@ -454,7 +454,9 @@ class NluConversationEntity(
             entities=lambda: build_entity_snapshots(self.hass, self.entry),
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
         )
-        self._monitoring = MonitoringController(runtime=runtime, automation_store=self._automation_store)
+        self._monitoring = MonitoringController(
+            runtime=runtime, automation_store=self._automation_store, hass=lambda: self.hass
+        )
         self._comfort = ComfortController(
             hass=lambda: self.hass,
             entry=entry,
@@ -480,6 +482,7 @@ class NluConversationEntity(
             executor=self._automation_store,
             engine=self._engine,
             world_model=lambda: self._world_model,
+            hass=lambda: self.hass,
         )
         self._automations = AutomationController(
             hass=lambda: self.hass,
@@ -2334,7 +2337,7 @@ class NluConversationEntity(
             )
 
         if isinstance(result, AutomationDeletionMatchResult):
-            return self._management.handle_deletion_match_result(
+            return await self._management.async_handle_deletion_match_result(
                 user_input, response, result
             )
 

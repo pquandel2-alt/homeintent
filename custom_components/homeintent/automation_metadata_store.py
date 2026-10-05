@@ -71,6 +71,11 @@ class AutomationMetadata:
     once: bool = False
     max_runs: int | None = None
     run_count: int = 0
+    # 7.9.1 A2: the Home Assistant user who confirmed the automation. Only
+    # this user or an administrator may pause, switch, edit or delete it.
+    # Entries written before 7.9.1 have no owner (key absent -> None): they
+    # stay untouched and only an administrator may manage them.
+    owner_user_id: str | None = None
 
 
 class AutomationMetadataStore:

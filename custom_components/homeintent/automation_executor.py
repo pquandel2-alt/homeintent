@@ -322,6 +322,7 @@ class AutomationExecutor:
         scheduled_for: datetime | None = None,
         once: bool = False,
         max_runs: int | None = None,
+        owner_user_id: str | None = None,
     ) -> str:
         """Appends ``config`` (a ``GenerationResult.config`` dict, no ``id``
         key yet - see ``ha_automation_generator.py``'s ``GenerationResult``
@@ -383,6 +384,7 @@ class AutomationExecutor:
                     ),
                     once=once,
                     max_runs=max_runs,
+                    owner_user_id=owner_user_id,
                 )
                 await self._metadata_store.async_save(metadata)
             except Exception:
@@ -442,6 +444,11 @@ class AutomationExecutor:
             scheduled_for=datetime.fromisoformat(scheduled) if scheduled else None,
             once=bool(metadata.get("once")),
             max_runs=metadata.get("max_runs"),
+            # The copy belongs to whoever owned the original (7.9.1 A2).
+            owner_user_id=(
+                metadata.get("owner_user_id")
+                if isinstance(metadata.get("owner_user_id"), str) else None
+            ),
         )
 
     async def async_pause_automation_until(
@@ -703,6 +710,10 @@ class AutomationExecutor:
                     description=(
                         automation.get("description")
                         if isinstance(automation.get("description"), str) else None
+                    ),
+                    owner_user_id=(
+                        entry.get("owner_user_id")
+                        if entry and isinstance(entry.get("owner_user_id"), str) else None
                     ),
                 )
             )
