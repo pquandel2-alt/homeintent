@@ -192,7 +192,7 @@ GENERA: tuple[Genus, ...] = (
        {"carbon_dioxide"}, extra_forms=("Luftqualitaet",), sensor=True),
     _g("power_sensor", "Leistung|Stromaufnahme|Strom|Verbrauch|Stromverbrauch", "Leistungen", F,
        {"sensor"}, {"power"}, sensor=True),
-    _g("energy_sensor", "Energie|Energieverbrauch|Zähler|Stromzähler|Energiezähler", "Energiezähler",
+    _g("energy_sensor", "Energie|Energieverbrauch|Zähler|Stromzähler|Energiezähler|Zählerstand", "Energiezähler",
        F, {"sensor"}, {"energy"}, extra_forms=("Zaehler",), sensor=True),
     _g("battery_sensor", "Batterie|Akku|Batteriestand|Ladestand|Akkustand|Akkuladung", "Batterien", F, {"sensor"},
        {"battery"}, extra_forms=("Akkus",), sensor=True),

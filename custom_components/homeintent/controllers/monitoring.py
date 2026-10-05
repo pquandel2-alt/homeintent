@@ -42,7 +42,7 @@ from ..rate_monitor import describe_rule
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..proactive_model import SituationKind
 from ..automation_ownership import async_management_refusal, async_owner_name, may_manage
-from ..missing_part import MissingPart, PartRequest
+from ..missing_part import MissingPart, PartRequest, complete_request, read_part_answer
 from ..security_control import conversation_user_id, user_is_admin
 from ..user_context import BindingStatus
 
@@ -203,6 +203,20 @@ class MonitoringController:
             response.async_set_speech(text)
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
+        if request.operation is MonitoringOperation.ASK:
+            # "Beobachtest du das Garagentor?" - from the list (7.9.1 A7).
+            if not chosen:
+                watched = f"„{said}“" if said else "das"
+                return say(f"Nein, {watched} überwache ich gerade nicht.", query=True)
+            running = [item for item in chosen if item.enabled]
+            if not running:
+                return say(
+                    f"Nein, gerade nicht: {_count_word(len(chosen), 'Überwachung')}"
+                    f"{spoken_subject} ist ausgeschaltet.", query=True,
+                )
+            return say(
+                "Ja: " + "; ".join(short_label(item) for item in running) + ".", query=True
+            )
         if request.operation is MonitoringOperation.LIST:
             if not chosen:
                 return say(f"Gerade läuft keine Überwachung{spoken_subject}.", query=True)
@@ -213,13 +227,24 @@ class MonitoringController:
                         owners[item.owner_user_id] = (
                             await async_owner_name(self._hass, item.owner_user_id) or "ohne Eigentümer"
                         )
+            # Spoken short form (7.9.1 A7): what each one watches; the full
+            # preview only when asked ("Was macht die erste?").
             parts = [
-                f"„{item.label.rstrip('.')}“"
+                short_label(item)
                 + (f" (von {owners[item.owner_user_id]})" if is_admin and item.owner_user_id != actor else "")
                 + ("" if item.enabled else " (ausgeschaltet)")
                 for item in chosen
             ]
             head = "Es läuft eine Überwachung" if len(chosen) == 1 else f"Es laufen {len(chosen)} Überwachungen"
+            self._runtime.dialog_manager.create(
+                conversation_id,
+                "monitor-list",
+                DialogTaskKind.MONITOR_LIST,
+                DialogPriority.FOLLOWUP,
+                reason="Die Liste der Überwachungen kann genauer erklärt werden.",
+                requested_by_user_id=actor,
+                payload=tuple(chosen),
+            )
             return say(f"{head}: " + "; ".join(parts) + ".", query=True)
         if not chosen:
             return say(f"Ich finde keine Überwachung{spoken_subject}.")
@@ -276,6 +301,59 @@ class MonitoringController:
             f"Pausiert bis {day} um {resume:%H:%M} Uhr: „{monitor.label.rstrip('.')}“. Danach schalte ich "
             "sie automatisch wieder ein."
         )
+
+    def answer_open_question(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+    ) -> conversation.ConversationResult | str | None:
+        """The turn after a monitor list or a one-part question: a result,
+        the completed request text to run again, or ``None`` (not consumed)."""
+        manager = self._runtime.dialog_manager
+        if task.kind is DialogTaskKind.MONITOR_LIST:
+            manager.cancel(user_input.conversation_id, task.task_id)
+            return self.answer_list_detail(user_input, response, task)
+        request = getattr(task, "payload", None)
+        if not isinstance(request, PartRequest):
+            return None
+        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
+            return None
+        phrase = read_part_answer(request.part, user_input.text)
+        if phrase is None:
+            if len(user_input.text.split()) <= 3:
+                # A short reply that is no such part: ask again, never guess.
+                response.async_set_speech(
+                    f"Das habe ich nicht als {request.spoken_part} verstanden. {request.question}"
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            # A complete new request ends the question without effect.
+            manager.cancel(user_input.conversation_id, task.task_id)
+            return None
+        manager.cancel(user_input.conversation_id, task.task_id)
+        return complete_request(request, phrase)
+
+    def answer_list_detail(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+    ) -> conversation.ConversationResult | None:
+        """"Was genau macht die erste?" after the short list (7.9.1 A7)."""
+        monitors = getattr(task, "payload", None)
+        if not isinstance(monitors, tuple) or not monitors:
+            return None
+        if getattr(task, "requested_by_user_id", None) not in {None, conversation_user_id(user_input)}:
+            return None
+        index = ordinal_index(user_input.text, len(monitors))
+        if index is None:
+            return None
+        monitor = monitors[index]
+        response.response_type = intent.IntentResponseType.QUERY_ANSWER
+        response.async_set_speech(monitor.label.rstrip(".") + ".")
+        return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
     def _ask_until(self, user_input: conversation.ConversationInput, question: str) -> str:
         """"Bis wann?" opens a typed dialog: the answer is the time (7.9.1 A6)."""
@@ -534,6 +612,56 @@ def collect_monitors(
                 goal_id=record.goal.goal_id, owner_user_id=record.goal.provenance.user_id,
             ))
     return found
+
+
+_COUNT_WORDS = ("keine", "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn")
+
+
+def _count_word(count: int, noun: str) -> str:
+    return f"{_COUNT_WORDS[count] if count < len(_COUNT_WORDS) else count} {noun}"
+
+
+def short_label(monitor: Monitor) -> str:
+    """What a monitor watches, without its full preview: the conditional
+    clause up to the main clause ("…, sende ich dir …", "…, dann …")."""
+    text = monitor.label.strip().rstrip(".")
+    words = text.split()
+    short = text
+    if words and words[0].casefold() in {"wenn", "sobald", "falls"}:
+        for index, word in enumerate(words[:-1]):
+            if not word.endswith(","):
+                continue
+            following = words[index + 1].casefold()
+            after = words[index + 2].casefold() if index + 2 < len(words) else ""
+            if following == "dann" or after == "ich":
+                short = " ".join(words[: index + 1]).rstrip(",")
+                break
+        short = short[:1].casefold() + short[1:]
+    if monitor.goal_id is not None and "selbst" not in short:
+        short += " (das überwache ich selbst)"
+    return short
+
+
+_ORDINALS = {
+    "erste": 0, "ersten": 0, "zweite": 1, "zweiten": 1, "dritte": 2, "dritten": 2,
+    "vierte": 3, "vierten": 3, "fünfte": 4, "fünften": 4,
+}
+
+
+def ordinal_index(text: str, count: int) -> int | None:
+    """"Was macht die erste?", "die letzte", "Nummer 2" -> index, or ``None``."""
+    keys = [word.strip(",.;:!?").casefold() for word in text.split()]
+    if len(keys) > 8:
+        return None
+    for position, key in enumerate(keys):
+        if key in _ORDINALS and _ORDINALS[key] < count:
+            return _ORDINALS[key]
+        if key in {"letzte", "letzten"}:
+            return count - 1
+        if key == "nummer" and position + 1 < len(keys) and keys[position + 1].isdigit():
+            number = int(keys[position + 1])
+            return number - 1 if 1 <= number <= count else None
+    return None
 
 
 def _stem(word: str) -> str:

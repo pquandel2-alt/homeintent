@@ -46,6 +46,7 @@ from .nlu.measurement import (
     percent_property_for_domain,
 )
 from .missing_part import MissingPart
+from .nlu.device_ontology import analyse_word
 from .nlu.place_model import Place, PlaceKind, PlaceLexicon, build_place_lexicon
 from .nlu.semantic_state import SemanticState
 from .nlu.target_resolution import genus_members
@@ -308,6 +309,12 @@ def read_subject(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> Su
         index += 1
     if noun is None and not modifiers and area is None:
         implicit = True
+    if quantifier is Quantifier.BARE and noun_word is not None and not modifiers:
+        analysis = analyse_word(noun_word)
+        if analysis is not None and analysis.mass and not analysis.plural:
+            # "wenn noch Licht an ist": a mass noun without article means
+            # any of it - an existential reading, never "welches?" (7.9.1 A7).
+            quantifier = Quantifier.ANY
     del joined
     return SubjectReading(
         noun=noun,
@@ -593,6 +600,63 @@ def _in_sensor_unit(value: float, unit: ValueUnit, entity: EntitySnapshot) -> fl
     return value * spoken[1] / _SCALE[entity.unit]
 
 
+# Verbs whose subject draws power (7.9.1 A7): "die Waschmaschine zieht mehr
+# als 2000 Watt", "das Haus verbraucht mehr als 5 kW".
+_CONSUMPTION_VERBS = frozenset({
+    "zieht", "ziehen", "verbraucht", "verbrauchen", "nimmt", "nehmen", "braucht", "brauchen",
+    "aufnimmt", "frisst", "zieht's",
+})
+_NOW_WORDS = frozenset({"gerade", "aktuell", "momentan", "jetzt", "derzeit", "auf", "auf einmal"})
+# The household as a whole: its meter has no room.
+_WHOLE_HOUSE_WORDS = frozenset({"haus", "hauses", "wohnung", "haushalt", "insgesamt", "gesamt", "alles"})
+
+
+def _ground_consumption(
+    roles: EventRoles, entities: Sequence[EntitySnapshot]
+) -> GroundedEvent | None:
+    """A consumption verb with a power value is the power of its subject."""
+    if roles.unit not in _POWER_UNITS:
+        return None
+    keys = [normalize_for_compare(word) for word in roles.subject_words]
+    if not set(keys) & _CONSUMPTION_VERBS:
+        return None
+    owner = tuple(
+        word for word, key in zip(roles.subject_words, keys)
+        if key not in _CONSUMPTION_VERBS and key not in _NOW_WORDS and key not in _DEFINITE_WORDS
+    )
+    owner_keys = {normalize_for_compare(word) for word in owner}
+    if not owner or owner_keys <= _WHOLE_HOUSE_WORDS:
+        meters = [
+            entity for entity in entities
+            if entity.domain == "sensor" and entity.device_class == "power"
+            and entity.unit in {"W", "kW"} and entity.area_id is None
+        ]
+        if len(meters) != 1:
+            return GroundedEvent(
+                GroundingStatus.NOT_FOUND if not meters else GroundingStatus.AMBIGUOUS,
+                candidates=tuple(meters),
+                question=(
+                    "Ich finde keinen Leistungssensor für das ganze Haus. Welchen Sensor meinst du?"
+                    if not meters else _which_question(
+                        read_subject(("Leistung",), entities), sorted(meters, key=lambda item: item.friendly_name)
+                    )
+                ),
+                roles=roles, missing=MissingPart.DEVICE if not meters else None,
+            )
+        sensor = meters[0]
+        assert roles.value is not None
+        trigger = TriggerModel(
+            type=TriggerType.NUMERIC_STATE,
+            target=TriggerTarget(domain="sensor", device_class="power", entity_id=sensor.entity_id),
+            comparator=roles.comparator or NumericComparator.ABOVE,
+            threshold=_in_sensor_unit(roles.value, roles.unit, sensor),
+            for_seconds=roles.for_seconds,
+        )
+        return GroundedEvent(GroundingStatus.RESOLVED, trigger=trigger, candidates=(sensor,), roles=roles)
+    # "die Waschmaschine zieht": the power of the named appliance.
+    return ground_event(replace(roles, subject_words=("die", "Leistung", "der", *owner)), entities)
+
+
 def _ground_energy(
     roles: EventRoles, entities: Sequence[EntitySnapshot]
 ) -> GroundedEvent | None:
@@ -626,6 +690,32 @@ def _ground_energy(
         and (subject.area_id is None or e.area_id == subject.area_id)
     ]
     spoken_period = {"daily": "täglichem", "weekly": "wöchentlichem", "monthly": "monatlichem"}
+    meter_word = normalize_for_compare(subject.noun_word or "").replace("-", "")
+    if period is None and ("zaehler" in meter_word or "zählerstand" in meter_word):
+        # "der Energiezähler über 12000 kWh" (7.9.1 A7): the meter *reading*
+        # is a valid threshold - no counting period is involved.
+        meters = [
+            e for e in subject_candidates(subject, entities)
+            if e.domain == "sensor" and e.device_class == "energy" and e.unit in {"Wh", "kWh"}
+        ] if subject.noun is not None else []
+        if len(meters) == 1:
+            assert roles.value is not None and roles.unit is not None
+            trigger = TriggerModel(
+                type=TriggerType.NUMERIC_STATE,
+                target=TriggerTarget(domain="sensor", device_class="energy", entity_id=meters[0].entity_id),
+                comparator=roles.comparator or NumericComparator.ABOVE,
+                threshold=_in_sensor_unit(roles.value, roles.unit, meters[0]),
+                for_seconds=roles.for_seconds,
+            )
+            return GroundedEvent(
+                GroundingStatus.RESOLVED, trigger=trigger, candidates=(meters[0],), subject=subject, roles=roles
+            )
+        if len(meters) > 1:
+            ordered = sorted(meters, key=lambda item: item.friendly_name)
+            return GroundedEvent(
+                GroundingStatus.AMBIGUOUS, candidates=tuple(ordered),
+                question=_which_question(subject, ordered), subject=subject, roles=roles,
+            )
     if period is None:
         return GroundedEvent(
             GroundingStatus.UNSUPPORTED, reason="energy_period",
@@ -686,6 +776,9 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
     energy = _ground_energy(roles, entities)
     if energy is not None:
         return energy
+    consumption = _ground_consumption(roles, entities)
+    if consumption is not None:
+        return consumption
     if roles.absent is not None and not roles.motion:
         idle = _ground_appliance_idle(roles, entities)
         if idle is not None:

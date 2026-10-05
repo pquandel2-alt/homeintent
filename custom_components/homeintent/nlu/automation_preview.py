@@ -122,6 +122,17 @@ def _format_delay(seconds: int | None) -> str:
     return f"{seconds} Sekunden"
 
 
+def _every(seconds: int | None) -> str:
+    """"jede Minute", "jede Stunde", "alle 10 Minuten"."""
+    from ..notification_language import spoken_duration
+
+    if seconds == 60:
+        return "jede Minute"
+    if seconds == 3600:
+        return "jede Stunde"
+    return f"alle {spoken_duration(seconds or 0)}"
+
+
 def _cover_noun(members: list[EntitySnapshot]) -> str | None:
     """The most specific device kind every member shares, from the
     ontology (device class first, then name), or ``None``."""
@@ -603,7 +614,7 @@ def _speak_follow_ups(model: AutomationModel, entities: list[EntitySnapshot]) ->
         if step.type is ActionType.REPEAT and step.delay_seconds and step.max_repeats:
             total = spoken_duration(step.delay_seconds * step.max_repeats)
             parts.append(
-                f"Danach wiederhole ich sie alle {spoken_duration(step.delay_seconds)}, solange "
+                f"Danach wiederhole ich sie {_every(step.delay_seconds)}, solange "
                 f"{holding(step.if_condition)} – höchstens {step.max_repeats}-mal, also längstens {total}."
             )
         if step.type is ActionType.ESCALATE and step.timeout_seconds:

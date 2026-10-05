@@ -29,6 +29,8 @@ from .entities import normalize_for_compare
 
 class MonitoringOperation(Enum):
     LIST = auto()
+    # "Beobachtest du das Garagentor?" - answered yes/no from the list (7.9.1 A7).
+    ASK = auto()
     STOP = auto()
     DELETE = auto()
     PAUSE = auto()
@@ -116,6 +118,13 @@ def parse_monitoring_management(text: str) -> MonitoringRequest | None:
     modifier = found[0][1] if found else None
     subject = modifier or _subject_phrase(keys, found[0][0] if found else None)
     spoken = _spoken_subject(raw.split(), keys, found[0][0] if found else None, modifier)
+    if first in _WATCH_VERBS and len(keys) > lead + 1 and keys[lead + 1] in {"du", "ihr"}:
+        # Verb-first yes/no question with the watched thing as object.
+        rest = [key for key in keys[lead + 2:] if key not in _FILLERS]
+        words = [word for word, key in zip(raw.split()[lead + 2:], keys[lead + 2:]) if key not in _FILLERS]
+        return MonitoringRequest(
+            MonitoringOperation.ASK, " ".join(rest) or None, " ".join(words) or None
+        )
     if first in _LIST_WORDS or (watches and first in {"was", "welche", "wen", "wo"}):
         if any(key in _STOP_WORDS | _DELETE_WORDS | _PAUSE_WORDS for key in keys[1:]):
             return None

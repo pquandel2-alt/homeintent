@@ -292,9 +292,16 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_followup.py::_INTERVAL_RE::0716d7a16a",
+   "id": "custom_components/homeintent/automation_followup.py::_INTERVAL_RE::d9bd822657",
    "datei": "custom_components/homeintent/automation_followup.py",
    "bereich": "_INTERVAL_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_followup.py::_BOUND_RE::607ce9b4eb",
+   "datei": "custom_components/homeintent/automation_followup.py",
+   "bereich": "_BOUND_RE",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -523,7 +530,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::9ab8b4c076",
+   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::f98c627e46",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_DURATION_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -5151,7 +5158,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 386,
+  "LEXICAL": 387,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 138,
   "SEMANTIC_SENTENCE_PATTERN": 173

@@ -822,7 +822,7 @@ def _with_duration(phrase: StateEventPhrase, trigger: TriggerModel) -> StateEven
     subject = phrase.subordinate[: -len(suffix)]
     return StateEventPhrase(
         f"{subject} länger als {duration} {adjective} ist",
-        f"{sentence_initial(subject)} ist seit {duration} {adjective}.",
+        f"{sentence_initial(subject)} ist {_since(duration)} {adjective}.",
     )
 
 

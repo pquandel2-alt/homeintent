@@ -44,6 +44,8 @@ class DialogTaskKind(StrEnum):
     MONITOR_DELETE = "monitor_delete"
     # 7.9.1 A6: a question for exactly one part of a monitoring request.
     MONITOR_PART = "monitor_part"
+    # 7.9.1 A7: the short monitor list; "Was macht die erste?" asks for one in full.
+    MONITOR_LIST = "monitor_list"
 
 
 class DialogPriority(IntEnum):

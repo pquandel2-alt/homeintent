@@ -668,7 +668,7 @@ _DURATION_RE = re.compile(
     # Duration modifiers stack: "seit mehr als", "schon länger als" (7.8.3).
     r"(?:\b(?:seit|länger\s+als|mehr\s+als|über|mindestens|für|schon)\s+)*"
     r"(?:(?P<number>-?\d+|[a-zäöüß]+)\s+|(?P<half>eine\s+halbe|einer\s+halben)\s+)"
-    r"(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag)\b(?:\s+lang)?",
+    r"(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag|wochen?)\b(?:\s+lang)?",
     re.IGNORECASE,
 )
 _DOWN_RE = re.compile(
@@ -702,9 +702,22 @@ _STATE_WORDS: dict[str, SemanticState] = {
         ("zugeht", "zugegangen", "geschlossen", "schließt", "zugemacht", "zumacht"),
         SemanticState.CLOSED,
     ),
+    # Travel participles of covers name the end position (7.9.1 A7): an
+    # awning "eingefahren" is closed, "ausgefahren" open; a shutter
+    # "hochgefahren" is open, "heruntergefahren" closed.
+    **dict.fromkeys(
+        ("ausgefahren", "hochgefahren", "raufgefahren", "aufgefahren", "hinaufgefahren"),
+        SemanticState.OPEN,
+    ),
+    **dict.fromkeys(
+        ("eingefahren", "heruntergefahren", "runtergefahren", "hinuntergefahren", "zugefahren"),
+        SemanticState.CLOSED,
+    ),
     **dict.fromkeys(
         ("angeht", "angegangen", "eingeschaltet", "einschaltet", "angeschaltet", "anschaltet",
-         "angemacht", "anmacht", "anspringt", "angesprungen"),
+         "angemacht", "anmacht", "anspringt", "angesprungen",
+         # a light that "brennt/leuchtet" is on (7.9.1 A7)
+         "brennt", "brennen", "leuchtet", "leuchten"),
         SemanticState.ON,
     ),
     **dict.fromkeys(
@@ -712,6 +725,10 @@ _STATE_WORDS: dict[str, SemanticState] = {
         SemanticState.OFF,
     ),
 }
+_TRAVEL_PARTICIPLES = frozenset({
+    "ausgefahren", "hochgefahren", "raufgefahren", "aufgefahren", "hinaufgefahren",
+    "eingefahren", "heruntergefahren", "runtergefahren", "hinuntergefahren", "zugefahren",
+})
 # Particles that are a state only in predicate position ("auf ist", "an bleibt").
 _PARTICLE_STATES: dict[str, SemanticState] = {
     "auf": SemanticState.OPEN, "zu": SemanticState.CLOSED,
@@ -764,14 +781,14 @@ def _duration_seconds(match: re.Match[str]) -> int | None:
     unit = match.group("unit").casefold()
     multiplier = (
         1 if unit.startswith("sekunde") else 60 if unit.startswith("minute")
-        else 86400 if unit.startswith("tag") else 3600
+        else 86400 if unit.startswith("tag") else 604800 if unit.startswith("woche") else 3600
     )
     if match.group("half") is not None:
         return multiplier // 2 if multiplier >= 60 else None
     raw = match.group("number")
     if raw is None:
         return None
-    if raw.casefold() in {"eine", "einer", "einem", "ein"}:
+    if raw.casefold() in {"eine", "einer", "einem", "ein", "einen"}:
         amount = 1
     elif raw.lstrip("-").isdigit():
         amount = int(raw)
@@ -958,6 +975,10 @@ def read_event_roles(event_text: str) -> EventRoles:
             # elsewhere ("die Fenster oben") it stays a place.
             state = SemanticState.OPEN if keys[-2] in _UP_POSITION_WORDS else SemanticState.CLOSED
             consumed.add(len(keys) - 2)
+        if state is not None and any(key in _TRAVEL_PARTICIPLES for key in keys) and set(keys) & _STATIVE_COPULAS:
+            # "der Rollladen ist heruntergefahren": an end position, no
+            # travel direction (7.9.1 A7).
+            direction = None
         full_travel = state is not None and any(key in _FULL_TRAVEL for key in keys)
         if "bewegung" in keys and any(
             key in _MOTION_VERBS for key in keys
@@ -1331,6 +1352,9 @@ _NUMBER_WORD_RE = re.compile(r"\d")
 _PRESENT_VERBS = frozenset({
     "ist", "sind", "da", "kommt", "betritt", "reinkommt", "hereinkommt", "rein", "herein",
     "anwesend", "drin", "befindet",
+    # "im Wohnzimmer 2 Stunden niemand war" (7.9.1 A7): with a span, the
+    # past tense names the same lasting absence.
+    "war", "waren", "gewesen",
 })
 _PRESENCE_FILLERS = frozenset({
     "hat", "habe", "hast", "ist", "bin", "bist", "sind", "wieder", "gerade", "dann",

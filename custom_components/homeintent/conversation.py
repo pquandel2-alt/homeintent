@@ -73,7 +73,7 @@ from .hass_entities import (
 )
 from .history_query import parse_history_query
 from .household_query import match_household_query
-from .missing_part import PartRequest, complete_request, read_part_answer
+from .embedded_question import embedded_check_question
 from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
@@ -921,17 +921,15 @@ class NluConversationEntity(
                         replace(user_input, text=combined), chat_log
                     )
 
-        if (
-            active_dialog is None
-            and active_task is not None
-            and active_task.kind is DialogTaskKind.MONITOR_PART
-        ):
-            # "In welchem Zeitraum?" -> "Innerhalb von 10 Minuten." (7.9.1
-            # A6): the answer is read only as the asked part and completes
-            # the original request, which then runs the normal path again.
-            answered = await self._async_answer_missing_part(
-                user_input, response, active_task, chat_log
-            )
+        if active_dialog is None and active_task is not None and active_task.kind in {
+            DialogTaskKind.MONITOR_LIST, DialogTaskKind.MONITOR_PART,
+        }:
+            # "Was macht die erste?" after the short list (7.9.1 A7); "In
+            # welchem Zeitraum?" -> "Innerhalb von 10 Minuten." (A6): read
+            # only as the asked part, the completed request runs again.
+            answered = self._monitoring.answer_open_question(user_input, response, active_task)
+            if isinstance(answered, str):
+                return await self._async_handle_message_inner(replace(user_input, text=answered), chat_log)
             if answered is not None:
                 return answered
 
@@ -1622,6 +1620,12 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+
+        checked = embedded_check_question(user_input.text)
+        if checked is not None:
+            # "Prüfe, ob das Garagentor offen ist" (7.9.1 A7): a question
+            # answered now, never an automation.
+            return await self._async_handle_message_inner(replace(user_input, text=checked), chat_log)
 
         monitoring_request = parse_monitoring_management(user_input.text)
         if monitoring_request is not None:
@@ -2371,37 +2375,6 @@ class NluConversationEntity(
             user_input, response, result, entities
         )
 
-
-    async def _async_answer_missing_part(
-        self,
-        user_input: conversation.ConversationInput,
-        response: intent.IntentResponse,
-        task: Any,
-        chat_log: Any,
-    ) -> conversation.ConversationResult | None:
-        """Read the turn as exactly the asked part, or let it pass."""
-        request = getattr(task, "payload", None)
-        if not isinstance(request, PartRequest):
-            return None
-        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
-            return None
-        manager = self._runtime_data.dialog_manager
-        phrase = read_part_answer(request.part, user_input.text)
-        if phrase is None:
-            if len(user_input.text.split()) <= 3:
-                # A short reply that is no such part: ask again, never guess.
-                response.async_set_speech(
-                    f"Das habe ich nicht als {request.spoken_part} verstanden. {request.question}"
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            # A complete new request ends the question without effect.
-            manager.cancel(user_input.conversation_id, task.task_id)
-            return None
-        manager.cancel(user_input.conversation_id, task.task_id)
-        completed = complete_request(request, phrase)
-        return await self._async_handle_message_inner(replace(user_input, text=completed), chat_log)
 
     def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
         """The configured action sequence of one script entity, if readable."""
