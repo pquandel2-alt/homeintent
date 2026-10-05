@@ -2651,34 +2651,6 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/missing_part.py::_DURATION_RE::b94e80a1d3",
-   "datei": "custom_components/homeintent/missing_part.py",
-   "bereich": "_DURATION_RE",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/missing_part.py::_HALF_RE::398a0dc43d",
-   "datei": "custom_components/homeintent/missing_part.py",
-   "bereich": "_HALF_RE",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/missing_part.py::_CLOCK_RE::c10b087374",
-   "datei": "custom_components/homeintent/missing_part.py",
-   "bereich": "_CLOCK_RE",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/missing_part.py::_LEADING::c9f5596b09",
-   "datei": "custom_components/homeintent/missing_part.py",
-   "bereich": "_LEADING",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
    "id": "custom_components/homeintent/missing_part.py::_CONJUNCTION_RE::dfd52bde93",
    "datei": "custom_components/homeintent/missing_part.py",
    "bereich": "_CONJUNCTION_RE",
@@ -5179,9 +5151,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 387,
+  "LEXICAL": 386,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 138,
-  "SEMANTIC_SENTENCE_PATTERN": 176
+  "SEMANTIC_SENTENCE_PATTERN": 173
  }
 }

@@ -64,31 +64,30 @@ _UNIT_SECONDS = {
     "sekunde": 1, "sekunden": 1, "minute": 60, "minuten": 60, "stunde": 3600, "stunden": 3600,
     "tag": 86400, "tage": 86400, "tagen": 86400, "woche": 604800, "wochen": 604800,
 }
-_DURATION_RE = re.compile(
-    r"^(?:(?:innerhalb|binnen)\s+(?:von\s+)?|in\s+|im\s+zeitraum\s+von\s+|über\s+|während\s+)?"
-    r"(?P<amount>\d+(?:[.,]\d+)?|[a-zäöüß]+)?\s*(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag|wochen?)$"
-)
-_HALF_RE = re.compile(
-    r"^(?:(?:innerhalb|binnen)\s+(?:von\s+)?|in\s+)?(?:(?P<whole>anderthalb|eineinhalb)|(?:einer?\s+)?halben?)"
-    r"\s+stunden?$"
-)
-_CLOCK_RE = re.compile(
-    r"^(?:bis\s+)?(?:(?P<day>heute|morgen)\s+)?(?:(?:früh|abend|abends|morgens)\s+)?"
-    r"(?:(?:um|gegen|spätestens|spätestens\s+um)\s+)?(?P<hour>\d{1,2})(?:[:.](?P<minute>\d{2}))?"
-    r"(?:\s*uhr)?(?:\s+(?P<part>abends|morgens|früh|nachmittags))?$"
-)
+# Closed word classes of a period answer: prepositions before the amount.
+_PERIOD_LEAD = frozenset({"innerhalb", "binnen", "von", "in", "im", "zeitraum", "über", "während"})
+_ONE = frozenset({"ein", "eine", "einer", "einen", "einem"})
+_HALF = frozenset({"halbe", "halben"})
+_ONE_AND_HALF = frozenset({"anderthalb", "eineinhalb"})
+# Closed word classes of a clock answer.
+_CLOCK_LEAD = frozenset({"bis", "um", "gegen", "spätestens"})
+_DAYS = frozenset({"heute", "morgen"})
+_EVENING = frozenset({"abends", "nachmittags", "abend"})
+_MORNING = frozenset({"morgens", "früh"})
 _PERIODS = {
     "heute": "heute", "täglich": "heute", "seit mitternacht": "heute", "ab heute": "heute",
     "diese woche": "diese Woche", "wöchentlich": "diese Woche", "die woche": "diese Woche",
     "diesen monat": "diesen Monat", "monatlich": "diesen Monat", "den monat": "diesen Monat",
 }
-_LEADING = re.compile(r"^(?:(?:ja|also|ähm|äh|ok|okay|naja)\s*,?\s+)+", re.IGNORECASE)
+_FILLER_WORDS = frozenset({"ja", "also", "ähm", "äh", "ok", "okay", "naja"})
 _ARTICLES = frozenset({"der", "die", "das", "den", "dem", "des"})
 
 
 def _clean(answer: str) -> str:
-    text = " ".join(answer.strip().rstrip(".!?").split())
-    return _LEADING.sub("", text).strip()
+    words = answer.strip().rstrip(".!?").replace(",", " ").split()
+    while words and words[0].casefold() in _FILLER_WORDS:
+        words = words[1:]
+    return " ".join(words)
 
 
 def _amount(word: str | None) -> float | None:
@@ -114,35 +113,17 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
     if not key:
         return None
     if part is MissingPart.WINDOW:
-        half = _HALF_RE.match(key)
-        if half is not None:
-            # "eine halbe Stunde", "anderthalb Stunden": said in minutes.
-            minutes = 30 if half.group("whole") is None else 90
-            return f"innerhalb von {minutes} Minuten"
-        match = _DURATION_RE.match(key)
-        if match is None:
+        seconds = _period_seconds(key.split())
+        if seconds is None or seconds < 60:
             return None
-        amount = _amount(match.group("amount"))
-        if amount is None or amount <= 0:
-            return None
-        unit = match.group("unit")
-        seconds = amount * _UNIT_SECONDS[unit]
-        if seconds < 60:
-            return None
-        number = f"{amount:g}".replace(".", ",")
-        return f"innerhalb von {number} {unit}"
+        return f"innerhalb von {_spoken_duration(seconds)}"
     if part is MissingPart.UNTIL:
-        match = _CLOCK_RE.match(key)
-        if match is None:
+        clock = _clock(key.split())
+        if clock is None:
             return None
-        hour = int(match.group("hour"))
-        minute = int(match.group("minute") or 0)
-        if match.group("part") in {"abends", "nachmittags"} and hour < 12:
-            hour += 12
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            return None
-        day = f"{match.group('day')} um " if match.group("day") else ""
-        return f"bis {day}{hour} Uhr" if minute == 0 else f"bis {day}{hour}:{minute:02d} Uhr"
+        day, hour, minute = clock
+        lead = f"{day} um " if day else ""
+        return f"bis {lead}{hour} Uhr" if minute == 0 else f"bis {lead}{hour}:{minute:02d} Uhr"
     if part is MissingPart.PERIOD:
         return _PERIODS.get(key)
     # DEVICE / RECIPIENT: a short naming answer - never a sentence.
@@ -152,6 +133,65 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
     if part is MissingPart.RECIPIENT:
         words = [word for word in words if word.casefold() not in {"an", "für", "fuer"}]
     return " ".join(words) or None
+
+
+def _period_seconds(words: list[str]) -> float | None:
+    """"innerhalb von 10 Minuten", "eine halbe Stunde", "zwei Tage"."""
+    while words and words[0] in _PERIOD_LEAD:
+        words = words[1:]
+    if not words or words[-1] not in _UNIT_SECONDS:
+        return None
+    unit = _UNIT_SECONDS[words[-1]]
+    amount_words = words[:-1]
+    if not amount_words:
+        return float(unit)
+    if amount_words[-1] in _HALF:
+        return 0.5 * unit if amount_words[:-1] in ([], ["eine"], ["einer"]) else None
+    if len(amount_words) != 1:
+        return None
+    word = amount_words[0]
+    if word in _ONE_AND_HALF:
+        return 1.5 * unit
+    amount = _amount(word)
+    return amount * unit if amount is not None and amount > 0 else None
+
+
+def _spoken_duration(seconds: float) -> str:
+    for size, singular, plural in (
+        (604800, "Woche", "Wochen"), (86400, "Tag", "Tage"), (3600, "Stunde", "Stunden"),
+        (60, "Minute", "Minuten"),
+    ):
+        if seconds % size == 0:
+            count = int(seconds // size)
+            return f"{count} {singular if count == 1 else plural}"
+    return f"{int(seconds // 60)} Minuten"
+
+
+def _clock(words: list[str]) -> tuple[str | None, int, int] | None:
+    """"bis 20 Uhr", "um 9 abends", "morgen 7 Uhr", "19:30" -> (day, hour, minute)."""
+    day: str | None = None
+    evening = False
+    rest: list[str] = []
+    for word in words:
+        if word in _CLOCK_LEAD or word in _MORNING:
+            continue
+        if word in _DAYS and day is None:
+            day = word
+        elif word in _EVENING:
+            evening = True
+        elif word != "uhr":
+            rest.append(word)
+    if len(rest) != 1:
+        return None
+    hour_text, _, minute_text = rest[0].replace(".", ":").partition(":")
+    if not hour_text.isdigit() or (minute_text and not minute_text.isdigit()):
+        return None
+    hour, minute = int(hour_text), int(minute_text or 0)
+    if evening and hour < 12:
+        hour += 12
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return day, hour, minute
 
 
 _CONJUNCTION_RE = re.compile(r"\b(wenn|sobald|falls|sofern)\b\s+", re.IGNORECASE)

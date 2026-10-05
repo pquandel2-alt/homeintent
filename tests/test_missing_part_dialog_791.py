@@ -140,9 +140,9 @@ def test_the_pause_time_answer(monkeypatch, tmp_path, answer):
 
 
 @pytest.mark.parametrize(("part", "answer", "phrase"), [
-    ("WINDOW", "in 10 Minuten", "innerhalb von 10 minuten"),
+    ("WINDOW", "in 10 Minuten", "innerhalb von 10 Minuten"),
     ("WINDOW", "eine halbe Stunde", "innerhalb von 30 Minuten"),
-    ("WINDOW", "zwei Tage", "innerhalb von 2 tage"),
+    ("WINDOW", "zwei Tage", "innerhalb von 2 Tage"),
     ("WINDOW", "Licht an", None),
     ("UNTIL", "bis 9", "bis 9 Uhr"),
     ("UNTIL", "gestern", None),
