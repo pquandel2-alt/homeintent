@@ -432,7 +432,13 @@ class DeviceController:
         response_parts: list[str] = []
         multi_undo_parts: list[UndoPlan] = []
         multi_undo_supported = True
-        for sub_result in result.commands:
+        names = {entity.entity_id: entity.friendly_name for entity in entities}
+
+        def plan_names(plan: ServiceCallPlan) -> str:
+            ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+            return " und ".join(names.get(entity_id, entity_id) for entity_id in ids)
+
+        for index, sub_result in enumerate(result.commands):
             if sub_result.plan is None:
                 response_parts.append(sub_result.response_text)
                 continue
@@ -467,9 +473,18 @@ class DeviceController:
                     sub_result.plan.entity_id,
                     error,
                 )
+                # A partial result names what was not done (7.9.1 Teil B).
+                skipped = [
+                    plan_names(later.plan) for later in result.commands[index + 1:]
+                    if later.plan is not None
+                ]
+                failed = f"Nicht ausgeführt: {plan_names(sub_result.plan)} ({error})."
+                if skipped:
+                    failed += f" Danach habe ich auch {' und '.join(skipped)} nicht mehr geschaltet."
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {error}",
+                    " ".join([*response_parts, failed])
+                    if response_parts else f"Fehler beim Ausführen: {error} {failed}",
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id

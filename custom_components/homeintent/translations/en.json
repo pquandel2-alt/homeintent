@@ -33,6 +33,8 @@
           "trace_store_text": "Execution trace: keep a shortened utterance (off: hash only)",
           "allow_non_admin_critical": "Allow critical actions for authenticated non-admin users",
           "allow_non_admin_automations": "Allow non-admin users to create automations",
+          "response_style": "Reply style on success (spoken: speech as before, tone: only a confirmation sound when everything was done; questions, errors and partial results are always spoken)",
+          "confirmation_media_id": "Custom confirmation sound (media-source:// ID or /local/… path; empty: built-in sound)",
           "context_ttl_seconds": "Conversation context in seconds",
           "agent_enabled": "Enable proactive agent behavior",
           "agent_delivery_channels": "Agent delivery channels",

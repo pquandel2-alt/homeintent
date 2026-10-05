@@ -29,6 +29,16 @@ IMPLICIT_ACTION_LEVELS = (
 DEFAULT_IMPLICIT_ACTION_LEVEL = "propose"
 CONF_ALLOW_NON_ADMIN_CRITICAL = "allow_non_admin_critical"
 CONF_ALLOW_NON_ADMIN_AUTOMATIONS = "allow_non_admin_automations"
+# 7.9.1 Teil B: "spoken" answers every turn aloud (default); "tone" plays a
+# short confirmation sound instead when everything said was done.
+CONF_RESPONSE_STYLE = "response_style"
+RESPONSE_STYLE_SPOKEN = "spoken"
+RESPONSE_STYLE_TONE = "tone"
+RESPONSE_STYLES = (RESPONSE_STYLE_SPOKEN, RESPONSE_STYLE_TONE)
+DEFAULT_RESPONSE_STYLE = RESPONSE_STYLE_SPOKEN
+# Optional own sound (media-source:// or a local /local/... path); empty:
+# the integration's own confirm.mp3.
+CONF_CONFIRMATION_MEDIA_ID = "confirmation_media_id"
 CONF_CONTEXT_TTL_SECONDS = "context_ttl_seconds"
 CONF_CUSTOM_ALIASES = "custom_aliases"
 CONF_CONTROL_USER_IDS = "control_user_ids"

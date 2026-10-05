@@ -11,13 +11,14 @@ from .agent_action_policy import RESERVED_TARGET_DATA_KEYS
 from .audit_log import AuditTrail
 from .entities import STATELESS_ACTION_DOMAINS, EntitySnapshot
 from .effect_graph import build_plan_effects
-from .effect_monitor import EffectMonitor
+from .effect_monitor import EffectMonitor, expected_state
 from .execution_context import UNAUTHORIZED_TEXT, current_turn, is_unauthorized, new_execution_context
 from .execution_trace import record_execution
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
 from .plan_origin import PlanOrigin
 from .risk import RiskLevel
 from .service_call import ServiceCallPlan
+from .turn_outcome import TurnOutcomeKind, report_outcome
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,61 @@ class ExecutionResult:
 
 
 async def async_execute_service_plan(
+    hass: HomeAssistant,
+    plan: ServiceCallPlan,
+    entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],
+    options: Mapping[str, object],
+    *,
+    is_admin: bool,
+    user_id: str | None,
+    confirmed: bool,
+    audit_trail: AuditTrail | None = None,
+    audit_actor_id: str | None = None,
+    effect_monitor: EffectMonitor | None = None,
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND,
+    attended: bool = True,
+    binding_confirmed: bool = False,
+    context: Context | None = None,
+    scope: ConfirmedScope | None = None,
+) -> ExecutionResult:
+    """The single physical write path; reports what the turn did (7.9.1 B).
+
+    ``EXECUTED`` only when the write ran and every target with a checkable
+    end state already shows it; a cover still moving is ``UNCONFIRMED``; a
+    write that did not run is ``NOT_DONE``.
+    """
+    result = await _async_execute_service_plan(
+        hass, plan, entities, options, is_admin=is_admin, user_id=user_id, confirmed=confirmed,
+        audit_trail=audit_trail, audit_actor_id=audit_actor_id, effect_monitor=effect_monitor,
+        origin=origin, attended=attended, binding_confirmed=binding_confirmed, context=context,
+        scope=scope,
+    )
+    if not result.executed:
+        report_outcome(TurnOutcomeKind.NOT_DONE)
+    else:
+        report_outcome(
+            TurnOutcomeKind.EXECUTED if _effect_reached(hass, plan) else TurnOutcomeKind.UNCONFIRMED
+        )
+    return result
+
+
+def _effect_reached(hass: HomeAssistant, plan: ServiceCallPlan) -> bool:
+    """Whether every target with a known end state shows it right now."""
+    expected = expected_state(plan)
+    if expected is None:
+        return True
+    target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+    states = getattr(hass, "states", None)
+    for entity_id in target_ids:
+        if entity_id.split(".", 1)[0] in STATELESS_ACTION_DOMAINS:
+            continue
+        state = states.get(entity_id) if states is not None else None
+        if state is None or getattr(state, "state", None) != expected:
+            return False
+    return True
+
+
+async def _async_execute_service_plan(
     hass: HomeAssistant,
     plan: ServiceCallPlan,
     entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],

@@ -101,6 +101,13 @@ def _build_engine() -> NluEngine:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    try:
+        # The confirmation tone (7.9.1 Teil B) is served by Home Assistant itself.
+        from .response_style import async_register_sound
+
+        await async_register_sound(hass)
+    except Exception as err:  # noqa: BLE001 - the tone is optional, setup is not
+        _LOGGER.warning("HomeIntent-Bestätigungston konnte nicht bereitgestellt werden: %s", err)
     configured_ttl = entry.options.get(CONF_CONTEXT_TTL_SECONDS, 30)
     context_ttl = (
         float(configured_ttl)

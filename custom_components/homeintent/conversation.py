@@ -74,6 +74,8 @@ from .hass_entities import (
 from .history_query import parse_history_query
 from .household_query import match_household_query
 from .embedded_question import embedded_check_question
+from .response_style import apply_response_style
+from .turn_outcome import begin_outcomes, end_outcomes
 from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
@@ -556,10 +558,12 @@ class NluConversationEntity(
         # One Home Assistant context per turn: every execution in this turn
         # shares one execution id (7.3.2).
         turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
+        outcomes, outcome_token = begin_outcomes()
         self._current_chat_log = chat_log
         try:
             result = await self._async_handle_message_inner(user_input, chat_log)
         finally:
+            end_outcomes(outcome_token)
             end_turn(turn)
         suffix = self._take_turn_suffix(user_input.conversation_id)
         if suffix:
@@ -570,15 +574,16 @@ class NluConversationEntity(
                 if isinstance(speech, dict) else str(speech or "")
             )
             result.response.async_set_speech(f"{spoken} {suffix}".strip())
-        self._apply_continue_conversation(user_input, result)
+        awaiting_answer = self._apply_continue_conversation(user_input, result) or bool(suffix)
+        # Speech or confirmation tone: decided here, once, from typed facts.
+        apply_response_style(self.hass, self.entry.options, user_input, result, outcomes, awaiting_answer)
         return result
-
 
     def _apply_continue_conversation(
         self,
         user_input: conversation.ConversationInput,
         result: conversation.ConversationResult,
-    ) -> None:
+    ) -> bool:
         """Flag the turn as awaiting an answer, for clients that can listen on.
 
         Read back from the context store rather than from anything the turn
@@ -587,13 +592,13 @@ class NluConversationEntity(
         """
         conversation_id = result.conversation_id or user_input.conversation_id
         if conversation_id is None:
-            return
+            return False
         active = active_pending_dialog(self._context_store.get(conversation_id))
         awaiting_answer = (
             active is not None and active.kind in _CONTINUE_CONVERSATION_KINDS
         ) or self._runtime_data.dialog_manager.has_open_question(conversation_id)
         if not awaiting_answer:
-            return
+            return False
         # ConversationResult grew this field in Home Assistant 2025.2 and is a
         # slots dataclass, so on an older core the assignment raises instead of
         # silently adding an attribute. Setting it after construction (rather
@@ -603,6 +608,7 @@ class NluConversationEntity(
             result.continue_conversation = True
         except AttributeError:  # pragma: no cover - pre-2025.2 cores only
             pass
+        return True
 
     async def _async_handle_message_inner(
         self,

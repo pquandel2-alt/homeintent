@@ -24,6 +24,7 @@ from ..automation_action_edit import (
 )
 from ..automation_executor import AutomationExecutor
 from ..automation_ownership import async_management_refusal
+from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..automation_management import (
     AutomationManagementKind,
     AutomationManagementRequest,
@@ -606,6 +607,10 @@ class AutomationManagementController:
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
                 f"Fehler beim Ändern der Automation: {user_facing_error(err)}",
             )
+        else:
+            if pending.automation is not None:
+                # One named automation changed exactly as asked (7.9.1 B).
+                report_outcome(TurnOutcomeKind.EXECUTED)
         return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
     async def async_handle_deletion_confirmation_reply(
@@ -655,6 +660,7 @@ class AutomationManagementController:
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(AUTOMATION_DELETED_TEXT)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -691,6 +697,7 @@ class AutomationManagementController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+            report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(result.response_text)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id

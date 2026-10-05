@@ -162,6 +162,11 @@ class EffectMonitor:
             task.cancel()
 
 
+def expected_state(plan: ServiceCallPlan) -> str | None:
+    """The end state a successful write leaves its targets in, if known."""
+    return _expected_state(plan)
+
+
 def _expected_state(plan: ServiceCallPlan) -> str | None:
     return {
         "turn_on": "on",
@@ -176,4 +181,4 @@ def _expected_state(plan: ServiceCallPlan) -> str | None:
     }.get(plan.service)
 
 
-__all__ = ("ActionObserver", "EffectMonitor", "ExpectedEffect", "TimeoutResolver")
+__all__ = ("ActionObserver", "EffectMonitor", "ExpectedEffect", "TimeoutResolver", "expected_state")

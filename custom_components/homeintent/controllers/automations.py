@@ -78,6 +78,7 @@ from ..nlu.recurrence import (
 from ..nlu.word_cues import has_word
 from ..security_control import conversation_user_id, user_is_admin
 from ..service_call import ServiceCallPlan
+from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..world_model import WorldModel
 
 _LOGGER = logging.getLogger(__name__)
@@ -618,6 +619,7 @@ class AutomationController:
                 user_id=turn.user_id, utterance=turn.utterance, origin=None,
                 attended=True, now=dt_util.now(),
             )
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(AUTOMATION_CREATED_TEXT)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id

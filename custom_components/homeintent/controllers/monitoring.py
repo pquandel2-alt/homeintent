@@ -44,6 +44,7 @@ from ..proactive_model import SituationKind
 from ..automation_ownership import async_management_refusal, async_owner_name, may_manage
 from ..missing_part import MissingPart, PartRequest, complete_request, read_part_answer
 from ..security_control import conversation_user_id, user_is_admin
+from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..user_context import BindingStatus
 
 
@@ -166,6 +167,7 @@ class MonitoringController:
         confirmed = replace(goal, provenance=replace(goal.provenance, confirmed=True))
         window = goal.trigger.window_seconds if goal.trigger is not None else None
         await store.async_save(MonitorRecord(confirmed, cooldown_seconds=window or 300))
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(
             f"Eingerichtet. Ich überwache {proposal.subject} selbst und melde mich, sobald die "
             "Änderung eintritt."
@@ -266,6 +268,7 @@ class MonitoringController:
             elif monitor.goal_id is not None and goals is not None:
                 record = next(item for item in records if item.goal.goal_id == monitor.goal_id)
                 await goals.async_save(replace(record, enabled=False))
+            report_outcome(TurnOutcomeKind.EXECUTED)
             return say(
                 f"Ausgeschaltet: „{monitor.label.rstrip('.')}“. Sie bleibt gespeichert, bis du sie löschst."
             )
@@ -296,6 +299,7 @@ class MonitoringController:
                 user_input, "Dieser Zeitpunkt liegt schon in der Vergangenheit. Bis wann soll ich pausieren?"
             ))
         await store.async_pause_automation_until(monitor.automation_id, resume)
+        report_outcome(TurnOutcomeKind.EXECUTED)
         day = "morgen" if request.day_offset == 1 else "heute" if request.day_offset == 0 else resume.strftime("%d.%m.")
         return say(
             f"Pausiert bis {day} um {resume:%H:%M} Uhr: „{monitor.label.rstrip('.')}“. Danach schalte ich "
@@ -402,6 +406,7 @@ class MonitoringController:
             await self._automation_store().async_delete_automation(monitor.automation_id)
         elif monitor.goal_id is not None and self._runtime.monitor_goals is not None:
             await self._runtime.monitor_goals.async_delete(monitor.goal_id)
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(f"Gelöscht: „{monitor.label.rstrip('.')}“.")
         return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 

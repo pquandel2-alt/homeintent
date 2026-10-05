@@ -20,6 +20,9 @@ from .const import (
     CONF_BANTER_LEVEL,
     CONF_ADMIN_ONLY_ENTITIES,
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
+    CONF_RESPONSE_STYLE,
+    CONF_CONFIRMATION_MEDIA_ID,
+    DEFAULT_RESPONSE_STYLE,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
     CONF_CONTEXT_TTL_SECONDS,
@@ -147,6 +150,8 @@ async def async_get_config_entry_diagnostics(
         "allow_non_admin_automations": entry.options.get(
             CONF_ALLOW_NON_ADMIN_AUTOMATIONS, True
         ),
+        "response_style": entry.options.get(CONF_RESPONSE_STYLE, DEFAULT_RESPONSE_STYLE),
+        "confirmation_media_custom": bool(entry.options.get(CONF_CONFIRMATION_MEDIA_ID)),
         "context_ttl_seconds": entry.options.get(CONF_CONTEXT_TTL_SECONDS, 30),
         "proactive_agent_enabled": entry.options.get(CONF_AGENT_ENABLED, True),
         "agent_delivery_channels": entry.options.get(

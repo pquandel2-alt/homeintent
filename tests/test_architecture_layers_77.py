@@ -60,6 +60,10 @@ SERVICE_CALLERS = {
     "automation_executor",  # HomeIntent's own automations (system context)
     "agent_delivery", "proactive_runtime", "agent_runtime",  # notifications / announcements
     "native_timer",  # timer signal tone
+    # 7.9.1 Teil B: the confirmation tone on the requesting satellite or
+    # media player (assist_satellite.announce / media_player.play_media) -
+    # plays a sound, never writes a device.
+    "response_style",
     "history_query",  # recorder reads
     "controllers/productivity",  # todo, timer, calendar entities
     "controllers/goals",  # failure notification of a background plan

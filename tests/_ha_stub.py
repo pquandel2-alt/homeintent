@@ -103,6 +103,7 @@ def install() -> None:
         language: str = "de"
         context: Any = None
         device_id: str | None = None
+        satellite_id: str | None = None
 
     @dataclass(slots=True)
     class ConversationResult:
@@ -211,6 +212,11 @@ def install() -> None:
             task = asyncio.create_task(target, name=name)
             self._tasks.append(task)
             return task
+
+        def async_create_background_task(
+            self, target: Any, name: str | None = None
+        ) -> asyncio.Task[Any]:
+            return self.async_create_task(target, name=name)
 
     class State:
         def __init__(self, entity_id: str, state: str, attributes: dict | None = None) -> None:
