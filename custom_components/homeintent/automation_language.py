@@ -975,6 +975,13 @@ def read_event_roles(event_text: str) -> EventRoles:
             motion, occupancy, state = True, True, SemanticState.ON
         elif state is None and set(keys) & {"niemand", "keiner"} and set(keys) & _PRESENT_VERBS:
             motion, occupancy, state = True, True, SemanticState.OFF
+        if motion:
+            # Movement has no end position: "oben/unten" is the floor where
+            # it is watched, never a cover state (7.9.1 A4).
+            consumed -= {
+                index for index in consumed
+                if keys[index] in _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
+            }
 
     subject: list[str] = []
     for index, word in enumerate(words):
@@ -993,7 +1000,7 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         if (
             key in _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
-            and state is not None and value is None and not full_travel and not motion
+            and state is not None and value is None and not full_travel
         ):
             # "wenn oben kein Fenster mehr offen ist": the state comes from
             # another word, so "oben/unten" is the place (7.9 W1).

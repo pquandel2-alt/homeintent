@@ -720,11 +720,19 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
         )
     if roles.motion and subject.noun is None:
         detector = "bewegungsmelder"
-        if roles.occupancy and any(
-            (entity.device_class or "") in {"occupancy", "presence"}
-            and (subject.area_id is None or entity.area_id == subject.area_id)
-            for entity in entities
-        ):
+
+        def _here(entity: EntitySnapshot, classes: set[str]) -> bool:
+            return (
+                (entity.device_class or "") in classes
+                and (subject.area_id is None or entity.area_id == subject.area_id)
+                and (subject.place is None or subject.place.contains(entity))
+            )
+
+        occupancy_here = any(_here(entity, {"occupancy", "presence"}) for entity in entities)
+        motion_here = any(_here(entity, {"motion"}) for entity in entities)
+        if occupancy_here and (roles.occupancy or not motion_here):
+            # "niemand", or a place whose only detector is a presence sensor
+            # (it notices movement, too) - 7.9.1 A4/A7.
             detector = "präsenzmelder"
         subject = SubjectReading(
             noun=noun_class(detector), noun_word=detector.capitalize(),
@@ -732,6 +740,8 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             unknown_location=subject.unknown_location,
             modifiers=tuple(m for m in subject.modifiers if m not in {"bewegung", "eine"}),
             quantifier=Quantifier.ANY, implicit=False,
+            # A spoken floor or "draußen" stays a hard limit (7.9.1 A4).
+            place=subject.place,
         )
     if subject.unknown_location is not None:
         return GroundedEvent(
@@ -809,11 +819,11 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                 question=f"Mit „{noun}“ können {options} gemeint sein. Welche meinst du?",
                 subject=subject, roles=roles,
             )
-    if subject.place is not None and len(candidates) > 1:
-        # "wenn es draußen kälter als 5 Grad wird": the spoken place narrows
-        # the measured quantity (7.8 B5) - never the action's device.
-        placed = [entity for entity in candidates if subject.place.contains(entity)]
-        candidates = placed or candidates
+    if subject.place is not None:
+        # "wenn es draußen kälter als 5 Grad wird", "im Keller": the spoken
+        # place limits the measured quantity (7.8 B5) - always, also with a
+        # single candidate, and never falls back to every device (7.9.1 A4).
+        candidates = [entity for entity in candidates if subject.place.contains(entity)]
     if not candidates:
         where = (
             f" {dative_location_phrase(subject.area_name)}" if subject.area_name

@@ -385,7 +385,8 @@ class DialogLearningMixin:
         mentions = build_place_lexicon(entities).scan(normalize_for_compare(user_input.text).split())
         places = [mention.place for mention in mentions if mention.place.kind is not PlaceKind.HERE]
         if places:
-            candidates = [entity for entity in candidates if places[0].contains(entity)] or candidates
+            # A spoken place is never dropped (7.9.1 A4): nothing there, no offer.
+            candidates = [entity for entity in candidates if places[0].contains(entity)]
         elif area_id is not None:
             candidates = [entity for entity in candidates if entity.area_id == area_id] or candidates
         if not candidates:
