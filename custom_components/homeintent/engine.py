@@ -373,8 +373,13 @@ _AUTOMATION_DELETE_RE = re.compile(r"\blösch\w*\b|\bentfern\w*\b", re.IGNORECAS
 # ``_AUTOMATION_ENABLE_RE`` (see AutomationToggleParser's own docstring).
 # Grepped empirically against every existing intent YAML - no other grammar
 # uses "aktivier"/"deaktivier" for anything else.
-_AUTOMATION_DISABLE_RE = re.compile(r"\bdeaktivier\w*\b", re.IGNORECASE)
-_AUTOMATION_ENABLE_RE = re.compile(r"\baktivier\w*\b", re.IGNORECASE)
+_AUTOMATION_DISABLE_RE = re.compile(
+    r"\bdeaktivier\w*\b|\bstopp\w*\b|\bbeend\w*\b|\b(?:aus|ab)schalten\b|\bschalt\w*\b.*\baus\b",
+    re.IGNORECASE,
+)
+_AUTOMATION_ENABLE_RE = re.compile(
+    r"\baktivier\w*\b|\beinschalten\b|\bschalt\w*\b.*\b(?:ein|an)\b", re.IGNORECASE
+)
 
 # "einmalig(e)"/"nur einmal" marks a fire-once automation (new feature, Wave
 # 12 "Einmalige Automation") - matched and *stripped* from the normalized

@@ -185,7 +185,8 @@ class MonitoringController:
             # Non-administrators see their own monitors (7.9.1 A2).
             monitors = [item for item in monitors if may_manage(item.owner_user_id, actor, False)]
         chosen = matching(monitors, request.subject, entities)
-        spoken_subject = f" für „{request.subject}“" if request.subject else ""
+        said = request.spoken_subject or request.subject
+        spoken_subject = f" für „{said}“" if said else ""
 
         def say(text: str, query: bool = False) -> conversation.ConversationResult:
             if query:

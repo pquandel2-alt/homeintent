@@ -19,14 +19,16 @@ intents:
   HassAutomationDisable:
     data:
       - sentences:
-          - "deaktiviere die automation für {name}"
-          - "deaktiviere die automation {name}"
-          - "deaktiviere die automation die {name} schaltet"
-          - "deaktiviere die automation die {name} steuert"
+          # 7.9.1 A5: the object forms of the monitor language - short
+          # imperatives, "aus" particles, modal frames, prepositions.
+          - "(deaktiviere|deaktivier|stoppe|stopp|beende) die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name}"
+          - "(deaktiviere|deaktivier) die automation die {name} (schaltet|steuert)"
+          - "(schalte|schalt) die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name} aus"
+          - "(kannst|könntest) du die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name} (deaktivieren|ausschalten|stoppen|abschalten)"
   HassAutomationEnable:
     data:
       - sentences:
-          - "aktiviere die automation für {name}"
-          - "aktiviere die automation {name}"
-          - "aktiviere die automation die {name} schaltet"
-          - "aktiviere die automation die {name} steuert"
+          - "(aktiviere|aktivier) die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name}"
+          - "(aktiviere|aktivier) die automation die {name} (schaltet|steuert)"
+          - "(schalte|schalt) die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name} (ein|an)"
+          - "(kannst|könntest) du die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name} (aktivieren|einschalten)"

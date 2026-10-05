@@ -27,6 +27,7 @@ from homeassistant.helpers import intent
 from ..areas import AreaSnapshot
 from ..audit_log import AuditTrail
 from ..const import NOT_UNDERSTOOD_TEXT
+from ..monitoring_management import names_managed_object
 from ..controllers.replies import confirmation_question, execution_failure_text, with_effect_summary
 from ..device_result import DeviceControlResult
 from ..effect_graph import build_plan_effects
@@ -840,7 +841,12 @@ class DeviceController:
                 # refusal) is answered honestly (7.3.3).
                 "Gerade ist keine Frage offen, auf die sich das beziehen könnte. "
                 "Ich habe nichts ausgeführt."
-                if bare_reply else NOT_UNDERSTOOD_TEXT
+                if bare_reply
+                # A management verb on a monitor or automation that nothing
+                # matched: say so, never "nicht verstanden" (7.9.1 A5).
+                else "Ich finde keine passende Überwachung oder Automation dazu. Ich habe nichts geändert."
+                if names_managed_object(user_input.text)
+                else NOT_UNDERSTOOD_TEXT
             ),
         )
         return conversation.ConversationResult(

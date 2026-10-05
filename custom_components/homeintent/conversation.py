@@ -73,7 +73,7 @@ from .hass_entities import (
 )
 from .history_query import parse_history_query
 from .household_query import match_household_query
-from .monitoring_management import parse_monitoring_management
+from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
 from .proactive_dialog import V12_TASK_KINDS
@@ -1718,7 +1718,10 @@ class NluConversationEntity(
                         entity for entity in entities
                         if entity.domain != "todo" or entity.entity_id in personal_todos
                     ]
-        management = understand_management(
+        # A management verb on a monitor or automation never reaches the
+        # calendar, a list or a reminder (7.9.1 A5).
+        managed_object = names_managed_object(user_input.text)
+        management = None if managed_object else understand_management(
             language_document,
             productivity_entities,
             all_calendars,
@@ -1744,7 +1747,7 @@ class NluConversationEntity(
                 user_input, response, management.payload, all_calendars
             )
 
-        calendar_draft = start_calendar_event_draft(
+        calendar_draft = None if managed_object else start_calendar_event_draft(
             user_input.text, calendars, dt_util.now()
         )
         if calendar_draft is not None:
