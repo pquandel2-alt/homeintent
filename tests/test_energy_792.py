@@ -161,3 +161,18 @@ def test_energy_dashboard_price(prefs, price):
     from homeintent.energy_query import fixed_grid_price
 
     assert fixed_grid_price(prefs) == price
+
+
+@pytest.mark.parametrize("question", [
+    "Was war gestern der höchste Wert vom Stromverbrauch Haus?",
+    "Wie hoch war gestern der Stromverbrauch im Mittel?",
+    "Was war der niedrigste Stromverbrauch gestern?",
+    "Wie hoch war der durchschnittliche Stromverbrauch diese Woche?",
+])
+def test_statistics_questions_stay_history_statistics(question):
+    """Live scenario stat-mean: a statistics question about the power
+    sensor is no consumption question (kWh) - the history statistics
+    answer it as before."""
+    from homeintent.energy_query import parse_energy_query
+
+    assert parse_energy_query(question, datetime(2026, 10, 6, 12)) is None

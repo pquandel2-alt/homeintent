@@ -38,7 +38,9 @@ Stand 7.9.1 (Worktree von `3988ac8`) ausgeführt.
 Die grünen Fälle „vorher“ sind Gegenproben, die schon 7.9.1 richtig
 behandelte (z. B. Gas- und Hauptventil gesperrt, Bewertungsmatrix ohne
 Konversation, ohne Option bleibt alles wie in 7.9.1). Nach der Messung kamen
-sieben Fälle hinzu (Abschnitt „Nachträge aus Live-Lauf und Prüfsätzen“).
+17 Fälle hinzu (Abschnitt „Nachträge aus Live-Lauf und Prüfsätzen“); der
+Gegenrichtungs-Fall war gegen den Stand vor seiner Korrektur rot, die
+übrigen fehlen in 7.9.1 schon mangels Modul.
 
 ## Teil A – Befunde
 
@@ -300,6 +302,17 @@ ehrlich.
   `test_the_helper_command_stays_a_device_command` (4 Formen).
 - **Strompreis** aus dem Energie-Dashboard und als Option im Optionsdialog
   (Test `test_energy_dashboard_price`, 6 Fälle).
+- **Blockierender Dateizugriff (check_log.py, 2 Befunde im ersten
+  Live-Lauf):** Gewohnheits- und Urlaubsspeicher öffneten ihre JSON-Datei in
+  der Ereignisschleife. Jetzt lädt und schreibt nur der Executor; im Turn
+  wird im Speicher gelesen und geändert (`HabitStore.load/save`, Test
+  `test_store_touches_the_disk_only_in_load_and_save`). Das Angebot nach
+  einem Befehl ist dafür asynchron (`async_offer_after_turn`).
+- **Live-Szenario `stat-mean`:** „Was war gestern der höchste Wert vom
+  Stromverbrauch Haus?“ ging an die Verbrauchsfrage (B5) statt an die
+  Verlaufsstatistik. Statistikwörter (Wert, Mittel, Durchschnitt, höchste,
+  niedrigste, Minimum, Maximum, verändert) schließen die Verbrauchsfrage
+  aus (Test `test_statistics_questions_stay_history_statistics`, 4 Fälle).
 
 ## Geänderte Test-Erwartungen
 
@@ -312,7 +325,30 @@ ehrlich.
 
 ## Gates
 
-LIVE_GATES_PLACEHOLDER
+Alle Gates aus `.github/workflows/ci.yml`, lokal auf dem Endstand:
+
+| Gate | Ergebnis |
+|---|---|
+| `pytest -q` (Stub-Suite) | 8492 passed, 12 skipped, 0 failed |
+| `pytest -q tests_ha` (echtes HA 2026.9.2) | 16 passed |
+| Sprachverständnis-Gate (`run_language_eval.sh`) | 463 passed |
+| Korpus-Signaturen (`corpus_shadow.py --check …-7.9.2.json`) | 3827 Sätze, 0 geänderte Signaturen; gegenüber 7.9.1: 1 begründete IR-Änderung, 0 Engine-Änderungen |
+| Shadow-Vergleich (`--candidate identity --check`) | 2108 EQUIVALENT, 0 SAFETY_DRIFT |
+| Arbiter gegen Kaskade | 2131 EQUIVALENT, 7 NOT_MEASURABLE (wie 7.9.1), 0 SAFETY_DRIFT |
+| Entwicklungs-Benchmark 7.7 | 461/503 (wie 7.9.1), unsafe_execution_count 0 |
+| Entwicklungs-Benchmark 7.8 | 102/107 (wie 7.9.1), unsafe_execution_count 0 |
+| V9-Latenz (5000 Entitäten, p95) | Licht an 4,4 ms, Bereichsquantor 20,1 ms (Budget 100 ms) |
+| Automationssprache (5000 Entitäten, p95) | 20,3 ms (Haus 8,1 ms; Budget 100 ms) |
+| V10 Goal/Planung (p95) | Zehn-Schritt-Plan 8,4 ms (Budget 100 ms) |
+| V11 Lernen (p95) | ≤ 0,03 ms |
+| V12 Kontext (p95) | Situationsbewertung 13,3 ms (Budget 100 ms) |
+| Learning Center (p95) | Übersicht 6,6 ms, Evidenz 147 ms (bestanden) |
+| `regex_inventory.py --write` | SEMANTIC_SENTENCE_PATTERN 171 (7.9.1: 173) |
+| Pyright voll / Strict-Scope / V11 / V12 / Learning Center | je 0 Fehler; neue Module `effect_wait`, `device_health`, `energy_query`, `event_summary`, `habit_suggestions`, `vacation`, `controllers/insights`, `nlu/action_duration` im Strict-Scope |
+| Pyflakes | 0 |
+
+Die zusätzliche Wartezeit aus A1 zählt nicht zu diesen Budgets; sie ist
+unten getrennt gemessen.
 
 ## Live-Testbett
 

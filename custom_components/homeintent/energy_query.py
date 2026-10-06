@@ -50,6 +50,13 @@ _ENERGY_WORDS = frozenset({"strom", "energie", "kwh", "kilowattstunden", "stromv
 _NOW_WORDS = frozenset({"gerade", "jetzt", "aktuell", "momentan", "derzeit", "zurzeit"})
 # A monitoring request ("Sag mir Bescheid, wenn heute mehr als …") is no question.
 _MONITOR_WORDS = frozenset({"wenn", "sobald", "falls", "bescheid", "melde", "benachrichtige", "warne", "warn"})
+# A statistics question about a sensor ("der höchste Wert vom Stromverbrauch
+# Haus gestern", "im Mittel") stays with the history statistics.
+_STAT_WORDS = frozenset({
+    "wert", "werte", "durchschnitt", "durchschnittlich", "durchschnittliche", "durchschnittlichen",
+    "mittel", "mittelwert", "minimum", "maximum", "minimal", "maximal", "niedrigste", "niedrigster",
+    "niedrigsten", "hoechste", "hoechster", "spitzenwert", "veraendert", "veraenderung",
+})
 _RANK_WORDS = frozenset({"meisten", "meiste", "groessten", "groesste", "hoechsten"})
 _HOUSE_WORDS = frozenset({"wir", "haus", "insgesamt", "gesamt", "ganze", "ganzen", "haushalt", "wohnung"})
 # A whole-house meter is no "consumer" in a ranking.
@@ -137,7 +144,7 @@ def parse_energy_query(text: str, now: datetime) -> EnergyQuery | None:
     """A question about consumed energy in a period, else ``None``."""
     words = _words(text)
     present = set(words)
-    if not words or present & _NOW_WORDS or present & _MONITOR_WORDS:
+    if not words or present & _NOW_WORDS or present & _MONITOR_WORDS or present & _STAT_WORDS:
         return None
     asks = bool(present & {"wie", "wieviel", "was", "welches", "welche", "sag"})
     consumes = bool(present & _CONSUME_VERBS) or "verbrauch" in present or "stromverbrauch" in present
