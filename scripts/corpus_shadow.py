@@ -14,8 +14,8 @@ sentence-like literal of the test suite), each from its own source tree.
 Release baseline (replaces the legacy/V7 divergence report, 7.7 B5): a
 compact digest per sentence, checked in CI; a changed signature fails.
 
-    python scripts/corpus_shadow.py --write-baseline docs/perf/corpus-signatures-7.9.1.json
-    python scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.9.1.json
+    python scripts/corpus_shadow.py --write-baseline docs/perf/corpus-signatures-7.9.2.json
+    python scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.9.2.json
 
 Per sentence it records the behaviour signature of ``NluEngine.understand``
 (writes, targets, domains, risk, confirmation, response) and the grounded

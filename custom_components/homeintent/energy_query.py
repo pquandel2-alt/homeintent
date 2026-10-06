@@ -30,6 +30,8 @@ from .entities import EntitySnapshot, format_spoken_number, normalize_for_compar
 
 __all__ = (
     "CONF_ENERGY_PRICE",
+    "async_energy_dashboard_price",
+    "fixed_grid_price",
     "EnergyQuery",
     "async_answer",
     "consumption_kwh",
@@ -261,6 +263,33 @@ def _costs(kwh: float, price: float | None) -> str:
 
 def _period_prefix(label: str) -> str:
     return label[:1].upper() + label[1:]
+
+
+def fixed_grid_price(prefs: Mapping[str, Any] | None) -> float | None:
+    """The one fixed grid price (€/kWh) of the Home Assistant energy
+    dashboard - ``None`` without one, or with several different prices
+    (a tariff is never guessed)."""
+    prices: set[float] = set()
+    for source in (prefs or {}).get("energy_sources", ()) or ():
+        if not isinstance(source, Mapping) or source.get("type") != "grid":
+            continue
+        flows = source.get("flow_from") or [source]
+        for flow in flows:
+            price = flow.get("number_energy_price") if isinstance(flow, Mapping) else None
+            if isinstance(price, (int, float)) and price > 0:
+                prices.add(float(price))
+    return prices.pop() if len(prices) == 1 else None
+
+
+async def async_energy_dashboard_price(hass: Any) -> float | None:
+    """``fixed_grid_price`` of the configured energy dashboard."""
+    try:
+        from homeassistant.components.energy.data import async_get_manager
+
+        manager = await async_get_manager(hass)
+    except Exception:  # noqa: BLE001 - no energy dashboard: no price
+        return None
+    return fixed_grid_price(getattr(manager, "data", None))
 
 
 async def async_answer(

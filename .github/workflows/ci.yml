@@ -37,7 +37,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.9.1.json
+          --check docs/perf/corpus-signatures-7.9.2.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
@@ -224,6 +224,14 @@ jobs:
           custom_components/homeintent/turn_outcome.py
           custom_components/homeintent/embedded_question.py
           custom_components/homeintent/response_style.py
+          custom_components/homeintent/effect_wait.py
+          custom_components/homeintent/device_health.py
+          custom_components/homeintent/energy_query.py
+          custom_components/homeintent/event_summary.py
+          custom_components/homeintent/habit_suggestions.py
+          custom_components/homeintent/vacation.py
+          custom_components/homeintent/controllers/insights.py
+          custom_components/homeintent/nlu/action_duration.py
       - name: V11 Pyright-Strict-Scope absichern
         if: matrix.python-version == '3.12'
         run: python -m pyright --project pyrightconfig-v11-strict.json

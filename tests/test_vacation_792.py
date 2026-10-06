@@ -180,3 +180,17 @@ def test_validator_refuses_foreign_actions():
     assert validate_plan(bad, entities) is not None
     heat = [("x", {"actions": [{"action": "climate.set_temperature", "target": {"entity_id": "climate.heizung_buero"}}]})]
     assert validate_plan(heat, entities) is not None
+
+
+@pytest.mark.parametrize("command", [
+    "Schalte den Urlaubsmodus ein.", "Aktiviere den Urlaubsmodus.", "schalte den urlaubs modus ein",
+    "Mach den Urlaubsmodus an.",
+])
+def test_the_helper_command_stays_a_device_command(monkeypatch, tmp_path, command):
+    """Entwicklungs-Benchmark 7.7 (Zeilen 44, 455, 505): naming the helper
+    without an end date or travel words switches the helper as before; the
+    profile needs "bis …" or "Wir fahren in den Urlaub"."""
+    from homeintent.vacation import parse_vacation_request
+
+    assert parse_vacation_request(command, date(2026, 10, 6)) is None
+    assert parse_vacation_request(command.rstrip(".") + " bis Sonntag.", date(2026, 10, 6)) is not None

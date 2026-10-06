@@ -150,3 +150,11 @@ def test_discovery_rule_constants():
     from homeintent.habit_suggestions import MIN_DAYS, TIME_TOLERANCE_MINUTES, WINDOW_DAYS
 
     assert (MIN_DAYS, WINDOW_DAYS, TIME_TOLERANCE_MINUTES) == (4, 7, 45)
+
+
+def test_no_habit_yet_is_an_honest_answer(monkeypatch, tmp_path, now):
+    """Prüfsatz: without any repeated action (and without the learning
+    registry) the question is answered, never "nicht gefunden"."""
+    speech = _house(monkeypatch, tmp_path, []).say("Welche Gewohnheiten hast du erkannt?").speech
+    assert speech.startswith("Ich habe noch keine Gewohnheit erkannt."), speech
+    assert "an mindestens 4 von 7 Tagen" in speech

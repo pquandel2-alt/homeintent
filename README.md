@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.1** (Sicherheit und Rechte bei Überwachungen, Antworten auf eigene Rückfragen, optional Bestätigungston statt Sprachausgabe)
+- Aktuelle Version: **7.9.2** (Wirkung kurz abwarten, Bewässerung nach Zeitplan, gemeinsame Überwachungen für Sprachgeräte, Zusammenfassung, Gewohnheiten, Batterien und Ausfälle, Urlaubsmodus, Verbrauch)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,45 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.2 neu?
+
+Befunde aus dem Nachtest 7.9.1 behoben, dazu neue Fähigkeiten:
+
+- **Wirkung kurz abwarten:** Nach einem Befehl wartet HomeIntent
+  ereignisgesteuert höchstens 2 s (Option `effect_wait_seconds`, 0–5) auf die
+  Rückmeldung der Geräte. Ein Rollladen, der in die verlangte Richtung fährt,
+  ist ein Erfolg (Bestätigungston). Gegenrichtung, „nicht erreichbar“ und
+  keine Rückmeldung werden ehrlich gesprochen.
+- **Bewässerung nach Zeitplan:** „Jeden Morgen um 6 Uhr bewässere den Garten
+  15 Minuten“ öffnet das Bewässerungsventil und schließt es nach der Dauer in
+  derselben Automation; ohne Dauer fragt HomeIntent „Wie lange?“. Nur
+  Bewässerungsventile öffnen sich automatisch – Tore, Türen, Schlösser, Gas-
+  und Hauptventile nie.
+- **Sprachgeräte im Haus sprechen für den Haushalt** (Option, Standard aus):
+  Ein Satellit ohne angemeldeten Benutzer verwaltet gemeinsame Überwachungen
+  („Mach die Garagen-Meldung für alle“, „… für uns alle“); persönliche
+  bleiben gesperrt. Die Liste zeigt „(gemeinsam)“.
+- **Ehrlicher und genauer:** Die Vorschau nennt Räume einer Etage ohne
+  Melder; ein eindeutiger Registry-Name („Stromverbrauch Haus“) gewinnt vor
+  der Rückfrage; Markise mit Sonne/Lux/Wind, „schnell fällt“ mit Rückfrage,
+  „noch Licht an“ nennt die Räume, „irgendeine Batterie“ nennt das Gerät.
+- **Was war los?** „Was war los, während ich weg war?“, „Was ist heute
+  passiert?“ – Ereignisse aus dem Recorder, wichtigste zuerst, Rest mit
+  „Was noch?“.
+- **Gewohnheiten:** wiederkehrende eigene Handlungen (mindestens 4 von 7
+  Tagen) werden einmal als Automation vorgeschlagen; „Schlag mir nichts mehr
+  vor“ schaltet das ab.
+- **Batterien und Ausfälle:** „Welche Batterien sind schwach?“, „Sag mir
+  jeden Sonntag um 10 Uhr, welche Batterien unter 30 % sind“, „Melde dich,
+  wenn ein Gerät nicht mehr erreichbar ist“ (ab 10 Minuten, keine Flut nach
+  einem Neustart).
+- **Urlaubsmodus:** „Ich bin bis Sonntag weg“ – strengere Meldungen,
+  optional Anwesenheitssimulation mit Lichtern, Urlaubs-Helfer; am Ende wird
+  alles zurückgenommen.
+- **Verbrauch:** „Wie viel Strom hat die Waschmaschine heute verbraucht?“
+  (kWh aus Zähler oder geschätzt aus der Leistung), „Was hat heute am meisten
+  verbraucht?“, Kosten nur mit Strompreis. Details: `docs/umsetzung-7.9.2.md`.
 
 ## Was ist in Version 7.9.1 neu?
 
@@ -2389,7 +2428,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.1.json
+  --check docs/perf/corpus-signatures-7.9.2.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

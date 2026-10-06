@@ -17,8 +17,10 @@ def S(sid: str, category: str, title: str, *steps: dict[str, Any], **extra: Any)
 
 
 def say(text: str, user: str = "admin", device: str | None = None, settle: float = 1.0, conv: str | None = None,
-        satellite: bool = False, **expect: Any) -> dict[str, Any]:
+        satellite: bool = False, household: bool = False, **expect: Any) -> dict[str, Any]:
     step: dict[str, Any] = {"say": text, "user": user, "settle": settle}
+    if household:
+        step["household"] = True
     if device:
         step["device"] = device
     if satellite:
@@ -1007,9 +1009,14 @@ S("n791-b-error", L791, "B: Fehler und Abfrage werden gesprochen",
   say("Schalte den Fernseher im Keller ein.", satellite=True, settle=2, speech_empty=False, announce_count=0),
   say("Wie warm ist es im Büro?", satellite=True, settle=2, type="query_answer", speech_empty=False, announce_count=0),
   SPOKEN)
-S("n791-b-partial", L791, "B: Teilerfolg (Rollladen noch unterwegs) wird gesprochen",
+# 7.9.2 A1 (Eigentümerentscheidung): Ein Rollladen, der in die verlangte
+# Richtung fährt, ist ein Erfolg mit Ton (siehe n792-a1-cover-moving). Der
+# Teilerfolg bleibt hier ein echter: eine Lampe ist nicht erreichbar.
+S("n791-b-partial", L791, "B: Teilerfolg (ein Gerät nicht erreichbar) wird gesprochen",
   TONE,
-  say("Fahre den Küchenrollladen runter.", satellite=True, settle=2, speech_empty=False, announce_count=0),
+  service("haus_sim.configure", {"target": "light.stehlampe", "unavailable": True}),
+  say("Schalte die Stehlampe und das Flurlicht ein.", satellite=True, settle=3,
+      calls=["light.flurlicht:turn_on"], speech_empty=False, announce_count=0, any=["stehlampe"]),
   SPOKEN)
 S("n791-b-text", L791, "B: Text-Chat ohne Gerät bekommt „Erledigt.“",
   TONE,
@@ -1021,3 +1028,137 @@ S("n791-b-pipeline", L791, "B: echte Assist-Pipeline – bei Erfolg kein TTS, ei
   pipeline("Schalte das Licht ein.", settle=2, tts=True, announce_count=0, speech_empty=False),
   SPOKEN,
   pipeline("Schalte das Flurlicht aus.", settle=2, tts=True, announce_count=0))
+
+# ========================================================= 7.9.2 Nachtest-Befunde und neue Fähigkeiten
+L792 = "Nachtest 7.9.2"
+S("n792-a1-delay-short", L792, "A1: Gerät meldet nach 0,5 s – Ton, keine Sprache",
+  TONE,
+  service("haus_sim.configure", {"target": "light.flurlicht", "report_delay": 0.5}),
+  say("Schalte das Flurlicht ein.", satellite=True, settle=3, calls=["light.flurlicht:turn_on"],
+      speech_empty=True, announce_count=1, state={"light.flurlicht": "on"}),
+  SPOKEN)
+S("n792-a1-delay-long", L792, "A1: Gerät meldet erst nach 3 s – ehrliche Sprache, kein Ton",
+  TONE,
+  service("haus_sim.configure", {"target": "light.flurlicht", "report_delay": 3}),
+  say("Schalte das Flurlicht ein.", satellite=True, settle=4, calls=["light.flurlicht:turn_on"],
+      speech_empty=False, announce_count=0, all=["noch nicht zurückgemeldet"]),
+  SPOKEN)
+S("n792-a1-cover-moving", L792, "A1: Rollladen fährt in die verlangte Richtung – Ton",
+  TONE,
+  say("Fahre den Küchenrollladen runter.", satellite=True, settle=2, calls=["cover.kuechenrollladen:close_cover"],
+      speech_empty=True, announce_count=1),
+  wait(4), check(state={"cover.kuechenrollladen": "closed"}),
+  SPOKEN)
+S("n792-a1-cover-reverse", L792, "A1: Rollladen fährt in die Gegenrichtung – Sprache",
+  TONE,
+  say("Fahre den Küchenrollladen auf 50 Prozent.", settle=3),
+  service("haus_sim.configure", {"target": "cover.kuechenrollladen", "reverse": True}),
+  say("Fahre den Küchenrollladen runter.", satellite=True, settle=2,
+      speech_empty=False, announce_count=0, all=["gegenrichtung"]),
+  SPOKEN)
+S("n792-a2-irrigation", L792, "A2: Bewässerung öffnet automatisch und schließt nach 20 Minuten",
+  service("haus_sim.reset", {"full": True}),
+  say("Jeden Morgen um 6 Uhr bewässere den Garten 20 Minuten.", no_calls=True,
+      all=["bewässerung garten öffnen und nach 20 minuten wieder schließen", "öffnet sich dabei automatisch"]),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Jeden Abend um 20 Uhr öffne die Bewässerung.", no_calls=True, all=["wie lange"]),
+  say("15 Minuten", no_calls=True, all=["wieder schließen"]),
+  say("Nein."))
+S("n792-a2-main-valve", L792, "A2: Hauptwasserventil öffnet sich nie automatisch",
+  service("haus_sim.reset", {"full": True}),
+  say("Jeden Morgen um 6 Uhr öffne das Hauptwasserventil.", no_calls=True,
+      all=["öffne ich nicht automatisch", "hauptventile"], none=["erstellt"]),
+  say("Nein."),
+  say("Wenn alle weg sind, öffne das Hauptwasserventil.", no_calls=True, all=["öffne ich nicht automatisch"]),
+  say("Nein."))
+S("n792-a3-household", L792, "A3: Haushalts-Satellit verwaltet nur gemeinsame Überwachungen",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  options(household_voice_devices=True),
+  service("homeintent.set_household", {"person_entity_ids": ["person.philipp", "person.anna"], "confirmed": True}),
+  say("Melde dich, wenn das Garagentor länger als 10 Minuten offen ist.", no_calls=True),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Stopp die Garagen-Meldung.", household=True, no_calls=True, any=["gemeinsam", "administrator"]),
+  say("Mach die Garagen-Meldung für alle.", all=["gilt jetzt für den ganzen haushalt"]),
+  say("Welche Überwachungen laufen?", household=True, all=["garagentor", "(gemeinsam)"]),
+  say("Pausiere die Garagen-Meldung bis morgen um 7 Uhr.", household=True, none=["administrator"]),
+  options(household_voice_devices=False))
+S("n792-b3-battery-push", L792, "B3: Batterie-Meldung nennt das Gerät",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn eine Batterie unter 20 Prozent fällt.", no_calls=True, all=["batterien"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  set_("sensor.batterie_fenster_kueche", 15, settle=3),
+  check(notify_count=1, notify_match="Batterie Fenstersensor Küche"),
+  say("Welche Batterien sind schwach?", all=["rauchmelder oben", "fenstersensor küche"]))
+S("n792-b3-unreachable", L792, "B3: „nicht erreichbar“ erst nach der Mindestdauer",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Sag mir Bescheid, wenn der Bewegungsmelder im Flur länger als 1 Minute nicht erreichbar ist.",
+      no_calls=True, all=["bewegungsmelder flur", "nicht erreichbar"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  service("haus_sim.configure", {"target": "binary_sensor.bewegung_flur", "unavailable": True}),
+  wait(30), check(notify_count=0),
+  wait(40), check(notify_count=1, notify_match="nicht erreichbar"),
+  say("Welche Geräte sind nicht erreichbar?", all=["bewegungsmelder flur"]))
+S("n792-b4-vacation", L792, "B4: Urlaubsmodus an und vollständig zurückgenommen",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  service("input_boolean.turn_off", {"entity_id": "input_boolean.urlaubsmodus"}),
+  say("Ich bin bis Sonntag weg.", no_calls=True, all=["urlaubsmodus", "unberührt"]),
+  say(YES, settle=3, state={"input_boolean.urlaubsmodus": "on"}),
+  say("Was macht der Urlaubsmodus gerade?", none=["ist aus"]),
+  say("Urlaub vorbei.", all=["soll ich?"]),
+  say(YES, settle=3, state={"input_boolean.urlaubsmodus": "off"}),
+  say("Was macht der Urlaubsmodus gerade?", all=["der urlaubsmodus ist aus"]))
+S("n792-b1-summary", L792, "B1: Zusammenfassung nach simulierter Abwesenheit",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  set_("device_tracker.handy_philipp", "not_home", settle=3),
+  set_("binary_sensor.haustuer", "on", settle=2), set_("binary_sensor.haustuer", "off", settle=2),
+  set_("binary_sensor.bewegung_flur", "on", settle=2), set_("binary_sensor.bewegung_flur", "off", settle=2),
+  set_("device_tracker.handy_philipp", "home", settle=4),
+  say("Was war los, während ich weg war?", all=["haustür wurde geöffnet", "bewegungsmelder flur"],
+      none=["es läuft"]))
+S("n792-b5-energy", L792, "B5: Tagesverbrauch aus dem simulierten Zähler",
+  service("haus_sim.reset", {"full": True}),
+  set_("sensor.energiezaehler", 18234.7, settle=2),
+  set_("sensor.energiezaehler", 18236.2, settle=4),
+  say("Wie viel Energie haben wir heute verbraucht?", all=["kwh verbraucht (energiezähler)"]),
+  say("Wie viel verbraucht die Waschmaschine gerade?", all=["1840"]))
+S("n792-a4-floor-note", L792, "A4: Etage mit nur einem Melder wird ehrlich benannt",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn sich im Obergeschoss zwei Stunden nichts bewegt.", no_calls=True,
+      all=["im obergeschoss gibt es nur im schlafzimmer einen melder", "kann ich nicht beobachten"]),
+  say("Nein."))
+S("n792-a5-exact-name", L792, "A5: „Stromverbrauch“ wählt den einzigen passenden Registry-Namen",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Wenn der Stromverbrauch über 3000 Watt geht, warn mich.", no_calls=True,
+      all=["stromverbrauch haus über 3000 w"], none=["welchen stromverbrauch meinst du"]),
+  say(YES, settle=2, any=["eingerichtet", "erstellt"]),
+  service("haus_sim.clear_log"),
+  set_("sensor.stromverbrauch_haus", 3500, settle=3),
+  check(notify_count=1, notify_match="Stromverbrauch Haus"))
+S("n792-a6-awning", L792, "A6: Markise – Sonne fragt nach dem Schwellwert, Lux wird verstanden",
+  service("haus_sim.reset", {"full": True}),
+  say("Wenn die Sonne scheint, fahre die Markise aus.", no_calls=True, all=["ab welcher helligkeit", "helligkeit außen"]),
+  say("ab 30000 Lux", no_calls=True, all=["über 30000 lx", "markise"]),
+  say(YES, settle=2, any=["erstellt"]),
+  set_("sensor.helligkeit_aussen", 42000, settle=4),
+  check(calls=["cover.markise:open_cover"]),
+  say("Wenn es draußen heller als 30000 Lux ist, öffne die Markise.", no_calls=True, all=["über 30000 lx"]),
+  say("Nein."))
+S("n792-a6-gaps", L792, "A6: Wiederholung, schneller Abfall und Licht beim Gehen",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Erinnere mich jede Minute, bis die Markise eingefahren ist.", no_calls=True, all=["nur jetzt oder jedes mal"]),
+  say("Abbrechen."),
+  say("Sag mir Bescheid, wenn die Außentemperatur schnell fällt.", no_calls=True, all=["um wie viel", "zeitraum"]),
+  say("Abbrechen."),
+  say("Wenn ich gehe und noch Licht an ist, sag mir Bescheid.", no_calls=True, all=["noch licht an"]),
+  say(YES, settle=2, any=["erstellt", "eingerichtet"]),
+  service("light.turn_on", {"entity_id": "light.stehlampe"}),
+  service("haus_sim.clear_log"),
+  set_("device_tracker.handy_philipp", "not_home", settle=3),
+  check(notify_count=1, notify_match="wohnzimmer"))
+S("n792-b2-habits", L792, "B2: Gewohnheiten – ehrliche Antwort ohne Verlauf, Abschalten",
+  service("haus_sim.reset", {"full": True}),
+  say("Welche Gewohnheiten hast du erkannt?", none=["nicht gefunden"]),
+  say("Hast du Vorschläge für Automationen?", all=["keinen neuen vorschlag"]),
+  say("Schlag mir nichts mehr vor.", all=["keine automationen mehr vor"]))

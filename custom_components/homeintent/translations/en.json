@@ -37,6 +37,7 @@
           "confirmation_media_id": "Custom confirmation sound (media-source:// ID or /local/… path; empty: built-in sound)",
           "effect_wait_seconds": "Maximum wait for a device's state report after a command, in seconds (0–5; the reply style is decided afterwards)",
           "household_voice_devices": "Voice devices in the house speak for the household (a satellite without a signed-in user may manage shared monitors and automations)",
+          "energy_price": "Electricity price in €/kWh for consumption costs (0 = price from the energy dashboard, otherwise no costs)",
           "context_ttl_seconds": "Conversation context in seconds",
           "agent_enabled": "Enable proactive agent behavior",
           "agent_delivery_channels": "Agent delivery channels",

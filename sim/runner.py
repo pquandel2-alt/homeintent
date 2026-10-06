@@ -4,7 +4,8 @@ Usage: python runner.py [--only substring] [--category name] [--out results/run.
 
 Every scenario starts from a reset house and a fresh conversation. Steps:
 
-- ``say``      sentence (options: ``user``, ``device`` = area name, ``expect``)
+- ``say``      sentence (options: ``user``, ``device`` = area name, ``household`` =
+               satellite turn without a signed-in user, ``expect``)
 - ``set``      drive a simulated sensor: {"set": entity_id, "value": ...}
 - ``wait``     seconds
 - ``service``  admin service call {"service": "domain.name", "data": {...}}
@@ -247,7 +248,22 @@ class Runner:
                         payload["satellite_id"] = SATELLITE
                         payload["device_id"] = self.satellite_device
                     t0 = time.perf_counter()
-                    res = await self.ws[user].call("conversation/process", **payload)
+                    if step.get("household"):
+                        # Satellite turn without a signed-in user (7.9.2 A3).
+                        user = step.get("conv", "household")
+                        voice = await self.service("haus_sim.voice", {
+                            "text": step["say"], "agent_id": AGENT, "conversation_id": conv_ids.get(user),
+                        }, response=True)
+                        res = {
+                            "conversation_id": voice.get("conversation_id"),
+                            "continue_conversation": voice.get("continue_conversation"),
+                            "response": {
+                                "speech": {"plain": {"speech": voice.get("speech")}},
+                                "response_type": voice.get("response_type"),
+                            },
+                        }
+                    else:
+                        res = await self.ws[user].call("conversation/process", **payload)
                     rec["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
                     conv_ids[step.get("conv", user)] = res.get("conversation_id")
                     resp = res["response"]

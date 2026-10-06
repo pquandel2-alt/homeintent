@@ -344,3 +344,25 @@ def test_wait_statistics():
     hass.data[STATS_KEY] = deque([100.0, 300.0, 200.0, 2000.0])
     stats = wait_statistics(hass)
     assert stats["samples"] == 4 and stats["p50_ms"] == 300.0 and stats["p95_ms"] == 2000.0
+
+
+def test_a_wrong_way_movement_that_already_stopped_stays_contrary(monkeypatch, tmp_path):
+    """Live finding 7.9.2: a cover reversing from half height reaches the
+    wrong end inside the wait. The last state ("open") alone would read as
+    "not reported yet"; the observed wrong-way movement stays the finding."""
+    house, devices = _house(monkeypatch, tmp_path)
+    devices.reports[("cover.kuechenrollladen", "close_cover")] = Report("opening", {"current_position": 60}, 0.05)
+
+    def stopped_at_wrong_end() -> None:
+        devices.write("cover.kuechenrollladen", Report("open", {"current_position": 100}))
+
+    original = devices.async_call
+
+    async def call(domain, service, data=None, blocking=False, **kwargs):
+        await original(domain, service, data, blocking=blocking, **kwargs)
+        if service == "close_cover":
+            asyncio.get_running_loop().call_later(0.15, stopped_at_wrong_end)
+
+    house.entity.hass.services.async_call = call
+    speech, _elapsed, tones = _speak_or_tone(house, devices, "Fahre den Küchenrollladen runter.")
+    assert tones == [] and "Gegenrichtung" in speech, speech

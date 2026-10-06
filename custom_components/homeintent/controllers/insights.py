@@ -35,6 +35,8 @@ from ..automation_ownership import HOUSEHOLD_OWNER
 from ..dialog_manager import DialogPriority, DialogTaskKind
 from ..execution_trace import actor_hash
 from ..habit_suggestions import (
+    MIN_DAYS,
+    WINDOW_DAYS,
     HabitStore,
     TimedHabit,
     describe_habit,
@@ -63,7 +65,13 @@ from ..vacation import (
     plan_configs,
     validate_plan,
 )
-from ..energy_query import current_power_answer, parse_energy_query, samples_reader
+from ..energy_query import (
+    CONF_ENERGY_PRICE,
+    async_energy_dashboard_price,
+    current_power_answer,
+    parse_energy_query,
+    samples_reader,
+)
 from ..entities import EntitySnapshot
 
 
@@ -139,9 +147,13 @@ class InsightsController:
             return self._answer(user_input, response, power)
         energy = parse_energy_query(user_input.text, dt_util.now())
         if energy is not None:  # "Wie viel Strom hat … heute verbraucht?" (B5)
-            text = await async_energy_answer(
-                energy, entities, samples_reader(self.hass), self.entry.options
-            )
+            options: dict[str, object] = dict(self.entry.options)
+            if not options.get(CONF_ENERGY_PRICE):
+                # Without the option the energy dashboard's fixed price.
+                price = await async_energy_dashboard_price(self.hass)
+                if price is not None:
+                    options[CONF_ENERGY_PRICE] = price
+            text = await async_energy_answer(energy, entities, samples_reader(self.hass), options)
             return self._answer(user_input, response, text)
         return None
 
@@ -420,7 +432,12 @@ class InsightsController:
         habits = self._habits_of(user_input, entities)
         if request == "list":
             if not habits:
-                return None  # the V11 routine habits keep their own answer
+                if getattr(self._runtime, "learned_models", None) is not None:
+                    return None  # the V11 routine habits keep their own answer
+                return self._answer(user_input, response, (
+                    "Ich habe noch keine Gewohnheit erkannt. Dafür brauche ich dieselbe Handlung "
+                    f"um eine ähnliche Uhrzeit an mindestens {MIN_DAYS} von {WINDOW_DAYS} Tagen."
+                ))
             return self._answer(user_input, response, " ".join(describe_habit(habit, entities) for habit in habits[:5]))
         fresh = [habit for habit in habits if not store.offered(habit.habit_id)]
         if not fresh:

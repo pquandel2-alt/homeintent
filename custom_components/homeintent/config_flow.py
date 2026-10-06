@@ -46,6 +46,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .shadow_runtime import CONF_SHADOW_MODE, SHADOW_MODES
+from .energy_query import CONF_ENERGY_PRICE
 from .const import (
     CONF_ATTENTION_BUDGET_ENABLED,
     CONF_CRITICAL_MULTI_CHANNEL_ENABLED,
@@ -352,6 +353,10 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_HOUSEHOLD_VOICE_DEVICES,
                         default=defaults.get(CONF_HOUSEHOLD_VOICE_DEVICES, False),
                     ): bool,
+                    vol.Optional(
+                        CONF_ENERGY_PRICE,
+                        default=defaults.get(CONF_ENERGY_PRICE, 0.0),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=10)),
                     vol.Optional(
                         CONF_CONTEXT_TTL_SECONDS,
                         default=defaults.get(CONF_CONTEXT_TTL_SECONDS, 30),

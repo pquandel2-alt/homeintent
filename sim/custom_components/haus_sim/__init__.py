@@ -8,6 +8,9 @@ Services:
 - ``haus_sim.configure``: fault injection for one entity or a whole domain
   (``target`` = entity id or domain; ``report_delay`` seconds, ``reverse``
   for covers, ``unavailable``); ``haus_sim.reset`` clears it (7.9.2 A1)
+- ``haus_sim.voice``: one turn spoken at the voice satellite without a
+  signed-in user, as a real satellite does (``text``, ``agent_id``,
+  ``conversation_id``); returns speech and response type (7.9.2 A3)
 - ``haus_sim.reset``: restore every device; with ``full: true`` also empty
   the to-do lists, cancel running Assist and helper timers and remove every
   automation that is not part of the versioned ``automations.yaml``, so
@@ -87,6 +90,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Optional("report_delay"): vol.All(vol.Coerce(float), vol.Range(min=0, max=30)),
             vol.Optional("reverse"): bool,
             vol.Optional("unavailable"): bool,
+        }),
+    )
+
+    async def _voice(call: ServiceCall):
+        from homeassistant.components import conversation
+        from homeassistant.core import Context
+
+        satellite = "assist_satellite.kuechen_satellit"
+        entry = er.async_get(hass).async_get(satellite)
+        result = await conversation.async_converse(
+            hass, call.data["text"], call.data.get("conversation_id"), Context(),
+            language="de", agent_id=call.data.get("agent_id"),
+            device_id=entry.device_id if entry is not None else None, satellite_id=satellite,
+        )
+        response = result.response.as_dict()
+        return {
+            "speech": response.get("speech", {}).get("plain", {}).get("speech"),
+            "response_type": response.get("response_type"),
+            "conversation_id": result.conversation_id,
+            "continue_conversation": result.continue_conversation,
+        }
+
+    hass.services.async_register(
+        DOMAIN, "voice", _voice, supports_response=SupportsResponse.ONLY,
+        schema=vol.Schema({
+            vol.Required("text"): str,
+            vol.Optional("agent_id"): vol.Any(str, None),
+            vol.Optional("conversation_id"): vol.Any(str, None),
         }),
     )
 

@@ -144,3 +144,20 @@ def test_monitoring_requests_are_no_questions(text):
     from homeintent.energy_query import parse_energy_query
 
     assert parse_energy_query(text, datetime(2026, 10, 6, 12, 0)) is None
+
+
+@pytest.mark.parametrize(("prefs", "price"), [
+    ({"energy_sources": [{"type": "grid", "flow_from": [{"number_energy_price": 0.32}]}]}, 0.32),
+    ({"energy_sources": [{"type": "grid", "number_energy_price": 0.29}]}, 0.29),
+    ({"energy_sources": [{"type": "grid", "flow_from": [
+        {"number_energy_price": 0.32}, {"number_energy_price": 0.21}]}]}, None),  # two tariffs: never guessed
+    ({"energy_sources": [{"type": "grid", "flow_from": [{"number_energy_price": None}]}]}, None),
+    ({"energy_sources": [{"type": "solar"}]}, None),
+    (None, None),
+])
+def test_energy_dashboard_price(prefs, price):
+    """Without the option the one fixed grid price of the HA energy
+    dashboard gives the costs; several prices or none give no costs."""
+    from homeintent.energy_query import fixed_grid_price
+
+    assert fixed_grid_price(prefs) == price

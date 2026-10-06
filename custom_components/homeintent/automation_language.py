@@ -944,12 +944,12 @@ def read_event_roles(event_text: str) -> EventRoles:
         span = is_availability_event(words)
         if span is not None:
             words = words[:span[0]] + words[span[1]:]
-        subject = tuple(
+        unreachable = tuple(
             word.strip(",.;:!?") for word in words
             if word.strip(",.;:!?").casefold() not in _AVAILABILITY_FILLERS
         )
         return EventRoles(
-            source, subject_words=subject, unsupported="unavailable", for_seconds=seconds,
+            source, subject_words=unreachable, unsupported="unavailable", for_seconds=seconds,
             conditions=conditions,
         )
     if _VAGUE_RATE_RE.search(text) and not re.search(r"\d", text):

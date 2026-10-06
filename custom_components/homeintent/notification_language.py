@@ -1046,7 +1046,8 @@ def _counted_members(members: Sequence[EntitySnapshot]) -> str | None:
     """"eine der 4 Batterien", "einer der 3 Temperatursensoren"."""
     from .nlu.device_ontology import Gender, entity_genera, genus
 
-    shared = frozenset.intersection(*(entity_genera(item) for item in members)) - {"device"}
+    first, *others = [entity_genera(item) for item in members]
+    shared = first.intersection(*others) - {"device"}
     sensors = [genus(key) for key in sorted(shared) if genus(key).sensor]
     if not sensors:
         return None

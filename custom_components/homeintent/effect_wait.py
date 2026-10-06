@@ -287,7 +287,13 @@ def _current(hass: Any, entity_id: str) -> tuple[str | None, Mapping[str, Any] |
 def judge_now(hass: Any, pending: PendingEffect) -> None:
     for item in pending.expectations:
         state, attributes = _current(hass, item.entity_id)
-        pending.verdicts[item.entity_id] = judge(item, state, attributes)
+        verdict = judge(item, state, attributes)
+        if pending.verdicts.get(item.entity_id) is EffectVerdict.CONTRARY and not verdict.success:
+            # A movement the wrong way stays the finding even when the
+            # device has already stopped at the wrong end before the wait
+            # ends (a cover reversing from half height).
+            verdict = EffectVerdict.CONTRARY
+        pending.verdicts[item.entity_id] = verdict
 
 
 def _note(item: EffectExpectation, verdict: EffectVerdict) -> str:

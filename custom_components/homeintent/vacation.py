@@ -135,6 +135,11 @@ def _end_date(words: list[str], today: date) -> tuple[date, str] | None:
     return found, f"{found.day}.{found.month}."
 
 
+_TRAVEL_WORDS = frozenset({
+    "urlaub", "ferien", "verreist", "weg", "unterwegs", "fahren", "fahre", "fliegen", "fliege", "reisen", "reise",
+})
+
+
 def parse_vacation_request(text: str, today: date) -> VacationRequest | None:
     words = _words(text)
     present = set(words)
@@ -169,8 +174,14 @@ def parse_vacation_request(text: str, today: date) -> VacationRequest | None:
         return None
     found = _end_date(words, today)
     simulate = bool(present & {"simuliere", "simulier", "anwesenheitssimulation", "simulation"}) or (
-        "anwesenheit" in present and present & {"simuliere", "simulier", "vortaeuschen", "vortaeusche"}
+        "anwesenheit" in present and bool(present & {"simuliere", "simulier", "vortaeuschen", "vortaeusche"})
     )
+    helper_named = "urlaubsmodus" in present or {"urlaubs", "modus"} <= present
+    if found is None and not simulate and helper_named and not present & _TRAVEL_WORDS:
+        # "Schalte den Urlaubsmodus ein" names a helper and stays the
+        # device command it always was; the profile needs an end date or
+        # travel words ("Wir fahren in den Urlaub").
+        return None
     if found is None:
         return VacationRequest("start", None, "", simulate)
     return VacationRequest("start", found[0], found[1], simulate)
