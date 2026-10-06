@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.0** (Überwachungsaufträge vollständig: Gesamtzustände, Inaktivität, Änderungsraten, Verbrauch, Wiederholen und Eskalieren, Überwachungen verwalten)
+- Aktuelle Version: **7.9.1** (Sicherheit und Rechte bei Überwachungen, Antworten auf eigene Rückfragen, optional Bestätigungston statt Sprachausgabe)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,46 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.1 neu?
+
+Befunde aus dem Nachtest 7.9.0 behoben, dazu ein Bestätigungston:
+
+- **Zugänge öffnen sich nie automatisch:** Eine Automation öffnet kein
+  Garagentor, Tor, keine Tür, kein Ventil und kein Schloss – auch nicht über
+  ein Skript oder eine Szene. HomeIntent sagt das und bietet stattdessen eine
+  Benachrichtigung an („Garagentor jetzt öffnen? Das entscheidest du
+  selbst.“). Schließen bleibt mit Bestätigung erlaubt. Die Vorschau nennt die
+  Geräteart (Garagentor, Tor, Markise, Jalousie) statt „Rollladen“.
+- **Überwachungen gehören jemandem:** Pausieren, aus-/einschalten,
+  bearbeiten und löschen darf nur, wer sie angelegt hat, oder ein
+  Administrator. Nicht-Admins sehen nur ihre eigenen Überwachungen; ältere
+  Automationen ohne Eigentümer verwaltet nur ein Administrator. Eine
+  Sprachquelle ohne angemeldeten Benutzer ist weder Eigentümer noch Admin.
+- **Grenzwert mit „geht“:** „wenn die Temperatur über 24 Grad geht“ ist
+  wieder ein Grenzwert; neu versteht HomeIntent `ppm`.
+- **Ort schränkt immer ein:** „im Keller“, „oben“, „draußen“ fallen nie auf
+  Geräte anderswo zurück; ohne Gerät dort folgt eine ehrliche Antwort.
+- **Verwalten in allen Objektformen:** „Lösch die Überwachung vom
+  Garagentor“, „Kannst du die Automation fürs Flurlicht ausschalten?“ – nie
+  mehr an den Kalender.
+- **Antworten auf eigene Rückfragen:** „In welchem Zeitraum?“ – „Innerhalb
+  von 10 Minuten.“; ebenso Uhrzeit, Zählbeginn, Gerät, Empfänger und
+  „Bis wann?“ beim Pausieren.
+- **Mehr Verständnis:** Wiederholung mit „solange“, „höchstens einmal pro
+  Minute“, Wochen, „die Waschmaschine zieht mehr als 2000 Watt“, „das Haus
+  verbraucht mehr als 5 kW“, „noch Licht an“, „Markise eingefahren“,
+  Zählerstand als Grenzwert, „Prüfe, ob …“ als Frage, „bei Auffälligkeiten“,
+  „Beobachtest du das Garagentor?“ und eine kurze Liste der Überwachungen
+  („Was genau macht die erste?“ für die volle Vorschau).
+- **Bestätigungston (Option „Antwortstil“ = `tone`):** Wurde alles
+  ausgeführt, kommt keine Sprache, sondern ein kurzer Ton auf dem Gerät, von
+  dem der Befehl kam (Satellit über `assist_satellite.announce`,
+  Mediaplayer über `media_player.play_media`). Fragen, Fehler, Teilerfolge,
+  noch nicht bestätigte Wirkungen und Antworten auf Abfragen werden immer
+  gesprochen; im Text-Chat steht „Erledigt.“. Standard bleibt `spoken`.
+  Eigener Ton: Option `confirmation_media_id` (nur `media-source://`,
+  `/local/…`). Details: `docs/umsetzung-7.9.1.md`.
 
 ## Was ist in Version 7.9.0 neu?
 
@@ -2284,6 +2324,20 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.1:
+
+```text
+7936 passed, 12 skipped, 0 failed (Stub-Suite, lokal)
+Sprachverständnis-Gate: 463 passed
+Korpus-Signaturen 7.9.1: 3679 Sätze, gegenüber 7.9.0 eine begründete Änderung (docs/perf/corpus-signatures-7.9.1-begruendung.md)
+Arbiter-Shadow 2101 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2078 EQUIVALENT
+Entwicklungs-Benchmark 7.7 461/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 198 Szenarien (186 bisherige + 12 neue „Nachtest 7.9.1“), check_log 0 Befunde
+Automationssprache 5000 Entitäten p95 25,3 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
+```
+
 Geprüfter Release-Stand von Version 7.9.0:
 
 ```text
@@ -2335,7 +2389,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.0.json
+  --check docs/perf/corpus-signatures-7.9.1.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

@@ -978,7 +978,9 @@ S("n791-a5-delete", L791, "A5: Überwachung löschen geht nie an den Kalender",
   say(YES, settle=2, any=["erstellt"]),
   say("Lösch die Überwachung vom Garagentor.", none=["termin", "kalender"], any=["soll ich die überwachung"]),
   say(YES, any=["gelöscht"]),
-  say("Welche Überwachungen laufen?", any=["keine überwachung"]))
+  # Andere Szenarien hinterlassen HomeIntent-Überwachungen (Goal-Store): nur
+  # die gelöschte darf fehlen.
+  say("Welche Überwachungen laufen?", none=["garagentor"]))
 S("n791-a6-period", L791, "A6: Antwort auf „In welchem Zeitraum?“",
   service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
   say("Melde dich, wenn die Temperatur im Büro um 2 Grad fällt.", no_calls=True, any=["in welchem zeitraum"]),
