@@ -16,10 +16,22 @@ def S(sid: str, category: str, title: str, *steps: dict[str, Any], **extra: Any)
     SCENARIOS.append({"id": sid, "category": category, "title": title, "steps": list(steps), **extra})
 
 
-def say(text: str, user: str = "admin", device: str | None = None, settle: float = 1.0, conv: str | None = None, **expect: Any) -> dict[str, Any]:
+def say(text: str, user: str = "admin", device: str | None = None, settle: float = 1.0, conv: str | None = None,
+        satellite: bool = False, **expect: Any) -> dict[str, Any]:
     step: dict[str, Any] = {"say": text, "user": user, "settle": settle}
     if device:
         step["device"] = device
+    if satellite:
+        step["satellite"] = True
+    if conv:
+        step["conv"] = conv
+    if expect:
+        step["expect"] = expect
+    return step
+
+
+def pipeline(text: str, settle: float = 1.5, conv: str | None = None, **expect: Any) -> dict[str, Any]:
+    step: dict[str, Any] = {"pipeline": text, "settle": settle}
     if conv:
         step["conv"] = conv
     if expect:
@@ -929,3 +941,81 @@ S("s781-ellipsis-unknown", L781, "Ellipse mit unbekanntem Objekt schaltet nie da
   say("Und Blumenkohl aus.", no_calls=True, any=["finde ich nicht"]),
   say("Mach das Flurlicht an.", calls=["light.flurlicht:turn_on"]),
   say("Oben auch.", calls=["light.flurlicht_oben:turn_on"], only_calls=True))
+
+# ========================================================= 7.9.1 Nachtest-Befunde und Bestätigungston
+L791 = "Nachtest 7.9.1"
+S("n791-a1-access", L791, "A1: Garagentor öffnet sich nie automatisch, nur Benachrichtigung",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Wenn alle weg sind, öffne das Garagentor.", no_calls=True,
+      all=["öffne ich nicht automatisch", "stattdessen"], none=["rollladen"]),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Wenn Philipp das Haus verlässt, schließe das Garagentor.", no_calls=True, all=["garagentor"], none=["rollladen"]),
+  say("Nein."))
+S("n791-a2-owner", L791, "A2: Anna darf Philipps Überwachung nicht pausieren oder löschen",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  options(allow_non_admin_automations=False),
+  say("Melde dich, wenn das Garagentor länger als 10 Minuten offen ist.", no_calls=True),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Welche Überwachungen laufen?", user="anna", any=["keine überwachung"]),
+  say("Pausiere die Garagen-Meldung bis morgen um 7 Uhr.", user="anna", all=["philipp", "administrator"]),
+  say("Lösche die Automation für das Garagentor.", user="anna", all=["philipp"]),
+  say("Welche Überwachungen laufen?", type="query_answer", all=["garagentor"], none=["ausgeschaltet"]),
+  options(allow_non_admin_automations=True))
+S("n791-a3-geht", L791, "A3: „über 24 Grad geht“ ist ein Grenzwert",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Ping mich an, wenn die Temperatur im Schlafzimmer über 24 Grad geht.", no_calls=True,
+      all=["über 24 grad"], none=["verlässt"]),
+  say("Nein."))
+S("n791-a4-floor", L791, "A4: „im Keller“ überwacht nie den Flur-Melder",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn sich im Keller fünf Stunden nichts bewegt.", no_calls=True,
+      all=["im keller gibt es keinen"], none=["flur"]),
+  say("im Flur", no_calls=True, all=["flur", "soll ich das so einrichten"]),
+  say("Nein."))
+S("n791-a5-delete", L791, "A5: Überwachung löschen geht nie an den Kalender",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn das Garagentor länger als 10 Minuten offen ist.", no_calls=True),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Lösch die Überwachung vom Garagentor.", none=["termin", "kalender"], any=["soll ich die überwachung"]),
+  say(YES, any=["gelöscht"]),
+  say("Welche Überwachungen laufen?", any=["keine überwachung"]))
+S("n791-a6-period", L791, "A6: Antwort auf „In welchem Zeitraum?“",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn die Temperatur im Büro um 2 Grad fällt.", no_calls=True, any=["in welchem zeitraum"]),
+  say("Innerhalb von 10 Minuten.", no_calls=True, all=["das überwache ich selbst"]),
+  say(YES, settle=2, any=["eingerichtet"]))
+
+TONE = options(response_style="tone")
+SPOKEN = options(response_style="spoken")
+S("n791-b-success", L791, "B: Erfolg am Satelliten – genau ein Ton, keine Sprache",
+  TONE,
+  say("Schalte das Flurlicht ein.", satellite=True, settle=3, calls=["light.flurlicht:turn_on"],
+      speech_empty=True, announce_count=1, announce_match="confirm.mp3"),
+  say("Aktiviere die Szene Filmabend.", satellite=True, settle=3, speech_empty=True, announce_count=1),
+  SPOKEN)
+S("n791-b-question", L791, "B: Rückfrage und Sicherheitsfrage werden gesprochen, kein Ton",
+  TONE,
+  say("Schalte das Licht ein.", satellite=True, settle=2, speech_empty=False, announce_count=0, any=["welches"]),
+  say("Abbrechen.", satellite=True),
+  say("Öffne das Garagentor.", satellite=True, settle=2, speech_empty=False, announce_count=0, no_calls=True),
+  say("Nein.", satellite=True, settle=2, speech_empty=False, announce_count=0),
+  SPOKEN)
+S("n791-b-error", L791, "B: Fehler und Abfrage werden gesprochen",
+  TONE,
+  say("Schalte den Fernseher im Keller ein.", satellite=True, settle=2, speech_empty=False, announce_count=0),
+  say("Wie warm ist es im Büro?", satellite=True, settle=2, type="query_answer", speech_empty=False, announce_count=0),
+  SPOKEN)
+S("n791-b-partial", L791, "B: Teilerfolg (Rollladen noch unterwegs) wird gesprochen",
+  TONE,
+  say("Fahre den Küchenrollladen runter.", satellite=True, settle=2, speech_empty=False, announce_count=0),
+  SPOKEN)
+S("n791-b-text", L791, "B: Text-Chat ohne Gerät bekommt „Erledigt.“",
+  TONE,
+  say("Schalte das Flurlicht aus.", settle=2, calls=["light.flurlicht:turn_off"], all=["erledigt"], announce_count=0),
+  SPOKEN)
+S("n791-b-pipeline", L791, "B: echte Assist-Pipeline – bei Erfolg kein TTS, ein Ton; bei Frage TTS",
+  TONE,
+  pipeline("Schalte das Flurlicht ein.", settle=3, tts=False, announce_count=1, speech_empty=True),
+  pipeline("Schalte das Licht ein.", settle=2, tts=True, announce_count=0, speech_empty=False),
+  SPOKEN,
+  pipeline("Schalte das Flurlicht aus.", settle=2, tts=True, announce_count=0))

@@ -12,6 +12,12 @@ from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntityFeature,
     AlarmControlPanelState,
 )
+from homeassistant.components.assist_satellite import (
+    AssistSatelliteAnnouncement,
+    AssistSatelliteConfiguration,
+    AssistSatelliteEntity,
+    AssistSatelliteEntityFeature,
+)
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.button import ButtonEntity
 from homeassistant.components.camera import Camera, CameraEntityFeature
@@ -54,7 +60,7 @@ from homeassistant.components.water_heater import (
     WaterHeaterEntityFeature,
 )
 from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.util import dt as dt_util
 
@@ -836,8 +842,43 @@ class SimTTS(SimEntity, TextToSpeechEntity):
         return "mp3", b"\xff\xfb\x90\x64" + b"\x00" * 413
 
 
+# ------------------------------------------------------- assist_satellite
+class SimSatellite(SimEntity, AssistSatelliteEntity):
+    """A voice satellite that logs announcements instead of playing them
+    (7.9.1 Teil B: confirmation tone). ``announcements`` records every
+    media id and message it was asked to play."""
+
+    _attr_supported_features = AssistSatelliteEntityFeature.ANNOUNCE
+
+    def __init__(self, hass, key, name, opts):
+        self._sim_init(hass, "assist_satellite", key, name, opts)
+
+    @callback
+    def async_get_configuration(self) -> AssistSatelliteConfiguration:
+        return AssistSatelliteConfiguration(
+            available_wake_words=[], active_wake_words=[], max_active_wake_words=1
+        )
+
+    async def async_set_configuration(self, config: AssistSatelliteConfiguration) -> None:
+        return None
+
+    def on_pipeline_event(self, event) -> None:
+        return None
+
+    async def async_announce(self, announcement: AssistSatelliteAnnouncement) -> None:
+        self._log("announce", {"media_id": announcement.original_media_id, "message": announcement.message})
+        self.hass.data[DOMAIN]["announcements"].append({
+            "entity_id": self.entity_id,
+            "media_id": announcement.original_media_id,
+            "message": announcement.message,
+            "preannounce": announcement.preannounce_media_id is not None,
+            "time": dt_util.utcnow().isoformat(),
+        })
+
+
 CLASSES = {
     "light": SimLight,
+    "assist_satellite": SimSatellite,
     "switch": SimSwitch,
     "cover": SimCover,
     "climate": SimClimate,

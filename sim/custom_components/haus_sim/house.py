@@ -129,6 +129,9 @@ HOUSE: list[tuple[str, str, str, str | None, dict[str, Any]]] = [
     ("binary_sensor", "wassermelder_keller", "Wassermelder Keller", "Hauswirtschaftsraum", {"class": "moisture", "on": False}),
     # --- Medien ----------------------------------------------------------
     ("media_player", "wohnzimmer_tv", "Wohnzimmer TV", "Wohnzimmer", {"sources": ["HDMI 1", "Netflix", "YouTube", "Tagesschau"], "state": "off"}),
+    # 7.9.1 Teil B: a voice satellite (no area: it must not change any room
+    # logic of the existing scenarios); it logs announcements.
+    ("assist_satellite", "kuechen_satellit", "Küchen-Satellit", None, {}),
     ("media_player", "kuechenradio", "Küchenradio", "Küche", {"sources": ["Radio Bob", "Bayern 3", "Deutschlandfunk"], "state": "playing"}),
     ("media_player", "lautsprecher_schlafzimmer", "Lautsprecher Schlafzimmer", "Schlafzimmer", {"sources": ["Spotify", "Einschlafgeräusche"], "state": "idle"}),
     # --- Sonstige Geräte ----------------------------------------------------

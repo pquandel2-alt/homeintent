@@ -31,7 +31,7 @@ from .house import AREAS, FLOORS, HOUSE
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = sorted(CLASSES)
-LOG_KEYS = ("calls", "notifications", "spoken", "played_media")
+LOG_KEYS = ("calls", "notifications", "spoken", "played_media", "announcements")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
