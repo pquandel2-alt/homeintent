@@ -34,6 +34,8 @@ class MonitoringOperation(Enum):
     STOP = auto()
     DELETE = auto()
     PAUSE = auto()
+    # "Mach die Fensterüberwachung für alle" - shared with the household (7.9.2 A3).
+    SHARE = auto()
 
 
 @dataclass(frozen=True)
@@ -74,8 +76,17 @@ _FILLERS = frozenset({
     "von", "zum", "zur", "mit", "auf", "aus", "ab", "aufs", "fuers", "alle", "gerade", "jetzt", "im", "in", "am",
     "laufen", "laeuft", "aktiv", "aktiven", "sind", "gibt", "es", "du", "hast", "eingerichtet",
     "des", "zu", "an", "bei", "beim", "ueber", "betreffend", "wegen",
+    "uns", "gemeinsam", "haushalt", "ganzen", "ganze", "familie",
     "ueberwachungen", "meldungen", "warnungen", "benachrichtigungen", "erinnerungen",
 })
+# Verbs that make a monitor shared with the household (7.9.2 A3).
+_SHARE_WORDS = frozenset({
+    "mach", "mache", "markiere", "markier", "teile", "teil", "stelle", "stell", "setze", "setz", "gib",
+})
+_SHARED_MARK_RE = re.compile(
+    r"\b(?:für|fuer)\s+(?:uns\s+)?alle\b|\bgemeinsam\b|\b(?:für|fuer)\s+den\s+(?:ganzen\s+)?haushalt\b",
+    re.IGNORECASE,
+)
 _CLOCK_RE = re.compile(r"\bbis\s+(?:(?P<day>heute|morgen)\s*)?(?:(?:um|gegen)\s+)?(?P<hour>\d{1,2})?(?::(?P<minute>\d{2}))?\s*(?:uhr)?", re.IGNORECASE)
 
 
@@ -133,6 +144,8 @@ def parse_monitoring_management(text: str) -> MonitoringRequest | None:
         return None
     if first in _DELETE_WORDS:
         return MonitoringRequest(MonitoringOperation.DELETE, subject, spoken)
+    if first in _SHARE_WORDS and _SHARED_MARK_RE.search(text):
+        return MonitoringRequest(MonitoringOperation.SHARE, subject, spoken)
     if first in _PAUSE_WORDS or (first in {"setze", "setz"} and "aus" in keys):
         clock = _CLOCK_RE.search(text)
         if clock is None:
@@ -159,6 +172,11 @@ def _spoken_subject(
         return None
     if modifier:
         word = words[noun_index]
+        # The spoken prefix whose normalized form is the modifier
+        # ("Fensterüberwachung" -> "Fenster"; umlauts change the length).
+        for end in range(1, len(word) + 1):
+            if normalize_for_compare(word[:end]).replace("-", "") == modifier:
+                return word[:end].rstrip("-")
         head_length = len(keys[noun_index]) - len(modifier)
         return word[: max(1, len(word) - head_length)].rstrip("-") if head_length > 0 else word
     rest = [

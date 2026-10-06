@@ -836,6 +836,61 @@ class AutomationExecutor:
             await self.async_delete_automation(automation_id)
         return delete_now
 
+    async def async_set_owner(
+        self, automation_id: str, owner_user_id: str, notify_entity_ids: tuple[str, ...] = ()
+    ) -> None:
+        """Record a new owner (7.9.2 A3: "für alle" -> the household).
+
+        With ``notify_entity_ids`` every push of the automation goes to
+        exactly these (the confirmed household's) devices afterwards.
+        """
+        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        async with self._lock:
+            metadata = await self._metadata_store.async_load_all()
+            entry = metadata.get(automation_id)
+            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
+                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            if notify_entity_ids:
+                snapshot = await self._async_read_snapshot(path)
+
+                def readdress(step: Any) -> Any:
+                    if isinstance(step, list):
+                        return [readdress(item) for item in step]
+                    if not isinstance(step, dict):
+                        return step
+                    changed = {key: readdress(value) for key, value in step.items()}
+                    if changed.get("action") == "notify.send_message":
+                        changed["target"] = {"entity_id": list(notify_entity_ids)}
+                    return changed
+
+                updated = [
+                    {**item, "actions": readdress(item.get("actions") or [])}
+                    if item.get("id") == automation_id else item
+                    for item in snapshot.automations
+                ]
+                transaction = await self._async_begin_transaction(
+                    operation="set_owner", automation_id=automation_id, path=path,
+                    snapshot=snapshot, updated=updated,
+                )
+                try:
+                    await self._hass.services.async_call(
+                        "automation", "reload", {}, blocking=True, context=system_context_for_turn()
+                    )
+                    await self._metadata_store.async_update(
+                        automation_id, owner_user_id=owner_user_id, version=int(entry.get("version", 1)) + 1,
+                    )
+                except Exception:
+                    await self._async_rollback_transaction(path, transaction)
+                    await self._hass.services.async_call(
+                        "automation", "reload", {}, blocking=True, context=system_context_for_turn()
+                    )
+                    raise
+                await self._async_complete_transaction()
+                return
+            await self._metadata_store.async_update(
+                automation_id, owner_user_id=owner_user_id, version=int(entry.get("version", 1)) + 1,
+            )
+
     async def async_set_max_runs(self, automation_id: str, max_runs: int) -> None:
         """Limit an existing HomeIntent automation to a total run count."""
         if not 2 <= max_runs <= 10:

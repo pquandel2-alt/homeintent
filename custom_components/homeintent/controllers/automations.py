@@ -47,6 +47,7 @@ from ..nlu.automation_model import (
     TriggerType,
 )
 from ..missing_part import MissingPart, PartRequest
+from ..automation_ownership import HOUSEHOLD_OWNER, shared_turn_text, turn_is_shared
 from ..nlu.automation_access import (
     open_ended_irrigation,
     AccessOpening,
@@ -289,7 +290,9 @@ class AutomationController:
                 DialogPriority.FOLLOWUP,
                 reason="Eine Rückfrage nach der Dauer ist offen.",
                 requested_by_user_id=conversation_user_id(user_input),
-                payload=PartRequest(MissingPart.DURATION, question, original_text=user_input.text),
+                payload=PartRequest(
+                    MissingPart.DURATION, question, original_text=shared_turn_text() or user_input.text
+                ),
             )
             response.async_set_speech(question)
             return
@@ -310,6 +313,7 @@ class AutomationController:
                 return
             model = offer
             prefix = f"{refusal} Stattdessen melde ich es dir, dann entscheidest du selbst. "
+        shared = turn_is_shared(self.hass, self.entry.options, user_input)
         self._context_store.set(
             user_input.conversation_id,
             ConversationContext(
@@ -320,10 +324,17 @@ class AutomationController:
                 pending_automation_confirmation=PendingAutomationConfirmation(
                     model=model,
                     requested_by_user_id=requested_by_user_id,
+                    shared=shared,
                 ),
             ),
         )
-        response.async_set_speech(prefix + render_automation_preview(model, entities))
+        preview = render_automation_preview(model, entities)
+        if shared:
+            # 7.9.2 A3: said before the "Ja", not discovered later.
+            preview = preview.replace(
+                " Soll ", " Sie gehört dem ganzen Haushalt (gemeinsam). Soll ", 1
+            )
+        response.async_set_speech(prefix + preview)
 
     def decide_recurrence(
         self,
@@ -637,7 +648,7 @@ class AutomationController:
                 scheduled_for=model.scheduled_for,
                 once=model.once,
                 max_runs=model.max_runs,
-                owner_user_id=current_user_id,
+                owner_user_id=HOUSEHOLD_OWNER if confirmation.shared else current_user_id,
             )
         except Exception as err:  # noqa: BLE001 - a YAML write + service call can fail in ways beyond HomeAssistantError; must not propagate as "Unexpected error during intent recognition"
             _LOGGER.error("Automation creation failed: %s", err)
@@ -749,7 +760,7 @@ class AutomationController:
                 DialogPriority.FOLLOWUP,
                 reason=f"Eine Rückfrage nach dem {result.part.spoken_part} ist offen.",
                 requested_by_user_id=conversation_user_id(user_input),
-                payload=replace(result.part, original_text=user_input.text),
+                payload=replace(result.part, original_text=shared_turn_text() or user_input.text),
             )
             response.async_set_speech(result.response_text)
             return conversation.ConversationResult(

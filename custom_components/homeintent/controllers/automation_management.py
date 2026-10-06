@@ -93,12 +93,14 @@ class AutomationManagementController:
         engine: NluEngine,
         world_model: Callable[[], WorldModel | None],
         hass: Callable[[], Any] | None = None,
+        options: Callable[[], Mapping[str, object]] | None = None,
     ) -> None:
         self._context_store = context_store
         self._executor = executor
         self._engine = engine
         self._world_model_of = world_model
         self._hass_of = hass
+        self._options_of = options
 
     async def _async_refusal(
         self, user_input: conversation.ConversationInput, automation: Any
@@ -106,7 +108,8 @@ class AutomationManagementController:
         """Owner or administrator only (7.9.1 A2); ``None`` when allowed."""
         hass = self._hass_of() if self._hass_of is not None else None
         return await async_management_refusal(
-            hass, user_input, getattr(automation, "owner_user_id", None)
+            hass, user_input, getattr(automation, "owner_user_id", None),
+            options=self._options_of() if self._options_of is not None else None,
         )
 
     def _refuse(

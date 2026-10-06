@@ -41,7 +41,19 @@ from ..monitoring_management import MonitoringOperation, MonitoringRequest
 from ..rate_monitor import describe_rule
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..proactive_model import SituationKind
-from ..automation_ownership import async_management_refusal, async_owner_name, may_manage
+from ..notification_target import NotificationTargetResolver, resolution_failure_text
+from ..nlu.action_model import NotificationRecipientKind
+from ..automation_ownership import (
+    HOUSEHOLD_OWNER,
+    async_management_refusal,
+    async_owner_name,
+    household_voice,
+    mark_shared_turn,
+    may_manage,
+    may_share,
+    shared_turn_text,
+    turn_is_shared,
+)
 from ..missing_part import MissingPart, PartRequest, complete_request, read_part_answer
 from ..security_control import conversation_user_id, user_is_admin
 from ..turn_outcome import TurnOutcomeKind, report_outcome
@@ -61,10 +73,17 @@ class MonitoringController:
         runtime: Any,
         automation_store: Callable[[], Any] | None = None,
         hass: Callable[[], Any] | None = None,
+        options: Callable[[], Mapping[str, object]] | None = None,
     ) -> None:
         self._runtime = runtime
         self._automation_store = automation_store
         self._hass_of = hass
+        self._options_of = options
+        self._shared_open: dict[str, str] = {}
+
+    @property
+    def _options(self) -> Mapping[str, object]:
+        return self._options_of() if self._options_of is not None else {}
 
     @property
     def _hass(self) -> Any:
@@ -81,16 +100,35 @@ class MonitoringController:
         conversation_id = user_input.conversation_id
         actor_id = conversation_user_id(user_input)
         contexts = self._runtime.user_contexts
+        if turn_is_shared(self._hass, self._options, user_input):
+            # 7.9.2 A3: a shared monitor notifies the confirmed household.
+            resolution = NotificationTargetResolver.from_options(self._options, contexts).resolve(
+                NotificationRecipientKind.HOUSEHOLD, None
+            )
+            if not resolution.resolved or contexts is None:
+                response.async_set_speech(f"{resolution_failure_text(resolution)} Ich habe nichts eingerichtet.")
+                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+            recipients = tuple(contexts.household.person_entity_ids)
+            owner: str | None = HOUSEHOLD_OWNER
+        else:
+            recipients = ()
+            owner = actor_id
         binding = contexts.resolve_current_person(actor_id) if contexts is not None else None
-        if binding is None or binding.status is not BindingStatus.RESOLVED or binding.person_entity_id is None:
+        if not recipients and (
+            binding is None or binding.status is not BindingStatus.RESOLVED or binding.person_entity_id is None
+        ):
             response.async_set_speech(
                 "Ich weiß noch nicht, welche Person du bist. Bitte ordne deinem "
                 "HomeIntent-Benutzer eine Person zu, dann kann ich dir solche Meldungen schicken."
             )
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
         assert contexts is not None
-        targets = contexts.resolve_notification_targets(binding.person_entity_id)
-        if targets.status is not BindingStatus.RESOLVED:
+        targets = (
+            contexts.resolve_notification_targets(binding.person_entity_id)
+            if not recipients and binding is not None and binding.person_entity_id is not None
+            else None
+        )
+        if targets is not None and targets.status is not BindingStatus.RESOLVED:
             response.async_set_speech(
                 # A statement, not a question: the answer is a setting, not a
                 # reply in this conversation (7.9.1 A6).
@@ -111,11 +149,11 @@ class MonitoringController:
                 "value_change", entity_id=rule.entity_id, delta=rule.delta, unit=rule.unit,
                 direction=rule.direction.value, window_seconds=rule.window_seconds,
             ),
-            recipient_person_ids=(binding.person_entity_id,),
+            recipient_person_ids=recipients or ((binding.person_entity_id,) if binding is not None and binding.person_entity_id else ()),
             delivery_channel=DeliveryChannel.PUSH,
             notification_severity=NotificationSeverity.WARNING,
             provenance=GoalProvenance(
-                source_utterance=user_input.text, user_id=actor_id, conversation_id=conversation_id,
+                source_utterance=user_input.text, user_id=owner, conversation_id=conversation_id,
             ),
             lifecycle=GoalLifecycle.MONITOR,
         )
@@ -192,9 +230,14 @@ class MonitoringController:
         monitors = collect_monitors(automations, records, entities)
         is_admin = await user_is_admin(self._hass, user_input)
         actor = conversation_user_id(user_input)
-        if request.operation is MonitoringOperation.LIST and not is_admin:
-            # Non-administrators see their own monitors (7.9.1 A2).
-            monitors = [item for item in monitors if may_manage(item.owner_user_id, actor, False)]
+        voice = household_voice(self._hass, self._options, user_input)
+        if request.operation in {MonitoringOperation.LIST, MonitoringOperation.ASK} and not is_admin:
+            # Non-administrators see their own monitors (7.9.1 A2) and the
+            # shared ones (7.9.2 A3).
+            monitors = [
+                item for item in monitors
+                if may_manage(item.owner_user_id, actor, False, household_voice=voice)
+            ]
         chosen = matching(monitors, request.subject, entities)
         said = request.spoken_subject or request.subject
         spoken_subject = f" für „{said}“" if said else ""
@@ -233,7 +276,11 @@ class MonitoringController:
             # preview only when asked ("Was macht die erste?").
             parts = [
                 short_label(item)
-                + (f" (von {owners[item.owner_user_id]})" if is_admin and item.owner_user_id != actor else "")
+                + (
+                    " (gemeinsam)" if item.owner_user_id == HOUSEHOLD_OWNER
+                    else f" (von {owners[item.owner_user_id]})" if is_admin and item.owner_user_id != actor
+                    else ""
+                )
                 + ("" if item.enabled else " (ausgeschaltet)")
                 for item in chosen
             ]
@@ -257,8 +304,10 @@ class MonitoringController:
                 + ". Welche meinst du? Nenne sie bitte genauer."
             )
         monitor = chosen[0]
+        if request.operation is MonitoringOperation.SHARE:
+            return say(await self._async_share(user_input, monitor, store, goals, records, is_admin))
         refusal = await async_management_refusal(
-            self._hass, user_input, monitor.owner_user_id, noun="Überwachung"
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung", options=self._options,
         )
         if refusal is not None:
             return say(refusal)
@@ -269,8 +318,9 @@ class MonitoringController:
                 record = next(item for item in records if item.goal.goal_id == monitor.goal_id)
                 await goals.async_save(replace(record, enabled=False))
             report_outcome(TurnOutcomeKind.EXECUTED)
+            # The short form of the list (7.9.2 A6), not the full preview.
             return say(
-                f"Ausgeschaltet: „{monitor.label.rstrip('.')}“. Sie bleibt gespeichert, bis du sie löschst."
+                f"Ausgeschaltet: {short_label(monitor)}. Sie bleibt gespeichert, bis du sie löschst."
             )
         if request.operation is MonitoringOperation.DELETE:
             self._runtime.dialog_manager.create(
@@ -302,8 +352,51 @@ class MonitoringController:
         report_outcome(TurnOutcomeKind.EXECUTED)
         day = "morgen" if request.day_offset == 1 else "heute" if request.day_offset == 0 else resume.strftime("%d.%m.")
         return say(
-            f"Pausiert bis {day} um {resume:%H:%M} Uhr: „{monitor.label.rstrip('.')}“. Danach schalte ich "
+            f"Pausiert bis {day} um {resume:%H:%M} Uhr: {short_label(monitor)}. Danach schalte ich "
             "sie automatisch wieder ein."
+        )
+
+    async def _async_share(
+        self,
+        user_input: conversation.ConversationInput,
+        monitor: Any,
+        store: Any,
+        goals: Any,
+        records: Any,
+        is_admin: bool,
+    ) -> str:
+        """"Mach die Fensterüberwachung für alle" (7.9.2 A3): owner or admin."""
+        if monitor.owner_user_id == HOUSEHOLD_OWNER:
+            return f"Die Überwachung „{short_label(monitor)}“ gilt schon für den ganzen Haushalt."
+        if not may_share(monitor.owner_user_id, conversation_user_id(user_input), is_admin):
+            owner = await async_owner_name(self._hass, monitor.owner_user_id) or "ein Administrator"
+            return f"Gemeinsam machen kann diese Überwachung nur {owner} oder ein Administrator."
+        # Shared monitors notify the confirmed household; without one the
+        # answer is the same honest one as for "uns".
+        contexts = self._runtime.user_contexts
+        resolution = NotificationTargetResolver.from_options(self._options, contexts).resolve(
+            NotificationRecipientKind.HOUSEHOLD, None
+        )
+        if not resolution.resolved or contexts is None:
+            return f"{resolution_failure_text(resolution)} Ich habe nichts geändert."
+        if monitor.automation_id is not None and store is not None:
+            await store.async_set_owner(
+                monitor.automation_id, HOUSEHOLD_OWNER, tuple(resolution.entity_ids)
+            )
+        elif monitor.goal_id is not None and goals is not None:
+            record = next(item for item in records if item.goal.goal_id == monitor.goal_id)
+            goal = record.goal
+            await goals.async_save(replace(record, goal=replace(
+                goal,
+                recipient_person_ids=tuple(contexts.household.person_entity_ids),
+                provenance=replace(goal.provenance, user_id=HOUSEHOLD_OWNER),
+            )))
+        else:
+            return "Diese Überwachung kann ich nicht ändern."
+        report_outcome(TurnOutcomeKind.EXECUTED)
+        return (
+            f"Erledigt: Die Überwachung „{short_label(monitor)}“ gilt jetzt für den ganzen Haushalt "
+            "(gemeinsam); Meldungen gehen an alle bestätigten Personen im Haushalt."
         )
 
     def answer_open_question(
@@ -397,7 +490,7 @@ class MonitoringController:
             response.async_set_speech("In Ordnung, die Überwachung bleibt.")
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
         refusal = await async_management_refusal(
-            self._hass, user_input, monitor.owner_user_id, noun="Überwachung"
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung", options=self._options,
         )
         if refusal is not None:
             response.async_set_speech(refusal)
@@ -428,6 +521,10 @@ class MonitoringController:
             requested_by_user_id=conversation_user_id(user_input),
             payload=words,
         )
+        shared = shared_turn_text()
+        if shared is not None:
+            # The answer continues a request "für uns alle" (7.9.2 A3).
+            self._shared_open[user_input.conversation_id] = shared
         response.async_set_speech(question)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -444,6 +541,9 @@ class MonitoringController:
         answer = user_input.text.strip().rstrip(".!?").strip()
         if not answer:
             return None
+        shared = self._shared_open.pop(user_input.conversation_id, None)
+        if shared is not None:
+            mark_shared_turn(shared)
         head = f"Überwache {' '.join(str(word) for word in words)} und"
         lowered = answer[:1].casefold() + answer[1:]
         if lowered.split()[0] in {"wenn", "sobald", "falls", "ob"}:

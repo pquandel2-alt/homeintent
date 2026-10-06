@@ -77,6 +77,7 @@ from .embedded_question import embedded_check_question
 from .response_style import apply_response_style
 from .turn_outcome import begin_outcomes, end_outcomes
 from .effect_wait import append_speech, async_settle_turn
+from .automation_ownership import begin_shared_turn
 from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
@@ -460,7 +461,8 @@ class NluConversationEntity(
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
         )
         self._monitoring = MonitoringController(
-            runtime=runtime, automation_store=self._automation_store, hass=lambda: self.hass
+            runtime=runtime, automation_store=self._automation_store, hass=lambda: self.hass,
+            options=lambda: self.entry.options,
         )
         self._comfort = ComfortController(
             hass=lambda: self.hass,
@@ -487,7 +489,7 @@ class NluConversationEntity(
             executor=self._automation_store,
             engine=self._engine,
             world_model=lambda: self._world_model,
-            hass=lambda: self.hass,
+            hass=lambda: self.hass, options=lambda: self.entry.options,
         )
         self._automations = AutomationController(
             hass=lambda: self.hass,
@@ -559,6 +561,7 @@ class NluConversationEntity(
             )
         # One Home Assistant context per turn: every execution in this turn
         # shares one execution id (7.3.2).
+        user_input = begin_shared_turn(user_input)  # "… für uns alle" (7.9.2 A3)
         turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
         self._engine.take_action_ambiguity()  # nothing stale from an earlier turn
         outcomes, outcome_token = begin_outcomes()
