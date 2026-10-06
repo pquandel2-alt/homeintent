@@ -43,11 +43,6 @@ ACTION_DURATION_MAX_SECONDS = 86400
 
 _UNIT_SECONDS = {"sekunde": 1, "minute": 60, "stunde": 3600}
 
-_AMOUNT = r"(?P<amount>\d+(?:[.,]5)?|[a-zäöüß]+|eine\s+halbe|einer\s+halben|anderthalb|eineinhalb)"
-_UNIT = r"(?P<unit>sekunden?|minuten?|stunden?)"
-_FOR_RE = re.compile(rf"\b(?:für|fuer)\s+(?:die\s+(?:nächsten|naechsten)\s+)?{_AMOUNT}\s+{_UNIT}\b(?:\s+lang)?", re.IGNORECASE)
-_LONG_RE = re.compile(rf"\b{_AMOUNT}\s+{_UNIT}\s+lang\b", re.IGNORECASE)
-_BARE_RE = re.compile(rf"(?<!\S){_AMOUNT}\s+{_UNIT}\s*[.!]?\s*$", re.IGNORECASE)
 # Prepositions that make "N Minuten" a delay, interval, window or age.
 _TEMPORAL_LEAD = frozenset({
     "in", "nach", "alle", "seit", "vor", "bis", "innerhalb", "binnen", "als", "von", "um",
@@ -56,7 +51,7 @@ _TEMPORAL_LEAD = frozenset({
 
 
 def _seconds(amount: str, unit: str) -> int | None:
-    key = re.sub(r"\s+", " ", amount.casefold())
+    key = " ".join(amount.casefold().split())
     base = _UNIT_SECONDS[unit]
     if key in {"eine halbe", "einer halben"}:
         value = 0.5
@@ -83,21 +78,56 @@ def _unit_key(unit: str) -> str:
     return key
 
 
+_HALF = {("eine", "halbe"): 0.5, ("einer", "halben"): 0.5}
+_FILLERS = frozenset({"die", "nächsten", "naechsten"})
+
+
+def _amount_at(words: list[str], index: int) -> tuple[str, int] | None:
+    """(amount text, words used) of an amount starting at ``index``."""
+    if index + 1 < len(words) and (words[index], words[index + 1]) in _HALF:
+        return f"{words[index]} {words[index + 1]}", 2
+    if index < len(words):
+        return words[index], 1
+    return None
+
+
 def split_action_duration(text: str) -> tuple[int | None, str]:
-    """The spoken duration of an action clause and the clause without it."""
-    for pattern in (_FOR_RE, _LONG_RE, _BARE_RE):
-        match = pattern.search(text)
-        if match is None:
+    """The spoken duration of an action clause and the clause without it.
+
+    Constructions over words: "für [die nächsten] <Menge> <Einheit> [lang]",
+    "<Menge> <Einheit> lang", or a bare "<Menge> <Einheit>" closing the
+    clause that no temporal preposition claims.
+    """
+    raw = text.split()
+    words = [word.casefold().strip(",.!?") for word in raw]
+    for start in range(len(words)):
+        lead_for = words[start] in {"für", "fuer"}
+        index = start + 1 if lead_for else start
+        while lead_for and index < len(words) and words[index] in _FILLERS:
+            index += 1
+        found = _amount_at(words, index)
+        if found is None:
             continue
-        before = text[:match.start()].split()
-        if pattern is not _FOR_RE and before and before[-1].casefold().strip(",") in _TEMPORAL_LEAD:
+        amount, used = found
+        unit_index = index + used
+        if unit_index >= len(words):
             continue
-        if pattern is _BARE_RE and len(before) < 2:
-            continue  # "20 Minuten." alone is no action with a duration
-        seconds = _seconds(match.group("amount"), _unit_key(match.group("unit")))
+        unit = _unit_key(words[unit_index])
+        if unit not in _UNIT_SECONDS:
+            continue
+        end = unit_index + 1
+        long_form = end < len(words) and words[end] == "lang"
+        if long_form:
+            end += 1
+        bare = not lead_for and not long_form
+        if not lead_for and start > 0 and words[start - 1] in _TEMPORAL_LEAD:
+            continue
+        if bare and (end != len(words) or start < 2):
+            continue  # a bare duration must close the clause after an action
+        seconds = _seconds(amount, unit)
         if seconds is None:
             continue
-        rest = re.sub(r"\s+", " ", f"{text[:match.start()]} {text[match.end():]}").strip(" ,")
+        rest = " ".join([*raw[:start], *raw[end:]]).strip(" ,")
         return seconds, rest
     return None, text
 

@@ -516,6 +516,14 @@ async def _async_execute_state_history_query(hass, query: StateHistoryQuery) -> 
 async def async_get_numeric_samples(
     hass, entity_id: str, start: datetime, end: datetime
 ) -> list[tuple[datetime, float]]:
+    """See ``async_read_numeric_samples``; a recorder failure is an empty list."""
+    samples = await async_read_numeric_samples(hass, entity_id, start, end)
+    return samples if samples is not None else []
+
+
+async def async_read_numeric_samples(
+    hass, entity_id: str, start: datetime, end: datetime
+) -> list[tuple[datetime, float]] | None:
     """(time, value) of one sensor in a window, from the recorder (7.9 W3).
 
     Includes the state valid at the window's start; non-numeric states
@@ -540,7 +548,7 @@ async def async_get_numeric_samples(
         )
     except Exception as err:
         _LOGGER.warning("Recorder numeric samples failed: %s", err, exc_info=True)
-        return []
+        return None
     rows = result.get(entity_id, ()) if isinstance(result, dict) else ()
     samples: list[tuple[datetime, float]] = []
     for item in rows if isinstance(rows, (list, tuple)) else ():
@@ -553,6 +561,45 @@ async def async_get_numeric_samples(
             continue
         samples.append((max(moment, start), value))
     return samples
+
+
+async def async_read_state_rows(
+    hass, entity_ids: list[str], start: datetime, end: datetime, *, attributes: bool = False
+) -> dict[str, list[tuple[datetime, str, dict]]] | None:
+    """(time, state, attributes) per entity in a window, including the state
+    valid at the start (7.9.2 B1). ``None`` when the recorder cannot answer."""
+    if not entity_ids:
+        return {}
+    try:
+        from homeassistant.components.recorder import history
+
+        result = await hass.async_add_executor_job(
+            partial(
+                history.get_significant_states,
+                hass,
+                start,
+                end,
+                entity_ids=entity_ids,
+                include_start_time_state=True,
+                significant_changes_only=False,
+                minimal_response=False,
+                no_attributes=not attributes,
+            )
+        )
+    except Exception as err:
+        _LOGGER.warning("Recorder state rows failed: %s", err, exc_info=True)
+        return None
+    rows: dict[str, list[tuple[datetime, str, dict]]] = {}
+    for entity_id, items in (result.items() if isinstance(result, dict) else ()):
+        for item in items if isinstance(items, (list, tuple)) else ():
+            state, moment = _state_value(item), _state_time(item)
+            if state is None or moment is None:
+                continue
+            raw = getattr(item, "attributes", None)
+            if raw is None and isinstance(item, dict):
+                raw = item.get("attributes")
+            rows.setdefault(entity_id, []).append((max(moment, start), state, dict(raw or {})))
+    return rows
 
 
 async def async_get_transition_evidence(
@@ -612,5 +659,6 @@ __all__ = (
     "ComparativeHistoryQuery", "HistoryMetric", "HistoryQuery",
     "StateHistoryMetric", "StateHistoryQuery", "TransitionEvidence",
     "async_execute_history_query", "async_get_numeric_samples", "async_get_transition_evidence",
+    "async_read_numeric_samples", "async_read_state_rows",
     "parse_history_query", "render_history_result", "render_state_history_result",
 )

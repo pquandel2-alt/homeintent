@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum, auto
 
+from .automation_ownership import shared_request
 from .entities import normalize_for_compare
 
 
@@ -83,10 +84,6 @@ _FILLERS = frozenset({
 _SHARE_WORDS = frozenset({
     "mach", "mache", "markiere", "markier", "teile", "teil", "stelle", "stell", "setze", "setz", "gib",
 })
-_SHARED_MARK_RE = re.compile(
-    r"\b(?:für|fuer)\s+(?:uns\s+)?alle\b|\bgemeinsam\b|\b(?:für|fuer)\s+den\s+(?:ganzen\s+)?haushalt\b",
-    re.IGNORECASE,
-)
 _CLOCK_RE = re.compile(r"\bbis\s+(?:(?P<day>heute|morgen)\s*)?(?:(?:um|gegen)\s+)?(?P<hour>\d{1,2})?(?::(?P<minute>\d{2}))?\s*(?:uhr)?", re.IGNORECASE)
 
 
@@ -144,7 +141,7 @@ def parse_monitoring_management(text: str) -> MonitoringRequest | None:
         return None
     if first in _DELETE_WORDS:
         return MonitoringRequest(MonitoringOperation.DELETE, subject, spoken)
-    if first in _SHARE_WORDS and _SHARED_MARK_RE.search(text):
+    if first in _SHARE_WORDS and shared_request(text):
         return MonitoringRequest(MonitoringOperation.SHARE, subject, spoken)
     if first in _PAUSE_WORDS or (first in {"setze", "setz"} and "aus" in keys):
         clock = _CLOCK_RE.search(text)

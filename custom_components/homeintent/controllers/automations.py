@@ -93,10 +93,30 @@ _LOGGER = logging.getLogger(__name__)
 
 _GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
 # The interval of a repeated reminder ("jede Minute", "alle 5 Minuten").
-_REPEAT_INTERVAL_RE = re.compile(
-    r"\b(?:jede|jeden|jedes|alle)\s+(?:\S+\s+)?(?:sekunden?|minuten?|stunden?|viertelstunden?)\b",
-    re.IGNORECASE,
-)
+_INTERVAL_HEADS = frozenset({"jede", "jeden", "jedes", "alle"})
+_INTERVAL_UNITS = ("sekunde", "minute", "stunde", "viertelstunde")
+
+
+def _without_repeat_interval(text: str) -> str:
+    words = text.split()
+    kept: list[str] = []
+    index = 0
+    while index < len(words):
+        if words[index].casefold() in _INTERVAL_HEADS:
+            for length in (2, 3):
+                unit = words[index + length - 1].casefold().strip(",.") if index + length - 1 < len(words) else ""
+                if unit.startswith(_INTERVAL_UNITS):
+                    index += length
+                    break
+            else:
+                kept.append(words[index])
+                index += 1
+            continue
+        kept.append(words[index])
+        index += 1
+    return " ".join(kept)
+
+
 # Words that mark an automation sentence's trigger (7.9.2 A2).
 _TRIGGER_WORD_RE = re.compile(
     r"\b(?:wenn|sobald|falls|jeden|jede|jedes|täglich|taeglich|morgens|abends|nachts|"
@@ -416,7 +436,7 @@ class AutomationController:
         now, or every time the situation starts - asked, never guessed."""
         # "jede Minute" is the reminder's interval, not "jedes Mal" (7.9.2
         # A6): the same question as for "alle 5 Minuten".
-        said = recurrence_of(_REPEAT_INTERVAL_RE.sub(" ", user_input.text))
+        said = recurrence_of(_without_repeat_interval(user_input.text))
         if said is Recurrence.RECURRING:
             return replace(result, model=replace(result.model, ask_start=False))
         if said is Recurrence.ONCE:

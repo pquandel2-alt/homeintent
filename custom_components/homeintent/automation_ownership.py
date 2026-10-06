@@ -50,12 +50,21 @@ __all__ = (
 HOUSEHOLD_OWNER = "household"
 
 # "für uns alle", "für alle", "gemeinsam", "für den (ganzen) Haushalt",
-# "für die ganze Familie" - a construction, the request is for everyone.
-_SHARED_RE = re.compile(
-    r"[,]?\s*\b(?:für\s+(?:uns\s+)?alle|fuer\s+(?:uns\s+)?alle|gemeinsam|"
-    r"für\s+(?:den\s+(?:ganzen\s+)?haushalt|die\s+ganze\s+familie|das\s+ganze\s+haus))\b",
-    re.IGNORECASE,
+# "für die ganze Familie" - a construction: the request is for everyone.
+_SHARED_PHRASES = (
+    ("für", "uns", "alle"), ("fuer", "uns", "alle"), ("für", "alle"), ("fuer", "alle"), ("gemeinsam",),
+    ("für", "den", "ganzen", "haushalt"), ("für", "den", "haushalt"), ("für", "die", "ganze", "familie"),
+    ("für", "das", "ganze", "haus"),
 )
+
+
+def _shared_span(words: list[str]) -> tuple[int, int] | None:
+    keys = [word.casefold().strip(",.;:!?") for word in words]
+    for phrase in _SHARED_PHRASES:
+        for start in range(len(keys) - len(phrase) + 1):
+            if tuple(keys[start:start + len(phrase)]) == phrase:
+                return start, start + len(phrase)
+    return None
 
 
 def may_manage(
@@ -78,12 +87,25 @@ def may_share(owner_user_id: str | None, actor_user_id: str | None, is_admin: bo
 
 
 def shared_request(text: str) -> bool:
-    return _SHARED_RE.search(text) is not None
+    return _shared_span(text.split()) is not None
 
 
 def strip_shared_marker(text: str) -> str:
     """The request without "für uns alle"/"gemeinsam" (it names the owner)."""
-    return re.sub(r"\s{2,}", " ", _SHARED_RE.sub("", text)).strip()
+    words = text.split()
+    span = _shared_span(words)
+    if span is None:
+        return text
+    start, end = span
+    trailing = words[end - 1][len(words[end - 1].rstrip(",.;:!?")):]
+    head = words[:start]
+    if head and head[-1].endswith(","):
+        head[-1] = head[-1].rstrip(",")  # "…, für uns alle." keeps one end
+    rest = words[end:]
+    if rest and head and trailing.startswith(","):
+        head[-1] += ","  # "Melde dich für uns alle, wenn …" keeps its clause comma
+    joined = " ".join([*head, *rest]).strip()
+    return (joined + trailing.strip(",")) if trailing.strip(",") and not rest else joined
 
 
 def household_voice(hass: Any, options: Mapping[str, object], user_input: Any) -> bool:

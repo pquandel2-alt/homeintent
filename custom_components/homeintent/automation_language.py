@@ -76,31 +76,50 @@ _DETECTOR_EVENT_VERBS = frozenset({
 })
 
 
-# "km/h" survives normalization as one unit word (7.9.2 A6).
-_KMH_RE = re.compile(r"\bkm\s*/\s*h\b|\bkilometer\s+pro\s+stunde\b", re.IGNORECASE)
-# "Bei Wind über 40 km/h, …": a prepositional event of a measured quantity
-# is the event clause "Wenn Wind über 40 kmh liegt, …" (7.9.2 A6).
-_BEI_MEASUREMENT_RE = re.compile(
-    r"^\s*bei\s+(?P<subject>[a-zäöüß-]+(?:\s+[a-zäöüß-]+)?)\s+"
-    r"(?P<cmp>über|unter|mehr\s+als|weniger\s+als|ab)\s+"
-    r"(?P<num>\d+(?:[.,]\d+)?)\s+(?P<unit>kmh|lux|grad|prozent|watt|ppm)\b\s*,?\s*",
-    re.IGNORECASE,
-)
+_COMPARISON_WORDS = {"über": "über", "unter": "unter", "ab": "mindestens"}
+_PREPARED_UNITS = frozenset({"kmh", "lux", "grad", "prozent", "watt", "ppm"})
 
 
-def _bei_measurement(match: re.Match[str]) -> str:
-    comparator = match.group("cmp").casefold()
-    word = "mindestens" if comparator == "ab" else comparator
-    return (
-        f"Wenn {match.group('subject')} {word} {match.group('num')} {match.group('unit')} liegt, "
-    )
+def _join_kmh(text: str) -> str:
+    """"km/h", "km / h", "Kilometer pro Stunde" -> one unit word (7.9.2 A6)."""
+    for spelling in ("km / h", "km/ h", "km /h", "km/h", "Km/h", "KM/H"):
+        text = text.replace(spelling, "kmh")
+    words = text.split()
+    joined: list[str] = []
+    index = 0
+    while index < len(words):
+        if [word.casefold() for word in words[index:index + 3]] == ["kilometer", "pro", "stunde"]:
+            joined.append("kmh")
+            index += 3
+            continue
+        joined.append(words[index])
+        index += 1
+    return " ".join(joined)
+
+
+def _bei_measurement(text: str) -> str:
+    """"Bei Wind über 40 kmh fahr …" -> "Wenn Wind über 40 kmh liegt, fahr …"
+    (7.9.2 A6): a prepositional event of a measured quantity."""
+    words = text.split()
+    if not words or words[0].casefold() != "bei":
+        return text
+    for index in (2, 3):
+        if index + 2 >= len(words):
+            continue
+        comparator = words[index].casefold()
+        number = words[index + 1]
+        unit = words[index + 2].casefold().strip(",")
+        if comparator in _COMPARISON_WORDS and number.replace(",", "").replace(".", "").isdigit() and unit in _PREPARED_UNITS:
+            subject = " ".join(words[1:index])
+            rest = " ".join(words[index + 3:])
+            return f"Wenn {subject} {_COMPARISON_WORDS[comparator]} {number} {unit} liegt, {rest}".strip()
+    return text
 
 
 def prepare_automation_text(raw: str) -> PreparedText:
     """Repairs first (they need the hesitation markers), then shared normalization."""
     repair = resolve_repairs(raw)
-    text = _KMH_RE.sub("kmh", repair.text)
-    text = _BEI_MEASUREMENT_RE.sub(_bei_measurement, text)
+    text = _bei_measurement(_join_kmh(repair.text))
     text = _JEDES_MAL_RE.sub("immer ", text)
     text = _IMMER_DANN_RE.sub("immer", text)
     text = rejoin_stt(text)

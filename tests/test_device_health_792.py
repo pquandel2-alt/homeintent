@@ -20,7 +20,7 @@ from dataclasses import replace
 
 import pytest
 
-from _ha_sim import World, fires, for_trigger_fires, run
+from _ha_sim import World, for_trigger_fires, run
 from _testhaus import PUSH_OPTIONS, HouseConversation, house_entities
 
 
@@ -75,7 +75,7 @@ def test_unreachable_devices(monkeypatch, tmp_path, question):
 
 def test_unknown_helpers_are_no_unreachable_devices(monkeypatch, tmp_path):
     turn = _house(monkeypatch, tmp_path).say("Welche Geräte sind nicht erreichbar?")
-    assert turn.speech.startswith("Alle ") and "erreichbar" in turn.speech, turn.speech
+    assert "alle " in turn.speech and "Geräte sind erreichbar" in turn.speech, turn.speech
 
 
 # --- monitoring -------------------------------------------------------------

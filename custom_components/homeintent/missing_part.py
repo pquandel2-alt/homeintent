@@ -39,6 +39,8 @@ class MissingPart(Enum):
     DURATION = "duration"
     # 7.9.2 B3: "Um wie viel Uhr soll ich dir den Bericht schicken?"
     CLOCK = "clock"
+    # 7.9.2 B4: "Bis wann seid ihr weg?"
+    DATE = "date"
     # 7.9.2 A6: "Um wie viel und in welchem Zeitraum?" ("schnell fällt").
     RATE = "rate"
     # 7.9.2 A6: "Ab welchem Wert?" ("wenn die Sonne scheint").
@@ -53,6 +55,7 @@ _SPOKEN = {
     MissingPart.RECIPIENT: "Empfänger",
     MissingPart.DURATION: "Dauer",
     MissingPart.CLOCK: "Uhrzeit",
+    MissingPart.DATE: "Enddatum",
     MissingPart.RATE: "Betrag und Zeitraum",
     MissingPart.THRESHOLD: "Schwellwert",
 }
@@ -95,10 +98,9 @@ _PERIODS = {
     "diese woche": "diese Woche", "wöchentlich": "diese Woche", "die woche": "diese Woche",
     "diesen monat": "diesen Monat", "monatlich": "diesen Monat", "den monat": "diesen Monat",
 }
-_RATE_ANSWER_RE = re.compile(
-    r"^(?:um\s+)?(?P<amount>\S+)\s+(?P<unit>grad|prozent|%)\s+"
-    r"(?:in|innerhalb|binnen|während)\s+(?P<window>.+)$"
-)
+_DATE_WORDS = frozenset({
+    "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag", "morgen", "übermorgen",
+})
 _FILLER_WORDS = frozenset({"ja", "also", "ähm", "äh", "ok", "okay", "naja"})
 _ARTICLES = frozenset({"der", "die", "das", "den", "dem", "des"})
 
@@ -146,6 +148,18 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
         return f"bis {lead}{hour} Uhr" if minute == 0 else f"bis {lead}{hour}:{minute:02d} Uhr"
     if part is MissingPart.PERIOD:
         return _PERIODS.get(key)
+    if part is MissingPart.DATE:
+        # "bis Sonntag", "Sonntag", "bis zum 20.", "20.10." - read by the
+        # vacation parser itself; here only its shape is checked.
+        words = [word for word in key.replace(",", " ").split() if word not in {"bis", "zum", "am"}]
+        if not words or len(words) > 3:
+            return None
+        head = words[0]
+        if head not in _DATE_WORDS and not re.fullmatch(r"\d{1,2}\.?(?:\d{1,2}\.?(?:\d{2,4})?)?", head):
+            return None
+        if head[0].isdigit() and not head.endswith("."):
+            words[0] = head + "."
+        return "bis " + " ".join(words)
     if part is MissingPart.CLOCK:
         clock = _clock(key.split())
         if clock is None or clock[0] is not None:
@@ -154,14 +168,16 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
         return f"um {hour} Uhr" if minute == 0 else f"um {hour}:{minute:02d} Uhr"
     if part is MissingPart.RATE:
         # "um 3 Grad in einer Stunde", "2 Grad innerhalb von 30 Minuten".
-        match = _RATE_ANSWER_RE.match(key)
-        if match is None:
+        words = key.split()
+        if words and words[0] == "um":
+            words = words[1:]
+        if len(words) < 4 or words[1] not in {"grad", "prozent", "%"} or words[2] not in {"in", "innerhalb", "binnen", "während"}:
             return None
-        amount = _amount(match.group("amount"))
-        seconds = _period_seconds(match.group("window").split())
+        amount = _amount(words[0])
+        seconds = _period_seconds(words[3:])
         if amount is None or amount <= 0 or seconds is None or seconds < 60:
             return None
-        unit = "Prozent" if match.group("unit") in {"prozent", "%"} else "Grad"
+        unit = "Prozent" if words[1] in {"prozent", "%"} else "Grad"
         return f"um {amount:g} {unit} innerhalb von {_spoken_duration(seconds)}".replace(".", ",")
     if part is MissingPart.THRESHOLD:
         # "ab 30000 Lux", "30000", "über zwanzigtausend Lux" (7.9.2 A6).
@@ -265,6 +281,8 @@ def complete_request(request: PartRequest, phrase: str) -> str:
         if index >= 0:
             return f"{original[:index]}{phrase}{original[index + len(spoken):]}"
         return original
+    if request.part is MissingPart.DATE:
+        return f"{original.rstrip('.!?')} {phrase}."
     if request.part is MissingPart.CLOCK:
         return f"{original.rstrip('.!?')} {phrase}."
     if request.part is MissingPart.DURATION:

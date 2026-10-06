@@ -78,6 +78,7 @@ from .response_style import apply_response_style
 from .turn_outcome import begin_outcomes, end_outcomes
 from .effect_wait import append_speech, async_settle_turn
 from .automation_ownership import begin_shared_turn
+from .controllers.insights import InsightsController
 from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
@@ -502,6 +503,10 @@ class NluConversationEntity(
             notifications=self._notifications,
             record_execution=self._record_execution,
         )
+        self._insights = InsightsController(
+            hass=lambda: self.hass, entry=entry, runtime=runtime, automations=self._automations,
+            entities=lambda: build_entity_snapshots(self.hass, self.entry),
+        )
         # Rebuilt every turn in _async_handle_message() (World Model Wave,
         # 2026-08-14); None only until the first turn.
         self._world_model: WorldModel | None = None
@@ -573,7 +578,7 @@ class NluConversationEntity(
             end_outcomes(outcome_token)
             end_turn(turn)
         append_speech(result.response, notes)
-        suffix = self._take_turn_suffix(user_input.conversation_id)
+        suffix = self._take_turn_suffix(user_input.conversation_id) or self._insights.offer_after_turn(user_input, outcomes)
         if suffix:
             # "Soll ich mir … merken?" after an executed command (7.4.1).
             speech = result.response.speech
@@ -1043,6 +1048,9 @@ class NluConversationEntity(
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        reading = await self._insights.async_handle_reading(user_input, response, entities, active_dialog)
+        if reading is not None:  # summaries, consumption, status questions (7.9.2 B)
+            return reading
         if active_dialog is None:
             # "Warum ist der Saugroboter angegangen?": answered only from HA's
             # context chain and the execution trace (7.3.2).
@@ -1704,9 +1712,9 @@ class NluConversationEntity(
         ):
             return self._queries.handle_audit_query(user_input, response)
 
-        report = self._automations.handle_health_report(user_input, response, entities)
-        if report is not None:  # "Sag mir jeden Sonntag, welche Batterien …" (7.9.2 B3)
-            return report
+        insight = await self._insights.async_handle(user_input, response, entities)
+        if insight is not None:  # reports, consumption, summaries, vacation, habits (7.9.2 B)
+            return insight
         # A trigger/notification request ("Benachrichtige mich, wenn der Akku
         # unter 20 Prozent fällt") shares words with read-only queries but is
         # never answered as one.

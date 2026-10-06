@@ -139,7 +139,7 @@ def _unreachable_answer(entities: Sequence[EntitySnapshot]) -> str:
     devices = device_entities(entities)
     gone = sorted(entity.friendly_name for entity in devices if entity.state == "unavailable")
     if not gone:
-        return f"Alle {len(devices)} freigegebenen Geräte sind erreichbar."
+        return f"Kein Gerät meldet „nicht verfügbar“: alle {len(devices)} freigegebenen Geräte sind erreichbar."
     verb = "ist" if len(gone) == 1 else "sind"
     return f"Nicht erreichbar {verb}: {_german_list(gone)}."
 
