@@ -75,10 +75,32 @@ _DETECTOR_EVENT_VERBS = frozenset({
 })
 
 
+# "km/h" survives normalization as one unit word (7.9.2 A6).
+_KMH_RE = re.compile(r"\bkm\s*/\s*h\b|\bkilometer\s+pro\s+stunde\b", re.IGNORECASE)
+# "Bei Wind über 40 km/h, …": a prepositional event of a measured quantity
+# is the event clause "Wenn Wind über 40 kmh liegt, …" (7.9.2 A6).
+_BEI_MEASUREMENT_RE = re.compile(
+    r"^\s*bei\s+(?P<subject>[a-zäöüß-]+(?:\s+[a-zäöüß-]+)?)\s+"
+    r"(?P<cmp>über|unter|mehr\s+als|weniger\s+als|ab)\s+"
+    r"(?P<num>\d+(?:[.,]\d+)?)\s+(?P<unit>kmh|lux|grad|prozent|watt|ppm)\b\s*,?\s*",
+    re.IGNORECASE,
+)
+
+
+def _bei_measurement(match: re.Match[str]) -> str:
+    comparator = match.group("cmp").casefold()
+    word = "mindestens" if comparator == "ab" else comparator
+    return (
+        f"Wenn {match.group('subject')} {word} {match.group('num')} {match.group('unit')} liegt, "
+    )
+
+
 def prepare_automation_text(raw: str) -> PreparedText:
     """Repairs first (they need the hesitation markers), then shared normalization."""
     repair = resolve_repairs(raw)
-    text = _JEDES_MAL_RE.sub("immer ", repair.text)
+    text = _KMH_RE.sub("kmh", repair.text)
+    text = _BEI_MEASUREMENT_RE.sub(_bei_measurement, text)
+    text = _JEDES_MAL_RE.sub("immer ", text)
     text = _IMMER_DANN_RE.sub("immer", text)
     text = rejoin_stt(text)
     # "ich hätte gern eine Nachricht" is a wish addressed to the speaker;
@@ -506,6 +528,9 @@ class ValueUnit(Enum):
     KILOWATT_HOUR = auto()
     # Concentration (7.9.1 A3): "über 1200 ppm" only for sensors in ppm.
     PPM = auto()
+    # 7.9.2 A6 (Markise): illuminance and wind speed.
+    LUX = auto()
+    KMH = auto()
 
 
 @dataclass(frozen=True)
@@ -641,6 +666,8 @@ _BELOW_WORDS = (
     "kleiner als", "unterhalb von", "unter",
 )
 _AT_LEAST_WORDS = ("mindestens", "wenigstens")
+_ABOVE_VERBS = frozenset({"übersteigt", "übersteigen", "überschreitet", "überschreiten", "übertrifft"})
+_BELOW_VERBS = frozenset({"unterschreitet", "unterschreiten"})
 _AT_MOST_WORDS = ("höchstens", "maximal", "nicht mehr als")
 
 _NUMBER_TOKEN_RE = re.compile(r"^[-−]?\d+(?:[.,]\d+)?$")
@@ -652,12 +679,26 @@ _UNIT_WORDS = {
     "kilowattstunden": ValueUnit.KILOWATT_HOUR, "kilowattstunde": ValueUnit.KILOWATT_HOUR,
     "kwh": ValueUnit.KILOWATT_HOUR,
     "ppm": ValueUnit.PPM,
+    "lux": ValueUnit.LUX, "lx": ValueUnit.LUX,
+    "km/h": ValueUnit.KMH, "kmh": ValueUnit.KMH, "stundenkilometer": ValueUnit.KMH,
+    "stundenkilometern": ValueUnit.KMH,
 }
 # A counting period for energy ("heute", "diese Woche", 7.9 W4): only a meter
 # that restarts with that period can answer it.
 METER_PERIOD_WORDS = {"heute": "daily", "täglich": "daily", "woche": "weekly", "monat": "monthly"}
 _ARTICLE_NUMBERS = frozenset({"ein", "eine", "eins", "einer", "einen", "einem"})
 
+# "schnell fällt", "plötzlich steigt" - a rate without its numbers (7.9.2 A6).
+_VAGUE_RATE_RE = re.compile(
+    r"\b(?:schnell|rasch|rapide|stark|plötzlich|ploetzlich|deutlich|sprunghaft)\s+"
+    r"(?:ab|an)?(?:fällt|faellt|sinkt|steigt|fallen|sinken|steigen)\b",
+    re.IGNORECASE,
+)
+# "die Sonne scheint", "Sonnenschein", "es sonnig ist" (7.9.2 A6).
+_SUNSHINE_RE = re.compile(
+    r"\bsonne\s+(?:scheint|scheinen|strahlt|knallt)\b|\bsonnenschein\b|\bsonnig\b",
+    re.IGNORECASE,
+)
 _RELATIVE_CHANGE_RE = re.compile(
     r"\bum\s+\S+\s+(?:grad|prozent|%)\b"
     r"|\b\S+\s+(?:grad|prozent)\s+(?:wärmer|kälter|mehr|weniger|heller|dunkler)\b"
@@ -868,6 +909,20 @@ def read_event_roles(event_text: str) -> EventRoles:
         event_text.strip(" ,.!?"), flags=re.IGNORECASE,
     )
     text, conditions = _extract_conditions(source)
+    if _VAGUE_RATE_RE.search(text) and not re.search(r"\d", text):
+        # "wenn die Außentemperatur schnell fällt" (7.9.2 A6): a change
+        # without amount and period - both are asked, never guessed.
+        return EventRoles(
+            source, subject_words=tuple(text.strip(" ,.").split()), unsupported="vague_rate",
+            conditions=conditions,
+        )
+    if _SUNSHINE_RE.search(text):
+        # "wenn die Sonne scheint" (7.9.2 A6): a brightness, never a guessed
+        # value - grounding asks for the threshold.
+        return EventRoles(
+            source, subject_words=tuple(text.strip(" ,.").split()), unsupported="sunshine",
+            conditions=conditions,
+        )
     if _RELATIVE_CHANGE_RE.search(text):
         change = read_relative_change(text)
         if change is not None:
@@ -938,6 +993,18 @@ def read_event_roles(event_text: str) -> EventRoles:
         if next_unit is not None and not words[index].endswith("%"):
             consumed.add(index + 1)
         comparator = _comparator(preceded)
+        if comparator is NumericComparator.EQUAL:
+            # "3000 Watt übersteigt/unterschreitet" (7.9.2): the verb after
+            # the value is the comparator.
+            follows = keys[index + 2] if next_unit is not None and index + 2 < len(keys) else (
+                keys[index + 1] if index + 1 < len(keys) else ""
+            )
+            if follows in _ABOVE_VERBS:
+                comparator = NumericComparator.ABOVE
+                consumed.add(keys.index(follows, index))
+            elif follows in _BELOW_VERBS:
+                comparator = NumericComparator.BELOW
+                consumed.add(keys.index(follows, index))
         break
     if value is None:
         for index, key in enumerate(keys):

@@ -82,6 +82,7 @@ from .notification_language import (
     describe_unchanged_today,
     describe_whole_set_state,
     parse_notification_clause,
+    runtime_message,
     trigger_message,
 )
 
@@ -618,6 +619,9 @@ def honesty_notes(interpreted: EventInterpretation) -> tuple[str, ...]:
 
     if any(unchanged(node) for node in interpreted.conditions):
         notes.append(RESTART_TODAY_NOTE)
+    if interpreted.grounded is not None:
+        # What the grounding found the spoken place cannot cover (7.9.2 A4).
+        notes.extend(interpreted.grounded.notes)
     roles = interpreted.grounded.roles if interpreted.grounded is not None else None
     if roles is not None and roles.agent:
         notes.append(
@@ -1022,9 +1026,19 @@ def build_automation(
         if interpreted.alternatives
         else (interpreted.trigger,)
     )
+    steps = reading.steps
+    if reading.notification is not None and not reading.notification.message and len(triggers) == 1:
+        # 7.9.2 A6: the push names the device/rooms at run time.
+        detail = runtime_message(triggers[0], interpreted.conditions, entities)
+        if detail is not None:
+            steps = tuple(
+                replace(step, message=detail[0], message_template=detail[1])
+                if isinstance(step, ActionModel) and step.type is ActionType.NOTIFY else step
+                for step in steps
+            )
     model = AutomationModel(
         triggers=triggers, conditions=interpreted.conditions,
-        actions=reading.steps, source_text=source_text, situation=interpreted.situation,
+        actions=steps, source_text=source_text, situation=interpreted.situation,
         situation_parts=interpreted.situation_parts, notes=honesty_notes(interpreted),
     )
     canonical = (
@@ -1091,7 +1105,16 @@ def compose_event_automation(
         return change
     if interpreted.trigger is None:
         grounded = interpreted.grounded
-        if not notification_only and (
+        missing_meter = (
+            # "Bei Wind über 40 km/h …" in a house without a wind sensor
+            # (7.9.2 A6): the measured quantity is understood, the device
+            # does not exist - say so instead of "nicht erkannt".
+            grounded is not None and grounded.status is GroundingStatus.NOT_FOUND
+            and grounded.roles is not None and grounded.roles.value is not None
+            and grounded.subject is not None and grounded.subject.noun is not None
+            and grounded.subject.noun.domain == "sensor"
+        )
+        if not notification_only and not missing_meter and (
             grounded is None
             or grounded.status in {GroundingStatus.NOT_APPLICABLE, GroundingStatus.NOT_FOUND,
                                    GroundingStatus.AMBIGUOUS}

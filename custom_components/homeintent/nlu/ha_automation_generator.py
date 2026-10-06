@@ -575,7 +575,7 @@ def _generate_addressed_notification(
     assert recipient is not None and action.message is not None
     if not recipient.materialized:
         return None, GenerationError.NOTIFY_RECIPIENT_UNRESOLVED
-    data = {"message": action.message, "title": "HomeIntent"}
+    data = {"message": action.message_template or action.message, "title": "HomeIntent"}
     steps: list[dict[str, Any]] = []
     if recipient.entity_ids:
         known = {entity.entity_id for entity in entities if entity.domain == "notify"}

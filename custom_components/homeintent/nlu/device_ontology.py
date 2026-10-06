@@ -209,6 +209,8 @@ GENERA: tuple[Genus, ...] = (
        F, {"sensor"}, {"energy"}, extra_forms=("Zaehler",), sensor=True),
     _g("battery_sensor", "Batterie|Akku|Batteriestand|Ladestand|Akkustand|Akkuladung", "Batterien", F, {"sensor"},
        {"battery"}, extra_forms=("Akkus",), sensor=True),
+    _g("wind_sensor", "Wind|Windgeschwindigkeit|Windsensor|Windmesser|Anemometer|Windstärke", "Windsensoren",
+       M, {"sensor"}, {"wind_speed"}, sensor=True),
     _g("illuminance_sensor", "Helligkeit|Helligkeitssensor|Lichtsensor|Beleuchtungsstärke", "Helligkeiten",
        F, {"sensor"}, {"illuminance"}, sensor=True),
     # --- Sonstiges --------------------------------------------------------

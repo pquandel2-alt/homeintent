@@ -92,6 +92,10 @@ _PERIODS = {
     "diese woche": "diese Woche", "wöchentlich": "diese Woche", "die woche": "diese Woche",
     "diesen monat": "diesen Monat", "monatlich": "diesen Monat", "den monat": "diesen Monat",
 }
+_RATE_ANSWER_RE = re.compile(
+    r"^(?:um\s+)?(?P<amount>\S+)\s+(?P<unit>grad|prozent|%)\s+"
+    r"(?:in|innerhalb|binnen|während)\s+(?P<window>.+)$"
+)
 _FILLER_WORDS = frozenset({"ja", "also", "ähm", "äh", "ok", "okay", "naja"})
 _ARTICLES = frozenset({"der", "die", "das", "den", "dem", "des"})
 
@@ -139,6 +143,26 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
         return f"bis {lead}{hour} Uhr" if minute == 0 else f"bis {lead}{hour}:{minute:02d} Uhr"
     if part is MissingPart.PERIOD:
         return _PERIODS.get(key)
+    if part is MissingPart.RATE:
+        # "um 3 Grad in einer Stunde", "2 Grad innerhalb von 30 Minuten".
+        match = _RATE_ANSWER_RE.match(key)
+        if match is None:
+            return None
+        amount = _amount(match.group("amount"))
+        seconds = _period_seconds(match.group("window").split())
+        if amount is None or amount <= 0 or seconds is None or seconds < 60:
+            return None
+        unit = "Prozent" if match.group("unit") in {"prozent", "%"} else "Grad"
+        return f"um {amount:g} {unit} innerhalb von {_spoken_duration(seconds)}".replace(".", ",")
+    if part is MissingPart.THRESHOLD:
+        # "ab 30000 Lux", "30000", "über zwanzigtausend Lux" (7.9.2 A6).
+        words = [word for word in key.split() if word not in {"ab", "über", "bei", "mehr", "als", "von", "lux", "lx"}]
+        if len(words) != 1:
+            return None
+        amount = _amount(words[0].replace(".", ""))
+        if amount is None or amount <= 0:
+            return None
+        return f"es draußen heller als {int(amount)} Lux ist"
     if part is MissingPart.DURATION:
         seconds = _period_seconds([word for word in key.split() if word not in {"für", "fuer", "lang", "etwa", "ungefähr"}])
         if seconds is None or seconds < 60 or seconds > 86400:
@@ -218,6 +242,20 @@ _CONJUNCTION_RE = re.compile(r"\b(wenn|sobald|falls|sofern)\b\s+", re.IGNORECASE
 def complete_request(request: PartRequest, phrase: str) -> str:
     """The original request with the answered part, as one sentence."""
     original = request.original_text.strip()
+    if request.part is MissingPart.RATE and request.replaces:
+        # "schnell fällt" -> "um 3 Grad innerhalb von 1 Stunde fällt".
+        spoken = request.replaces[0]
+        match = re.search(rf"\b{re.escape(spoken)}\b", original, re.IGNORECASE)
+        if match is not None:
+            return f"{original[:match.start()]}{phrase}{original[match.end():]}"
+        return original
+    if request.part is MissingPart.THRESHOLD and request.replaces:
+        # The vague clause ("die Sonne scheint") is replaced as a whole.
+        spoken = " ".join(request.replaces)
+        index = original.casefold().find(spoken.casefold())
+        if index >= 0:
+            return f"{original[:index]}{phrase}{original[index + len(spoken):]}"
+        return original
     if request.part is MissingPart.DURATION:
         # The duration belongs to the action: before a trailing condition
         # ("…, wenn …"), else at the end of the sentence.

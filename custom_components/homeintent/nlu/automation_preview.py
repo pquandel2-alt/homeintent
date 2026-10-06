@@ -792,6 +792,8 @@ def _speak_measured_trigger(trigger: TriggerModel, entities: list[EntitySnapshot
     if trigger.type is not TriggerType.NUMERIC_STATE or (
         trigger.measurement is None
         and trigger.comparator not in {NumericComparator.AT_LEAST, NumericComparator.AT_MOST}
+        # A sensor is named with its unit (7.9.2 A6), never "Sensor im Bereich …".
+        and (trigger.target is None or trigger.target.domain not in {"sensor", None})
     ):
         return None
     from ..notification_language import describe_event

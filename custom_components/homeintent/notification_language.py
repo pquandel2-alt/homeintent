@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 from .entities import EntitySnapshot
 from .nlu.action_model import NotificationRecipientKind
@@ -951,8 +951,8 @@ def describe_numeric_event(
         unit = "%"
         prefix = _PROPERTY_PHRASES[trigger.measurement]
     else:
-        single = _single_entity(target, entities)
-        unit_symbol = single.unit if single is not None else None
+        units = {item.unit for item in _matching_entities(target, entities)}
+        unit_symbol = next(iter(units)) if len(units) == 1 else None
         unit = _UNIT_WORDS.get(unit_symbol or "", unit_symbol or "")
         prefix = ""
     amount = f"{number} {unit}".strip()
@@ -998,6 +998,14 @@ def _event_subject(
     single = _single_entity(target, entities)
     if single is not None:
         return entity_subject_phrase(single)
+    members = _matching_entities(target, entities)
+    if len(members) > 1 and all(item.domain == "sensor" for item in members):
+        # "eine der 4 Batterien" (7.9.2 A6): the preview says how many are
+        # watched; the push names the one that crossed (runtime_message).
+        counted = _counted_members(members)
+        if counted is not None:
+            location = _location(target, entities)
+            return f"{counted} {location}" if location is not None else counted
     noun = _EVENT_NOUNS.get((target.domain or "", target.device_class)) or _EVENT_NOUNS.get(
         (target.domain or "", None)
     )
@@ -1005,6 +1013,97 @@ def _event_subject(
         return None
     location = _location(target, entities)
     return f"{noun} {location}" if location is not None else noun
+
+
+def _counted_members(members: Sequence[EntitySnapshot]) -> str | None:
+    """"eine der 4 Batterien", "einer der 3 Temperatursensoren"."""
+    from .nlu.device_ontology import Gender, entity_genera, genus
+
+    shared = frozenset.intersection(*(entity_genera(item) for item in members)) - {"device"}
+    sensors = [genus(key) for key in sorted(shared) if genus(key).sensor]
+    if not sensors:
+        return None
+    kind = sensors[0]
+    article = {Gender.FEMININE: "eine", Gender.MASCULINE: "einer", Gender.NEUTER: "eines"}[kind.gender]
+    return f"{article} der {len(members)} {kind.plural}"
+
+
+def runtime_message(
+    trigger: TriggerModel,
+    conditions: Sequence[Any],
+    entities: Sequence[EntitySnapshot],
+) -> tuple[str, str] | None:
+    """A push that names what happened at run time (7.9.2 A6).
+
+    Returns ``(spoken form for the preview, Home Assistant template)``. The
+    template is HomeIntent's own, built from validated entity ids only -
+    never from the user's words:
+
+    * a numeric trigger over several sensors ("irgendeine Batterie unter
+      20 %") names the sensor and its value: "Batterie Fenstersensor Bad: 14 %";
+    * leaving the house while lights are on names where they are on:
+      "Du hast das Haus verlassen; im Wohnzimmer und in der Küche ist noch
+      Licht an."
+    """
+    target = trigger.target
+    if trigger.type is TriggerType.NUMERIC_STATE and target is not None and trigger.measurement is None:
+        members = _matching_entities(target, entities)
+        if len(members) > 1 and all(item.domain == "sensor" for item in members):
+            units = {item.unit for item in members}
+            unit = next(iter(units)) if len(units) == 1 else None
+            suffix = f" {unit}" if unit else ""
+            return (
+                f"<Gerät>: <Wert>{suffix}",
+                "{{ trigger.to_state.name }}: {{ trigger.to_state.state }}" + suffix,
+            )
+    if trigger.type is TriggerType.PRESENCE and trigger.presence_event is not None:
+        lights = _condition_entities_on(conditions)
+        if not lights:
+            return None
+        by_id = {item.entity_id: item for item in entities}
+        where: dict[str, str] = {}
+        for entity_id in lights:
+            item = by_id.get(entity_id)
+            if item is None:
+                return None
+            where[entity_id] = (
+                dative_location_phrase(item.area_name) if item.area_name else f"bei „{item.friendly_name}“"
+            )
+        described = describe_event(trigger, entities)
+        if described is None:
+            return None
+        head = described.sentence.rstrip(".")
+        what = "Licht an" if all(entity_id.startswith("light.") for entity_id in lights) else "etwas an"
+        mapping = "{" + ", ".join(f'"{key}": "{value}"' for key, value in sorted(where.items())) + "}"
+        template = (
+            "{% set where = " + mapping + " %}"
+            "{% set ns = namespace(places=[]) %}"
+            "{% for entity, place in where.items() if is_state(entity, 'on') and place not in ns.places %}"
+            "{% set ns.places = ns.places + [place] %}{% endfor %}"
+            + head
+            + "{% if ns.places %}; {{ (ns.places[:-1] | join(', ') ~ ' und ' ~ ns.places[-1])"
+            " if ns.places | length > 1 else ns.places[0] }} ist noch " + what + "{% endif %}."
+        )
+        return (f"{head}; <Räume> ist noch {what}.", template)
+    return None
+
+
+def _condition_entities_on(conditions: Sequence[Any]) -> tuple[str, ...]:
+    """Entity ids of an "any of these is on" condition (OR of ON states)."""
+    found: list[str] = []
+    for node in conditions:
+        children = getattr(node, "children", ()) or ((node,) if getattr(node, "condition", None) else ())
+        for child in children:
+            condition = getattr(child, "condition", None)
+            if condition is None or getattr(condition, "state", None) is not SemanticState.ON:
+                continue
+            target = getattr(condition, "target", None)
+            if target is None:
+                continue
+            if target.entity_id:
+                found.append(target.entity_id)
+            found.extend(target.entity_ids)
+    return tuple(dict.fromkeys(found))
 
 
 def entity_subject_phrase(entity: EntitySnapshot) -> str:

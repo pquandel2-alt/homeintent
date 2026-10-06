@@ -88,6 +88,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 _GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
+# The interval of a repeated reminder ("jede Minute", "alle 5 Minuten").
+_REPEAT_INTERVAL_RE = re.compile(
+    r"\b(?:jede|jeden|jedes|alle)\s+(?:\S+\s+)?(?:sekunden?|minuten?|stunden?|viertelstunden?)\b",
+    re.IGNORECASE,
+)
 # Words that mark an automation sentence's trigger (7.9.2 A2).
 _TRIGGER_WORD_RE = re.compile(
     r"\b(?:wenn|sobald|falls|jeden|jede|jedes|täglich|taeglich|morgens|abends|nachts|"
@@ -405,7 +410,9 @@ class AutomationController:
     ) -> AutomationMatchResult | conversation.ConversationResult:
         """"Erinnere mich alle 10 Minuten, bis das Tor zu ist" (7.9 W5): only
         now, or every time the situation starts - asked, never guessed."""
-        said = recurrence_of(user_input.text)
+        # "jede Minute" is the reminder's interval, not "jedes Mal" (7.9.2
+        # A6): the same question as for "alle 5 Minuten".
+        said = recurrence_of(_REPEAT_INTERVAL_RE.sub(" ", user_input.text))
         if said is Recurrence.RECURRING:
             return replace(result, model=replace(result.model, ask_start=False))
         if said is Recurrence.ONCE:
