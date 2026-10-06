@@ -2332,7 +2332,7 @@ Sprachverständnis-Gate: 463 passed
 Korpus-Signaturen 7.9.1: 3679 Sätze, gegenüber 7.9.0 eine begründete Änderung (docs/perf/corpus-signatures-7.9.1-begruendung.md)
 Arbiter-Shadow 2101 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2078 EQUIVALENT
 Entwicklungs-Benchmark 7.7 461/503, 7.8 102/107, unsafe_execution_count 0
-Live-Testbett 198 Szenarien (186 bisherige + 12 neue „Nachtest 7.9.1“), check_log 0 Befunde
+Live-Testbett 198/198 (inklusive Proaktiv; 186 bisherige + 12 neue „Nachtest 7.9.1“), check_log 0 Befunde
 Automationssprache 5000 Entitäten p95 25,3 ms
 Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
 Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173

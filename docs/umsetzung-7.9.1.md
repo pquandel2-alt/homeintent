@@ -299,8 +299,8 @@ Proaktiv) und `check_log.py`:
   aber die HomeIntent-Überwachung aus `m79-w3-rate` lebt im Goal-Store weiter
   (der Sim-Reset leert ihn nicht). Kein Produktfehler – die Prüfung fragt jetzt
   gezielt, dass die gelöschte Garagentor-Überwachung fehlt; Wiederholung grün.
-- Zweiter vollständiger frischer Lauf: siehe Abschlussbericht des Releases
-  (FINAL_LIVE).
+- Zweiter vollständiger frischer Lauf (frisches HA, alle Kategorien inklusive
+  Proaktiv, `--strict`): **198/198**, Exit 0, `check_log` **0 Befunde**.
 
 ## Bekannte Grenzen
 
