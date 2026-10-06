@@ -158,3 +158,31 @@ def test_no_habit_yet_is_an_honest_answer(monkeypatch, tmp_path, now):
     speech = _house(monkeypatch, tmp_path, []).say("Welche Gewohnheiten hast du erkannt?").speech
     assert speech.startswith("Ich habe noch keine Gewohnheit erkannt."), speech
     assert "an mindestens 4 von 7 Tagen" in speech
+
+
+def test_store_touches_the_disk_only_in_load_and_save(monkeypatch, tmp_path):
+    """Live log 7.9.2: reading the store inside a turn opened the file in
+    the event loop. Now only ``load``/``save`` (run in the executor) touch
+    the disk; everything else works in memory and marks the data dirty."""
+    import builtins
+
+    from homeintent.habit_suggestions import HabitStore
+
+    path = tmp_path / "habits.json"
+    store = HabitStore(str(path))
+    store.load()
+
+    def no_disk(*args, **kwargs):
+        raise AssertionError("disk access outside load/save")
+
+    monkeypatch.setattr(builtins, "open", no_disk)
+    assert store.mode("a") == "voice" and not store.offered("h")
+    store.set_mode("a", "push")
+    store.mark("h", "offered")
+    assert store.dirty
+    monkeypatch.undo()
+    store.save()
+    assert not store.dirty
+    again = HabitStore(str(path))
+    again.load()
+    assert again.mode("a") == "push" and again.offered("h")

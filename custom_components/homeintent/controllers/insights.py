@@ -107,6 +107,18 @@ class InsightsController:
         response.async_set_speech(text)
         return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
+    async def _async_habits(self) -> HabitStore:
+        """The habit store, read from disk in the executor on first use."""
+        store = _habit_store(self.hass)
+        if store.data is None:
+            await self.hass.async_add_executor_job(store.load)
+        return store
+
+    async def _async_flush_habits(self) -> None:
+        store = _habit_store(self.hass)
+        if store.dirty:
+            await self.hass.async_add_executor_job(store.save)
+
     async def async_handle_reading(
         self,
         user_input: conversation.ConversationInput,
@@ -118,6 +130,18 @@ class InsightsController:
         "während ich weg war" with the current state."""
         if active_dialog is not None:
             return None
+        await self._async_habits()
+        try:
+            return await self._async_reading(user_input, response, entities)
+        finally:
+            await self._async_flush_habits()
+
+    async def _async_reading(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
         rest = self._rest.pop(user_input.conversation_id or "", ())
         if rest and _asks_more(user_input.text):  # "Was noch?" after a summary (B1)
             self._rest[user_input.conversation_id or ""] = tuple(rest[5:])
@@ -272,9 +296,10 @@ class InsightsController:
     ) -> conversation.ConversationResult:
         now = dt_util.now()
         store = _vacation_store(self.hass)
-        record = store.load()
+        record = await self.hass.async_add_executor_job(store.load)
         if record is not None and datetime.fromisoformat(record.end) <= now:
-            store.save(None)  # the end automation already took everything back
+            # the end automation already took everything back
+            await self.hass.async_add_executor_job(store.save, None)
             record = None
         manager = self._runtime.dialog_manager
         if request.action == "status":
@@ -353,7 +378,7 @@ class InsightsController:
                     pass  # already gone (end automation or by hand)
             if payload.helper_id:
                 await self._switch_helper(user_input, entities, payload.helper_id, "turn_off")
-            store.save(None)
+            await self.hass.async_add_executor_job(store.save, None)
             report_outcome(TurnOutcomeKind.EXECUTED)
             return self._result(user_input, response, "Der Urlaubsmodus ist beendet; alles ist zurückgenommen.")
         plan = payload
@@ -377,7 +402,7 @@ class InsightsController:
             return self._result(user_input, response, f"Der Urlaubsmodus konnte nicht eingerichtet werden: {err}")
         if plan.helper is not None:
             await self._switch_helper(user_input, entities, plan.helper, "turn_on")
-        store.save(VacationRecord(
+        await self.hass.async_add_executor_job(store.save, VacationRecord(
             end=plan.end.isoformat(), automation_ids=created, helper=plan.helper_name,
             lights=[light.name for light in plan.lights], watched=len(plan.watched),
             created_by=conversation_user_id(user_input), helper_id=plan.helper,
@@ -458,9 +483,18 @@ class InsightsController:
             user_input, response, f"{describe_habit(habit, entities)} Soll ich das automatisch machen?"
         )
 
-    def offer_after_turn(self, user_input: conversation.ConversationInput, outcomes: Any) -> str | None:
+    async def async_offer_after_turn(self, user_input: conversation.ConversationInput, outcomes: Any) -> str | None:
         """After a successful command: a habit that now qualifies is offered
         once - as a question appended to this reply (or as push)."""
+        if conversation_user_id(user_input) is None or not getattr(outcomes, "kinds", ()):
+            return None
+        await self._async_habits()
+        try:
+            return self._offer_after_turn(user_input, outcomes)
+        finally:
+            await self._async_flush_habits()
+
+    def _offer_after_turn(self, user_input: conversation.ConversationInput, outcomes: Any) -> str | None:
         user_id = conversation_user_id(user_input)
         kinds = getattr(outcomes, "kinds", ())
         # A command ran (its effect may still be reporting); nothing refused.
@@ -585,8 +619,18 @@ def _vacation_store(hass: Any) -> VacationStore:
     return VacationStore(hass.config.path("homeintent_vacation.json"))
 
 
+_HABIT_STORE_KEY = "homeintent_habit_store"
+
+
 def _habit_store(hass: Any) -> HabitStore:
-    return HabitStore(hass.config.path("homeintent_habit_suggestions.json"))
+    """The one habit store of this Home Assistant (loaded in the executor
+    by ``InsightsController._async_habits``)."""
+    data = hass.data if isinstance(getattr(hass, "data", None), dict) else {}
+    store = data.get(_HABIT_STORE_KEY)
+    if not isinstance(store, HabitStore):
+        store = HabitStore(hass.config.path("homeintent_habit_suggestions.json"))
+        data[_HABIT_STORE_KEY] = store
+    return store
 
 
 def _yes_no(text: str) -> ConfirmationReply:

@@ -578,7 +578,9 @@ class NluConversationEntity(
             end_outcomes(outcome_token)
             end_turn(turn)
         append_speech(result.response, notes)
-        suffix = self._take_turn_suffix(user_input.conversation_id) or self._insights.offer_after_turn(user_input, outcomes)
+        suffix = self._take_turn_suffix(user_input.conversation_id) or (
+            await self._insights.async_offer_after_turn(user_input, outcomes)
+        )
         if suffix:
             # "Soll ich mir … merken?" after an executed command (7.4.1).
             speech = result.response.speech

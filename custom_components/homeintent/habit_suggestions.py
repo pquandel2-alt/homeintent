@@ -188,42 +188,52 @@ def describe_habit(habit: TimedHabit, entities: Sequence[EntitySnapshot]) -> str
 @dataclass
 class HabitStore:
     """Which patterns were offered or rejected, and each user's choice of
-    channel ("voice", "push", "off"). A small JSON file."""
+    channel ("voice", "push", "off"). A small JSON file.
+
+    ``load`` and ``save`` touch the disk and run in the executor; every
+    other method works on the loaded data in memory and marks it dirty."""
 
     path: str
     data: dict[str, Any] | None = None
+    dirty: bool = False
 
-    def _load(self) -> dict[str, Any]:
-        if self.data is None:
-            try:
-                with open(self.path, encoding="utf-8") as handle:
-                    loaded = json.load(handle)
-                self.data = loaded if isinstance(loaded, dict) else {}
-            except (FileNotFoundError, ValueError):
-                self.data = {}
-        return self.data
+    def load(self) -> None:
+        """Read the file (executor)."""
+        try:
+            with open(self.path, encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            self.data = loaded if isinstance(loaded, dict) else {}
+        except (FileNotFoundError, ValueError):
+            self.data = {}
 
-    def _save(self) -> None:
+    def save(self) -> None:
+        """Write the file atomically (executor)."""
         directory = os.path.dirname(self.path) or "."
         os.makedirs(directory, exist_ok=True)
         handle, temp = tempfile.mkstemp(dir=directory, prefix=".habits-")
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump(self._load(), stream, ensure_ascii=False, indent=1)
+            json.dump(self._data(), stream, ensure_ascii=False, indent=1)
         os.replace(temp, self.path)
+        self.dirty = False
+
+    def _data(self) -> dict[str, Any]:
+        if self.data is None:
+            self.data = {}
+        return self.data
 
     def mode(self, actor: str) -> str:
-        return str(self._load().get("modes", {}).get(actor, "voice"))
+        return str(self._data().get("modes", {}).get(actor, "voice"))
 
     def set_mode(self, actor: str, mode: str) -> None:
-        self._load().setdefault("modes", {})[actor] = mode
-        self._save()
+        self._data().setdefault("modes", {})[actor] = mode
+        self.dirty = True
 
     def offered(self, habit_id: str) -> bool:
-        return habit_id in self._load().get("offered", {})
+        return habit_id in self._data().get("offered", {})
 
     def mark(self, habit_id: str, outcome: str) -> None:
-        self._load().setdefault("offered", {})[habit_id] = outcome
-        self._save()
+        self._data().setdefault("offered", {})[habit_id] = outcome
+        self.dirty = True
 
 
 # --- language ------------------------------------------------------------------
