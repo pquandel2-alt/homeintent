@@ -47,6 +47,10 @@ from ..nlu.automation_model import (
     TriggerType,
 )
 from ..missing_part import MissingPart, PartRequest
+from ..device_health import parse_health_report, report_message
+from ..nlu.action_model import ActionModel, ActionType, NotificationRecipient, NotificationRecipientKind
+from ..nlu.condition_model import ConditionModel, ConditionNode, ConditionType
+from ..nlu.automation_model import render_automation_tree
 from ..automation_ownership import HOUSEHOLD_OWNER, shared_turn_text, turn_is_shared
 from ..nlu.automation_access import (
     open_ended_irrigation,
@@ -721,6 +725,54 @@ class AutomationController:
             response.async_set_speech(result.response_text)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
+        )
+
+    def handle_health_report(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        """"Sag mir jeden Sonntag, welche Batterien unter 30 % sind" (7.9.2
+        B3): a recurring report - preview and "Ja", the time asked if
+        missing. Never answered right away (the schedule would be lost)."""
+        report = parse_health_report(user_input.text)
+        if report is None:
+            return None
+        if report.hour is None:
+            question = "Um wie viel Uhr soll ich dir den Bericht schicken? Sag zum Beispiel: „um 10 Uhr“."
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "monitor-part",
+                DialogTaskKind.MONITOR_PART,
+                DialogPriority.FOLLOWUP,
+                reason="Eine Rückfrage nach der Uhrzeit ist offen.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=PartRequest(MissingPart.CLOCK, question, original_text=user_input.text),
+            )
+            response.async_set_speech(question)
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+        message = report_message(report, entities)
+        if message is None:
+            what = "Batteriesensor" if report.kind == "battery" else "freigegebenes Gerät"
+            response.async_set_speech(f"Ich sehe kein {what}; einen Bericht darüber kann ich nicht einrichten.")
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+        conditions = (
+            (ConditionNode(condition=ConditionModel(type=ConditionType.WEEKDAY, weekdays=report.weekdays)),)
+            if report.weekdays else ()
+        )
+        model = AutomationModel(
+            triggers=(TriggerModel(type=TriggerType.TIME, time_hour=report.hour, time_minute=report.minute),),
+            conditions=conditions,
+            actions=(ActionModel(
+                type=ActionType.NOTIFY, message=message[0], message_template=message[1],
+                recipient=NotificationRecipient(NotificationRecipientKind.CURRENT_USER),
+            ),),
+            source_text=user_input.text,
+        )
+        error = validate_automation(model)
+        return self.handle_match_result(
+            user_input, response, AutomationMatchResult(model, render_automation_tree(model), error), entities
         )
 
     def action_ambiguity_question(

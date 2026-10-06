@@ -834,6 +834,60 @@ def _ground_vague_rate(roles: EventRoles, entities: Sequence[EntitySnapshot]) ->
     )
 
 
+# "ein Gerät", "irgendein Gerät", "eines der Geräte": every released device.
+_ANY_DEVICE_WORDS = frozenset({
+    "ein", "eine", "eines", "einer", "irgendein", "irgendeine", "irgendeines", "irgendwelche",
+    "gerät", "geräte", "geraet", "geraete", "der", "die", "das", "von", "den", "meiner", "meine",
+    "etwas", "sensor", "sensoren", "aktor", "aktoren",
+})
+
+
+def _ground_unavailable(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
+    """"ein Gerät nicht mehr erreichbar ist" / "der Bewegungsmelder im Flur
+    ausfällt" (7.9.2 B3): state ``unavailable`` held for a minimum time."""
+    from .device_health import UNAVAILABLE_MIN_SECONDS, device_entities
+
+    words = [word for word in roles.subject_words if word]
+    generic = bool(words) and all(word.casefold() in _ANY_DEVICE_WORDS for word in words)
+    if generic or not words:
+        candidates = device_entities(entities)
+        subject = read_subject((), entities)
+    else:
+        subject = read_subject(tuple(words), entities)
+        candidates = list(subject_candidates(subject, entities)) if subject.noun is not None else list(
+            _named_candidates(subject, entities)
+        )
+        if subject.modifiers:
+            candidates = [entity for entity in candidates if _matches_modifiers(entity, subject.modifiers)]
+        if subject.place is not None:
+            candidates = [entity for entity in candidates if subject.place.contains(entity)]
+        candidates = _spoken_name_first(words, candidates)
+        if not candidates:
+            spoken = " ".join(words)
+            return GroundedEvent(
+                GroundingStatus.NOT_FOUND,
+                question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
+            )
+        if len(candidates) > 1 and subject.quantifier is not Quantifier.ANY:
+            ordered = sorted(candidates, key=lambda item: item.friendly_name)
+            return GroundedEvent(
+                GroundingStatus.AMBIGUOUS, candidates=tuple(ordered),
+                question=_which_question(subject, ordered), subject=subject, roles=roles,
+            )
+    if not candidates:
+        return GroundedEvent(GroundingStatus.NOT_FOUND, question="Ich sehe kein freigegebenes Gerät.", roles=roles)
+    ids = tuple(sorted(entity.entity_id for entity in candidates))
+    target = TriggerTarget(entity_id=ids[0]) if len(ids) == 1 else TriggerTarget(entity_ids=ids)
+    trigger = TriggerModel(
+        type=TriggerType.STATE, target=target, state=SemanticState.INACTIVE,
+        raw_to=("unavailable",), for_seconds=roles.for_seconds or UNAVAILABLE_MIN_SECONDS,
+    )
+    return GroundedEvent(
+        GroundingStatus.RESOLVED, trigger=trigger, candidates=tuple(candidates), subject=subject, roles=roles,
+    )
+
+
 def _ground_sunshine(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
     """"Wenn die Sonne scheint" (7.9.2 A6): honestly mapped to an outdoor
     brightness sensor, and the threshold is asked - never guessed."""
@@ -872,6 +926,8 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
         return _ground_sunshine(roles, entities)
     if roles.unsupported == "vague_rate":
         return _ground_vague_rate(roles, entities)
+    if roles.unsupported == "unavailable":
+        return _ground_unavailable(roles, entities)
     if roles.unsupported is not None:
         return GroundedEvent(
             GroundingStatus.UNSUPPORTED,

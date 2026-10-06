@@ -37,6 +37,8 @@ class MissingPart(Enum):
     # 7.9.2 A2: "Wie lange soll die Bewässerung laufen?" - an automation
     # that opens an irrigation valve needs its end.
     DURATION = "duration"
+    # 7.9.2 B3: "Um wie viel Uhr soll ich dir den Bericht schicken?"
+    CLOCK = "clock"
     # 7.9.2 A6: "Um wie viel und in welchem Zeitraum?" ("schnell fällt").
     RATE = "rate"
     # 7.9.2 A6: "Ab welchem Wert?" ("wenn die Sonne scheint").
@@ -50,6 +52,7 @@ _SPOKEN = {
     MissingPart.DEVICE: "Gerät",
     MissingPart.RECIPIENT: "Empfänger",
     MissingPart.DURATION: "Dauer",
+    MissingPart.CLOCK: "Uhrzeit",
     MissingPart.RATE: "Betrag und Zeitraum",
     MissingPart.THRESHOLD: "Schwellwert",
 }
@@ -143,6 +146,12 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
         return f"bis {lead}{hour} Uhr" if minute == 0 else f"bis {lead}{hour}:{minute:02d} Uhr"
     if part is MissingPart.PERIOD:
         return _PERIODS.get(key)
+    if part is MissingPart.CLOCK:
+        clock = _clock(key.split())
+        if clock is None or clock[0] is not None:
+            return None
+        _, hour, minute = clock
+        return f"um {hour} Uhr" if minute == 0 else f"um {hour}:{minute:02d} Uhr"
     if part is MissingPart.RATE:
         # "um 3 Grad in einer Stunde", "2 Grad innerhalb von 30 Minuten".
         match = _RATE_ANSWER_RE.match(key)
@@ -256,6 +265,8 @@ def complete_request(request: PartRequest, phrase: str) -> str:
         if index >= 0:
             return f"{original[:index]}{phrase}{original[index + len(spoken):]}"
         return original
+    if request.part is MissingPart.CLOCK:
+        return f"{original.rstrip('.!?')} {phrase}."
     if request.part is MissingPart.DURATION:
         # The duration belongs to the action: before a trailing condition
         # ("…, wenn …"), else at the end of the sentence.

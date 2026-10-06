@@ -1704,6 +1704,9 @@ class NluConversationEntity(
         ):
             return self._queries.handle_audit_query(user_input, response)
 
+        report = self._automations.handle_health_report(user_input, response, entities)
+        if report is not None:  # "Sag mir jeden Sonntag, welche Batterien …" (7.9.2 B3)
+            return report
         # A trigger/notification request ("Benachrichtige mich, wenn der Akku
         # unter 20 Prozent fällt") shares words with read-only queries but is
         # never answered as one.

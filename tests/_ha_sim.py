@@ -120,7 +120,8 @@ def trigger_fires(trigger: dict, world: World, changed: str | None, before: str 
         now = world.states[changed]
         if now == before:
             return False
-        if "to" in trigger and now != trigger["to"]:
+        wanted = trigger.get("to")
+        if wanted is not None and now not in (wanted if isinstance(wanted, list) else [wanted]):
             return False
         if "from" in trigger and before != trigger["from"]:
             return False
@@ -157,7 +158,8 @@ def for_trigger_fires(automation: dict, world: World, entity: str) -> bool:
     for trigger in automation["triggers"]:
         if trigger["trigger"] != "state" or entity not in entities_of(trigger):
             continue
-        if "to" in trigger and world.states[entity] != trigger["to"]:
+        wanted = trigger.get("to")
+        if wanted is not None and world.states[entity] not in (wanted if isinstance(wanted, list) else [wanted]):
             continue
         needed = _seconds(trigger.get("for"))
         if needed and world.held_for(entity) >= needed:
@@ -192,8 +194,9 @@ def _state_template(text: str, world: World) -> bool:
 
 def render_message(message: str, world: World, trigger_entity: str | None = None) -> str:
     """A message template as Home Assistant renders it (7.9.2): Jinja with
-    ``is_state`` and ``trigger.to_state`` - nothing else is provided, so a
-    template using more fails the test."""
+    ``is_state``, ``states`` and ``trigger.to_state`` and Home Assistant's
+    ``float(default)`` filter - nothing else is provided, so a template
+    using more fails the test."""
     if "{{" not in message and "{%" not in message:
         return message
     from types import SimpleNamespace
@@ -201,12 +204,21 @@ def render_message(message: str, world: World, trigger_entity: str | None = None
     import jinja2
 
     env = jinja2.Environment(undefined=jinja2.StrictUndefined, extensions=["jinja2.ext.loopcontrols"])
+
+    def to_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    env.filters["float"] = to_float
     to_state = (
         SimpleNamespace(name=world.names.get(trigger_entity, trigger_entity), state=world.states[trigger_entity])
         if trigger_entity is not None else None
     )
     return env.from_string(message).render(
         is_state=lambda entity, state: world.states.get(entity) == state,
+        states=lambda entity: world.states.get(entity, "unknown"),
         trigger=SimpleNamespace(to_state=to_state),
         namespace=jinja2.utils.Namespace,
     )

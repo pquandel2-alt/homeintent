@@ -27,6 +27,8 @@ This module is Home-Assistant-free and fully typed (strict Pyright scope).
 
 from __future__ import annotations
 
+import json
+
 import re
 from dataclasses import dataclass
 from typing import Any, Sequence
@@ -683,6 +685,8 @@ def describe_event(
     if trigger.appliance_label:
         subject = trigger.appliance_label
         return StateEventPhrase(f"{subject} fertig ist", f"{sentence_initial(subject)} ist fertig.")
+    if trigger.type is TriggerType.STATE and trigger.raw_to == ("unavailable",):
+        return describe_unavailable(trigger, entities)
     if trigger.type is TriggerType.STATE and trigger.absent_state is not None:
         return describe_inactivity(trigger, entities)
     if trigger.type is TriggerType.STATE:
@@ -703,6 +707,29 @@ _STATE_ADJECTIVES: dict[SemanticState, str] = {
     SemanticState.ON: "an",
     SemanticState.OFF: "aus",
 }
+
+
+def describe_unavailable(
+    trigger: TriggerModel, entities: Sequence[EntitySnapshot]
+) -> StateEventPhrase | None:
+    """"eines der 87 Geräte länger als 10 Minuten nicht erreichbar ist" /
+    "Bewegungsmelder Flur ist seit 10 Minuten nicht erreichbar." (7.9.2 B3)."""
+    target = trigger.target
+    if target is None:
+        return None
+    members = _matching_entities(target, entities)
+    duration = spoken_duration(int(trigger.for_seconds or 0)) if trigger.for_seconds else None
+    span = f" länger als {duration}" if duration else ""
+    since = f" {_since(duration)}" if duration else ""
+    if len(members) == 1:
+        name = members[0].friendly_name
+        return StateEventPhrase(
+            f"{name}{span} nicht erreichbar ist", f"{name} ist{since} nicht erreichbar."
+        )
+    count = f"eines der {len(members)} Geräte"
+    return StateEventPhrase(
+        f"{count}{span} nicht erreichbar ist", f"Ein Gerät ist{since} nicht erreichbar."
+    )
 
 
 def spoken_duration(seconds: int) -> str:
@@ -1056,6 +1083,14 @@ def runtime_message(
                 f"<Gerät>: <Wert>{suffix}",
                 "{{ trigger.to_state.name }}: {{ trigger.to_state.state }}" + suffix,
             )
+    if trigger.type is TriggerType.STATE and trigger.raw_to == ("unavailable",) and target is not None:
+        if len(_matching_entities(target, entities)) > 1:
+            duration = spoken_duration(int(trigger.for_seconds or 0)) if trigger.for_seconds else None
+            since = f" {_since(duration)}" if duration else ""
+            return (
+                f"<Gerät> ist{since} nicht erreichbar.",
+                "{{ trigger.to_state.name }} ist" + since + " nicht erreichbar.",
+            )
     if trigger.type is TriggerType.PRESENCE and trigger.presence_event is not None:
         lights = _condition_entities_on(conditions)
         if not lights:
@@ -1074,7 +1109,8 @@ def runtime_message(
             return None
         head = described.sentence.rstrip(".")
         what = "Licht an" if all(entity_id.startswith("light.") for entity_id in lights) else "etwas an"
-        mapping = "{" + ", ".join(f'"{key}": "{value}"' for key, value in sorted(where.items())) + "}"
+        # JSON string literals are valid Jinja literals; names cannot break out.
+        mapping = json.dumps(dict(sorted(where.items())), ensure_ascii=False)
         template = (
             "{% set where = " + mapping + " %}"
             "{% set ns = namespace(places=[]) %}"

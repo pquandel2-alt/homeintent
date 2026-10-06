@@ -35,6 +35,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable
 
+from .device_health import is_availability_event
 from .nlu.automation_lexicon import rejoin_stt, resolve_repairs
 from .nlu.device_ontology import lookup_genus_word
 from .nlu.automation_model import NumericComparator, PresenceEvent, SunEvent
@@ -688,6 +689,8 @@ _UNIT_WORDS = {
 METER_PERIOD_WORDS = {"heute": "daily", "täglich": "daily", "woche": "weekly", "monat": "monthly"}
 _ARTICLE_NUMBERS = frozenset({"ein", "eine", "eins", "einer", "einen", "einem"})
 
+# Copulas and particles around an availability predicate (7.9.2 B3).
+_AVAILABILITY_FILLERS = frozenset({"ist", "sind", "wird", "werden", "geht", "gehen", "mehr", "länger", "als"})
 # "schnell fällt", "plötzlich steigt" - a rate without its numbers (7.9.2 A6).
 _VAGUE_RATE_RE = re.compile(
     r"\b(?:schnell|rasch|rapide|stark|plötzlich|ploetzlich|deutlich|sprunghaft)\s+"
@@ -909,6 +912,27 @@ def read_event_roles(event_text: str) -> EventRoles:
         event_text.strip(" ,.!?"), flags=re.IGNORECASE,
     )
     text, conditions = _extract_conditions(source)
+    availability = is_availability_event(text.split())
+    if availability is not None:
+        # "wenn ein Gerät nicht mehr erreichbar ist", "wenn der
+        # Bewegungsmelder im Flur ausfällt" (7.9.2 B3).
+        duration = _DURATION_RE.search(text)
+        seconds = _duration_seconds(duration) if duration is not None else None
+        rest = text
+        if duration is not None:
+            rest = (text[:duration.start()] + " " + text[duration.end():]).strip()
+        words = rest.split()
+        span = is_availability_event(words)
+        if span is not None:
+            words = words[:span[0]] + words[span[1]:]
+        subject = tuple(
+            word.strip(",.;:!?") for word in words
+            if word.strip(",.;:!?").casefold() not in _AVAILABILITY_FILLERS
+        )
+        return EventRoles(
+            source, subject_words=subject, unsupported="unavailable", for_seconds=seconds,
+            conditions=conditions,
+        )
     if _VAGUE_RATE_RE.search(text) and not re.search(r"\d", text):
         # "wenn die Außentemperatur schnell fällt" (7.9.2 A6): a change
         # without amount and period - both are asked, never guessed.
