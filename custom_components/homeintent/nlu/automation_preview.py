@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .automation_access import access_openings, describe_access_refusal
+from .automation_access import access_openings, describe_access_refusal, irrigation_openings
 from .device_ontology import entity_genera, genus
 from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
@@ -483,15 +483,21 @@ def _speak_action_leaf(
 ) -> str:
     target = _speak_target(action.target, entity_by_id, area_name_by_id) if action.target is not None else None
     domain = _action_domain(action, entity_by_id)
+    if action.duration_seconds:
+        # 7.9.2 A2: the end is spoken as part of the action.
+        from .action_duration import inverse_of
+
+        inverse = inverse_of(replace(action, duration_seconds=None))
+        start = _speak_action_leaf(replace(action, duration_seconds=None), entity_by_id, area_name_by_id)
+        end = _speak_action_leaf(inverse, entity_by_id, area_name_by_id) if inverse is not None else ""
+        end_verb = end.rsplit(" ", 1)[-1] if end else "beenden"
+        return f"{start} und nach {_format_delay(action.duration_seconds)} wieder {end_verb}"
     if action.type is ActionType.TURN_ON and domain in _OPEN_CLOSE_DOMAINS:
         return f"{target} öffnen"
     if action.type is ActionType.TURN_OFF and domain in _OPEN_CLOSE_DOMAINS:
         return f"{target} schließen"
     if action.type is ActionType.TURN_ON:
-        text = f"{target} einschalten"
-        if action.duration_seconds:
-            text = f"{text} (für {_format_delay(action.duration_seconds)})"
-        return text
+        return f"{target} einschalten"
     if action.type is ActionType.TURN_OFF:
         return f"{target} ausschalten"
     if action.type is ActionType.SET_BRIGHTNESS:
@@ -514,6 +520,11 @@ def _speak_action_leaf(
         from .automation_operations import describe_registered_operation
 
         described = describe_registered_operation(action.service_domain, action.service_name, action.service_data)
+        if action.service_domain == "valve" and action.service_name in {"open_valve", "close_valve"}:
+            # "Bewässerung Garten öffnen", not "bei Ventil im Bereich Garten
+            # das Ventil öffnen" (7.9.2 A2).
+            named = _speak_target(action.target, entity_by_id, area_name_by_id, prefer_name=True)
+            return f"{named} {'öffnen' if action.service_name == 'open_valve' else 'schließen'}"
         if " " not in described:
             # A plain verb names the one device: "Küchenradio einschalten".
             named = _speak_target(action.target, entity_by_id, area_name_by_id, prefer_name=True)
@@ -848,4 +859,13 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
         )
     for note in model.notes:
         sentence = f"{sentence} {note}"
+    for watering in irrigation_openings(model.actions, entities):
+        # 7.9.2 A2: an automatically opening valve is said explicitly.
+        if watering.closes_after_seconds is None:
+            when = "und schließt nicht von selbst"
+        elif watering.closes_after_seconds:
+            when = f"und schließt nach {_format_delay(watering.closes_after_seconds)} wieder"
+        else:
+            when = "und wird im selben Ablauf wieder geschlossen"
+        sentence = f"{sentence} Achtung: „{watering.name}“ öffnet sich dabei automatisch {when}."
     return f"Automation erkannt: {sentence} Soll diese Automation erstellt werden?"

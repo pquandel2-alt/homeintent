@@ -105,6 +105,28 @@ class SimEntity:
     def _log(self, action: str, data: Any = None) -> None:
         log_call(self.hass, self.entity_id, action, data)
 
+    # 7.9.2 A1: fault injection - real devices report late, travel the
+    # wrong way or drop off the network. Set by ``haus_sim.configure`` per
+    # entity or per domain; ``haus_sim.reset`` clears it.
+    def _fault(self, key: str, default: Any = None) -> Any:
+        faults = self.hass.data[DOMAIN].get("faults", {})
+        for scope in (self.entity_id, self.entity_id.split(".", 1)[0]):
+            if key in faults.get(scope, {}):
+                return faults[scope][key]
+        return default
+
+    @property
+    def available(self) -> bool:
+        return not self._fault("unavailable", False)
+
+    @callback
+    def async_write_ha_state(self) -> None:
+        delay = float(self._fault("report_delay", 0) or 0)
+        if delay <= 0 or self.hass is None:
+            super().async_write_ha_state()  # type: ignore[misc]
+            return
+        self.hass.loop.call_later(delay, super().async_write_ha_state)  # type: ignore[misc]
+
 
 # --------------------------------------------------------------------- light
 class SimLight(SimEntity, LightEntity):
@@ -216,6 +238,8 @@ class SimCover(SimEntity, CoverEntity):
         self.async_write_ha_state()
 
     def _start(self, target: int) -> None:
+        if self._fault("reverse", False):
+            target = 100 - target  # a motor wired the wrong way round
         if self._task and not self._task.done():
             self._task.cancel()
         self._task = self.hass.async_create_background_task(self._move(target), f"move {self.entity_id}")
@@ -589,6 +613,7 @@ class SimValve(SimEntity, ValveEntity):
     def __init__(self, hass, key, name, opts):
         self._sim_init(hass, "valve", key, name, opts)
         self._attr_reports_position = bool(opts.get("position"))
+        self._attr_device_class = opts.get("class")
         feats = ValveEntityFeature.OPEN | ValveEntityFeature.CLOSE
         if opts.get("position"):
             feats |= ValveEntityFeature.SET_POSITION | ValveEntityFeature.STOP

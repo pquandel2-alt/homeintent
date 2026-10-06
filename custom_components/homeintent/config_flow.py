@@ -77,6 +77,9 @@ from .const import (
     CONF_ANOMALY_THRESHOLD_PERCENT,
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
     CONF_CONFIRMATION_MEDIA_ID,
+    CONF_EFFECT_WAIT_SECONDS,
+    CONF_HOUSEHOLD_VOICE_DEVICES,
+    DEFAULT_EFFECT_WAIT_SECONDS,
     CONF_RESPONSE_STYLE,
     DEFAULT_RESPONSE_STYLE,
     RESPONSE_STYLES,
@@ -341,6 +344,14 @@ class HomeIntentOptionsFlow(OptionsFlow):
                             "suggested_value": defaults.get(CONF_CONFIRMATION_MEDIA_ID, "")
                         },
                     ): str,
+                    vol.Optional(
+                        CONF_EFFECT_WAIT_SECONDS,
+                        default=defaults.get(CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=5)),
+                    vol.Optional(
+                        CONF_HOUSEHOLD_VOICE_DEVICES,
+                        default=defaults.get(CONF_HOUSEHOLD_VOICE_DEVICES, False),
+                    ): bool,
                     vol.Optional(
                         CONF_CONTEXT_TTL_SECONDS,
                         default=defaults.get(CONF_CONTEXT_TTL_SECONDS, 30),

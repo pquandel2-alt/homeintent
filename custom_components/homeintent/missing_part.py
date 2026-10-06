@@ -34,6 +34,13 @@ class MissingPart(Enum):
     PERIOD = "period"  # "Ab wann soll ich den Verbrauch zählen …?"
     DEVICE = "device"  # "Welches Gerät meinst du?", "Welchen Melder …?"
     RECIPIENT = "recipient"  # "Wen soll ich benachrichtigen?"
+    # 7.9.2 A2: "Wie lange soll die Bewässerung laufen?" - an automation
+    # that opens an irrigation valve needs its end.
+    DURATION = "duration"
+    # 7.9.2 A6: "Um wie viel und in welchem Zeitraum?" ("schnell fällt").
+    RATE = "rate"
+    # 7.9.2 A6: "Ab welchem Wert?" ("wenn die Sonne scheint").
+    THRESHOLD = "threshold"
 
 
 _SPOKEN = {
@@ -42,6 +49,9 @@ _SPOKEN = {
     MissingPart.PERIOD: "Zählbeginn",
     MissingPart.DEVICE: "Gerät",
     MissingPart.RECIPIENT: "Empfänger",
+    MissingPart.DURATION: "Dauer",
+    MissingPart.RATE: "Betrag und Zeitraum",
+    MissingPart.THRESHOLD: "Schwellwert",
 }
 
 
@@ -54,6 +64,9 @@ class PartRequest:
     # DEVICE/RECIPIENT: the words the answer replaces ("Keller", "Lena").
     replaces: tuple[str, ...] = ()
     original_text: str = ""
+    # DEVICE: the offered devices; an answer naming exactly one of them
+    # ("den im Vorgarten", "Vorgarten") stands for its full name (7.9.2).
+    choices: tuple[str, ...] = ()
 
     @property
     def spoken_part(self) -> str:
@@ -126,6 +139,11 @@ def read_part_answer(part: MissingPart, answer: str) -> str | None:
         return f"bis {lead}{hour} Uhr" if minute == 0 else f"bis {lead}{hour}:{minute:02d} Uhr"
     if part is MissingPart.PERIOD:
         return _PERIODS.get(key)
+    if part is MissingPart.DURATION:
+        seconds = _period_seconds([word for word in key.split() if word not in {"für", "fuer", "lang", "etwa", "ungefähr"}])
+        if seconds is None or seconds < 60 or seconds > 86400:
+            return None
+        return f"für {_spoken_duration(seconds)}"
     # DEVICE / RECIPIENT: a short naming answer - never a sentence.
     words = text.split()
     if not words or len(words) > 5 or any(normalize_for_compare(word) in {"wenn", "dann", "und"} for word in words):
@@ -200,11 +218,20 @@ _CONJUNCTION_RE = re.compile(r"\b(wenn|sobald|falls|sofern)\b\s+", re.IGNORECASE
 def complete_request(request: PartRequest, phrase: str) -> str:
     """The original request with the answered part, as one sentence."""
     original = request.original_text.strip()
+    if request.part is MissingPart.DURATION:
+        # The duration belongs to the action: before a trailing condition
+        # ("…, wenn …"), else at the end of the sentence.
+        match = re.search(r",?\s+\b(wenn|sobald|falls|sofern)\b", original, re.IGNORECASE)
+        if match is not None and match.start() > 0:
+            return f"{original[:match.start()]} {phrase}{original[match.start():]}"
+        return f"{original.rstrip('.!?')} {phrase}."
     if request.part in {MissingPart.WINDOW, MissingPart.UNTIL, MissingPart.PERIOD}:
         match = _CONJUNCTION_RE.search(original)
         if match is None:
             return f"{original.rstrip('.!?')} {phrase}."
         return f"{original[:match.end()]}{phrase} {original[match.end():]}"
+    if request.choices:
+        phrase = _choice(request.choices, phrase) or phrase
     replaced = _replace_words(original, request.replaces, request.part, phrase)
     return replaced if replaced is not None else original
 
@@ -238,3 +265,18 @@ def _replace_words(original: str, words: tuple[str, ...], part: MissingPart, phr
                 start -= 1
         return " ".join([*tokens[:start], new + trailing, *tokens[end + 1:]])
     return None
+
+
+def _choice(choices: tuple[str, ...], phrase: str) -> str | None:
+    """The one offered name every content word of the answer occurs in."""
+    words = [
+        normalize_for_compare(word) for word in phrase.split()
+        if normalize_for_compare(word) not in _ARTICLES | {"im", "in", "am", "beim", "vom", "von"}
+    ]
+    if not words:
+        return None
+    hits = [
+        name for name in choices
+        if all(any(word in part for part in normalize_for_compare(name).split()) for word in words)
+    ]
+    return hits[0] if len(hits) == 1 else None

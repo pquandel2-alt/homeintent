@@ -28,6 +28,7 @@ __all__ = (
     "TurnOutcomeKind",
     "TurnOutcomes",
     "begin_outcomes",
+    "defer_outcome",
     "end_outcomes",
     "report_outcome",
 )
@@ -45,6 +46,9 @@ class TurnOutcomes:
     """Every typed fact reported during one turn, in order."""
 
     kinds: list[TurnOutcomeKind] = field(default_factory=list)
+    # Writes whose effect is not confirmed yet (7.9.2 A1): settled once at
+    # the end of the turn by ``effect_wait.async_settle``.
+    pending: list[object] = field(default_factory=list)
 
     @property
     def fully_executed(self) -> bool:
@@ -66,6 +70,16 @@ def begin_outcomes() -> tuple[TurnOutcomes, Token[TurnOutcomes | None]]:
 
 def end_outcomes(token: Token[TurnOutcomes | None]) -> None:
     _OUTCOMES.reset(token)
+
+
+def defer_outcome(pending: object) -> bool:
+    """Register a write whose effect the turn waits for; ``False`` outside a
+    turn (the caller then reports what it sees right now)."""
+    outcomes = _OUTCOMES.get()
+    if outcomes is None:
+        return False
+    outcomes.pending.append(pending)
+    return True
 
 
 def report_outcome(kind: TurnOutcomeKind) -> None:

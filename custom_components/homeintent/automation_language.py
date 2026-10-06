@@ -274,6 +274,8 @@ ACTION_OPENERS = frozenset({
     "schliesse", "stelle", "stell", "setze", "setz", "starte", "stoppe", "aktiviere",
     "deaktiviere", "dimme", "dimm", "drehe", "dreh", "spiele", "spiel", "kannst", "könntest",
     "bitte", "dann", "sperre", "entsperre", "lass", "lasse",
+    # 7.9.2 A2: irrigation verbs ("bewässere den Garten 15 Minuten").
+    "bewässere", "bewässer", "bewaessere", "beregne", "sprenge", "gieße", "giess", "giesse",
 })
 
 

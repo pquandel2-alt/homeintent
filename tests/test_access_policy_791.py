@@ -19,7 +19,11 @@ import pytest
 from _testhaus import PUSH_OPTIONS, HouseConversation, house_entities
 
 GATE = "cover.garagentor"
-VALVE = "valve.bewaesserung"
+# 7.9.2 A2 (Eigentümerentscheidung T2, Variante C): Bewässerungsventile dürfen
+# sich automatisch öffnen (mit Pflicht-Ende, tests/test_irrigation_792.py).
+# Das Ventil, das hier nie automatisch öffnen darf, ist darum das
+# Hauptwasserventil - die Prüfung selbst ist unverändert streng.
+VALVE = "valve.hauptwasserventil"
 
 _TRIGGERS = (
     "Wenn alle weg sind",
@@ -31,7 +35,7 @@ _TRIGGERS = (
 )
 _OPENINGS = {
     GATE: ("öffne das Garagentor", "mach das Garagentor auf", "fahr das Garagentor hoch"),
-    VALVE: ("öffne die Bewässerung im Garten", "mach die Bewässerung im Garten auf"),
+    VALVE: ("öffne das Hauptwasserventil", "mach das Hauptwasserventil auf"),
 }
 _OPENING_SERVICES = {"cover.open_cover", "valve.open_valve", "lock.unlock", "lock.open",
                      "cover.set_cover_position", "valve.set_valve_position"}

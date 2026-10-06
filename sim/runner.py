@@ -88,6 +88,17 @@ class Runner:
     def admin(self) -> WS:
         return self.ws["admin"]
 
+    async def effect_wait_statistics(self) -> dict[str, Any] | None:
+        try:
+            entries = await rest(self.session, "GET", "/api/config/config_entries/entry", self.tokens["admin"])
+            entry = next(e for e in entries if e["domain"] == "homeintent")
+            diag = await rest(
+                self.session, "GET", f"/api/diagnostics/config_entry/{entry['entry_id']}", self.tokens["admin"]
+            )
+        except Exception:  # noqa: BLE001 - statistics are informative only
+            return None
+        return (diag.get("data") or {}).get("effect_wait")
+
     async def service(self, name: str, data: dict | None = None, response: bool = False) -> Any:
         domain, service = name.split(".", 1)
         payload: dict[str, Any] = {"domain": domain, "service": service, "service_data": data or {}}
@@ -305,6 +316,7 @@ async def main() -> None:
         and s["category"] not in args.exclude_category
     ]
     results = []
+    effect_wait: dict[str, Any] | None = None
     async with aiohttp.ClientSession() as session:
         async with Runner(session, load_tokens()) as runner:
             runner.full_reset = args.full_reset
@@ -320,6 +332,11 @@ async def main() -> None:
                             print(f"         call {c}")
                     for p in st.get("problems") or []:
                         print(f"       ✗ {p}")
+            effect_wait = await runner.effect_wait_statistics()
+    if effect_wait is not None:
+        # 7.9.2 A1: extra wait for device reports, measured by HomeIntent
+        # itself (not part of the language-understanding latency budget).
+        print(f"Zusätzliche Wartezeit auf Geräte-Rückmeldung: {json.dumps(effect_wait, ensure_ascii=False)}")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(out.read_text()) if out.exists() else {}

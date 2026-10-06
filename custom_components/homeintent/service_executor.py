@@ -11,14 +11,15 @@ from .agent_action_policy import RESERVED_TARGET_DATA_KEYS
 from .audit_log import AuditTrail
 from .entities import STATELESS_ACTION_DOMAINS, EntitySnapshot
 from .effect_graph import build_plan_effects
-from .effect_monitor import EffectMonitor, expected_state
+from .effect_monitor import EffectMonitor
 from .execution_context import UNAUTHORIZED_TEXT, current_turn, is_unauthorized, new_execution_context
 from .execution_trace import record_execution
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
 from .plan_origin import PlanOrigin
 from .risk import RiskLevel
 from .service_call import ServiceCallPlan
-from .turn_outcome import TurnOutcomeKind, report_outcome
+from .effect_wait import PendingEffect, expectations_for, judge_now
+from .turn_outcome import TurnOutcomeKind, defer_outcome, report_outcome
 
 
 @dataclass(frozen=True)
@@ -101,10 +102,14 @@ async def async_execute_service_plan(
 ) -> ExecutionResult:
     """The single physical write path; reports what the turn did (7.9.1 B).
 
-    ``EXECUTED`` only when the write ran and every target with a checkable
-    end state already shows it; a cover still moving is ``UNCONFIRMED``; a
-    write that did not run is ``NOT_DONE``.
+    ``EXECUTED`` when the write ran and every target shows the requested
+    state or moves in the requested direction (7.9.2 A1); a target that has
+    not reported yet is handed to the turn, which waits for it (bounded,
+    event-driven) before the reply is decided. A write that did not run is
+    ``NOT_DONE``.
     """
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
+    expectations = expectations_for(plan, lambda entity_id: _snapshot(hass, entity_id), names)
     result = await _async_execute_service_plan(
         hass, plan, entities, options, is_admin=is_admin, user_id=user_id, confirmed=confirmed,
         audit_trail=audit_trail, audit_actor_id=audit_actor_id, effect_monitor=effect_monitor,
@@ -113,27 +118,22 @@ async def async_execute_service_plan(
     )
     if not result.executed:
         report_outcome(TurnOutcomeKind.NOT_DONE)
-    else:
-        report_outcome(
-            TurnOutcomeKind.EXECUTED if _effect_reached(hass, plan) else TurnOutcomeKind.UNCONFIRMED
-        )
+        return result
+    pending = PendingEffect(expectations)
+    judge_now(hass, pending)
+    if pending.confirmed:
+        report_outcome(TurnOutcomeKind.EXECUTED)
+    elif not defer_outcome(pending):
+        report_outcome(TurnOutcomeKind.UNCONFIRMED)
     return result
 
 
-def _effect_reached(hass: HomeAssistant, plan: ServiceCallPlan) -> bool:
-    """Whether every target with a known end state shows it right now."""
-    expected = expected_state(plan)
-    if expected is None:
-        return True
-    target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+def _snapshot(hass: HomeAssistant, entity_id: str) -> tuple[str | None, Mapping[str, object] | None]:
     states = getattr(hass, "states", None)
-    for entity_id in target_ids:
-        if entity_id.split(".", 1)[0] in STATELESS_ACTION_DOMAINS:
-            continue
-        state = states.get(entity_id) if states is not None else None
-        if state is None or getattr(state, "state", None) != expected:
-            return False
-    return True
+    state = states.get(entity_id) if states is not None else None
+    if state is None:
+        return None, None
+    return getattr(state, "state", None), getattr(state, "attributes", None)
 
 
 async def _async_execute_service_plan(

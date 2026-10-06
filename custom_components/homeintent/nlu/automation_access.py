@@ -1,5 +1,15 @@
 """Access policy for automation actions (7.9.1 A1): access never opens by itself.
 
+7.9.2 A2 (owner decision "Variante C"): a valve that clearly feeds water to
+a garden, lawn or bed - an irrigation valve - is not an access. It may open
+by itself, but never without its end: an automation that opens it must
+close it again within the same automation (``open_ended_irrigation``).
+Gas valves, main/supply valves ("Hauptwasserventil", "Zuleitung",
+"Haupthahn") and unknown valves without class and without hint stay
+accesses, as do gates, doors and locks. ``irrigation_valve`` is that one
+rule, used by ``access_kind`` and therefore by validator, preview and the
+write path alike.
+
 An automation runs later, without anyone answering. Opening an *access*
 (garage door, gate, door drive, valve, lock) unattended is the one write a
 household cannot undo in time: "Wenn alle weg sind, öffne das Garagentor"
@@ -33,7 +43,7 @@ from .action_model import (
     NotificationRecipientKind,
 )
 from .automation_model import AutomationModel, TriggerTarget
-from .device_ontology import entity_has_genus
+from .device_ontology import entity_has_genus, entity_name_mentions
 
 __all__ = (
     "ACCESS_COVER_CLASSES",
@@ -43,6 +53,9 @@ __all__ = (
     "access_noun",
     "access_openings",
     "describe_access_refusal",
+    "irrigation_openings",
+    "irrigation_valve",
+    "open_ended_irrigation",
     "notice_instead_of_opening",
 )
 
@@ -87,6 +100,36 @@ class AccessOpening:
     via: str | None = None  # friendly name of the script/scene, if indirect
 
 
+# Name/area words that say a *water* valve feeds a garden (data, stems).
+_GARDEN_WATER_HINTS = ("garten", "rasen", "beet", "tropf", "bewässer", "bewaesser", "bereg", "spreng", "gieß", "giess")
+
+
+def _words(*texts: str | None) -> tuple[str, ...]:
+    found: list[str] = []
+    for text in texts:
+        if text:
+            found.extend(text.casefold().replace("-", " ").split())
+    return tuple(found)
+
+
+def irrigation_valve(entity: EntitySnapshot | None) -> bool:
+    """A valve that clearly feeds garden water - the one valve kind that may
+    open by itself (7.9.2 A2). Gas, main/supply valves and unknown valves
+    never are."""
+    if entity is None or entity.domain != "valve":
+        return False
+    if entity.device_class == "gas":
+        return False
+    if entity_name_mentions(entity, "main_valve"):
+        return False
+    if entity_has_genus(entity, "irrigation"):
+        return True
+    if entity.device_class != "water":
+        return False
+    words = _words(entity.friendly_name, *entity.aliases, entity.area_name)
+    return any(hint in word for word in words for hint in _GARDEN_WATER_HINTS)
+
+
 def access_kind(entity: EntitySnapshot | None, entity_id: str | None = None) -> AccessKind | None:
     """The access kind of one device, ``None`` for everything else.
 
@@ -105,7 +148,7 @@ def access_kind(entity: EntitySnapshot | None, entity_id: str | None = None) -> 
     if entity.domain == "lock":
         return AccessKind.LOCK
     if entity.domain == "valve":
-        return AccessKind.VALVE
+        return None if irrigation_valve(entity) else AccessKind.VALVE
     if entity.domain != "cover":
         return None
     if entity.device_class == "garage":
@@ -203,8 +246,8 @@ def describe_access_refusal(openings: Sequence[AccessOpening]) -> str:
     via = next((item.via for item in openings if item.via), None)
     how = f" (über „{via}“)" if via else ""
     return (
-        f"{listed}{how} öffne ich nicht automatisch: Tore, Türen, Ventile und Schlösser "
-        "öffnen sich bei mir nur, wenn du es in dem Moment selbst sagst."
+        f"{listed}{how} öffne ich nicht automatisch: Tore, Türen, Schlösser, Gas- und "
+        "Hauptventile öffnen sich bei mir nur, wenn du es in dem Moment selbst sagst."
     )
 
 
@@ -250,3 +293,60 @@ def notice_instead_of_opening(
         model, actions=actions,
         source_text=f"{model.source_text.strip()} (nur Benachrichtigung, kein automatisches Öffnen)",
     )
+
+
+@dataclass(frozen=True)
+class IrrigationOpening:
+    """An irrigation valve an automation opens, and when it closes again."""
+
+    entity_id: str
+    name: str
+    closes_after_seconds: int | None  # None: no end in this automation
+
+
+def _closes(action: ActionModel, entity_id: str, entities: Sequence[EntitySnapshot]) -> bool:
+    if action.target is None:
+        return False
+    if entity_id not in {item.entity_id for item in _members(action.target, entities)}:
+        return False
+    if action.type is ActionType.TURN_OFF:
+        return True
+    if action.type is ActionType.REGISTERED_SERVICE:
+        if action.service_name == "close_valve":
+            return True
+        if action.service_name == "set_valve_position":
+            return action.service_data.get("position") == 0
+    return False
+
+
+def irrigation_openings(
+    actions: Sequence[ActionModel | ActionGroup], entities: Sequence[EntitySnapshot]
+) -> tuple[IrrigationOpening, ...]:
+    """Every irrigation valve the actions open, with its end (if any).
+
+    The end is either the step's own duration ("für 20 Minuten") or a
+    later step of the same automation that closes the same valve.
+    """
+    leaves = list(_leaves(actions))
+    found: dict[str, IrrigationOpening] = {}
+    for index, action in enumerate(leaves):
+        if action.target is None:
+            continue
+        for entity in _members(action.target, entities):
+            if not irrigation_valve(entity) or not _opens(action, entity):
+                continue
+            ends = action.duration_seconds
+            if ends is None and any(_closes(later, entity.entity_id, entities) for later in leaves[index + 1:]):
+                ends = 0  # closed by a later step; when is the sequence's matter
+            previous = found.get(entity.entity_id)
+            if previous is None or previous.closes_after_seconds is not None:
+                found[entity.entity_id] = IrrigationOpening(entity.entity_id, entity.friendly_name, ends)
+    return tuple(found[key] for key in sorted(found))
+
+
+def open_ended_irrigation(
+    actions: Sequence[ActionModel | ActionGroup], entities: Sequence[EntitySnapshot]
+) -> tuple[IrrigationOpening, ...]:
+    """Irrigation valves this automation would open without ever closing
+    them - never written (7.9.2 A2: "Wie lange?")."""
+    return tuple(item for item in irrigation_openings(actions, entities) if item.closes_after_seconds is None)

@@ -44,7 +44,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Iterable, Sequence
 
 from .action_model import ActionGroup, ActionModel, ActionType
-from .automation_access import access_openings
+from .automation_access import access_openings, open_ended_irrigation
 from .automation_operations import validate_registered_operation
 from .automation_model import AutomationModel, NumericComparator, TriggerModel, TriggerTarget, TriggerType
 from .condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator
@@ -92,6 +92,9 @@ class AutomationValidationError(Enum):
     # 7.9.1 A1: the automation would open a garage door, gate, door drive,
     # valve or lock unattended (``automation_access.access_openings``).
     UNSAFE_ACCESS_OPENING = auto()
+    # 7.9.2 A2: an irrigation valve may open by itself, but never without
+    # its end in the same automation (``automation_access``).
+    IRRIGATION_WITHOUT_END = auto()
 
 
 def validate_automation(
@@ -129,6 +132,8 @@ def validate_automation(
             return error
     if entities is not None and access_openings(model.actions, entities, effects):
         return AutomationValidationError.UNSAFE_ACCESS_OPENING
+    if entities is not None and open_ended_irrigation(model.actions, entities):
+        return AutomationValidationError.IRRIGATION_WITHOUT_END
     return None
 
 
@@ -392,6 +397,12 @@ def _validate_action_leaf(action: ActionModel) -> AutomationValidationError | No
         return AutomationValidationError.INVALID_PARAMETER
     if action.duration_seconds is not None and action.duration_seconds < 0:
         return AutomationValidationError.INVALID_PARAMETER
+    if action.duration_seconds and action.type is not ActionType.TURN_ON:
+        # Only an action with an opposite carries a duration (7.9.2 A2).
+        from .action_duration import inverse_of
+
+        if inverse_of(action) is None:
+            return AutomationValidationError.INVALID_PARAMETER
     if action.type is ActionType.WAIT and action.wait_condition is not None:
         return _validate_condition_node(action.wait_condition, depth=1)
     if action.type is ActionType.REPEAT and not (

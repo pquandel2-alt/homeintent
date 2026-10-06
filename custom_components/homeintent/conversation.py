@@ -76,6 +76,7 @@ from .household_query import match_household_query
 from .embedded_question import embedded_check_question
 from .response_style import apply_response_style
 from .turn_outcome import begin_outcomes, end_outcomes
+from .effect_wait import append_speech, async_settle_turn
 from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
@@ -188,6 +189,7 @@ from .routine_binding_intent import interpret_routine_binding
 
 
 from .productivity import TimerRequest, TodoRequest
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -558,13 +560,16 @@ class NluConversationEntity(
         # One Home Assistant context per turn: every execution in this turn
         # shares one execution id (7.3.2).
         turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
+        self._engine.take_action_ambiguity()  # nothing stale from an earlier turn
         outcomes, outcome_token = begin_outcomes()
         self._current_chat_log = chat_log
         try:
             result = await self._async_handle_message_inner(user_input, chat_log)
+            notes = await async_settle_turn(self.hass, outcomes, self.entry.options)
         finally:
             end_outcomes(outcome_token)
             end_turn(turn)
+        append_speech(result.response, notes)
         suffix = self._take_turn_suffix(user_input.conversation_id)
         if suffix:
             # "Soll ich mir … merken?" after an executed command (7.4.1).
@@ -2289,6 +2294,9 @@ class NluConversationEntity(
                     )
                 result = direct_understanding.payload
 
+        if result is None:
+            # 7.9.2 A2: an automation whose action named several devices.
+            result = self._automations.action_ambiguity_question(user_input.text, entities)
         if result is None:
             return await self._devices.async_handle_no_match(user_input, response, entities)
 

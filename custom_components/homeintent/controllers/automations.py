@@ -46,7 +46,9 @@ from ..nlu.automation_model import (
     TriggerModel,
     TriggerType,
 )
+from ..missing_part import MissingPart, PartRequest
 from ..nlu.automation_access import (
+    open_ended_irrigation,
     AccessOpening,
     access_openings,
     describe_access_refusal,
@@ -83,6 +85,14 @@ from ..world_model import WorldModel
 
 _LOGGER = logging.getLogger(__name__)
 
+
+_GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
+# Words that mark an automation sentence's trigger (7.9.2 A2).
+_TRIGGER_WORD_RE = re.compile(
+    r"\b(?:wenn|sobald|falls|jeden|jede|jedes|täglich|taeglich|morgens|abends|nachts|"
+    r"um\s+\d|bei\s+sonnen\w*|werktags|wochenends)\b",
+    re.IGNORECASE,
+)
 
 class AutomationRuntime(Protocol):
     """The one runtime service this controller uses."""
@@ -263,6 +273,26 @@ class AutomationController:
         An automation that would open an access is never offered (7.9.1
         A1): HomeIntent says so and offers a notification instead.
         """
+        endless = open_ended_irrigation(model.actions, entities)
+        if endless:
+            # 7.9.2 A2: an irrigation valve may open by itself, never
+            # without its end - ask for the duration, nothing is stored.
+            self._context_store.clear(user_input.conversation_id)
+            names = " und ".join(f"„{item.name}“" for item in endless)
+            question = (
+                f"Wie lange soll {names} jeweils laufen? Eine Bewässerung ohne Ende lege ich nicht an."
+            )
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "monitor-part",
+                DialogTaskKind.MONITOR_PART,
+                DialogPriority.FOLLOWUP,
+                reason="Eine Rückfrage nach der Dauer ist offen.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=PartRequest(MissingPart.DURATION, question, original_text=user_input.text),
+            )
+            response.async_set_speech(question)
+            return
         offer, refusal = self._guard_access(model, entities)
         prefix = ""
         if refusal is not None:
@@ -334,8 +364,9 @@ class AutomationController:
                 return replace(result, model=once_model, validation_error=None)
         if recurrence is Recurrence.ONCE:
             return replace(result, model=replace(model, max_runs=1))
-        if self.access_openings_of(model, entities):
-            # Refused (or turned into a notification) by offer_preview -
+        if self.access_openings_of(model, entities) or open_ended_irrigation(model.actions, entities):
+            # Refused (or turned into a notification), or the duration is
+            # asked first (7.9.2 A2) by offer_preview -
             # nothing to ask about "nur heute oder jeden Tag" (7.9.1 A1).
             return result
         self._runtime.dialog_manager.create(
@@ -512,6 +543,16 @@ class AutomationController:
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        if open_ended_irrigation(confirmation.model.actions, entities):
+            # Defense in depth (7.9.2 A2): never an irrigation without end.
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                "Eine Bewässerung ohne Ende lege ich nicht an. Ich habe nichts angelegt.",
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
         controlled_ids = resolve_automation_action_entity_ids(
             confirmation.model, entities
         )
@@ -662,6 +703,28 @@ class AutomationController:
             response.async_set_speech(result.response_text)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
+        )
+
+    def action_ambiguity_question(
+        self, text: str, entities: list[EntitySnapshot]
+    ) -> AutomationClarificationResult | None:
+        """An automation whose action named several devices of one kind
+        asks which one (7.9.2 A2) - only when the sentence has a trigger,
+        never for a plain command, and only where the device path has
+        nothing better to say than "kein eindeutig passendes Gerät".
+        Answered as the one missing device."""
+        ambiguity = self._engine.take_action_ambiguity()
+        if ambiguity is None or not ambiguity.kind_words or not _TRIGGER_WORD_RE.search(text):
+            return None
+        feedback = self._engine.failure_feedback(text, entities)
+        if feedback is not None and not feedback.startswith(_GENERIC_UNKNOWN_TARGET):
+            return None
+        return AutomationClarificationResult(
+            response_text=ambiguity.question,
+            part=PartRequest(
+                MissingPart.DEVICE, ambiguity.question,
+                replaces=ambiguity.kind_words, choices=ambiguity.choices,
+            ),
         )
 
     def handle_clarification_result(
