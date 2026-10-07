@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import itertools
 from pathlib import Path
 

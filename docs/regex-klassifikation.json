@@ -1,6 +1,6 @@
 {
  "beschreibung": "Klassifikation aller Regex-Muster (scripts/regex_inventory.py)",
- "maximum_semantic_sentence_pattern": 172,
+ "maximum_semantic_sentence_pattern": 171,
  "verlauf": {
   "7.5.0": 272,
   "7.5.1": 258,
@@ -2749,13 +2749,6 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/monitor_edit.py::parse_monitor_edit::6cf9a577c3",
-   "datei": "custom_components/homeintent/monitor_edit.py",
-   "bereich": "parse_monitor_edit",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
    "id": "custom_components/homeintent/monitoring_management.py::_CLOCK_RE::fce7521f94",
    "datei": "custom_components/homeintent/monitoring_management.py",
    "bereich": "_CLOCK_RE",
@@ -5329,6 +5322,6 @@
   "LEXICAL": 401,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 149,
-  "SEMANTIC_SENTENCE_PATTERN": 172
+  "SEMANTIC_SENTENCE_PATTERN": 171
  }
 }

@@ -103,6 +103,29 @@ def _person(raw: list[str], keys: list[str], start: int, stop: int) -> str:
     return " ".join(words)
 
 
+def _clock(word: str) -> tuple[int, int] | None:
+    hour, _, minute = word.strip(".").partition(":")
+    if not hour.isdigit() or (minute and not minute.isdigit()):
+        return None
+    clock = (int(hour), int(minute or 0))
+    return clock if 0 <= clock[0] <= 23 and 0 <= clock[1] <= 59 else None
+
+
+def _clock_window(words: list[str]) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """"zwischen 22 und 6 (Uhr)", "von 8:30 bis 18 Uhr" - word by word."""
+    for index, word in enumerate(words):
+        if word not in {"zwischen", "von"} or index + 1 >= len(words):
+            continue
+        start = _clock(words[index + 1])
+        rest = [item for item in words[index + 2:index + 5] if item != "uhr"]
+        if start is None or len(rest) < 2 or rest[0] not in {"und", "bis"}:
+            continue
+        end = _clock(rest[1])
+        if end is not None and end != start:
+            return start, end
+    return None
+
+
 def parse_monitor_edit(text: str) -> MonitorEdit | None:
     """A change of an existing monitoring, else ``None``."""
     raw, keys = _tokens(text)
@@ -139,14 +162,11 @@ def parse_monitor_edit(text: str) -> MonitorEdit | None:
         for word, (start, end, label) in _WINDOWS.items():
             if word in present:
                 return MonitorEdit("window", start=start, end=end, window_label=label)
-        match = re.search(r"\b(?:zwischen|von)\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr\s+)?(?:und|bis)\s+(\d{1,2})"
-                          r"(?::(\d{2}))?", normalize_for_compare(text))
-        if match is not None:
-            start = (int(match.group(1)), int(match.group(2) or 0))
-            end = (int(match.group(3)), int(match.group(4) or 0))
-            if all(0 <= hour <= 23 and 0 <= minute <= 59 for hour, minute in (start, end)) and start != end:
-                return MonitorEdit("window", start=start, end=end,
-                                   window_label=f"zwischen {start[0]}:{start[1]:02d} und {end[0]}:{end[1]:02d} Uhr")
+        window = _clock_window(normalize_for_compare(text).replace(",", " ").split())
+        if window is not None:
+            start, end = window
+            return MonitorEdit("window", start=start, end=end,
+                               window_label=f"zwischen {start[0]}:{start[1]:02d} und {end[0]}:{end[1]:02d} Uhr")
     numbers = [(index, value) for index, key in enumerate(keys) if (value := _number(key)) is not None]
     if len(numbers) != 1:
         return None
