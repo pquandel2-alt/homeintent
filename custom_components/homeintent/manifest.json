@@ -2,6 +2,7 @@
   "domain": "homeintent",
   "name": "HomeIntent",
   "after_dependencies": [
+    "energy",
     "recorder"
   ],
   "codeowners": [
