@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .measurement import MeasurementProperty, TravelDirection
 from .semantic_state import SemanticState
@@ -60,6 +60,9 @@ class TriggerType(Enum):
     CALENDAR_TIME = auto()
     WEEKDAY = auto()
     CALENDAR = auto()
+    # 7.9.3 B1: "Wenn Regen angesagt ist" - the forecast of ``target``
+    # (a weather entity) is checked every 30 minutes in the automation.
+    WEATHER = auto()
 
 
 class CalendarReference(Enum):
@@ -275,6 +278,10 @@ class AutomationModel:
     # "Erinnere mich alle 10 Minuten, bis das Tor zu ist" (7.9 W5): whether
     # it holds only now or every time the situation starts is asked.
     ask_start: bool = False
+    # 7.9.3 B1/B4: rain checked in the automation (``weather.WeatherGuard``):
+    # the forecast fetched with ``response_variable``, the rain sensor or
+    # rain amount of the last 24 hours - closed templates from entity ids.
+    weather_guard: Any = None
 
 
 def resolve_relative_schedule(model: AutomationModel, now: datetime) -> AutomationModel:

@@ -503,9 +503,9 @@ class NluConversationEntity(
             notifications=self._notifications,
             record_execution=self._record_execution,
         )
-        self._insights = InsightsController(
+        self._insights = InsightsController(  # media commands use the devices' one write path (7.9.3 B3)
             hass=lambda: self.hass, entry=entry, runtime=runtime, automations=self._automations,
-            entities=lambda: build_entity_snapshots(self.hass, self.entry),
+            entities=lambda: build_entity_snapshots(self.hass, self.entry), devices=self._devices,
         )
         # Rebuilt every turn in _async_handle_message() (World Model Wave,
         # 2026-08-14); None only until the first turn.
@@ -567,6 +567,7 @@ class NluConversationEntity(
         # One Home Assistant context per turn: every execution in this turn
         # shares one execution id (7.3.2).
         user_input = begin_shared_turn(user_input)  # "… für uns alle" (7.9.2 A3)
+        self._insights.begin_turn(user_input.conversation_id)  # an open rain clause (7.9.3 B1/B4)
         turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
         self._engine.take_action_ambiguity()  # nothing stale from an earlier turn
         outcomes, outcome_token = begin_outcomes()
@@ -1050,7 +1051,10 @@ class NluConversationEntity(
                 response=response, conversation_id=user_input.conversation_id
             )
 
-        reading = await self._insights.async_handle_reading(user_input, response, entities, active_dialog)
+        reading = await self._insights.async_handle_reading(
+            user_input, response, entities, active_dialog, rerun=lambda again: self._async_handle_message_inner(
+                again, chat_log), open_task=active_task is not None,
+            area_id=conversation_area.area_id if conversation_area is not None else None)
         if reading is not None:  # summaries, consumption, status questions (7.9.2 B)
             return reading
         if active_dialog is None:

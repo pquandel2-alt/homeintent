@@ -37,6 +37,7 @@ def test_trigger_type_covers_all_documented_types():
         "CALENDAR_TIME",
         "WEEKDAY",
         "CALENDAR",
+        "WEATHER",  # 7.9.3 B1: "Wenn Regen angesagt ist" (forecast read in the automation)
     }
 
 

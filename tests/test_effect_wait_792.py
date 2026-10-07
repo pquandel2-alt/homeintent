@@ -221,12 +221,19 @@ def test_unavailable_is_spoken(monkeypatch, tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", list(_KINDS))
-def test_too_late_is_spoken_as_unconfirmed(monkeypatch, tmp_path, kind):
+def test_too_late_is_the_second_tone(monkeypatch, tmp_path, kind):
+    """7.9.3 B5 (changed expectation): "ran, but did not report back in the
+    wait" is no longer a long sentence but the second tone with a very
+    short announcement of the device.  Wrong direction, unavailable and
+    the spoken style stay spoken (tests above and below)."""
     text, entity_id, service, success, *_ = _KINDS[kind]
     house, devices = _house(monkeypatch, tmp_path)
     devices.reports[(entity_id, service)] = Report(success.state, success.attributes, WAIT + 0.6)
     speech, elapsed, tones = _speak_or_tone(house, devices, text)
-    assert tones == [] and "noch nicht zurückgemeldet" in speech, speech
+    assert speech == "" and len(tones) == 1, speech
+    [tone] = tones
+    assert tone["preannounce_media_id"] == "/api/homeintent/static/notice.mp3"
+    assert tone["message"].endswith("meldet sich nicht.") and tone["preannounce"] is True
     assert WAIT - 0.05 <= elapsed < WAIT + 0.4  # bounded
 
 
@@ -257,21 +264,25 @@ def test_several_targets_are_awaited_in_parallel(monkeypatch, tmp_path):
     assert elapsed < 0.25 * 2  # parallel, not one after the other
 
 
-def test_partial_confirmation_stays_partial(monkeypatch, tmp_path):
+def test_partial_confirmation_names_only_the_silent_device(monkeypatch, tmp_path):
+    """7.9.3 B5 (changed expectation): both writes ran, one device did not
+    report back - the second tone names exactly that device.  A write that
+    did not run at all (refused, failed) stays spoken."""
     house, devices = _house(monkeypatch, tmp_path)
     devices.reports[("light.stehlampe", "turn_on")] = Report("on", {}, 0.05)
     devices.reports[("light.flurlicht", "turn_on")] = Report("on", {}, WAIT + 1.0)
     speech, _elapsed, tones = _speak_or_tone(house, devices, "Schalte die Stehlampe und das Flurlicht ein.")
-    assert tones == []
-    assert "Flurlicht hat sich noch nicht zurückgemeldet" in speech
-    assert "Stehlampe hat" not in speech
+    assert speech == "" and [tone["message"] for tone in tones] == ["Flurlicht meldet sich nicht."]
 
 
 def test_wait_zero_decides_at_once(monkeypatch, tmp_path):
+    # 7.9.3 B5 (changed expectation): not confirmed at once is the second
+    # tone, still decided without waiting.
     house, devices = _house(monkeypatch, tmp_path, wait=0.0)
     devices.reports[("light.stehlampe", "turn_on")] = Report("on", {}, 0.1)
     speech, elapsed, tones = _speak_or_tone(house, devices, "Schalte die Stehlampe ein.")
-    assert tones == [] and speech and elapsed < 0.2
+    assert speech == "" and [tone.get("message") for tone in tones] == ["Stehlampe meldet sich nicht."]
+    assert elapsed < 0.2
 
 
 def test_the_extra_wait_is_measured(monkeypatch, tmp_path):

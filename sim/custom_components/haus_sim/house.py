@@ -108,6 +108,7 @@ HOUSE: list[tuple[str, str, str, str | None, dict[str, Any]]] = [
     ("sensor", "waschmaschine_status", "Waschmaschine Status", "Hauswirtschaftsraum", {"value": "running"}),
     ("sensor", "waschmaschine_fertig", "Waschmaschine fertig um", "Hauswirtschaftsraum", {"class": "timestamp", "offset_minutes": 42}),
     ("sensor", "helligkeit_aussen", "Helligkeit außen", "Garten", {"class": "illuminance", "unit": "lx", "value": 5400}),
+    ("sensor", "regenmenge", "Regenmenge heute", "Garten", {"class": "precipitation", "unit": "mm", "value": 0.0, "state_class": "total_increasing"}),
     ("sensor", "batterie_fenster_bad", "Batterie Fenstersensor Bad", "Badezimmer", {"class": "battery", "unit": "%", "value": 14}),
     ("sensor", "batterie_fenster_kueche", "Batterie Fenstersensor Küche", "Küche", {"class": "battery", "unit": "%", "value": 88}),
     ("sensor", "batterie_bewegungsmelder_flur", "Batterie Bewegungsmelder Flur", "Flur", {"class": "battery", "unit": "%", "value": 61}),
@@ -127,13 +128,21 @@ HOUSE: list[tuple[str, str, str, str | None, dict[str, Any]]] = [
     ("binary_sensor", "praesenz_schlafzimmer", "Präsenz Schlafzimmer", "Schlafzimmer", {"class": "occupancy", "on": False}),
     ("binary_sensor", "rauchmelder_flur", "Rauchmelder Flur", "Flur Obergeschoss", {"class": "smoke", "on": False}),
     ("binary_sensor", "wassermelder_keller", "Wassermelder Keller", "Hauswirtschaftsraum", {"class": "moisture", "on": False}),
+    # 7.9.3 B1/B4: rain sensor and rain amount (today) in the garden.
+    ("binary_sensor", "regensensor", "Regensensor", "Garten", {"class": "moisture", "on": False}),
     # --- Medien ----------------------------------------------------------
-    ("media_player", "wohnzimmer_tv", "Wohnzimmer TV", "Wohnzimmer", {"sources": ["HDMI 1", "Netflix", "YouTube", "Tagesschau"], "state": "off"}),
+    ("media_player", "wohnzimmer_tv", "Wohnzimmer TV", "Wohnzimmer", {"sources": ["HDMI 1", "Netflix", "YouTube", "Tagesschau"], "state": "off",
+     "playlists": {"Tagesschau": [("Tagesschau", "ARD")], "YouTube": [("Bergdoku", "Alpenkanal")]}}),
     # 7.9.1 Teil B: a voice satellite (no area: it must not change any room
     # logic of the existing scenarios); it logs announcements.
     ("assist_satellite", "kuechen_satellit", "Küchen-Satellit", None, {}),
-    ("media_player", "kuechenradio", "Küchenradio", "Küche", {"sources": ["Radio Bob", "Bayern 3", "Deutschlandfunk"], "state": "playing"}),
-    ("media_player", "lautsprecher_schlafzimmer", "Lautsprecher Schlafzimmer", "Schlafzimmer", {"sources": ["Spotify", "Einschlafgeräusche"], "state": "idle"}),
+    ("media_player", "kuechenradio", "Küchenradio", "Küche", {"sources": ["Radio Bob", "Bayern 3", "Deutschlandfunk"], "state": "playing",
+     "playlists": {"Radio Bob": [("Morgenmagazin", "Radio Bob"), ("Thunderstruck", "AC/DC")],
+                   "Bayern 3": [("Morgenmagazin", "Bayern 3"), ("Atemlos", "Helene Fischer")],
+                   "Deutschlandfunk": [("Nachrichten", "Deutschlandfunk")]}}),
+    ("media_player", "lautsprecher_schlafzimmer", "Lautsprecher Schlafzimmer", "Schlafzimmer", {"sources": ["Spotify", "Einschlafgeräusche"], "state": "idle",
+     "playlists": {"Spotify": [("Bohemian Rhapsody", "Queen"), ("Imagine", "John Lennon")],
+                   "Einschlafgeräusche": [("Meeresrauschen", "")]}}),
     # --- Sonstige Geräte ----------------------------------------------------
     ("fan", "deckenventilator", "Deckenventilator", "Schlafzimmer", {"presets": ["Nacht", "Turbo", "Natur"], "speed_count": 5}),
     ("fan", "badluefter", "Badlüfter", "Badezimmer", {"speed_count": 3}),
@@ -157,4 +166,6 @@ HOUSE: list[tuple[str, str, str, str | None, dict[str, Any]]] = [
     ("notify", "handy_philipp_nachricht", "Handy Philipp", None, {}),
     ("notify", "handy_anna_nachricht", "Handy Anna", None, {}),
     ("tts", "sprachausgabe", "Haus Sprachausgabe", None, {}),
+    # 7.9.3 B1: the weather forecast (settable state, daily and hourly).
+    ("weather", "zuhause", "Wettervorhersage", None, {"condition": "partlycloudy", "temperature": 12.3}),
 ]

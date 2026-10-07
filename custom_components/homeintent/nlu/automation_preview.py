@@ -300,6 +300,10 @@ def _speak_trigger(
         text = "der bestätigte Kalenderzeitpunkt erreicht ist"
     elif trigger.type is TriggerType.WEEKDAY:
         text = " oder ".join(_WEEKDAY_SPOKEN_DE.get(d, d) for d in trigger.weekdays) + " ist"
+    elif trigger.type is TriggerType.WEATHER:
+        weather = entity_by_id.get(trigger.target.entity_id or "") if trigger.target is not None else None
+        name = weather.friendly_name if weather is not None else "der Wettervorhersage"
+        text = f"laut Wettervorhersage „{name}“ Regen angesagt ist"
     elif trigger.type is TriggerType.CALENDAR:
         calendar = entity_by_id.get(trigger.calendar_entity_id or "")
         name = calendar.friendly_name if calendar is not None else trigger.calendar_entity_id

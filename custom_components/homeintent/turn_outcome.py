@@ -49,11 +49,25 @@ class TurnOutcomes:
     # Writes whose effect is not confirmed yet (7.9.2 A1): settled once at
     # the end of the turn by ``effect_wait.async_settle``.
     pending: list[object] = field(default_factory=list)
+    # 7.9.3 B5: devices that did not report back in the wait (no wrong
+    # direction, not unavailable) - the only case for the second tone.
+    silent: list[str] = field(default_factory=list)
+    # A wrong direction or an unreachable device: always spoken.
+    contrary: bool = False
 
     @property
     def fully_executed(self) -> bool:
         """At least one write, every write ran, every effect confirmed."""
         return bool(self.kinds) and all(kind is TurnOutcomeKind.EXECUTED for kind in self.kinds)
+
+    @property
+    def only_not_reported(self) -> bool:
+        """Everything ran; some devices only did not report back in time."""
+        return (
+            bool(self.kinds) and TurnOutcomeKind.UNCONFIRMED in self.kinds and not self.contrary
+            and all(kind in {TurnOutcomeKind.EXECUTED, TurnOutcomeKind.UNCONFIRMED} for kind in self.kinds)
+            and bool(self.silent)
+        )
 
     @property
     def partial(self) -> bool:

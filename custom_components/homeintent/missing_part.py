@@ -45,6 +45,8 @@ class MissingPart(Enum):
     RATE = "rate"
     # 7.9.2 A6: "Ab welchem Wert?" ("wenn die Sonne scheint").
     THRESHOLD = "threshold"
+    # 7.9.3 B1: "Welche Wettervorhersage meinst du: A oder B?"
+    SOURCE = "source"
 
 
 _SPOKEN = {
@@ -58,6 +60,7 @@ _SPOKEN = {
     MissingPart.DATE: "Enddatum",
     MissingPart.RATE: "Betrag und Zeitraum",
     MissingPart.THRESHOLD: "Schwellwert",
+    MissingPart.SOURCE: "Quelle",
 }
 
 
@@ -283,6 +286,9 @@ def complete_request(request: PartRequest, phrase: str) -> str:
         return original
     if request.part is MissingPart.DATE:
         return f"{original.rstrip('.!?')} {phrase}."
+    if request.part is MissingPart.SOURCE:
+        chosen = _choice(request.choices, phrase) if request.choices else None
+        return f"{original.rstrip('.!?')} laut {chosen or phrase}?"
     if request.part is MissingPart.CLOCK:
         return f"{original.rstrip('.!?')} {phrase}."
     if request.part is MissingPart.DURATION:

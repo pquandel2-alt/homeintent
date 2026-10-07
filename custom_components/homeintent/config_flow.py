@@ -80,9 +80,13 @@ from .const import (
     CONF_CONFIRMATION_MEDIA_ID,
     CONF_EFFECT_WAIT_SECONDS,
     CONF_HOUSEHOLD_VOICE_DEVICES,
+    CONF_SHARE_HOUSEHOLD_LOCATION,
     DEFAULT_EFFECT_WAIT_SECONDS,
     CONF_RESPONSE_STYLE,
+    CONF_NOTICE_MEDIA_ID,
+    CONF_NOTICE_SAYS_NAME,
     DEFAULT_RESPONSE_STYLE,
+    NEW_INSTALL_RESPONSE_STYLE,
     RESPONSE_STYLES,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
@@ -174,6 +178,10 @@ class HomeIntentConfigFlow(_DomainConfigFlow, domain=DOMAIN):
                 # for administrators (households with children's accounts).
                 # Entries created before 7.2.1 keep their stored behaviour.
                 CONF_ALLOW_NON_ADMIN_AUTOMATIONS: False,
+                # 7.9.3 B5: new installations answer a fully executed
+                # command with the confirmation tone; entries created before
+                # keep their stored (or implicit "spoken") style.
+                CONF_RESPONSE_STYLE: NEW_INSTALL_RESPONSE_STYLE,
             },
         )
 
@@ -346,12 +354,26 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         },
                     ): str,
                     vol.Optional(
+                        CONF_NOTICE_MEDIA_ID,
+                        description={
+                            "suggested_value": defaults.get(CONF_NOTICE_MEDIA_ID, "")
+                        },
+                    ): str,
+                    vol.Optional(
+                        CONF_NOTICE_SAYS_NAME,
+                        default=defaults.get(CONF_NOTICE_SAYS_NAME, True),
+                    ): bool,
+                    vol.Optional(
                         CONF_EFFECT_WAIT_SECONDS,
                         default=defaults.get(CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS),
                     ): vol.All(vol.Coerce(float), vol.Range(min=0, max=5)),
                     vol.Optional(
                         CONF_HOUSEHOLD_VOICE_DEVICES,
                         default=defaults.get(CONF_HOUSEHOLD_VOICE_DEVICES, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_SHARE_HOUSEHOLD_LOCATION,
+                        default=defaults.get(CONF_SHARE_HOUSEHOLD_LOCATION, False),
                     ): bool,
                     vol.Optional(
                         CONF_ENERGY_PRICE,

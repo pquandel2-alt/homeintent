@@ -136,7 +136,7 @@ def _prior_position(domain: str, service: str, attributes: Mapping[str, Any] | N
         return None
     if service in {"set_cover_position", "set_valve_position"}:
         return _number(attributes.get("current_position"))
-    if service == "volume_set":
+    if service in {"volume_set", "volume_up", "volume_down"}:
         return _number(attributes.get("volume_level"))
     return None
 
@@ -186,7 +186,9 @@ _END_STATES: dict[str, tuple[str, str | None, str | None, str | None]] = {
 _JUDGED_SERVICES = frozenset(
     set(_END_STATES)
     | {"turn_on", "turn_off", "set_cover_position", "set_valve_position", "set_temperature",
-       "set_hvac_mode", "volume_set", "volume_mute", "media_stop"}
+       "set_hvac_mode", "volume_set", "volume_mute", "media_stop",
+       # 7.9.3 B3: media commands wait for their effect, too.
+       "select_source", "volume_up", "volume_down"}
 )
 
 
@@ -273,6 +275,22 @@ def judge(expectation: EffectExpectation, state: str | None, attributes: Mapping
         return EffectVerdict.REACHED if attrs.get("is_volume_muted") is wanted_mute else EffectVerdict.PENDING
     if service == "media_stop":
         return EffectVerdict.PENDING if state == "playing" else EffectVerdict.REACHED
+    if service == "select_source":
+        wanted_source = data.get("source")
+        if not isinstance(wanted_source, str):
+            return EffectVerdict.REACHED
+        return EffectVerdict.REACHED if attrs.get("source") == wanted_source else EffectVerdict.PENDING
+    if service in {"volume_up", "volume_down"}:
+        before = expectation.prior_position
+        have = _number(attrs.get("volume_level"))
+        if before is None or have is None:
+            return EffectVerdict.REACHED
+        up = service == "volume_up"
+        if (up and (have > before or before >= 1.0)) or (not up and (have < before or before <= 0.0)):
+            return EffectVerdict.REACHED
+        if (up and have < before) or (not up and have > before):
+            return EffectVerdict.CONTRARY
+        return EffectVerdict.PENDING
     return EffectVerdict.REACHED
 
 
@@ -406,6 +424,13 @@ async def async_settle_turn(hass: Any, outcomes: Any, options: Mapping[str, obje
     pending = [item for item in outcomes.pending if isinstance(item, PendingEffect)]
     settled = await async_settle(hass, pending, wait_seconds(options))
     outcomes.pending.clear()
+    for item in pending:
+        for exp in item.expectations:
+            verdict = item.verdicts.get(exp.entity_id, EffectVerdict.PENDING)
+            if verdict is EffectVerdict.PENDING:
+                outcomes.silent.append(exp.name)  # 7.9.3 B5: only not reported back
+            elif not verdict.success:
+                outcomes.contrary = True
     outcomes.kinds.extend(
         TurnOutcomeKind.EXECUTED if ok else TurnOutcomeKind.UNCONFIRMED for ok in settled.confirmed
     )

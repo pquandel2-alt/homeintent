@@ -59,6 +59,7 @@ from homeassistant.components.water_heater import (
     WaterHeaterEntity,
     WaterHeaterEntityFeature,
 )
+from homeassistant.components.weather import Forecast, WeatherEntity, WeatherEntityFeature
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -412,7 +413,23 @@ class SimMediaPlayer(SimEntity, MediaPlayerEntity):
         self._attr_state = MediaPlayerState(opts.get("state", "off"))
         self._attr_volume_level = 0.3
         self._attr_is_volume_muted = False
-        self._attr_media_title = "Morgenmagazin" if key == "kuechenradio" else None
+        # 7.9.3 B3: title and artist per source; "next" walks the playlist.
+        self._playlists: dict[str, list[tuple[str, str]]] = opts.get("playlists", {})
+        self._track = 0
+        self._attr_media_title = None
+        self._attr_media_artist = None
+        if self._attr_state in (MediaPlayerState.PLAYING, MediaPlayerState.PAUSED):
+            self._show_track()
+
+    def _show_track(self) -> None:
+        tracks = self._playlists.get(self._attr_source or "", [])
+        if tracks:
+            title, artist = tracks[self._track % len(tracks)]
+            self._attr_media_title = title
+            self._attr_media_artist = artist or None
+        else:
+            self._attr_media_title = self._attr_source
+            self._attr_media_artist = None
 
     def _set(self, state):
         self._attr_state = state
@@ -428,6 +445,7 @@ class SimMediaPlayer(SimEntity, MediaPlayerEntity):
 
     async def async_media_play(self):
         self._log("media_play")
+        self._show_track()
         self._set(MediaPlayerState.PLAYING)
 
     async def async_media_pause(self):
@@ -440,9 +458,15 @@ class SimMediaPlayer(SimEntity, MediaPlayerEntity):
 
     async def async_media_next_track(self):
         self._log("media_next_track")
+        self._track += 1
+        self._show_track()
+        self.async_write_ha_state()
 
     async def async_media_previous_track(self):
         self._log("media_previous_track")
+        self._track = max(0, self._track - 1)
+        self._show_track()
+        self.async_write_ha_state()
 
     async def async_set_volume_level(self, volume):
         self._log("volume_set", volume)
@@ -457,7 +481,19 @@ class SimMediaPlayer(SimEntity, MediaPlayerEntity):
     async def async_select_source(self, source):
         self._log("select_source", source)
         self._attr_source = source
+        self._track = 0
+        self._show_track()
         self._set(MediaPlayerState.PLAYING)
+
+    async def async_volume_up(self):
+        self._log("volume_up")
+        self._attr_volume_level = min(1.0, round((self._attr_volume_level or 0) + 0.1, 2))
+        self.async_write_ha_state()
+
+    async def async_volume_down(self):
+        self._log("volume_down")
+        self._attr_volume_level = max(0.0, round((self._attr_volume_level or 0) - 0.1, 2))
+        self.async_write_ha_state()
 
     async def async_play_media(self, media_type, media_id, **kwargs):
         self._log("play_media", {"media_type": media_type, "media_id": media_id})
@@ -901,6 +937,103 @@ class SimSatellite(SimEntity, AssistSatelliteEntity):
         })
 
 
+# ------------------------------------------------------------------- weather
+_DEFAULT_DAYS = (
+    {"condition": "partlycloudy", "temperature": 17.0, "templow": 9.0, "precipitation_probability": 10,
+     "precipitation": 0.0, "wind_speed": 12.0},
+    {"condition": "rainy", "temperature": 14.0, "templow": 8.0, "precipitation_probability": 80,
+     "precipitation": 6.2, "wind_speed": 28.0},
+    {"condition": "sunny", "temperature": 19.0, "templow": 10.0, "precipitation_probability": 5,
+     "precipitation": 0.0, "wind_speed": 9.0},
+    {"condition": "cloudy", "temperature": 16.0, "templow": 9.0, "precipitation_probability": 30,
+     "precipitation": 0.4, "wind_speed": 15.0},
+)
+
+
+class SimWeather(SimEntity, WeatherEntity):
+    """A weather entity with settable state and daily/hourly forecast
+    (7.9.3 B1): ``haus_sim.set`` with a dict ``{condition, temperature,
+    wind_speed, daily: {offset: {...}}, hourly: {offset: {...}}, rain_from_hour}``."""
+
+    _attr_supported_features = WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_precipitation_unit = "mm"
+    _attr_native_wind_speed_unit = "km/h"
+
+    def __init__(self, hass, key, name, opts):
+        self._sim_init(hass, "weather", key, name, opts)
+        self._attr_condition = opts.get("condition", "partlycloudy")
+        self._attr_native_temperature = opts.get("temperature", 12.3)
+        self._attr_native_wind_speed = opts.get("wind_speed", 11.0)
+        self._attr_humidity = 71
+        self._daily: dict[int, dict[str, Any]] = {}
+        self._hourly: dict[int, dict[str, Any]] = {}
+        self._rain_from_hour: int | None = None
+
+    def _days(self) -> list[Forecast]:
+        today = dt_util.start_of_local_day()
+        days: list[Forecast] = []
+        for offset in range(7):
+            base = dict(_DEFAULT_DAYS[offset % len(_DEFAULT_DAYS)])
+            base.update(self._daily.get(offset, {}))
+            base["datetime"] = (today + timedelta(days=offset, hours=12)).isoformat()
+            days.append(Forecast(**{
+                "datetime": base["datetime"], "condition": base["condition"],
+                "native_temperature": base["temperature"], "native_templow": base["templow"],
+                "precipitation_probability": base["precipitation_probability"],
+                "native_precipitation": base["precipitation"], "native_wind_speed": base["wind_speed"],
+            }))
+        return days
+
+    def _hours(self) -> list[Forecast]:
+        start = dt_util.now().replace(minute=0, second=0, microsecond=0)
+        hours: list[Forecast] = []
+        for offset in range(24):
+            rainy = self._rain_from_hour is not None and offset >= self._rain_from_hour
+            base: dict[str, Any] = {
+                "condition": "rainy" if rainy else "cloudy", "temperature": 12.0 + (offset % 6) * 0.5,
+                "precipitation_probability": 80 if rainy else 10, "precipitation": 1.2 if rainy else 0.0,
+                "wind_speed": 11.0,
+            }
+            base.update(self._hourly.get(offset, {}))
+            hours.append(Forecast(**{
+                "datetime": (start + timedelta(hours=offset)).isoformat(), "condition": base["condition"],
+                "native_temperature": base["temperature"],
+                "precipitation_probability": base["precipitation_probability"],
+                "native_precipitation": base["precipitation"], "native_wind_speed": base["wind_speed"],
+            }))
+        return hours
+
+    async def async_forecast_daily(self) -> list[Forecast] | None:
+        return self._days()
+
+    async def async_forecast_hourly(self) -> list[Forecast] | None:
+        return self._hours()
+
+    def set_value(self, value: Any) -> None:
+        if not isinstance(value, dict):
+            self._attr_condition = str(value)
+        else:
+            if "condition" in value:
+                self._attr_condition = value["condition"]
+            if "temperature" in value:
+                self._attr_native_temperature = value["temperature"]
+            if "wind_speed" in value:
+                self._attr_native_wind_speed = value["wind_speed"]
+            for key, target in (("daily", self._daily), ("hourly", self._hourly)):
+                for offset, item in (value.get(key) or {}).items():
+                    target[int(offset)] = dict(item)
+            if "rain_from_hour" in value:
+                raw = value["rain_from_hour"]
+                self._rain_from_hour = None if raw is None else int(raw)
+            if value.get("reset_forecast"):
+                self._daily.clear()
+                self._hourly.clear()
+                self._rain_from_hour = None
+        self.async_write_ha_state()
+        self.hass.async_create_task(self.async_update_listeners(("daily", "hourly")))
+
+
 CLASSES = {
     "light": SimLight,
     "assist_satellite": SimSatellite,
@@ -925,6 +1058,7 @@ CLASSES = {
     "device_tracker": SimTracker,
     "notify": SimNotify,
     "tts": SimTTS,
+    "weather": SimWeather,
 }
 
 

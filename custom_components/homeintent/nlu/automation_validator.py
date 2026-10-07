@@ -134,6 +134,13 @@ def validate_automation(
         return AutomationValidationError.UNSAFE_ACCESS_OPENING
     if entities is not None and open_ended_irrigation(model.actions, entities):
         return AutomationValidationError.IRRIGATION_WITHOUT_END
+    if any(trigger.type is TriggerType.WEATHER for trigger in model.triggers) and model.weather_guard is None:
+        return AutomationValidationError.INVALID_PARAMETER  # 7.9.3: a forecast trigger needs its check
+    if model.weather_guard is not None and entities is not None:
+        from ..weather import validate_guard
+
+        if validate_guard(model.weather_guard, entities) is not None:
+            return AutomationValidationError.INVALID_PARAMETER
     return None
 
 
@@ -195,6 +202,7 @@ _TRIGGER_REQUIRED_FIELDS: dict[TriggerType, tuple[str, ...]] = {
     TriggerType.CALENDAR_TIME: (),
     TriggerType.WEEKDAY: ("weekdays",),
     TriggerType.CALENDAR: ("calendar_entity_id", "calendar_event"),
+    TriggerType.WEATHER: ("target",),
 }
 
 _CONDITION_REQUIRED_FIELDS: dict[ConditionType, tuple[str, ...]] = {

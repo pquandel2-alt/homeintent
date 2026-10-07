@@ -8,7 +8,10 @@ creates something lasting goes through the established preview and "Ja"
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import logging
+import re
+from dataclasses import replace
+from typing import Any, Awaitable, Callable
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
@@ -32,9 +35,12 @@ from ..house_report import (
     render_weekly,
     validate_report_config,
 )
+from ..const import CONF_SHARE_HOUSEHOLD_LOCATION
+from ..media import now_playing, parse_media_request, resolve_media
+from ..presence_query import HABIT_DAYS, PersonState, answer_presence, arrivals, parse_presence_query
 from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
 from ..execution_trace import TRACE_DATA_KEY
-from ..history_query import async_read_state_rows
+from ..history_query import async_read_forecast, async_read_state_rows
 from ..automation_ownership import HOUSEHOLD_OWNER
 from ..dialog_manager import DialogPriority, DialogTaskKind
 from ..execution_trace import actor_hash
@@ -77,7 +83,22 @@ from ..energy_query import (
     parse_energy_query,
     samples_reader,
 )
-from ..entities import EntitySnapshot
+from ..entities import EntitySnapshot, normalize_for_compare
+from ..weather import (
+    WeatherClause,
+    WeatherGuard,
+    WeatherTurn,
+    answer_weather,
+    begin_weather_turn,
+    build_guard,
+    guard_holds_now,
+    needs_hourly,
+    parse_weather_clause,
+    parse_weather_query,
+    resume_weather_turn,
+    weather_entities,
+    weather_turn,
+)
 
 
 class InsightsController:
@@ -92,6 +113,7 @@ class InsightsController:
         runtime: Any,
         automations: Any,
         entities: Callable[[], list[EntitySnapshot]] | None = None,
+        devices: Any = None,
     ) -> None:
         self._hass = hass
         self.entry = entry
@@ -100,10 +122,18 @@ class InsightsController:
         self._entities_of = entities or (lambda: [])
         # Events of a summary not yet spoken, per conversation (B1).
         self._rest: dict[str, tuple[SummaryEvent, ...]] = {}
+        self._rerun: Callable[[conversation.ConversationInput], Awaitable[conversation.ConversationResult]] | None = None
+        self._rerunning = False
+        self._area_id: str | None = None
+        self.devices: Any = devices  # the device controller (the one write path)
 
     @property
     def hass(self) -> HomeAssistant:
         return self._hass()
+
+    def begin_turn(self, conversation_id: str | None) -> None:
+        """A new turn: the conversation's open rain clause, if any (B1/B4)."""
+        resume_weather_turn(conversation_id)
 
     def _answer(
         self, user_input: conversation.ConversationInput, response: intent.IntentResponse, text: str
@@ -130,16 +160,153 @@ class InsightsController:
         response: intent.IntentResponse,
         entities: list[EntitySnapshot],
         active_dialog: Any = None,
+        rerun: Callable[[conversation.ConversationInput], Awaitable[conversation.ConversationResult]] | None = None,
+        open_task: bool = False,
+        area_id: str | None = None,
     ) -> conversation.ConversationResult | None:
         """Read-only answers - before the situation view, which would answer
         "während ich weg war" with the current state."""
         if active_dialog is not None:
             return None
+        self._rerun = rerun
+        if (
+            not open_task and not self._rerunning and weather_turn() is not None
+            and parse_weather_clause(user_input.text) is None
+        ):
+            # A fresh, unrelated sentence ends an unfinished rain clause.
+            begin_weather_turn(None, user_input.conversation_id)
+        self._area_id = area_id
         await self._async_habits()
         try:
+            weather = await self._async_weather(user_input, response, entities)
+            if weather is not None:
+                return weather
             return await self._async_reading(user_input, response, entities)
         finally:
             await self._async_flush_habits()
+
+    # --- 7.9.3 B1/B4 weather and rain --------------------------------------------
+
+    async def _async_forecast(self, entity_id: str, kind: str) -> list[dict[str, Any]] | None:
+        """``weather.get_forecasts`` through the one read adapter."""
+        return await async_read_forecast(self.hass, entity_id, kind)
+
+    async def _async_weather(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        now = dt_util.now()
+        if weather_turn() is None:
+            clause = parse_weather_clause(user_input.text)
+            if clause is not None:
+                return await self._async_rain_rule(user_input, response, clause, entities)
+        query = parse_weather_query(user_input.text, now)
+        if query is None or _names_a_place_or_device(user_input.text, entities):
+            return None
+        weathers = weather_entities(entities)
+        if not weathers:
+            if query.topic == "temperature":
+                return None  # the established temperature answers stay
+            return self._answer(
+                user_input, response,
+                "Ich habe keine Wettervorhersage in Home Assistant (keine Wetter-Entität). Raten möchte ich nicht.",
+            )
+        chosen = [entity for entity in weathers if normalize_for_compare(entity.friendly_name) in
+                  normalize_for_compare(user_input.text)]
+        if len(chosen) != 1 and len(weathers) > 1:
+            listed = " oder ".join(f"„{entity.friendly_name}“" for entity in weathers)
+            question = f"Welche Wettervorhersage meinst du: {listed}?"
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id, "monitor-part", DialogTaskKind.MONITOR_PART, DialogPriority.SELECTION,
+                reason="Mehrere Wettervorhersagen.", requested_by_user_id=conversation_user_id(user_input),
+                payload=PartRequest(MissingPart.SOURCE, question, original_text=user_input.text,
+                                    choices=tuple(entity.friendly_name for entity in weathers)),
+            )
+            return self._result(user_input, response, question)
+        entity = chosen[0] if len(chosen) == 1 else weathers[0]
+        forecast: list[dict[str, Any]] | None = None
+        if query.days:
+            forecast = await self._async_forecast(entity.entity_id, "hourly" if needs_hourly(query) else "daily")
+        return self._answer(user_input, response, answer_weather(query, entity, forecast, now))
+
+    async def _async_rain_rule(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        clause: WeatherClause, entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        """A request with a rain clause: the rest becomes the automation (or
+        the command), the clause its trigger or condition."""
+        rest = clause.rest
+        if not rest or self._rerun is None:
+            return None
+        notify = _notifies(rest)
+        kinds = clause.kinds
+        if clause.role == "trigger" and notify and kinds == ("rain_soon",):
+            kinds = ("rain_today",)  # a message about rain: once a day, at a set time
+        guard, problem = build_guard(kinds, entities)
+        if guard is None:
+            assert problem is not None
+            if problem.startswith("Welche"):
+                return self._result(user_input, response, problem)
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id, "weather-offer", DialogTaskKind.REPORT_CONFIRMATION,
+                DialogPriority.CONFIRMATION, reason="Angebot ohne Regenbedingung.",
+                requested_by_user_id=conversation_user_id(user_input), payload=("without", rest),
+            )
+            return self._result(
+                user_input, response,
+                f"{problem} Die Bedingung „{clause.spoken}“ kann ich deshalb nicht prüfen. "
+                f"Soll ich „{rest.rstrip('.!?')}“ ohne diese Bedingung einrichten?",
+            )
+        if clause.role == "guard":
+            if _scheduled(rest):
+                begin_weather_turn(WeatherTurn(user_input.text, "guard", guard), user_input.conversation_id)
+                return await self._async_rerun(replace(user_input, text=rest))
+            holds, reason = await self._async_guard_now(guard, entities)
+            if not holds:
+                return self._result(
+                    user_input, response, f"{reason}; deshalb führe ich „{rest.rstrip('.!?')}“ jetzt nicht aus."
+                )
+            return await self._rerun(replace(user_input, text=rest))
+        clock = _CLOCK_RE.search(rest) or _CLOCK_RE.search(user_input.text)
+        if notify and "rain_today" in guard.kinds and clock is None:
+            question = "Um wie viel Uhr soll ich in der Vorhersage nachsehen? Sag zum Beispiel: „um 7 Uhr“."
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id, "monitor-part", DialogTaskKind.MONITOR_PART, DialogPriority.FOLLOWUP,
+                reason="Eine Rückfrage nach der Uhrzeit ist offen.", requested_by_user_id=conversation_user_id(user_input),
+                payload=PartRequest(MissingPart.CLOCK, question, original_text=user_input.text),
+            )
+            return self._result(user_input, response, question)
+        body = _CLOCK_RE.sub("", rest).strip(" ,") if clock is not None else rest
+        when = f"um {int(clock.group('hour'))}:{int(clock.group('minute') or 0):02d} Uhr" if clock else "um 0:00 Uhr"
+        # The rest is read as a daily automation; its trigger is replaced by
+        # the rain trigger at the preview (``weather.attach``).
+        begin_weather_turn(WeatherTurn(user_input.text, "trigger", guard), user_input.conversation_id)
+        return await self._async_rerun(replace(user_input, text=f"Jeden Tag {when} {body[:1].lower()}{body[1:]}"))
+
+    async def _async_rerun(self, again: conversation.ConversationInput) -> conversation.ConversationResult:
+        """The rest of a request read again, with the rain clause kept."""
+        assert self._rerun is not None
+        self._rerunning = True
+        try:
+            return await self._rerun(again)
+        finally:
+            self._rerunning = False
+
+    async def _async_guard_now(self, guard: WeatherGuard, entities: list[EntitySnapshot]) -> tuple[bool, str]:
+        hourly = daily = None
+        if guard.weather_entity_id is not None and "rain_soon" in guard.kinds:
+            hourly = await self._async_forecast(guard.weather_entity_id, "hourly")
+        if guard.weather_entity_id is not None and {"no_rain_today", "rain_today"} & set(guard.kinds):
+            daily = await self._async_forecast(guard.weather_entity_id, "daily")
+        states = {entity.entity_id: entity.state for entity in entities}
+        held: dict[str, float] = {}
+        now = dt_util.utcnow()
+        for entity_id in (guard.rain_sensor_id, guard.rain_amount_id):
+            state = self.hass.states.get(entity_id) if entity_id else None
+            changed = getattr(state, "last_changed", None)
+            if entity_id and changed is not None:
+                held[entity_id] = (now - changed).total_seconds()
+        return guard_holds_now(guard, states, held, hourly, daily)
 
     async def _async_reading(
         self,
@@ -156,7 +323,20 @@ class InsightsController:
             handled = await self._async_vacation_answer(user_input, response, task, entities)
             if handled is not None:
                 return handled
-        if task is not None and task.kind is DialogTaskKind.REPORT_CONFIRMATION:
+        if task is not None and task.kind is DialogTaskKind.REPORT_CONFIRMATION and (
+            isinstance(task.payload, tuple) and task.payload[:1] == ("without",)
+        ):
+            # "Soll ich das ohne die Regenbedingung einrichten?" (7.9.3 B4)
+            if task.requested_by_user_id in {None, conversation_user_id(user_input)}:
+                reply = _yes_no(user_input.text)
+                if reply is ConfirmationReply.UNCLEAR and len(user_input.text.split()) <= 3:
+                    return self._result(user_input, response, "Bitte antworte mit Ja oder Nein.")
+                self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+                if reply is ConfirmationReply.NO:
+                    return self._result(user_input, response, "In Ordnung, ich richte nichts ein.")
+                if reply is ConfirmationReply.YES and self._rerun is not None:
+                    return await self._rerun(replace(user_input, text=task.payload[1]))
+        elif task is not None and task.kind is DialogTaskKind.REPORT_CONFIRMATION:
             handled = await self._async_report_answer(user_input, response, task, entities)
             if handled is not None:
                 return handled
@@ -179,6 +359,12 @@ class InsightsController:
             answered = self._habit_request(user_input, response, habit, entities)
             if answered is not None:
                 return answered
+        media = await self._async_media(user_input, response, entities)
+        if media is not None:  # "Pause", "Spiel Bayern 3 in der Küche", "Was läuft gerade?" (7.9.3 B3)
+            return media
+        presence = await self._async_presence(user_input, response, entities)
+        if presence is not None:  # "Wo ist Anna?" (7.9.3 B2)
+            return presence
         summary = parse_summary_query(user_input.text, dt_util.now())
         if summary is not None:  # "Was war los, während ich weg war?" (B1)
             return self._answer(user_input, response, await self._async_summary(user_input, summary, entities))
@@ -231,6 +417,72 @@ class InsightsController:
         if rest:
             self._rest[user_input.conversation_id or ""] = rest
         return text
+
+    # --- 7.9.3 B3 music and media ---------------------------------------------
+
+    async def _async_media(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        request = parse_media_request(user_input.text)
+        if request is None or self.devices is None:
+            return None
+        if request.op == "query":
+            return self._answer(user_input, response, now_playing(request, entities, self._area_id))
+        resolved = resolve_media(request, entities, satellite_area_id=self._area_id)
+        if resolved.plan is None:
+            if resolved.question:
+                return self._result(user_input, response, resolved.spoken)
+            return self._answer(user_input, response, resolved.spoken)
+        # The one write path: policy, service_executor, tone and effect wait.
+        from ..engine import MatchResult
+
+        return await self.devices.async_handle_match_result(
+            user_input, response, MatchResult(plan=resolved.plan, response_text=resolved.spoken), entities
+        )
+
+    # --- 7.9.3 B2 where is someone ----------------------------------------------
+
+    async def _async_presence(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        """Only released (exposed) persons; ``last_changed`` from the state."""
+        tz_now = dt_util.now()
+        people: list[PersonState] = []
+        for entity in entities:
+            if entity.domain != "person":
+                continue
+            state = self.hass.states.get(entity.entity_id) if hasattr(self.hass, "states") else None
+            changed = getattr(state, "last_changed", None)
+            people.append(PersonState(
+                entity.entity_id, entity.friendly_name, entity.state,
+                dt_util.as_local(changed) if changed is not None else None,
+            ))
+        if not people:
+            return None
+        query = parse_presence_query(user_input.text, [person.name for person in people])
+        if query is None or query.kind == "is_home" or (
+            query.kind == "who_home" and _words_of(user_input.text)[:1] == ["wer"]
+        ):
+            return None  # "Wer ist zuhause?", "Ist Anna zuhause?" keep their established answer
+        contexts = getattr(self._runtime, "user_contexts", None)
+        actor = conversation_user_id(user_input)
+        binding = contexts.resolve_current_person(actor) if contexts is not None and actor else None
+        history: dict[str, list[datetime]] | None = None
+        if query.kind in {"arrived", "will_arrive"}:
+            ids = [person.entity_id for person in people]
+            rows = await async_read_state_rows(self.hass, ids, tz_now - timedelta(days=HABIT_DAYS), tz_now)
+            if rows is not None:
+                history = {key: arrivals([(moment, state) for moment, state, _ in value]) for key, value in rows.items()}
+        text = answer_presence(
+            query, people, tz_now,
+            speaker_person=binding.person_entity_id if binding is not None else None,
+            is_admin=await user_is_admin(self.hass, user_input),
+            share=bool(self.entry.options.get(CONF_SHARE_HOUSEHOLD_LOCATION, False)),
+            arrival_history=history,
+        )
+        return self._answer(user_input, response, text)
 
     # --- 7.9.3 A6/B6 pushed reports ----------------------------------------------
 
@@ -684,6 +936,45 @@ class InsightsController:
             user_input, response,
             _match_result(model, render_automation_tree(model), validate_automation(model)), entities,
         )
+
+
+_LOGGER = logging.getLogger(__name__)
+_CLOCK_RE = re.compile(r"\bum\s+(?P<hour>\d{1,2})(?:[:.](?P<minute>\d{2}))?\s*(?:uhr)?\b", re.IGNORECASE)
+_NOTIFY_WORDS = frozenset({
+    "bescheid", "nachricht", "push", "benachrichtige", "benachrichtigung", "informiere", "warne", "melde",
+    "erinnere", "schick", "schicke", "sende",
+})
+_SCHEDULE_WORDS = frozenset({
+    "jeden", "jede", "jedes", "taeglich", "morgens", "abends", "mittags", "nachts", "werktags", "wochentags",
+    "montags", "dienstags", "mittwochs", "donnerstags", "freitags", "samstags", "sonntags", "immer", "wenn",
+    "sobald", "sonnenaufgang", "sonnenuntergang", "uhr",
+})
+
+
+def _words_of(text: str) -> list[str]:
+    return "".join(char if char.isalnum() else " " for char in normalize_for_compare(text)).split()
+
+
+def _notifies(text: str) -> bool:
+    words = set(_words_of(text))
+    return bool(words & _NOTIFY_WORDS) and not words & {"oeffne", "schliesse", "fahr", "fahre", "schalte", "mach"}
+
+
+def _scheduled(text: str) -> bool:
+    """A time or event in the rest: an automation, not a command now."""
+    return bool(set(_words_of(text)) & _SCHEDULE_WORDS) or _CLOCK_RE.search(text) is not None
+
+
+def _names_a_place_or_device(text: str, entities: list[EntitySnapshot]) -> bool:
+    """"Wie warm wird es im Büro?" is no weather question."""
+    words = set(_words_of(text))
+    for entity in entities:
+        if entity.domain == "weather":
+            continue
+        area = normalize_for_compare(entity.area_name or "")
+        if area and area not in {"garten", "terrasse"} and area in words:
+            return True
+    return False
 
 
 def _asks_more(text: str) -> bool:

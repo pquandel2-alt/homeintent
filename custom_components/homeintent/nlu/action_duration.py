@@ -122,8 +122,11 @@ def split_action_duration(text: str) -> tuple[int | None, str]:
         bare = not lead_for and not long_form
         if not lead_for and start > 0 and words[start - 1] in _TEMPORAL_LEAD:
             continue
-        if bare and (end != len(words) or start < 2):
-            continue  # a bare duration must close the clause after an action
+        # A bare duration must close the clause after an action - an
+        # irrigation verb is a whole action by itself ("Bewässere 20 Minuten").
+        verb_alone = start == 1 and _IRRIGATION_VERB_RE.match(words[0]) is not None
+        if bare and (end != len(words) or (start < 2 and not verb_alone)):
+            continue
         seconds = _seconds(amount, unit)
         if seconds is None:
             continue

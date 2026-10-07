@@ -34,6 +34,15 @@ gets ``media_player.play_media`` with ``announce: true``.
 The sound is the integration's own ``sounds/confirm.mp3`` (synthesized for
 this project, no third-party rights), served on a static path registered
 like ``assist_satellite`` registers its ``preannounce.mp3``.
+
+7.9.3 B5: a second sound, ``sounds/notice.mp3`` (synthesized with ffmpeg
+from two sine tones, 740 Hz then 494 Hz, no third-party rights), is played
+for exactly one case: everything ran, but at least one device did not
+report back within the wait (``UNCONFIRMED`` without wrong direction and
+not unavailable).  Optionally (``notice_says_name``, on by default) a very
+short announcement names the device ("Stehlampe meldet sich nicht.").
+Wrong direction, unavailable devices, partial success, errors and
+questions are still spoken.
 """
 
 from __future__ import annotations
@@ -47,6 +56,8 @@ from typing import Any, Mapping
 
 from .const import (
     CONF_CONFIRMATION_MEDIA_ID,
+    CONF_NOTICE_MEDIA_ID,
+    CONF_NOTICE_SAYS_NAME,
     CONF_RESPONSE_STYLE,
     DEFAULT_RESPONSE_STYLE,
     RESPONSE_STYLE_TONE,
@@ -58,6 +69,8 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIRM_SOUND_PATH = Path(__file__).parent / "sounds" / "confirm.mp3"
 CONFIRM_SOUND_URL = "/api/homeintent/static/confirm.mp3"
+NOTICE_SOUND_PATH = Path(__file__).parent / "sounds" / "notice.mp3"
+NOTICE_SOUND_URL = "/api/homeintent/static/notice.mp3"
 DONE_TEXT = "Erledigt."
 # The pipeline returns to idle right after RUN_END; wait at most this long.
 IDLE_TIMEOUT_SECONDS = 15.0
@@ -81,6 +94,7 @@ class ResponseDecision(Enum):
     SPEAK = "speak"
     TONE = "tone"
     DONE_TEXT = "done_text"
+    NOTICE = "notice"  # 7.9.3 B5: done, but a device did not report back
 
 
 @dataclass(frozen=True)
@@ -102,6 +116,11 @@ def decide_response(
     """The one decision: speech or tone. Pure and typed."""
     if style != RESPONSE_STYLE_TONE:
         return ResponseDecision.SPEAK
+    if (
+        not awaiting_answer and not error and not query_answer and outcomes.only_not_reported
+        and channel in {ResponseChannel.SATELLITE, ResponseChannel.MEDIA_PLAYER}
+    ):
+        return ResponseDecision.NOTICE
     if awaiting_answer or error or query_answer or not outcomes.fully_executed:
         # Questions, failures, refusals, partial results, unconfirmed
         # effects, answers and learned facts are said.
@@ -179,11 +198,14 @@ async def _async_wait_idle(hass: Any, entity_id: str, timeout: float) -> bool:
     return False
 
 
-async def async_play_tone(hass: Any, target: ToneTarget, media_id: str) -> bool:
+async def async_play_tone(hass: Any, target: ToneTarget, media_id: str, message: str | None = None) -> bool:
     """Play exactly one tone on ``target``; on failure say "Erledigt." there.
 
+    With ``message`` (7.9.3 B5, the second tone) a satellite plays the tone
+    as pre-announcement and then says the very short message.
     Runs after the turn returned. Returns whether the tone was played.
     """
+    fallback = message or DONE_TEXT
     stats = _stats(hass)
     assert target.entity_id is not None
     try:
@@ -191,10 +213,13 @@ async def async_play_tone(hass: Any, target: ToneTarget, media_id: str) -> bool:
             if not await _async_wait_idle(hass, target.entity_id, IDLE_TIMEOUT_SECONDS):
                 raise TimeoutError(f"{target.entity_id} did not return to idle")
             await asyncio.sleep(IDLE_GRACE_SECONDS)
+            announce: dict[str, Any] = (
+                {"entity_id": target.entity_id, "message": message, "preannounce": True,
+                 "preannounce_media_id": media_id}
+                if message else {"entity_id": target.entity_id, "media_id": media_id, "preannounce": False}
+            )
             await hass.services.async_call(
-                "assist_satellite", "announce",
-                {"entity_id": target.entity_id, "media_id": media_id, "preannounce": False},
-                blocking=True, context=system_context(),
+                "assist_satellite", "announce", announce, blocking=True, context=system_context(),
             )
         else:
             url = media_id
@@ -222,7 +247,7 @@ async def async_play_tone(hass: Any, target: ToneTarget, media_id: str) -> bool:
             try:
                 await hass.services.async_call(
                     "assist_satellite", "announce",
-                    {"entity_id": target.entity_id, "message": DONE_TEXT, "preannounce": False},
+                    {"entity_id": target.entity_id, "message": fallback, "preannounce": False},
                     blocking=True, context=system_context(),
                 )
                 stats["spoken_fallback"] = stats.get("spoken_fallback", 0) + 1
@@ -233,17 +258,25 @@ async def async_play_tone(hass: Any, target: ToneTarget, media_id: str) -> bool:
     return True
 
 
-def media_id_for(options: Mapping[str, object]) -> str:
+def media_id_for(options: Mapping[str, object], *, notice: bool = False) -> str:
     """The configured local sound, else the built-in one - never an external
     URL (same rule as the timer chime)."""
-    custom = options.get(CONF_CONFIRMATION_MEDIA_ID)
+    custom = options.get(CONF_NOTICE_MEDIA_ID if notice else CONF_CONFIRMATION_MEDIA_ID)
     if isinstance(custom, str):
         custom = custom.strip()
         if custom.startswith(("media-source://", "/local/", "/api/")):
             return custom
         if custom:
             _LOGGER.warning("Ignoring non-local confirmation sound %s", custom)
-    return CONFIRM_SOUND_URL
+    return NOTICE_SOUND_URL if notice else CONFIRM_SOUND_URL
+
+
+def notice_text(names: list[str]) -> str:
+    """"Stehlampe meldet sich nicht." - very short."""
+    unique = list(dict.fromkeys(names))
+    if len(unique) == 1:
+        return f"{unique[0]} meldet sich nicht."
+    return f"{', '.join(unique[:-1])} und {unique[-1]} melden sich nicht."
 
 
 def style_of(options: Mapping[str, object]) -> str:
@@ -278,6 +311,13 @@ def apply_response_style(
     )
     if decision is ResponseDecision.DONE_TEXT:
         response.async_set_speech(DONE_TEXT)
+    elif decision is ResponseDecision.NOTICE:
+        response.async_set_speech("")
+        message = notice_text(outcomes.silent) if bool(options.get(CONF_NOTICE_SAYS_NAME, True)) else None
+        hass.async_create_background_task(
+            async_play_tone(hass, target, media_id_for(options, notice=True), message=message),
+            "homeintent_notice_tone",
+        )
     elif decision is ResponseDecision.TONE:
         response.async_set_speech("")
         hass.async_create_background_task(
@@ -296,14 +336,17 @@ async def async_register_sound(hass: Any) -> None:
         return
     from homeassistant.components.http import StaticPathConfig
 
-    await http.async_register_static_paths(
-        [StaticPathConfig(CONFIRM_SOUND_URL, str(CONFIRM_SOUND_PATH), cache_headers=True)]
-    )
+    await http.async_register_static_paths([
+        StaticPathConfig(CONFIRM_SOUND_URL, str(CONFIRM_SOUND_PATH), cache_headers=True),
+        StaticPathConfig(NOTICE_SOUND_URL, str(NOTICE_SOUND_PATH), cache_headers=True),
+    ])
     data[CONFIRM_SOUND_URL] = True
 
 
 __all__ = (
     "CONFIRM_SOUND_URL",
+    "NOTICE_SOUND_URL",
+    "notice_text",
     "apply_response_style",
     "DONE_TEXT",
     "ResponseChannel",

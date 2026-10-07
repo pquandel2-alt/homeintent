@@ -3,8 +3,9 @@
 Matrix: every kind of turn result x both styles x every channel
 (satellite, media player of the device, text without device, device
 without playback). Checked: speech empty or not, exactly 0 or 1 tone (never
-two), and the tone's target device. Partial success, an unconfirmed effect
-and "nothing executed" always speak, also with ``tone`` (mandatory).
+two), and the tone's target device. Partial success and "nothing executed"
+always speak, also with ``tone`` (mandatory); an effect that ran but did not
+report back is the second tone (7.9.3 B5).
 
 The tone runs after the turn (the satellite must be idle again); the test
 awaits the background task like Home Assistant's loop would.
@@ -160,6 +161,18 @@ def test_tone_style_matrix(monkeypatch, tmp_path, kind, channel):
             assert data["entity_id"] == SPEAKER and data.get("announce") is True
     elif kind in _TONE_KINDS and channel == "text":
         assert speech == "Erledigt." and device.tones == []
+    elif kind == "unconfirmed" and channel in {"satellite", "media_player"}:
+        # 7.9.3 B5 (changed expectation): ran, but did not report back -
+        # exactly one second tone instead of a sentence.
+        assert speech == "" and len(device.tones) == 1, (kind, speech)
+        domain, service, data = device.tones[0]
+        if channel == "satellite":
+            assert (domain, service) == ("assist_satellite", "announce")
+            assert data["preannounce_media_id"] == "/api/homeintent/static/notice.mp3"
+            assert data["message"] == "Flurlicht meldet sich nicht."
+        else:
+            assert (domain, service) == ("media_player", "play_media")
+            assert data["media_content_id"].endswith("/api/homeintent/static/notice.mp3")
     else:
         assert speech.strip(), (kind, channel)
         assert speech != "Erledigt."
@@ -179,7 +192,9 @@ def test_spoken_style_never_plays_a_tone(monkeypatch, tmp_path, kind, channel):
     assert device.tones == []
 
 
-@pytest.mark.parametrize("kind", ["partial", "unconfirmed", "refusal", "no_after_preview"])
+# 7.9.3 B5: "unconfirmed" (ran, no report) is the second tone now (see the
+# matrix above); partial success and nothing done still always speak.
+@pytest.mark.parametrize("kind", ["partial", "refusal", "no_after_preview"])
 def test_partial_unconfirmed_and_nothing_done_always_speak(monkeypatch, tmp_path, kind):
     house, device = _house(monkeypatch, tmp_path, "tone", channel="satellite")
     _prepare(device, kind)

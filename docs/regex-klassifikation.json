@@ -1419,6 +1419,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/controllers/insights.py::_CLOCK_RE::9829b13a5f",
+   "datei": "custom_components/homeintent/controllers/insights.py",
+   "bereich": "_CLOCK_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_learning_turn::43238faadb",
    "datei": "custom_components/homeintent/controllers/learning.py",
    "bereich": "LearningController.async_handle_learning_turn",
@@ -5255,7 +5262,21 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/weather.py::parse_weather_clause::b94235bddd",
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::8f774b4d88",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "parse_weather_clause",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::f51444c14f",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "parse_weather_clause",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::995d336b42",
    "datei": "custom_components/homeintent/weather.py",
    "bereich": "parse_weather_clause",
    "klasse": "LEXICAL",
@@ -5284,7 +5305,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 398,
+  "LEXICAL": 401,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 147,
   "SEMANTIC_SENTENCE_PATTERN": 171

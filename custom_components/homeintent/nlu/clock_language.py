@@ -113,7 +113,10 @@ def _read(words: list[str], start: int) -> tuple[int, int, int] | None:
     minute = 0
     if index < len(words):
         spoken = _minute(words[index])
-        if spoken is not None:
+        # "um 6 Uhr 20 Minuten" is 6 o'clock and a duration (7.9.3 B4),
+        # "um 6 Uhr 20" is 6:20.
+        duration = index + 1 < len(words) and words[index + 1] in _UNITS
+        if spoken is not None and not duration:
             minute, index = spoken, index + 1
     if minute == 0:
         return None  # "um sieben Uhr" is already understood everywhere

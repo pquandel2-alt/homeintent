@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from ..already_met import AlreadyMet, MetReply, already_met, classify_met_reply, met_message, met_question
 from ..automation_executor import AutomationExecutor
+from ..weather import attach as attach_weather, consume_weather_turn, validate_guard
 from ..automation_grounding import looks_like_selection_reply
 from ..automation_wizard import AutomationWizardStage, AutomationWizardState, parse_lifetime
 from ..const import CONF_ALLOW_NON_ADMIN_AUTOMATIONS
@@ -326,6 +327,18 @@ class AutomationController:
             )
             response.async_set_speech(question)
             return
+        rain = consume_weather_turn(user_input.conversation_id)
+        if rain is not None:
+            # 7.9.3 B1/B4: the rain trigger or condition of this request.
+            model = attach_weather(model, rain)
+            problem = validate_guard(rain.guard, entities)
+            if problem is not None or validate_automation(model, entities) is not None:
+                self._context_store.clear(user_input.conversation_id)
+                response.async_set_speech(
+                    f"Diese Regenbedingung kann ich nicht sicher einrichten ({problem or 'ungültig'}). "
+                    "Ich habe nichts angelegt."
+                )
+                return
         offer, refusal = self._guard_access(model, entities)
         prefix = ""
         if refusal is not None:

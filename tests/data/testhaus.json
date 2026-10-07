@@ -269,6 +269,25 @@
   ]
  },
  {
+  "entity_id": "binary_sensor.regensensor",
+  "state": "off",
+  "attributes": {
+   "device_class": "moisture",
+   "friendly_name": "Regensensor"
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
   "entity_id": "binary_sensor.schlafzimmerfenster",
   "state": "off",
   "attributes": {
@@ -1779,7 +1798,8 @@
    "media_title": "Morgenmagazin",
    "source": "Radio Bob",
    "friendly_name": "Küchenradio",
-   "supported_features": 24509
+   "supported_features": 24509,
+   "media_artist": "Radio Bob"
   },
   "aliases": [],
   "area_id": "kuche",
@@ -2470,6 +2490,27 @@
   ]
  },
  {
+  "entity_id": "sensor.regenmenge",
+  "state": "0.0",
+  "attributes": {
+   "state_class": "total_increasing",
+   "unit_of_measurement": "mm",
+   "device_class": "precipitation",
+   "friendly_name": "Regenmenge heute"
+  },
+  "aliases": [],
+  "area_id": "garten",
+  "area_name": "Garten",
+  "area_aliases": [],
+  "floor_id": "aussenbereich",
+  "floor_name": "Außenbereich",
+  "floor_level": null,
+  "floor_aliases": [
+   "außen",
+   "draußen"
+  ]
+ },
+ {
   "entity_id": "sensor.stromverbrauch_haus",
   "state": "432",
   "attributes": {
@@ -3005,5 +3046,29 @@
   "floor_aliases": [
    "Untergeschoss"
   ]
+ },
+ {
+  "entity_id": "weather.zuhause",
+  "state": "partlycloudy",
+  "attributes": {
+   "temperature": 12.3,
+   "temperature_unit": "°C",
+   "humidity": 71,
+   "pressure_unit": "hPa",
+   "wind_speed": 11.0,
+   "wind_speed_unit": "km/h",
+   "visibility_unit": "km",
+   "precipitation_unit": "mm",
+   "friendly_name": "Wettervorhersage",
+   "supported_features": 3
+  },
+  "aliases": [],
+  "area_id": null,
+  "area_name": null,
+  "area_aliases": [],
+  "floor_id": null,
+  "floor_name": null,
+  "floor_level": null,
+  "floor_aliases": []
  }
 ]

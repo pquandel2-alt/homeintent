@@ -35,16 +35,29 @@ CONF_RESPONSE_STYLE = "response_style"
 RESPONSE_STYLE_SPOKEN = "spoken"
 RESPONSE_STYLE_TONE = "tone"
 RESPONSE_STYLES = (RESPONSE_STYLE_SPOKEN, RESPONSE_STYLE_TONE)
+# 7.9.3 B5: new installations get "tone" (written into their options by
+# the config flow).  An entry created before 7.9.3 without a stored value
+# keeps the behaviour it had: a missing key still means "spoken".
 DEFAULT_RESPONSE_STYLE = RESPONSE_STYLE_SPOKEN
+NEW_INSTALL_RESPONSE_STYLE = RESPONSE_STYLE_TONE
 # Optional own sound (media-source:// or a local /local/... path); empty:
 # the integration's own confirm.mp3.
 CONF_CONFIRMATION_MEDIA_ID = "confirmation_media_id"
+# 7.9.3 B5: the second sound for "everything ran, but a device has not
+# reported back"; empty: the integration's own notice.mp3.  With
+# ``notice_says_name`` the tone is followed by a very short announcement
+# ("Stehlampe meldet sich nicht.").
+CONF_NOTICE_MEDIA_ID = "notice_media_id"
+CONF_NOTICE_SAYS_NAME = "notice_says_name"
 # 7.9.2 A1: bounded wait for a device's state report after a write.
 CONF_EFFECT_WAIT_SECONDS = "effect_wait_seconds"
 DEFAULT_EFFECT_WAIT_SECONDS = 2.0
 # 7.9.2 A3: voice devices without a signed-in user speak for the household
 # (manage shared monitors/automations only). Off by default.
 CONF_HOUSEHOLD_VOICE_DEVICES = "household_voice_devices"
+# 7.9.3 B2: zones of other people for non-administrators (default: only
+# "zuhause"/"unterwegs"); never coordinates.
+CONF_SHARE_HOUSEHOLD_LOCATION = "share_household_location"
 CONF_CONTEXT_TTL_SECONDS = "context_ttl_seconds"
 CONF_CUSTOM_ALIASES = "custom_aliases"
 CONF_CONTROL_USER_IDS = "control_user_ids"

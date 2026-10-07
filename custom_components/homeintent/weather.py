@@ -30,6 +30,7 @@ Home-Assistant-free.
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Mapping, Sequence
@@ -86,7 +87,8 @@ _FUTURE = frozenset({"wird", "werden", "wirds", "soll", "sollte", "kommt", "gibt
                      "vorhergesagt", "erwartet", "noch", "brauche", "brauchen", "braucht"})
 _QUESTION_START = frozenset({
     "wie", "was", "wird", "werden", "regnet", "regnets", "brauche", "brauchen", "braucht", "gibt", "gibts", "ist",
-    "soll", "kommt", "bleibt", "schneit", "wann", "muss", "sollte", "sag", "wieviel",
+    "soll", "kommt", "bleibt", "schneit", "wann", "muss", "sollte", "sag", "wieviel", "scheint", "welche",
+    "welcher", "welches",
 })
 _CONDITIONAL = frozenset({"wenn", "sobald", "falls", "sofern", "nur"})
 _IMPERATIVE = frozenset({
@@ -178,7 +180,9 @@ def parse_weather_query(text: str, now: datetime) -> WeatherQuery | None:
         topic = "snow"
     elif present & _WIND_WORDS:
         topic = "wind"
-    elif present & _SUN_WORDS and (present & _FUTURE or present & _OVERVIEW_WORDS or "heute" in present):
+    elif present & _SUN_WORDS and (
+        present & _FUTURE or present & _OVERVIEW_WORDS or present & {"heute", "scheint", "morgen", "wochenende"}
+    ):
         topic = "sun"
     elif present & _OVERVIEW_WORDS:
         topic = "overview"
@@ -197,6 +201,8 @@ def parse_weather_query(text: str, now: datetime) -> WeatherQuery | None:
         else:
             period = ((0,), False, "heute")
     days, rest, label = period
+    if topic == "rain" and days == (0,) and present & {"schirm", "regenschirm", "regenjacke"}:
+        rest, label = True, "heute noch"  # an umbrella is about the rest of the day
     if topic == "rain" and days == (0,) and present & {"regnet", "regnets"} and not present & {"noch", "heute"}:
         days, rest, label = (), False, "gerade"  # "Regnet es?" - now
     return WeatherQuery(topic, days, rest, label)
@@ -398,7 +404,7 @@ def answer_weather(
 class WeatherClause:
     """A rain clause found in a request: its words are removed from the text."""
 
-    kinds: tuple[str, ...]  # "rain_soon" | "raining" | "no_rain_today" | "no_rain_recent"
+    kinds: tuple[str, ...]  # "rain_soon" | "raining" | "no_rain_today" | "rain_today" | "no_rain_recent"
     role: str  # "trigger" ("Wenn Regen angesagt ist, …") | "guard" ("…, aber nur wenn …")
     rest: str  # the request without the clause
     spoken: str  # the clause as said
@@ -431,7 +437,7 @@ def _clause_kinds(body: list[str]) -> tuple[str, ...] | None:
         return None
     negated = bool(present & {"nicht", "kein", "keinen", "keine", "trocken"})
     past = bool(present & {"geregnet", "hat", "letzten", "gestern"}) and "geregnet" in present
-    forecast = bool(present & _FORECAST_WORDS) or "regnen" in present
+    forecast = bool(present & _FORECAST_WORDS)  # "angesagt", "soll", "wird" … ("anfängt zu regnen" is now)
     kinds: list[str] = []
     if negated:
         if past:
@@ -451,17 +457,21 @@ def _clause_kinds(body: list[str]) -> tuple[str, ...] | None:
 def parse_weather_clause(text: str) -> WeatherClause | None:
     """The one rain clause of a request: "Wenn Regen angesagt ist, …" (a
     trigger at the start) or "…, aber nur wenn es nicht regnet" (a guard)."""
+    text = re.sub(r"\bbzw\.", "bzw", text)
     for match in _CLAUSE_RE.finditer(text):
         body = match.group("body")
         body_words = _words(body)
+        end = match.end()
         if match.group("conj").casefold() == "bei":
-            if not body_words or body_words[0] not in {"regen", "regenwetter", "niederschlag"}:
+            # "bei Regen" is the clause itself, the command follows.
+            first = re.match(r"\s*(regen|regenwetter|niederschlag)\b", body, re.IGNORECASE)
+            if first is None:
                 continue
             body_words = ["regnet"]
+            end = match.start("body") + first.end()
         # A second clause joined by "bzw./oder" belongs to the same condition.
-        tail = text[match.end():]
-        extra = re.match(r"\s*(?:bzw\.?|beziehungsweise|oder|und)\s+(?P<more>[^,.;!?]*)", tail, re.IGNORECASE)
-        end = match.end()
+        tail = text[end:]
+        extra = re.match(r"\s*(?:bzw|beziehungsweise|oder|und)\s+(?P<more>[^,.;!?]*)", tail, re.IGNORECASE)
         if extra is not None and set(_words(extra.group("more"))) & {"regnen", "regnet", "geregnet", "regen"}:
             body_words += _words(extra.group("more"))
             end += extra.end()
@@ -471,8 +481,8 @@ def parse_weather_clause(text: str) -> WeatherClause | None:
         start = match.start()
         before = text[:start].strip()
         role = "trigger" if not before or before.endswith((".", "!", "?")) else "guard"
-        if role == "trigger" and not text[end:].lstrip().startswith(","):
-            role = "guard" if text[end:].strip(" .!?") == "" else role
+        if role == "trigger" and text[end:].strip(" .!?") == "":
+            role = "guard"
         rest = (text[:start] + text[end:]).strip()
         rest = re.sub(r"^\s*,\s*", "", rest)
         rest = re.sub(r"\s+,", ",", rest).strip(" ,")
@@ -497,7 +507,7 @@ def build_guard(
     sensors = rain_sensors(entities)
     amounts = rain_amount_sensors(entities)
     names = {entity.entity_id: entity.friendly_name for entity in [*weathers, *sensors, *amounts]}
-    if len(weathers) > 1 and any(kind in {"rain_soon", "no_rain_today"} for kind in kinds):
+    if len(weathers) > 1 and any(kind in {"rain_soon", "no_rain_today", "rain_today"} for kind in kinds):
         listed = " oder ".join(f"„{entity.friendly_name}“" for entity in weathers)
         return None, f"Welche Wettervorhersage soll ich nehmen: {listed}?"
     weather = weathers[0].entity_id if weathers else None
@@ -505,7 +515,7 @@ def build_guard(
     amount = amounts[0].entity_id if len(amounts) == 1 and sensor is None else None
     wanted: list[str] = []
     for kind in kinds:
-        if kind in {"rain_soon", "no_rain_today"}:
+        if kind in {"rain_soon", "no_rain_today", "rain_today"}:
             if weather is None:
                 continue
             wanted.append(kind)
@@ -521,13 +531,14 @@ def build_guard(
         missing = {
             "rain_soon": "keine Wettervorhersage (weather-Entität)",
             "no_rain_today": "keine Wettervorhersage (weather-Entität)",
+            "rain_today": "keine Wettervorhersage (weather-Entität)",
             "raining": "weder einen Regensensor noch eine Wettervorhersage",
             "no_rain_recent": "weder einen Regensensor noch eine Regenmenge",
         }
         reason = " und ".join(dict.fromkeys(missing[kind] for kind in kinds))
         return None, f"Dafür habe ich {reason}."
     return WeatherGuard(
-        tuple(wanted), weather if any(k in {"rain_soon", "no_rain_today"} or (k == "raining" and sensor is None)
+        tuple(wanted), weather if any(k in {"rain_soon", "no_rain_today", "rain_today"} or (k == "raining" and sensor is None)
                                       for k in wanted) else None,
         sensor if any(k in {"raining", "no_rain_recent"} for k in wanted) else None,
         amount if "no_rain_recent" in wanted else None,
@@ -591,14 +602,17 @@ def guard_steps(guard: WeatherGuard) -> list[dict[str, Any]]:
         })
         prefix += _hourly_rain_template(guard.weather_entity_id)
         parts.append("ns.rain")
-    if "no_rain_today" in guard.kinds:
+    daily = [kind for kind in guard.kinds if kind in {"no_rain_today", "rain_today"}]
+    if daily:
         assert guard.weather_entity_id is not None
         steps.append({
             "action": "weather.get_forecasts", "target": {"entity_id": guard.weather_entity_id},
             "data": {"type": "daily"}, "response_variable": DAILY_VARIABLE,
         })
-        prefix += _daily_rain_template(guard.weather_entity_id)
-        parts.append("not ns.rain")
+        prefix += _daily_rain_template(guard.weather_entity_id).replace("ns = namespace(rain=false)",
+                                                                        "day = namespace(rain=false)").replace(
+            "ns.rain = true", "day.rain = true")
+        parts.append("not day.rain" if daily[0] == "no_rain_today" else "day.rain")
     if "raining" in guard.kinds and guard.rain_sensor_id is None and guard.weather_entity_id is not None:
         rainy = "[" + ", ".join(f"'{item}'" for item in RAIN_CONDITIONS) + "]"
         parts.append(f"states('{guard.weather_entity_id}') in {rainy}")
@@ -657,6 +671,11 @@ def describe_guard(guard: WeatherGuard, role: str) -> str:
                 f"angesagt ist (Regenwetter oder Regenwahrscheinlichkeit ab {RAIN_PROBABILITY} %; ich sehe alle "
                 f"{CHECK_MINUTES} Minuten nach)"
             )
+        elif kind == "rain_today":
+            parts.append(
+                f"laut Wettervorhersage {name(guard.weather_entity_id)} heute Regen angesagt ist "
+                f"(Regenwetter oder Regenwahrscheinlichkeit ab {RAIN_PROBABILITY} %)"
+            )
         elif kind == "no_rain_today":
             parts.append(
                 f"laut Wettervorhersage {name(guard.weather_entity_id)} heute kein Regen angesagt ist "
@@ -677,7 +696,9 @@ def describe_guard(guard: WeatherGuard, role: str) -> str:
 def validate_guard(guard: WeatherGuard, entities: Sequence[EntitySnapshot]) -> str | None:
     """Closed kinds, sources of the right domain that exist."""
     known = {entity.entity_id: entity for entity in entities}
-    if not guard.kinds or not set(guard.kinds) <= {"rain_soon", "raining", "no_rain_today", "no_rain_recent"}:
+    if not guard.kinds or not set(guard.kinds) <= {
+        "rain_soon", "raining", "no_rain_today", "rain_today", "no_rain_recent"
+    }:
         return "unbekannte Regenbedingung"
     for entity_id, domain in ((guard.weather_entity_id, "weather"), (guard.rain_sensor_id, "binary_sensor"),
                               (guard.rain_amount_id, "sensor")):
@@ -687,8 +708,152 @@ def validate_guard(guard: WeatherGuard, entities: Sequence[EntitySnapshot]) -> s
             r"[a-z_]+\.[a-z0-9_]+", entity_id
         ):
             return f"unbekannte Quelle {entity_id}"
-    if {"rain_soon", "no_rain_today"} & set(guard.kinds) and guard.weather_entity_id is None:
+    if guard.rain_sensor_id is not None and guard.rain_sensor_id not in {e.entity_id for e in rain_sensors(entities)}:
+        return f"{guard.rain_sensor_id} ist kein Regensensor"
+    if guard.rain_amount_id is not None and guard.rain_amount_id not in {
+        e.entity_id for e in rain_amount_sensors(entities)
+    }:
+        return f"{guard.rain_amount_id} misst keine Regenmenge"
+    if {"rain_soon", "no_rain_today", "rain_today"} & set(guard.kinds) and guard.weather_entity_id is None:
         return "Vorhersage ohne Wetter-Entität"
     if "no_rain_recent" in guard.kinds and guard.rain_sensor_id is None and guard.rain_amount_id is None:
         return "Regen der letzten 24 Stunden ohne Sensor"
     return None
+
+
+# --- the running turn ----------------------------------------------------------------
+
+@dataclass(frozen=True)
+class WeatherTurn:
+    """A request whose rain clause was removed; the automation that the rest
+    becomes gets this guard (or trigger) attached at its preview."""
+
+    full_text: str
+    role: str  # "guard" | "trigger"
+    guard: WeatherGuard
+
+
+_WEATHER_TURN: ContextVar[WeatherTurn | None] = ContextVar("homeintent_weather_turn", default=None)
+# A rain clause whose automation is still being completed (a follow-up
+# question such as "Welche Markise?"), per conversation; bounded.
+_PENDING: dict[str, WeatherTurn] = {}
+_PENDING_LIMIT = 64
+
+
+def begin_weather_turn(turn: WeatherTurn | None, conversation_id: str | None = None) -> None:
+    """Set the rain clause of the running turn (and keep it for the
+    conversation until its automation is previewed)."""
+    _WEATHER_TURN.set(turn)
+    if conversation_id is None:
+        return
+    if turn is None:
+        _PENDING.pop(conversation_id, None)
+        return
+    if len(_PENDING) >= _PENDING_LIMIT:
+        _PENDING.pop(next(iter(_PENDING)))
+    _PENDING[conversation_id] = turn
+
+
+def resume_weather_turn(conversation_id: str | None) -> None:
+    """At the start of a turn: the conversation's open rain clause, if any."""
+    _WEATHER_TURN.set(_PENDING.get(conversation_id or "") if conversation_id else None)
+
+
+def weather_turn() -> WeatherTurn | None:
+    return _WEATHER_TURN.get()
+
+
+def consume_weather_turn(conversation_id: str | None) -> WeatherTurn | None:
+    """The clause for the preview being built - used once."""
+    turn = _WEATHER_TURN.get()
+    _WEATHER_TURN.set(None)
+    if conversation_id is not None:
+        _PENDING.pop(conversation_id, None)
+    return turn
+
+
+def attach(model: Any, turn: WeatherTurn) -> Any:
+    """The automation model with the rain trigger/guard of this turn."""
+    from dataclasses import replace
+
+    from .nlu.automation_model import TriggerModel, TriggerTarget, TriggerType
+    from .nlu.semantic_state import SemanticState
+
+    guard = turn.guard
+    # The automation is named by what was said, with its rain clause.
+    model = replace(model, source_text=turn.full_text)
+    if turn.role == "guard":
+        note = "Das passiert nur, " + describe_guard(guard, "guard").removeprefix("aber nur, ") + "."
+        return replace(model, weather_guard=guard, notes=(*model.notes, note))
+    if "rain_soon" in guard.kinds:
+        assert guard.weather_entity_id is not None
+        note = f"Ich sehe dafür alle {CHECK_MINUTES} Minuten in der Vorhersage der nächsten {SOON_HOURS} Stunden nach " \
+               f"(Regenwetter oder Regenwahrscheinlichkeit ab {RAIN_PROBABILITY} %)."
+        if not any(getattr(action, "type", None) is not None and action.type.name == "NOTIFY"
+                   for action in model.actions):
+            note += " Ist es schon so, passiert nichts."
+        return replace(
+            model, triggers=(TriggerModel(type=TriggerType.WEATHER, target=TriggerTarget(
+                entity_id=guard.weather_entity_id)),),
+            weather_guard=guard, notes=(*model.notes, note), situation=None,
+        )
+    if "rain_today" in guard.kinds:
+        note = "Das passiert nur, " + describe_guard(guard, "trigger") + "."
+        return replace(model, weather_guard=guard, notes=(*model.notes, note))
+    # "Wenn es regnet": the rain sensor, else the weather state.
+    if guard.rain_sensor_id is not None:
+        trigger = TriggerModel(type=TriggerType.STATE, target=TriggerTarget(entity_id=guard.rain_sensor_id),
+                               state=SemanticState.ON, raw_to=("on",))
+    else:
+        assert guard.weather_entity_id is not None
+        trigger = TriggerModel(type=TriggerType.STATE, target=TriggerTarget(entity_id=guard.weather_entity_id),
+                               state=SemanticState.ON, raw_to=RAIN_CONDITIONS)
+    return replace(model, triggers=(trigger,), situation=None)
+
+
+def guard_holds_now(
+    guard: WeatherGuard,
+    states: Mapping[str, str],
+    held_seconds: Mapping[str, float],
+    hourly: Sequence[Mapping[str, Any]] | None,
+    daily: Sequence[Mapping[str, Any]] | None,
+) -> tuple[bool, str]:
+    """The guard evaluated right now (an immediate command with a rain
+    condition): (holds, the reason in words).  Missing forecast data is
+    never read as "kein Regen"."""
+    names = guard.names
+    for kind in guard.kinds:
+        if kind in {"no_rain_today", "rain_today"}:
+            if not daily:
+                return False, f"Die Vorhersage von „{names.get(guard.weather_entity_id or '', '')}“ kann ich gerade nicht lesen"
+            rainy = _rainy(daily[0])
+            detail = _rain_detail(daily[0], {"precipitation": "mm"})
+            if kind == "no_rain_today" and rainy:
+                return False, f"Heute ist laut „{names.get(guard.weather_entity_id or '', '')}“ Regen angesagt{detail}"
+            if kind == "rain_today" and not rainy:
+                return False, "Heute ist kein Regen angesagt"
+        elif kind == "rain_soon":
+            if not hourly:
+                return False, "Die stündliche Vorhersage kann ich gerade nicht lesen"
+            if not any(_rainy(item) for item in hourly[:SOON_HOURS]):
+                return False, f"In den nächsten {SOON_HOURS} Stunden ist kein Regen angesagt"
+        elif kind == "no_rain_recent":
+            source = guard.rain_sensor_id or guard.rain_amount_id or ""
+            state = states.get(source)
+            held = held_seconds.get(source, -1.0)
+            if state is None:
+                return False, f"„{names.get(source, source)}“ meldet gerade nichts"
+            if guard.rain_sensor_id is not None:
+                recent = state != "off" or held < RECENT_HOURS * 3600
+            else:
+                recent = held < RECENT_HOURS * 3600 and (_number(state) or 0) > 0
+            if recent:
+                return False, f"„{names.get(source, source)}“ hat in den letzten {RECENT_HOURS} Stunden Regen gemeldet"
+        elif kind == "raining":
+            source = guard.rain_sensor_id or guard.weather_entity_id or ""
+            state = states.get(source)
+            if guard.rain_sensor_id is not None and state != "on" or (
+                guard.rain_sensor_id is None and state not in RAIN_CONDITIONS
+            ):
+                return False, "Es regnet gerade nicht"
+    return True, ""

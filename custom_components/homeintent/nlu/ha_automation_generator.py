@@ -340,6 +340,17 @@ def _generate_trigger(trigger: TriggerModel, entities: list[EntitySnapshot]) -> 
         # historical meaning (see automation_preview.py's PRESENCE wording).
         return identified(config), None
 
+    if trigger.type is TriggerType.WEATHER:
+        # 7.9.3 B1: the forecast is read in the automation itself (see
+        # ``weather.guard_steps``); the trigger only looks regularly.
+        from ..weather import CHECK_MINUTES
+
+        if trigger.target is None or trigger.target.entity_id is None or not safe_entity_id(
+            trigger.target.entity_id
+        ) or not trigger.target.entity_id.startswith("weather."):
+            return None, GenerationError.ENTITY_NOT_FOUND
+        return identified({"trigger": "time_pattern", "minutes": f"/{CHECK_MINUTES}"}), None
+
     if trigger.type is TriggerType.SUN:
         assert trigger.sun_event is not None
         event = "sunrise" if trigger.sun_event is SunEvent.SUNRISE else "sunset"
@@ -1097,12 +1108,25 @@ def generate_ha_automation_config(
         actions.append(repeat_wait_action)
     if triggers_delay_action is not None:
         actions.append(triggers_delay_action)
+    main_actions: list[dict[str, Any]] = []
     for step in model.actions:
         step_config, error = _generate_action_step(step, entities)
         if error is not None:
             return GenerationResult(config=None, error=error)
         assert step_config is not None
-        actions.append(step_config)
+        main_actions.append(step_config)
+    if model.weather_guard is not None:
+        # 7.9.3 B1/B4: fetch the forecast in the automation, then one closed
+        # template condition; under "Regen angesagt" a device action runs
+        # only while it is not already done.
+        from ..weather import guard_steps, not_done_condition
+
+        actions.extend(guard_steps(model.weather_guard))
+        if any(trigger.type is TriggerType.WEATHER for trigger in model.triggers):
+            not_done = not_done_condition(main_actions)
+            if not_done is not None:
+                actions.append(not_done)
+    actions.extend(main_actions)
 
     if automation_id is not None:
         source_entity_id: str | None = None

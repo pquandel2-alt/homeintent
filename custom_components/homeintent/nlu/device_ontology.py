@@ -191,6 +191,11 @@ GENERA: tuple[Genus, ...] = (
        {"binary_sensor"}, {"carbon_monoxide", "gas"}, sensor=True),
     _g("water_detector", "Wassermelder|Wassersensor|Leckagesensor|Wasserleckmelder|Leckmelder|Überschwemmungsmelder|Feuchtemelder",
        "Wassermelder", M, {"binary_sensor"}, {"moisture"}, sensor=True),
+    # 7.9.3 B1/B4: a rain sensor shares the class ``moisture`` with a leak
+    # detector but is none - known by its name only.
+    _g("rain_sensor", "Regensensor|Regenmelder|Regenwächter|Regenerkennung", "Regensensoren", M,
+       {"binary_sensor"}, {"moisture"}, sensor=True, name_only=True,
+       extra_forms=("Regenwaechter",)),
     _g("motion_detector", "Bewegungsmelder|Bewegungssensor|Bewegung|Bewegungserkennung",
        "Bewegungsmelder", M, {"binary_sensor"}, {"motion"}, sensor=True),
     _g("presence_detector", "Präsenzmelder|Präsenzsensor|Anwesenheitssensor|Präsenz|Anwesenheit",
@@ -510,6 +515,8 @@ def _entity_genera_cached(
     # socket, still a switch; a media_player named "TV" is not "Musik".
     if "tv" in found:
         found.discard("radio")
+    if "rain_sensor" in found:
+        found.discard("water_detector")
     return frozenset(found)
 
 

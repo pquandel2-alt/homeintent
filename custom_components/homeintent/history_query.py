@@ -697,3 +697,19 @@ __all__ = (
     "async_read_numeric_samples", "async_read_state_rows",
     "parse_history_query", "render_history_result", "render_state_history_result",
 )
+
+
+async def async_read_forecast(hass, entity_id: str, kind: str) -> list[dict] | None:
+    """``weather.get_forecasts`` for one entity (7.9.3 B1): a bounded read
+    with ``return_response``, never a write; ``None`` when it fails."""
+    try:
+        result = await hass.services.async_call(
+            "weather", "get_forecasts", {"entity_id": entity_id, "type": kind},
+            blocking=True, return_response=True, context=call_context(),
+        )
+    except Exception as err:  # noqa: BLE001 - no forecast is an honest answer
+        _LOGGER.debug("Weather forecast %s (%s) failed: %s", entity_id, kind, err)
+        return None
+    item = result.get(entity_id) if isinstance(result, dict) else None
+    forecast = item.get("forecast") if isinstance(item, dict) else None
+    return [entry for entry in forecast if isinstance(entry, dict)] if isinstance(forecast, list) else None
