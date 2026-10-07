@@ -352,7 +352,34 @@ unten getrennt gemessen.
 
 ## Live-Testbett
 
-LIVE_PLACEHOLDER
+Frisches Home Assistant 2026.9.2 (`sim/fresh_ha.sh`), `runner.py --strict`
+über alle Kategorien einschließlich Proaktiv:
+
+- **215/215 Szenarien grün** (198 bisherige, davon `n791-b-partial` begründet
+  geändert, + 17 neue „Nachtest 7.9.2“), `check_log.py`: **0 Befunde**.
+  Ergebnis: `sim/results/final-7.9.2.json`.
+- Neue Szenarien: Melde-Verzögerung 0,5 s → Ton, 3 s → Sprache („noch nicht
+  zurückgemeldet“), Rollladen fährt → Ton, Gegenrichtung → Sprache;
+  Bewässerung mit automatischem Schließen und „Wie lange?“; Hauptwasserventil
+  gesperrt (Uhrzeit und Abwesenheit); Haushalts-Satellit (persönlich gesperrt,
+  nach „für alle“ verwaltbar, Liste „(gemeinsam)“); Etage mit einem Melder;
+  „Stromverbrauch“ → „Stromverbrauch Haus“ mit echtem Push bei 3500 W;
+  Markise mit Sonne → Lux-Rückfrage → Markise öffnet bei 42000 lx;
+  Wiederholung, schneller Abfall, Licht beim Gehen (Push nennt Wohnzimmer);
+  Batterie-Push mit Gerätename; „nicht erreichbar“ erst nach der Mindestdauer
+  (nach 30 s keine, nach 70 s genau eine Nachricht); Urlaubsmodus an und
+  vollständig zurückgenommen (Helfer an/aus, Status); Zusammenfassung nach
+  simulierter Abwesenheit (Haustür, Bewegung); Tagesverbrauch aus dem
+  simulierten Zähler; Gewohnheiten ehrlich ohne Verlauf, Abschalten.
+- **Zusätzliche Wartezeit (A1), getrennt gemessen** (Diagnosedaten
+  `effect_wait`, je wartendem Turn): Von 511 gesprochenen Turns warteten
+  genau 3 – die Melde-Verzögerung 0,5 s (Turn 507 ms), 3 s (Wartezeit 2,0 s,
+  dann ehrlich gesprochen) und die Gegenrichtung (2,0 s). p50 der wartenden
+  Turns 2,0 s, p95 2,0 s, Maximum 2,0 s (= Grenze). Alle anderen Turns
+  bekamen die Bestätigung schon beim Schreiben und warteten 0 ms; Turn-Latenz
+  über alle Turns p50 19,6 ms, p95 62,2 ms.
+- Zwei Zwischenläufe deckten die Nachträge oben auf (blockierender
+  Dateizugriff; `stat-mean`); beide sind behoben und mit Tests abgesichert.
 
 ## Bekannte Grenzen
 

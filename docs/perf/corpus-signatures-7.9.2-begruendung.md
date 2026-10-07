@@ -4,9 +4,9 @@ Neue Baseline `corpus-signatures-7.9.2.json` (ersetzt `corpus-signatures-7.9.1.j
 im CI-Gate). Prüfung 7.9.1 (`3988ac8`) → 7.9.2 über dieselben 3679 Sätze der
 7.9.1-Baseline (`scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.9.1.json`):
 **1 geänderte Signatur, davon 0 Engine-Abweichungen und 1 IR-Abweichung, kein
-SAFETY_DRIFT** (`shadow_compare.py --candidate identity`: 2078 EQUIVALENT;
-`arbiter_shadow.py`: 2101 EQUIVALENT, 7 NOT_MEASURABLE wie bisher).
-Die übrigen 128 Sätze des 7.9.2-Korpus sind neu (Testsätze der 7.9.2-Tests) und
+SAFETY_DRIFT** (`shadow_compare.py --candidate identity`: 2108 EQUIVALENT;
+`arbiter_shadow.py`: 2131 EQUIVALENT, 7 NOT_MEASURABLE wie bisher).
+Die übrigen 148 Sätze des 7.9.2-Korpus (3827) sind neu (Testsätze der 7.9.2-Tests) und
 haben keine Vorgänger-Signatur.
 
 | Satz | 7.9.1 | 7.9.2 | Begründung |

@@ -2363,6 +2363,21 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.2:
+
+```text
+8492 passed, 12 skipped, 0 failed (Stub-Suite, lokal); tests_ha 16 passed
+Sprachverständnis-Gate: 463 passed
+Korpus-Signaturen 7.9.2 (docs/perf/corpus-signatures-7.9.2.json): gegenüber 7.9.1 eine begründete IR-Änderung, Engine unverändert (docs/perf/corpus-signatures-7.9.2-begruendung.md)
+Arbiter-Shadow 2131 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2108 EQUIVALENT
+Entwicklungs-Benchmark 7.7 461/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 215/215 (inklusive Proaktiv; 198 bisherige + 17 neue „Nachtest 7.9.2“), check_log 0 Befunde
+Zusätzliche Wartezeit auf Geräte-Rückmeldung (live): 3 von 511 Turns warteten (0,5 s; 2,0 s; 2,0 s), alle übrigen 0 ms
+Automationssprache 5000 Entitäten p95 20,3 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 171
+```
+
 Geprüfter Release-Stand von Version 7.9.1:
 
 ```text
