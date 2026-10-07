@@ -93,6 +93,8 @@ SETUP_OPTIONS: dict[str, Any] = {
     CONF_AGENT_AUTO_ENTITY_IDS: [],
     "documents_enabled": False,
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS: False,
+    # 7.9.3 B5: new installations answer with the confirmation tone.
+    "response_style": "tone",
 }
 
 

@@ -36,6 +36,10 @@ _QUESTION_WORDS = frozenset({
     "ob", "gibt", "hat", "haben", "steht", "stehen",
 })
 _FILLER = frozenset({"bitte", "mal", "jetzt", "sofort", "noch", "doch", "gleich", "danke"})
+_SPOKEN_UNITS = frozenset({
+    "sekunde", "sekunden", "minute", "minuten", "stunde", "stunden", "tag", "tage", "tagen", "grad", "prozent",
+    "watt", "kilowatt", "lux", "ppm", "uhr",
+})
 
 
 def _domains_of(field: object, entities: Sequence[EntitySnapshot]) -> set[str]:
@@ -174,6 +178,9 @@ def complete_value_unit(text: str, entities: Iterable[EntitySnapshot]) -> str:
     following = text[values[0].end:].split()
     if following and normalize_for_compare(following[0].strip(".,!?")) in _FRACTIONS:
         # "auf drei Viertel": a fraction, not a number with a missing unit.
+        return text
+    if following and normalize_for_compare(following[0].strip(".,!?")) in _SPOKEN_UNITS:
+        # "… auf 15 Minuten" already names its unit (7.9.3 B7).
         return text
     unit = _unit_for(_domains_of(targets[0], entity_list))
     number = _number(values[0].text)

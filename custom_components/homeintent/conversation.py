@@ -958,7 +958,7 @@ class NluConversationEntity(
         if (
             active_dialog is None
             and active_task is not None
-            and active_task.kind is DialogTaskKind.MONITOR_DELETE
+            and active_task.kind in {DialogTaskKind.MONITOR_DELETE, DialogTaskKind.MONITOR_EDIT}
         ):
             handled = await self._monitoring.async_handle_monitor_delete(
                 user_input, response, active_task

@@ -52,6 +52,9 @@ class DialogTaskKind(StrEnum):
     HABIT_OFFER = "habit_offer"
     # 7.9.3 A6/B6: a pushed report (arrival summary, weekly house report) waits for "Ja".
     REPORT_CONFIRMATION = "report_confirmation"
+    # 7.9.3 B7: a changed monitoring ("Vorher … Nachher …") waits for "Ja",
+    # or which of several matching monitorings is meant.
+    MONITOR_EDIT = "monitor_edit"
 
 
 class DialogPriority(IntEnum):

@@ -37,6 +37,8 @@ class MonitoringOperation(Enum):
     PAUSE = auto()
     # "Mach die Fensterüberwachung für alle" - shared with the household (7.9.2 A3).
     SHARE = auto()
+    # "Ändere die Garagen-Meldung auf 15 Minuten" - one part changed (7.9.3 B7).
+    EDIT = auto()
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class MonitoringRequest:
     day_offset: int | None = None  # PAUSE: 0 today, 1 tomorrow
     hour: int | None = None
     minute: int = 0
+    edit: object = None  # EDIT: ``monitor_edit.MonitorEdit``
 
 
 _HEADS = ("ueberwachung", "meldung", "warnung", "benachrichtigung", "erinnerung", "beobachtung")
@@ -79,6 +82,14 @@ _FILLERS = frozenset({
     "des", "zu", "an", "bei", "beim", "ueber", "betreffend", "wegen",
     "uns", "gemeinsam", "haushalt", "ganzen", "ganze", "familie",
     "ueberwachungen", "meldungen", "warnungen", "benachrichtigungen", "erinnerungen",
+})
+# Words of a change (7.9.3 B7) that never name the watched thing.
+_EDIT_WORDS = frozenset({
+    "sekunde", "sekunden", "minute", "minuten", "stunde", "stunden", "tag", "tage", "tagen", "prozent", "grad",
+    "watt", "unter", "ueber", "erst", "schon", "nur", "noch", "nachts", "tagsueber", "abends", "morgens",
+    "nachmittags", "vormittags", "zwischen", "und", "bis", "uhr", "auch", "raus", "heraus", "dazu", "hinzu",
+    "nicht", "mehr", "aendere", "aendern", "schick", "schicke", "sende", "nimm", "entferne", "streiche",
+    "unterhalb", "oberhalb", "weniger", "kleiner", "groesser", "hoeher", "niedriger", "als",
 })
 # Verbs that make a monitor shared with the household (7.9.2 A3).
 _SHARE_WORDS = frozenset({
@@ -139,6 +150,22 @@ def parse_monitoring_management(text: str) -> MonitoringRequest | None:
         return MonitoringRequest(MonitoringOperation.LIST, subject, spoken)
     if not found:
         return None
+    from .monitor_edit import parse_monitor_edit
+
+    edit = parse_monitor_edit(text)
+    if edit is not None:
+        # A change of one part (7.9.3 B7) - before delete: "Entferne Anna
+        # aus der Fenster-Warnung" removes a recipient, not the monitor.
+        person = {normalize_for_compare(word) for word in str(getattr(edit, "person", "")).split()}
+        if subject is not None:
+            kept = [word for word in subject.split() if word not in _EDIT_WORDS and word not in person
+                    and not word.replace(",", "").replace(".", "").isdigit()]
+            subject = " ".join(kept) or None
+        if spoken is not None:
+            spoken = " ".join(
+                word for word in spoken.split() if normalize_for_compare(word) not in _EDIT_WORDS | person
+            ) or None
+        return MonitoringRequest(MonitoringOperation.EDIT, subject, spoken if subject else None, edit=edit)
     if first in _DELETE_WORDS:
         return MonitoringRequest(MonitoringOperation.DELETE, subject, spoken)
     if first in _SHARE_WORDS and shared_request(text):

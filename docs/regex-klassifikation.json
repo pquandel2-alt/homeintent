@@ -1,6 +1,6 @@
 {
  "beschreibung": "Klassifikation aller Regex-Muster (scripts/regex_inventory.py)",
- "maximum_semantic_sentence_pattern": 171,
+ "maximum_semantic_sentence_pattern": 172,
  "verlauf": {
   "7.5.0": 272,
   "7.5.1": 258,
@@ -1461,6 +1461,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/controllers/monitoring.py::_spoken_monitor_noun::3fcc0d17d6",
+   "datei": "custom_components/homeintent/controllers/monitoring.py",
+   "bereich": "_spoken_monitor_noun",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/controllers/productivity.py::_helper_timer_seconds_left::d9ec5313b8",
    "datei": "custom_components/homeintent/controllers/productivity.py",
    "bereich": "_helper_timer_seconds_left",
@@ -2732,6 +2739,20 @@
    "datei": "custom_components/homeintent/missing_part.py",
    "bereich": "complete_request",
    "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/monitor_edit.py::_tokens::3e964fbae0",
+   "datei": "custom_components/homeintent/monitor_edit.py",
+   "bereich": "_tokens",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/monitor_edit.py::parse_monitor_edit::6cf9a577c3",
+   "datei": "custom_components/homeintent/monitor_edit.py",
+   "bereich": "parse_monitor_edit",
+   "klasse": "SEMANTIC_SENTENCE_PATTERN",
    "quelle": "heuristik"
   },
   {
@@ -5307,7 +5328,7 @@
  "anzahl": {
   "LEXICAL": 401,
   "MORPHOLOGICAL": 37,
-  "STRUCTURAL": 147,
-  "SEMANTIC_SENTENCE_PATTERN": 171
+  "STRUCTURAL": 149,
+  "SEMANTIC_SENTENCE_PATTERN": 172
  }
 }

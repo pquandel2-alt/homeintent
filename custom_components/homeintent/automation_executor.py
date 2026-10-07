@@ -56,7 +56,7 @@ import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
-from typing import Any
+from typing import Any, Mapping
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import category_registry as cr, entity_registry as er
@@ -1009,6 +1009,66 @@ class AutomationExecutor:
                     automation_id,
                     source_text=source_text,
                     version=int(entry.get("version", 1)) + 1,
+                )
+            except Exception:
+                await self._async_rollback_transaction(path, transaction)
+                await self._hass.services.async_call(
+                    "automation", "reload", {}, blocking=True, context=system_context_for_turn()
+                )
+                raise
+            await self._async_complete_transaction()
+
+    async def async_get_automation_config(self, automation_id: str) -> dict[str, Any] | None:
+        """The stored configuration of one HomeIntent automation (read only)."""
+        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        snapshot = await self._async_read_snapshot(path)
+        for automation in snapshot.automations:
+            if automation.get("id") == automation_id:
+                return dict(automation)
+        return None
+
+    async def async_edit_automation(
+        self,
+        automation_id: str,
+        changes: Mapping[str, Any],
+        source_text: str,
+    ) -> None:
+        """7.9.3 B7: transactionally replace triggers, conditions, actions
+        and/or the description of one HomeIntent automation (the edit was
+        validated and confirmed before)."""
+        if not changes or set(changes) - {"triggers", "conditions", "actions", "description"}:
+            raise ValueError("Unbekannte Änderung einer Automation")
+        if "triggers" in changes and not changes["triggers"]:
+            raise ValueError("Mindestens ein Auslöser ist erforderlich")
+        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        async with self._lock:
+            metadata = await self._metadata_store.async_load_all()
+            entry = metadata.get(automation_id)
+            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
+                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            snapshot = await self._async_read_snapshot(path)
+            updated: list[dict[str, Any]] = []
+            found = False
+            for automation in snapshot.automations:
+                if automation.get("id") != automation_id:
+                    updated.append(automation)
+                    continue
+                found = True
+                replacement = {**automation, **{key: value for key, value in changes.items()}}
+                if "conditions" in changes and not changes["conditions"]:
+                    replacement.pop("conditions", None)
+                updated.append(replacement)
+            if not found:
+                raise ValueError(f"No automation with id {automation_id!r} found")
+            transaction = await self._async_begin_transaction(
+                operation="edit", automation_id=automation_id, path=path, snapshot=snapshot, updated=updated,
+            )
+            try:
+                await self._hass.services.async_call(
+                    "automation", "reload", {}, blocking=True, context=system_context_for_turn()
+                )
+                await self._metadata_store.async_update(
+                    automation_id, source_text=source_text, version=int(entry.get("version", 1)) + 1,
                 )
             except Exception:
                 await self._async_rollback_transaction(path, transaction)

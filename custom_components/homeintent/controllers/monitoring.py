@@ -35,9 +35,11 @@ from ..goal_model import (
     NotificationSeverity,
 )
 from ..automation_metadata_store import CREATED_BY_HOMEINTENT
-from ..entities import EntitySnapshot, normalize_for_compare
+from ..entities import EntitySnapshot, format_spoken_number, normalize_for_compare
 from ..monitor_goal import MonitorRecord, rate_rule_of
 from ..monitoring_management import MonitoringOperation, MonitoringRequest
+from ..monitor_edit import describe_part, edit_config, spoken_seconds, validate_edit
+from ..notification_target import named_notification_targets
 from ..rate_monitor import describe_rule
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..proactive_model import SituationKind
@@ -295,6 +297,8 @@ class MonitoringController:
                 payload=tuple(chosen),
             )
             return say(f"{head}: " + "; ".join(parts) + ".", query=True)
+        if request.operation is MonitoringOperation.EDIT:
+            return await self._async_edit(user_input, request, chosen, entities, say)
         if not chosen:
             return say(f"Ich finde keine Überwachung{spoken_subject}.")
         if len(chosen) > 1:
@@ -466,12 +470,169 @@ class MonitoringController:
         )
         return question
 
+    # --- 7.9.3 B7: change a monitoring -----------------------------------------
+
+    async def _async_edit(
+        self, user_input: conversation.ConversationInput, request: MonitoringRequest, chosen: list[Monitor],
+        entities: list[EntitySnapshot], say: Callable[[str], conversation.ConversationResult],
+    ) -> conversation.ConversationResult:
+        said = request.spoken_subject or request.subject
+        if not chosen:
+            return say(f"Ich finde keine Überwachung{f' für „{said}“' if said else ''}. Ich habe nichts geändert.")
+        if len(chosen) > 1:
+            noun = _spoken_monitor_noun(user_input.text)
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id, "monitor-edit", DialogTaskKind.MONITOR_EDIT, DialogPriority.SELECTION,
+                reason="Mehrere Überwachungen passen zur Änderung.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=("choose", request.edit, tuple(chosen), tuple(entities)),
+            )
+            listed = " oder ".join(f"„{short_label(item)}“" for item in chosen[:4])
+            return say(f"Welche {noun} meinst du: {listed}? Sag zum Beispiel „die erste“.")
+        return say(await self._async_edit_preview(user_input, request.edit, chosen[0], entities))
+
+    async def _async_edit_preview(
+        self, user_input: conversation.ConversationInput, edit: Any, monitor: Monitor, entities: list[EntitySnapshot],
+    ) -> str:
+        """Rights, the changed configuration, validator, "Vorher … Nachher …"."""
+        refusal = await async_management_refusal(
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung", options=self._options,
+        )
+        if refusal is not None:
+            return refusal
+        names = {entity.entity_id: entity.friendly_name for entity in entities}
+        if monitor.automation_id is not None and self._automation_store is not None:
+            config = await self._automation_store().async_get_automation_config(monitor.automation_id)
+            if config is None:
+                return "Diese Überwachung finde ich nicht mehr. Ich habe nichts geändert."
+            recipient_ids: tuple[str, ...] = ()
+            if edit.kind in {"add_recipient", "remove_recipient"}:
+                resolution = NotificationTargetResolver.from_options(
+                    self._options, self._runtime.user_contexts,
+                    named_targets=named_notification_targets(entities, self._runtime.user_contexts),
+                ).resolve(NotificationRecipientKind.EXPLICIT_TARGET, None, name=edit.person)
+                if not resolution.resolved:
+                    return (
+                        f"Für {edit.person} kenne ich kein bestätigtes Push-Gerät. Ich habe nichts geändert."
+                    )
+                recipient_ids = tuple(target.target_id for target in resolution.targets)
+            changed, problem = edit_config(config, edit, recipient_ids=recipient_ids)
+            if changed is None:
+                return f"{problem}. Ich habe nichts geändert."
+            known = [entity.entity_id for entity in entities if entity.domain == "notify"] + [
+                target for step in _notify_targets(config) for target in step
+            ]
+            invalid = validate_edit(config, changed, edit, known)
+            if invalid is not None:
+                return f"Diese Änderung richte ich nicht ein ({invalid}). Ich habe nichts geändert."
+            before, after = describe_part(config, edit, names), describe_part(changed, edit, names)
+            payload: tuple[Any, ...] = ("confirm", monitor, edit, changed, before, after)
+        elif monitor.goal_id is not None and self._runtime.monitor_goals is not None:
+            records = await self._runtime.monitor_goals.async_load()
+            record = next((item for item in records if item.goal.goal_id == monitor.goal_id), None)
+            rule = rate_rule_of(record.goal) if record is not None else None
+            if record is None or rule is None or edit.kind not in {"duration", "threshold"}:
+                return (
+                    "Bei dieser Überwachung, die ich selbst ausführe, kann ich nur den Zeitraum und den Betrag "
+                    "ändern. Ich habe nichts geändert."
+                )
+            trigger = record.goal.trigger
+            assert trigger is not None
+            if edit.kind == "duration":
+                new_trigger = replace(trigger, window_seconds=edit.seconds)
+                before, after = f"innerhalb von {spoken_seconds(rule.window_seconds)}", (
+                    f"innerhalb von {spoken_seconds(edit.seconds)}")
+            else:
+                new_trigger = replace(trigger, delta=float(edit.value))
+                before = f"um {format_spoken_number(rule.delta)} {rule.unit}".strip()
+                after = f"um {format_spoken_number(edit.value)} {rule.unit}".strip()
+            payload = ("confirm_goal", monitor, edit, replace(record, goal=replace(record.goal, trigger=new_trigger)),
+                       before, after)
+        else:
+            return "Diese Überwachung kann ich nicht ändern. Ich habe nichts geändert."
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id, "monitor-edit", DialogTaskKind.MONITOR_EDIT, DialogPriority.CONFIRMATION,
+            reason="Eine geänderte Überwachung wartet auf ausdrückliche Bestätigung.",
+            requested_by_user_id=conversation_user_id(user_input), payload=payload,
+        )
+        return f"Ich ändere „{short_label(monitor)}“. Vorher: {before}. Nachher: {after}. Soll ich das so ändern?"
+
+    async def _async_handle_monitor_edit(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse, task: Any,
+    ) -> conversation.ConversationResult | None:
+        payload = getattr(task, "payload", None)
+        conversation_id = user_input.conversation_id
+        if not isinstance(payload, tuple) or getattr(task, "requested_by_user_id", None) != conversation_user_id(
+            user_input
+        ):
+            return None
+        manager = self._runtime.dialog_manager
+
+        def say(text: str) -> conversation.ConversationResult:
+            response.async_set_speech(text)
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+
+        if payload[0] == "choose":
+            _, edit, candidates, entities = payload
+            index = ordinal_index(user_input.text, len(candidates))
+            if index is None:
+                named = [item for item in candidates if all(
+                    word in normalize_for_compare(item.label) for word in normalize_for_compare(user_input.text).split()
+                    if len(word) > 3 and word not in {"meine", "meinst", "diese", "die"}
+                )]
+                index = candidates.index(named[0]) if len(named) == 1 else None
+            if index is None:
+                if len(user_input.text.split()) > 4:
+                    manager.cancel(conversation_id, getattr(task, "task_id", ""))
+                    return None
+                return say("Welche meinst du? Sag zum Beispiel „die erste“ oder „die zweite“.")
+            manager.cancel(conversation_id, getattr(task, "task_id", ""))
+            return say(await self._async_edit_preview(user_input, edit, candidates[index], list(entities)))
+        reply = classify_confirmation_reply(user_input.text)
+        if reply is ConfirmationReply.UNCLEAR:
+            if len(user_input.text.split()) > 3:
+                manager.cancel(conversation_id, getattr(task, "task_id", ""))
+                return None
+            return say("Bitte antworte mit Ja oder Nein.")
+        manager.cancel(conversation_id, getattr(task, "task_id", ""))
+        if reply is ConfirmationReply.NO:
+            return say("In Ordnung, die Überwachung bleibt, wie sie ist.")
+        kind, monitor, edit, changed, before, after = payload
+        refusal = await async_management_refusal(
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung", options=self._options,
+        )
+        if refusal is not None:
+            return say(refusal)
+        if kind == "confirm_goal":
+            assert self._runtime.monitor_goals is not None
+            await self._runtime.monitor_goals.async_save(changed)
+        else:
+            assert self._automation_store is not None and monitor.automation_id is not None
+            description = str(changed.get("description") or "")
+            old_value = before.removeprefix("nach ").removeprefix("unter ").removeprefix("über ")
+            new_value = after.removeprefix("nach ").removeprefix("unter ").removeprefix("über ")
+            updated = description.replace(old_value, new_value) if edit.kind in {"duration", "threshold"} else description
+            if updated == description:
+                kept = description.split(" Geändert: ")[0] if edit.kind in {"window", "add_recipient",
+                                                                            "remove_recipient"} else description
+                updated = f"{kept} Geändert: {after}.".strip()
+            changes = {key: changed[key] for key in ("triggers", "actions") if key in changed}
+            changes["conditions"] = changed.get("conditions", [])
+            changes["description"] = updated
+            await self._automation_store().async_edit_automation(
+                monitor.automation_id, changes, source_text=f"{changed.get('alias', '')} (geändert: {after})",
+            )
+        report_outcome(TurnOutcomeKind.EXECUTED)
+        return say(f"Geändert: {short_label(monitor)} – jetzt {after}.")
+
     async def async_handle_monitor_delete(
         self,
         user_input: conversation.ConversationInput,
         response: intent.IntentResponse,
         task: Any,
     ) -> conversation.ConversationResult | None:
+        if getattr(task, "kind", None) is DialogTaskKind.MONITOR_EDIT:
+            return await self._async_handle_monitor_edit(user_input, response, task)
         monitor = getattr(task, "payload", None)
         if not isinstance(monitor, Monitor):
             return None
@@ -670,6 +831,34 @@ class Monitor:
     goal_id: str | None = None
     # 7.9.1 A2: who set it up (``None`` for older ones: administrators only).
     owner_user_id: str | None = None
+
+
+def _spoken_monitor_noun(text: str) -> str:
+    """The monitoring noun as said ("Fenster-Warnung"), for the question."""
+    for word in re.sub(r"[?.!,]", " ", text).split():
+        key = normalize_for_compare(word).replace("-", "")
+        if any(head in key for head in ("ueberwachung", "meldung", "warnung", "benachrichtigung", "erinnerung")):
+            return word
+    return "Überwachung"
+
+
+def _notify_targets(config: Mapping[str, Any]) -> list[list[str]]:
+    """The notify targets of every message step of a stored automation."""
+    found: list[list[str]] = []
+
+    def walk(steps: Any) -> None:
+        for step in steps if isinstance(steps, list) else []:
+            if not isinstance(step, Mapping):
+                continue
+            if step.get("action") == "notify.send_message":
+                target = step.get("target")
+                ids = target.get("entity_id") if isinstance(target, Mapping) else None
+                found.append([ids] if isinstance(ids, str) else [str(item) for item in ids or []])
+            for value in step.values():
+                walk(value if isinstance(value, list) else [value] if isinstance(value, Mapping) else None)
+
+    walk(config.get("actions"))
+    return found
 
 
 def _notifies(actions: Any) -> bool:
