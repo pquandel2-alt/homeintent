@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent
 from homeassistant.util import dt as dt_util
 
+from ..already_met import AlreadyMet, MetReply, already_met, classify_met_reply, met_message, met_question
 from ..automation_executor import AutomationExecutor
 from ..automation_grounding import looks_like_selection_reply
 from ..automation_wizard import AutomationWizardStage, AutomationWizardState, parse_lifetime
@@ -363,7 +364,44 @@ class AutomationController:
             preview = preview.replace(
                 " Soll ", " Sie gehört dem ganzen Haushalt (gemeinsam). Soll ", 1
             )
+        met = self._already_met(model, entities)
+        if met is not None and preview.endswith("Soll ich das so einrichten?"):
+            # 7.9.3 A1: a condition that is already true would never be
+            # reported - say so and offer the message right away.
+            preview = preview[: -len("Soll ich das so einrichten?")] + met_question(met)
+            self._context_store.set(
+                user_input.conversation_id,
+                ConversationContext(
+                    last_command=None, last_entities=(), last_area=None, pending_clarification=None,
+                    pending_automation_confirmation=PendingAutomationConfirmation(
+                        model=model, requested_by_user_id=requested_by_user_id, shared=shared,
+                        already_met=met,
+                    ),
+                ),
+            )
         response.async_set_speech(prefix + preview)
+
+    def _already_met(self, model: AutomationModel, entities: list[EntitySnapshot]) -> AlreadyMet | None:
+        """The entities for which the monitored condition already holds."""
+        generated = generate_ha_automation_config(model, entities, automation_id="preview")
+        if generated.error is not None or generated.config is None:
+            return None
+        return already_met(generated.config, entities, self._held_seconds(entities))
+
+    def _held_seconds(self, entities: list[EntitySnapshot]) -> dict[str, float]:
+        """How long each entity has had its state (``last_changed``)."""
+        now = dt_util.utcnow()
+        held: dict[str, float] = {}
+        states = getattr(self.hass, "states", None)
+        for entity in entities:
+            state = states.get(entity.entity_id) if states is not None else None
+            changed = getattr(state, "last_changed", None)
+            if changed is not None:
+                try:
+                    held[entity.entity_id] = (now - changed).total_seconds()
+                except TypeError:
+                    continue
+        return held
 
     def decide_recurrence(
         self,
@@ -544,6 +582,21 @@ class AutomationController:
             )
 
         reply = classify_confirmation_reply(user_input.text)
+        send_now = False
+        if confirmation.already_met is not None:
+            # 7.9.3 A1: "Ja" = set up and send now, "Nein" = only set up,
+            # "Abbrechen" = nothing.
+            met_reply = classify_met_reply(user_input.text)
+            if met_reply is None:
+                response.async_set_speech(
+                    "Das habe ich nicht verstanden. Sag „Ja“ (einrichten und jetzt schicken), "
+                    "„Nein“ (nur einrichten) oder „Abbrechen“."
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            reply = ConfirmationReply.NO if met_reply == MetReply.CANCEL else ConfirmationReply.YES
+            send_now = met_reply == MetReply.SEND
 
         if reply is ConfirmationReply.UNCLEAR:
             response.async_set_speech(AUTOMATION_CONFIRMATION_UNCLEAR_TEXT)
@@ -703,10 +756,35 @@ class AutomationController:
                 attended=True, now=dt_util.now(),
             )
         report_outcome(TurnOutcomeKind.EXECUTED)
-        response.async_set_speech(AUTOMATION_CREATED_TEXT)
+        spoken = AUTOMATION_CREATED_TEXT
+        if send_now:
+            spoken += " " + await self._async_send_already_met(generation_result.config, entities)
+        response.async_set_speech(spoken)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    async def _async_send_already_met(
+        self, config: dict[str, Any], entities: list[EntitySnapshot]
+    ) -> str:
+        """One message about the entities that already meet the condition
+        (7.9.3 A1), checked again against the confirming turn's states and
+        delivered through the existing push boundary to exactly the notify
+        targets of the created automation."""
+        from ..agent_delivery import AgentDelivery
+        from ..user_context import NotificationTarget, NotificationTargetKind
+
+        met = already_met(config, entities, self._held_seconds(entities))
+        if met is None:
+            return "Inzwischen ist die Bedingung für kein Gerät mehr erfüllt; ich habe nichts geschickt."
+        result = await AgentDelivery(self.hass).async_send_notification(
+            tuple(NotificationTarget(target, NotificationTargetKind.ENTITY) for target in met.targets),
+            title=met.title,
+            message=met_message(met),
+        )
+        if not result.delivered:
+            return "Die Nachricht zu den schon erfüllten Geräten konnte ich nicht zustellen."
+        return f"Die Nachricht zu {met.names} habe ich dir gerade geschickt."
 
 
     def handle_match_result(

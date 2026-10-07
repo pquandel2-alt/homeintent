@@ -34,6 +34,19 @@ PUSH_OPTIONS = {
 }
 
 
+# 7.9.3 A1: a monitoring whose condition already holds for some devices ends
+# its preview with the offer to send the message right away ("Soll ich dir
+# das jetzt gleich schicken?") instead of "Soll ich das so einrichten?".
+# Both are the confirmation question of the same preview; tests that check
+# "a preview is offered" (or "none is offered") accept exactly these two.
+SETUP_QUESTIONS = ("Soll ich das so einrichten?", "Soll ich dir das jetzt gleich schicken?")
+
+
+def offers_setup(speech: str) -> bool:
+    """Whether ``speech`` is a monitoring preview waiting for its answer."""
+    return any(question in speech for question in SETUP_QUESTIONS)
+
+
 @lru_cache(maxsize=1)
 def _raw() -> tuple[dict[str, Any], ...]:
     return tuple(json.loads(FIXTURE.read_text(encoding="utf-8")))

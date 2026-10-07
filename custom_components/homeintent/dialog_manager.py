@@ -50,6 +50,8 @@ class DialogTaskKind(StrEnum):
     VACATION_CONFIRMATION = "vacation_confirmation"
     # 7.9.2 B2: "Soll ich das automatisch machen?" after a recognized habit.
     HABIT_OFFER = "habit_offer"
+    # 7.9.3 A6/B6: a pushed report (arrival summary, weekly house report) waits for "Ja".
+    REPORT_CONFIRMATION = "report_confirmation"
 
 
 class DialogPriority(IntEnum):

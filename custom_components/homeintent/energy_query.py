@@ -337,7 +337,12 @@ async def async_answer(
         names = ", ".join(f"„{entity.friendly_name}“" for entity in sources[:3])
         return f"Für {query.label} liegen mir keine Verlaufsdaten von {names} vor."
     if query.ranking:
-        top = sorted(results, key=lambda item: item[1], reverse=True)[:3]
+        # Only what actually consumed something (7.9.3 A6): a 0-kWh device
+        # is no answer to "am meisten".
+        used = [item for item in results if round(item[1], 2) > 0]
+        if not used:
+            return f"{_period_prefix(query.label)} hat keines der {len(results)} Geräte messbar Strom verbraucht."
+        top = sorted(used, key=lambda item: item[1], reverse=True)[:3]
         listed = [f"{_device_label(entity)} {_kwh(kwh)}" for entity, kwh in top]
         text = ", ".join(listed[:-1]) + " und " + listed[-1] if len(listed) > 1 else listed[0]
         estimated = any(not _is_energy(entity) for entity, _ in top)

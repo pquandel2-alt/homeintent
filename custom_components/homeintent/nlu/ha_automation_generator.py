@@ -1172,6 +1172,12 @@ def generate_ha_automation_config(
         # A new start of the situation restarts the reminder / escalation
         # instead of being dropped with a warning (7.9 W5).
         config["mode"] = "restart"
+    elif any(
+        isinstance(trigger.get("entity_id"), list) and len(trigger["entity_id"]) > 1 for trigger in triggers
+    ) and all(action.get("action") == "notify.send_message" for action in actions):
+        # A monitor over several devices reports each device (7.9.3 A1): two
+        # devices reaching the state at once are both sent, never dropped.
+        config["mode"] = "queued"
     if conditions:
         config["conditions"] = conditions
     return GenerationResult(config=config, error=None)

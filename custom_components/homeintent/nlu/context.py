@@ -140,6 +140,9 @@ class PendingAutomationConfirmation:
     requested_by_user_id: str | None = None
     # 7.9.2 A3: the automation belongs to the household ("für uns alle").
     shared: bool = False
+    # 7.9.3 A1: the condition is already true for these entities right
+    # now; "Ja" also sends one message about them, "Nein" only creates.
+    already_met: Any = None
 
 
 @dataclass(frozen=True)

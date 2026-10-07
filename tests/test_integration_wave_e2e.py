@@ -250,13 +250,22 @@ def _make_entity_with(monkeypatch, entities: list[EntitySnapshot]) -> NluConvers
     return entity
 
 
+# 7.9.3 A1: the window of this test house is open right now, so the preview
+# says so and offers the message at once instead of "Soll ich das so
+# einrichten?" (the monitoring alone would never report it).
 PUSH_PREVIEW_9 = (
     "Wenn das Wohnzimmer Fenster geöffnet wird, sende ich eine Push-Benachrichtigung "
-    "an „Philipp Handy“: „Das Wohnzimmer Fenster wurde geöffnet.“ Soll ich das so einrichten?"
+    "an „Philipp Handy“: „Das Wohnzimmer Fenster wurde geöffnet.“ Wohnzimmer Fenster (offen) ist schon "
+    "jetzt so; das meldet die Überwachung erst, wenn es sich einmal ändert und wieder eintritt. Soll ich dir "
+    "das jetzt gleich schicken? Sag „Ja“ (einrichten und jetzt schicken), „Nein“ (nur einrichten) oder "
+    "„Abbrechen“."
 )
 # 7.1.2: push-only automations get a natural preview instead of the generic
 # "Automation erkannt: ..." text; both confirmation questions are guarded.
-PREVIEW_QUESTIONS = ("Soll diese Automation erstellt werden?", "Soll ich das so einrichten?")
+PREVIEW_QUESTIONS = (
+    "Soll diese Automation erstellt werden?", "Soll ich das so einrichten?",
+    "Soll ich dir das jetzt gleich schicken?",  # 7.9.3 A1
+)
 
 
 def test_case_9_original_bug_report_sentence_now_recognized(monkeypatch):

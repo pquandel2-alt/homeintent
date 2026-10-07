@@ -146,6 +146,11 @@
       "name": "Monitor-Ziel löschen",
       "description": "Löscht ein persistentes HomeIntent-Monitor-Ziel anhand seiner Goal-ID."
     },
+    "send_report": {
+      "name": "Bericht senden",
+      "description": "Interner Dienst für bestätigte Berichte (Zusammenfassung beim Heimkommen, wöchentlicher Haus-Bericht): sendet genau eine Push-Nachricht an den Eigentümer bzw. den bestätigten Haushalt. Schaltet nie Geräte.",
+      "fields": {"report_id": {"name": "Bericht-ID", "description": "ID des bestätigten Berichts."}}
+    },
     "reset_test_state": {
       "name": "Testzustand zurücksetzen",
       "description": "Nur für Administratoren: vergisst Gesprächskontext, offene Rückfragen und den Ausführungs-Trace; gelernte Bindungen nur auf Wunsch.",

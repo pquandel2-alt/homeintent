@@ -262,7 +262,17 @@ def report_message(report: HealthReport, entities: Sequence[EntitySnapshot]) -> 
             "{{ ('Batterien unter " + limit + " %: ' ~ ns.items | join(', ')) if ns.items "
             "else 'Keine Batterie liegt unter " + limit + " %.' }}"
         )
-        return f"Batterien unter {limit} %: <Liste>", template
+        # The spoken form is what the report would say right now (7.9.3 A5).
+        low = []
+        for entity in members:
+            try:
+                value = float(entity.state)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= value < report.threshold:
+                low.append(f"{entity.friendly_name} ({round(value)} %)")
+        spoken = f"Batterien unter {limit} %: " + ", ".join(low) if low else f"Keine Batterie liegt unter {limit} %."
+        return spoken, template
     members = device_entities(entities)
     if not members:
         return None
@@ -274,4 +284,5 @@ def report_message(report: HealthReport, entities: Sequence[EntitySnapshot]) -> 
         "{% endfor %}"
         "{{ ('Nicht erreichbar: ' ~ ns.items | join(', ')) if ns.items else 'Alle Geräte sind erreichbar.' }}"
     )
-    return "Nicht erreichbar: <Liste>", template
+    down = [entity.friendly_name for entity in members if entity.state == "unavailable"]
+    return ("Nicht erreichbar: " + ", ".join(down) if down else "Alle Geräte sind erreichbar."), template

@@ -2364,6 +2364,20 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/house_report.py::_CLOCK_RE::9829b13a5f",
+   "datei": "custom_components/homeintent/house_report.py",
+   "bereich": "_CLOCK_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/house_report.py::validate_report_config::61573b7799",
+   "datei": "custom_components/homeintent/house_report.py",
+   "bereich": "validate_report_config",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/household_query.py::_COMPLETION_SENSOR_RE::3cbfb13c2f",
    "datei": "custom_components/homeintent/household_query.py",
    "bereich": "_COMPLETION_SENSOR_RE",
@@ -5232,12 +5246,47 @@
    "bereich": "_end_date",
    "klasse": "STRUCTURAL",
    "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::_CLAUSE_RE::fccc4b1cd3",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "_CLAUSE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::b94235bddd",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "parse_weather_clause",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::fec1fa542f",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "parse_weather_clause",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::db5eafdecc",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "parse_weather_clause",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/weather.py::validate_guard::dd64861dd9",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "validate_guard",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
   }
  ],
  "anzahl": {
-  "LEXICAL": 395,
+  "LEXICAL": 398,
   "MORPHOLOGICAL": 37,
-  "STRUCTURAL": 143,
+  "STRUCTURAL": 147,
   "SEMANTIC_SENTENCE_PATTERN": 171
  }
 }

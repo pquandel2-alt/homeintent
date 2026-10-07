@@ -91,6 +91,14 @@ _COLOR_SPOKEN_DE = {
 _COLOR_TEMP_SPOKEN_DE = COLOR_TEMPERATURE_SPOKEN
 
 
+
+def quoted_message(action: ActionModel) -> str:
+    """The spoken message; a message filled in at run time is spoken as a
+    real example from the house, never with placeholders (7.9.3 A5)."""
+    if action.message_template and action.message_template != action.message:
+        return f"zum Beispiel „{action.message}“"
+    return f"„{action.message}“"
+
 def _entity_lookup(entities: list[EntitySnapshot]) -> dict[str, EntitySnapshot]:
     return {e.entity_id: e for e in entities}
 
@@ -534,9 +542,9 @@ def _speak_action_leaf(
         if action.recipient is not None and action.recipient.label:
             return (
                 f"eine Push-Benachrichtigung an „{action.recipient.label}“ senden: "
-                f"„{action.message}“"
+                f"{quoted_message(action)}"
             )
-        return f"eine Benachrichtigung senden: „{action.message}“"
+        return f"eine Benachrichtigung senden: {quoted_message(action)}"
     if action.type is ActionType.DELAY:
         return f"{_format_delay(action.delay_seconds)} warten"
     if action.type is ActionType.WAIT:
@@ -647,7 +655,7 @@ def _speak_follow_ups(model: AutomationModel, entities: list[EntitySnapshot]) ->
                     continue
                 parts.append(
                     f"{question}, sende ich eine Push-Benachrichtigung {_recipient_phrase(second)}: "
-                    f"„{second.message}“"
+                    f"{quoted_message(second)}"
                 )
     kinds = {step.type for step in model.actions if isinstance(step, ActionModel)}
     if parts:
@@ -702,7 +710,7 @@ def _render_notification_preview(
             not test and bool(action.message) and action.message[-1] in ".!?"
         )
         if not test and action.message:
-            text += f": „{action.message}“"
+            text += f": {quoted_message(action)}"
         clauses.append(text)
     action_text = " und ".join(clauses)
 

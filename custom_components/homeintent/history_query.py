@@ -21,6 +21,38 @@ from .execution_context import call_context
 
 _LOGGER = logging.getLogger(__name__)
 
+# 7.9.3 A6: without a recorder every history, consumption and summary
+# question failed with a full traceback in the log.  Now one line per cause
+# and hour; the answer stays honest.
+RECORDER_WARNING_INTERVAL = 3600.0
+_RECORDER_WARNED: dict[tuple[int, str, str], float] = {}
+
+
+def warn_recorder(what: str, err: BaseException | str, hass: object = None) -> None:
+    """One single-line warning per cause, at most once per hour (per Home
+    Assistant instance)."""
+    import time
+
+    detail = err if isinstance(err, str) else str(err)
+    cause = err if isinstance(err, str) else f"{type(err).__name__}: {err}"
+    key = (id(hass), what, cause[:200])
+    now = time.monotonic()
+    last = _RECORDER_WARNED.get(key)
+    if last is not None and now - last < RECORDER_WARNING_INTERVAL:
+        _LOGGER.debug("Recorder %s failed again: %s", what, detail)
+        return
+    _RECORDER_WARNED[key] = now
+    _LOGGER.warning(
+        "Recorder %s failed: %s (die Antwort sagt es ehrlich; diese Warnung höchstens einmal je Stunde)",
+        what, detail,
+    )
+
+
+def recorder_loaded(hass: object) -> bool:
+    """False when Home Assistant runs without the recorder component."""
+    components = getattr(getattr(hass, "config", None), "components", None)
+    return components is None or "recorder" in components
+
 
 class HistoryMetric(Enum):
     MEAN = auto()
@@ -332,7 +364,7 @@ async def async_execute_history_query(
             context=call_context(),
         )
     except Exception as err:  # Recorder absent/disabled or API not supported.
-        _LOGGER.warning("Recorder statistics query failed: %s", err, exc_info=True)
+        warn_recorder("statistics query", err, hass)
         return "Die Home-Assistant-Verlaufsdaten sind momentan nicht verfügbar."
     return render_history_result(query, result)
 
@@ -363,7 +395,7 @@ async def _async_execute_comparative_history_query(
         first_response = await fetch(query.first)
         second_response = await fetch(query.second)
     except Exception as err:
-        _LOGGER.warning("Recorder comparison query failed: %s", err, exc_info=True)
+        warn_recorder("comparison query", err, hass)
         return "Die Home-Assistant-Verlaufsdaten sind momentan nicht verfügbar."
     first_value = _aggregate_rows(
         query.metric, statistic_rows(first_response, query.entity.entity_id)
@@ -508,7 +540,7 @@ async def _async_execute_state_history_query(hass, query: StateHistoryQuery) -> 
             )
         )
     except Exception as err:  # Recorder absent/disabled or history API unavailable.
-        _LOGGER.warning("Recorder state-history query failed: %s", err, exc_info=True)
+        warn_recorder("state-history query", err, hass)
         return "Die Home-Assistant-Verlaufsdaten sind momentan nicht verfügbar."
     return render_state_history_result(query, result)
 
@@ -547,7 +579,7 @@ async def async_read_numeric_samples(
             )
         )
     except Exception as err:
-        _LOGGER.warning("Recorder numeric samples failed: %s", err, exc_info=True)
+        warn_recorder("numeric samples", err, hass)
         return None
     rows = result.get(entity_id, ()) if isinstance(result, dict) else ()
     samples: list[tuple[datetime, float]] = []
@@ -570,6 +602,9 @@ async def async_read_state_rows(
     valid at the start (7.9.2 B1). ``None`` when the recorder cannot answer."""
     if not entity_ids:
         return {}
+    if not recorder_loaded(hass):
+        warn_recorder("state rows", "Recorder ist nicht geladen", hass)
+        return None
     try:
         from homeassistant.components.recorder import history
 
@@ -587,7 +622,7 @@ async def async_read_state_rows(
             )
         )
     except Exception as err:
-        _LOGGER.warning("Recorder state rows failed: %s", err, exc_info=True)
+        warn_recorder("state rows", err, hass)
         return None
     rows: dict[str, list[tuple[datetime, str, dict]]] = {}
     for entity_id, items in (result.items() if isinstance(result, dict) else ()):
@@ -633,7 +668,7 @@ async def async_get_transition_evidence(
             )
         )
     except Exception as err:
-        _LOGGER.warning("Recorder transition evidence failed: %s", err, exc_info=True)
+        warn_recorder("transition evidence", err, hass)
         return TransitionEvidence(False, None)
     rows = result.get(entity_id, ()) if isinstance(result, dict) else ()
     states = tuple(

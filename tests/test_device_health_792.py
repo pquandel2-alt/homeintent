@@ -21,7 +21,7 @@ from dataclasses import replace
 import pytest
 
 from _ha_sim import World, for_trigger_fires, run
-from _testhaus import PUSH_OPTIONS, HouseConversation, house_entities
+from _testhaus import PUSH_OPTIONS, HouseConversation, house_entities, offers_setup
 
 
 def _house(monkeypatch, tmp_path, entities=None) -> HouseConversation:
@@ -174,15 +174,23 @@ def test_report_without_time_asks(monkeypatch, tmp_path):
 
 
 def test_a_report_is_never_answered_now(monkeypatch, tmp_path):
+    # 7.9.3 A5: the preview names a real example of the report instead of
+    # "<Liste>" - the current batteries appear only as that example inside
+    # the preview, which still waits for "Ja"; nothing is answered or sent.
     turn = _house(monkeypatch, tmp_path).say("Sag mir jeden Sonntag um 10 Uhr, welche Batterien unter 30 Prozent sind.")
-    assert "Batterie Rauchmelder oben (9 %)" not in turn.speech
-    assert "Soll ich das so einrichten" in turn.speech
+    assert offers_setup(turn.speech)
+    assert "zum Beispiel „Batterien unter 30 %: Batterie Fenstersensor Bad (14 %), " \
+        "Batterie Rauchmelder oben (9 %)“" in turn.speech, turn.speech
+    assert turn.speech.count("Batterie Rauchmelder oben (9 %)") == 1
+    assert not [call for call in turn.calls if call[0] == "notify"]
 
 
 def test_unreachable_report(monkeypatch, tmp_path):
     house = _house(monkeypatch, tmp_path)
     preview = house.say("Sag mir werktags um 7 Uhr, welche Geräte nicht erreichbar sind.").speech
-    assert "07:00 Uhr" in preview and "Nicht erreichbar" in preview, preview
+    # 7.9.3 A5: a real example instead of "Nicht erreichbar: <Liste>" -
+    # nothing is unreachable in the test house right now.
+    assert "07:00 Uhr" in preview and "zum Beispiel „Alle Geräte sind erreichbar.“" in preview, preview
     house.say("Ja.")
     [automation] = house.automations()
     states = {e.entity_id: e.state for e in house_entities()}

@@ -82,6 +82,7 @@ SERVICE_SAVE_ROUTINE = "save_routine"
 SERVICE_SAVE_COMFORT_PROFILE = "save_comfort_profile"
 SERVICE_DELETE_MONITOR_GOAL = "delete_monitor_goal"
 SERVICE_RESET_TEST_STATE = "reset_test_state"
+SERVICE_SEND_REPORT = "send_report"
 SERVICE_THERMAL_DEADLINE_CHECKPOINT = "thermal_deadline_checkpoint"
 LEGACY_DOMAIN = "ha_nlu"
 
@@ -441,6 +442,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         hass.services.async_register(DOMAIN, SERVICE_DELETE_AUTOMATION, _handle_delete_automation)
         _register_legacy_service(hass, SERVICE_DELETE_AUTOMATION, _handle_delete_automation)
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_REPORT):
+
+        async def _handle_send_report(call: ServiceCall) -> None:
+            """7.9.3 A6/B6: one push of a confirmed report to its owner (or
+            the confirmed household) - looked up by id in HomeIntent's own
+            store; it never switches anything."""
+            from homeassistant.util import dt as dt_util
+
+            from .hass_entities import build_entity_snapshots
+            from .report_runtime import async_send_report
+
+            report_id = call.data.get("report_id")
+            if not isinstance(report_id, str) or not report_id:
+                return
+            await async_send_report(
+                hass, entry, report_id, build_entity_snapshots(hass, entry), dt_util.now()
+            )
+
+        hass.services.async_register(DOMAIN, SERVICE_SEND_REPORT, _handle_send_report)
 
     if not hass.services.has_service(DOMAIN, SERVICE_RECORD_AUTOMATION_RUN):
 
@@ -808,6 +829,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.runtime_data.stop_trace = None
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_DELETE_AUTOMATION):
         hass.services.async_remove(DOMAIN, SERVICE_DELETE_AUTOMATION)
+    if unloaded and hass.services.has_service(DOMAIN, SERVICE_SEND_REPORT):
+        hass.services.async_remove(DOMAIN, SERVICE_SEND_REPORT)
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_RECORD_AUTOMATION_RUN):
         hass.services.async_remove(DOMAIN, SERVICE_RECORD_AUTOMATION_RUN)
     if unloaded and hass.services.has_service(DOMAIN, SERVICE_ENABLE_AUTOMATION):

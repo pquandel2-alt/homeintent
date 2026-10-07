@@ -19,16 +19,20 @@ from homeassistant.util import dt as dt_util
 from datetime import datetime, timedelta
 
 from ..energy_query import async_answer as async_energy_answer
-from ..event_summary import (
-    SummaryEvent,
-    history_entities,
-    last_absence,
-    parse_summary_query,
-    render_rest,
-    render_summary,
-    states_of,
-    summarize,
+from ..event_summary import SummaryEvent, parse_summary_query, render_rest
+from ..automation_ownership import turn_is_shared
+from ..house_report import (
+    ReportRecord,
+    ReportRequest,
+    build_config,
+    describe_request,
+    new_report_id,
+    parse_report_request,
+    parse_report_show,
+    render_weekly,
+    validate_report_config,
 )
+from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
 from ..execution_trace import TRACE_DATA_KEY
 from ..history_query import async_read_state_rows
 from ..automation_ownership import HOUSEHOLD_OWNER
@@ -61,6 +65,7 @@ from ..vacation import (
     VacationStore,
     build_plan,
     describe_plan,
+    names_helper,
     parse_vacation_request,
     plan_configs,
     validate_plan,
@@ -145,19 +150,30 @@ class InsightsController:
         rest = self._rest.pop(user_input.conversation_id or "", ())
         if rest and _asks_more(user_input.text):  # "Was noch?" after a summary (B1)
             self._rest[user_input.conversation_id or ""] = tuple(rest[5:])
-            return self._answer(user_input, response, render_rest(rest))
+            return self._answer(user_input, response, render_rest(rest, dt_util.now().date()))
         task = self._runtime.dialog_manager.active(user_input.conversation_id)
         if task is not None and task.kind is DialogTaskKind.VACATION_CONFIRMATION:
             handled = await self._async_vacation_answer(user_input, response, task, entities)
             if handled is not None:
                 return handled
+        if task is not None and task.kind is DialogTaskKind.REPORT_CONFIRMATION:
+            handled = await self._async_report_answer(user_input, response, task, entities)
+            if handled is not None:
+                return handled
+        if parse_report_show(user_input.text):  # "Zeig mir den Haus-Bericht" (B6)
+            return self._answer(user_input, response, await self._async_report_show(user_input, entities))
+        report = parse_report_request(user_input.text)
+        if report is not None:  # "Schick mir jeden Sonntag … einen Haus-Bericht" (A6/B6)
+            return await self._async_report(user_input, response, report, entities)
         if task is not None and task.kind is DialogTaskKind.HABIT_OFFER:
             handled = self._habit_answer(user_input, response, task, entities)
             if handled is not None:
                 return handled
         vacation = parse_vacation_request(user_input.text, dt_util.now().date())
         if vacation is not None:  # "Ich bin bis Sonntag weg" (B4)
-            return await self._async_vacation(user_input, response, vacation, entities)
+            handled = await self._async_vacation(user_input, response, vacation, entities)
+            if handled is not None:
+                return handled
         habit = parse_habit_request(user_input.text)
         if habit is not None:  # "Welche Gewohnheiten hast du erkannt?" (B2)
             answered = self._habit_request(user_input, response, habit, entities)
@@ -198,80 +214,145 @@ class InsightsController:
     async def _async_summary(
         self, user_input: conversation.ConversationInput, summary: Any, entities: list[EntitySnapshot]
     ) -> str:
-        now = dt_util.now()
         actor = conversation_user_id(user_input)
         is_admin = await user_is_admin(self.hass, user_input)
         contexts = getattr(self._runtime, "user_contexts", None)
         binding = contexts.resolve_current_person(actor) if contexts is not None else None
         person = binding.person_entity_id if binding is not None else None
-        start, end, label = summary.start, summary.end, summary.label
-        if summary.away:
-            if person is None:
-                return (
-                    "Ich weiß nicht, welche Person du bist, also auch nicht, wann du weg warst. "
-                    "Frag zum Beispiel: „Was ist heute passiert?“"
-                )
-            rows = await async_read_state_rows(self.hass, [person], now - timedelta(days=7), now)
-            if rows is None:
-                return _NO_RECORDER
-            absence = last_absence([(moment, state) for moment, state, _ in rows.get(person, [])], now)
-            if absence is None:
-                return "Laut Verlauf warst du in den letzten 7 Tagen nicht weg."
-            start, end = absence
-            label = f"Während du weg warst ({start:%H:%M} bis {end:%H:%M} Uhr)"
-        assert start is not None and end is not None
-        ids = history_entities(entities, self.hass)
-        rows = await async_read_state_rows(self.hass, ids, start, end)
-        if rows is None:
-            return _NO_RECORDER
-        runs = await self._automation_runs(start, end)
-        names = {
-            state.entity_id: str(state.attributes.get("friendly_name") or state.entity_id)
-            for state in states_of(self.hass, "person")
-        }
-        events = summarize(
-            {key: [(moment, state) for moment, state, _ in value] for key, value in rows.items()},
-            entities, start, end,
-            away=summary.away, speaker_person=person, speaker_is_admin=is_admin,
-            automation_runs=runs, executions=self._executions(start, end), person_names=names,
+        if summary.away and person is None:
+            return (
+                "Ich weiß nicht, welche Person du bist, also auch nicht, wann du weg warst. "
+                "Frag zum Beispiel: „Was ist heute passiert?“"
+            )
+        text, rest = await async_summary_text(
+            self.hass, entities, summary, person=person, is_admin=is_admin, now=dt_util.now(),
+            read_rows=async_read_state_rows,
         )
-        text, rest = render_summary(events, label)
         if rest:
             self._rest[user_input.conversation_id or ""] = rest
         return text
 
-    async def _automation_runs(self, start: datetime, end: datetime) -> list[tuple[datetime, str]]:
-        """Monitors and automations that ran in the window (their own run
-        record, ``last_triggered``)."""
-        automations = [state.entity_id for state in states_of(self.hass, "automation")]
-        rows = await async_read_state_rows(self.hass, automations, start, end, attributes=True) or {}
-        runs: dict[tuple[str, str], tuple[datetime, str]] = {}
-        for entity_id, items in rows.items():
-            for _moment, _state, attributes in items:
-                raw = attributes.get("last_triggered")
-                moment = raw if isinstance(raw, datetime) else _parse_time(raw)
-                if moment is None or not start <= moment <= end:
-                    continue
-                name = str(attributes.get("friendly_name") or entity_id)
-                runs[(entity_id, moment.isoformat())] = (moment, name)
-        return sorted(runs.values())
+    # --- 7.9.3 A6/B6 pushed reports ----------------------------------------------
 
-    def _executions(self, start: datetime, end: datetime) -> list[tuple[datetime, str]]:
-        """What HomeIntent executed unattended (its trace)."""
-        data = getattr(self.hass, "data", None)
-        runtime = data.get(TRACE_DATA_KEY) if isinstance(data, dict) else None
-        store = getattr(runtime, "store", None)
-        found: list[tuple[datetime, str]] = []
-        for record in store.recent() if store is not None else ():
-            if record.user_present or not record.executed:
-                continue
-            moment = record.time
-            if not start <= moment <= end:
-                continue
-            names = [record.names.get(target, target) for target in record.targets]
-            found.append((moment, "HomeIntent hat " + ", ".join(names) + " geschaltet"))
-        return found
+    async def _async_report(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        request: ReportRequest, entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        """Preview of a pushed report; created only after "Ja"."""
+        user_id = conversation_user_id(user_input)
+        shared = turn_is_shared(self.hass, self.entry.options, user_input)
+        if user_id is None and not shared:
+            return self._result(user_input, response, "Berichte richte ich nur für angemeldete Personen ein.")
+        if not await self._automations.async_may_create(user_input):
+            return self._result(user_input, response, "Das Einrichten ist nur für Administratoren erlaubt.")
+        person = None
+        if request.kind == "arrival":
+            contexts = getattr(self._runtime, "user_contexts", None)
+            binding = contexts.resolve_current_person(user_id) if contexts is not None and user_id else None
+            person = binding.person_entity_id if binding is not None else None
+            if person is None:
+                return self._result(
+                    user_input, response,
+                    "Ich weiß nicht, welche Person du bist, also auch nicht, wann du heimkommst. "
+                    "Ein Administrator kann dich unter HomeIntent mit deiner Person verknüpfen.",
+                )
+        if request.kind == "weekly" and request.hour is None:
+            question = "Um wie viel Uhr soll ich dir den Haus-Bericht schicken? Sag zum Beispiel: „um 18 Uhr“."
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id, "monitor-part", DialogTaskKind.MONITOR_PART, DialogPriority.FOLLOWUP,
+                reason="Eine Rückfrage nach der Uhrzeit ist offen.", requested_by_user_id=user_id,
+                payload=PartRequest(MissingPart.CLOCK, question, original_text=user_input.text),
+            )
+            return self._result(user_input, response, question)
+        labels = {item.entity_id: item.friendly_name for item in entities}
+        resolver = NotificationTargetResolver.from_options(
+            self.entry.options, getattr(self._runtime, "user_contexts", None),
+            label_for=lambda target_id: labels.get(target_id, ""),
+        )
+        kind = NotificationRecipientKind.HOUSEHOLD if shared else NotificationRecipientKind.CURRENT_USER
+        resolution = resolver.resolve(kind, user_id)
+        if not resolution.resolved:
+            return self._result(
+                user_input, response,
+                "Ich kenne kein bestätigtes Push-Ziel dafür; ohne gebundenes Gerät richte ich keinen Bericht ein.",
+            )
+        labels = [target.label or target.target_id for target in resolution.targets]
+        recipient = "euch per Push" if shared else "dir an „" + "“ und „".join(labels) + "“"
+        example = ""
+        if request.kind == "weekly":
+            facts = await async_weekly_facts(self.hass, entities, dt_util.now())
+            example = render_weekly(facts)[0].split(" Details:")[0].rstrip(".")
+        preview = describe_request(request, recipient, example)
+        if shared:
+            preview = preview.replace(" Soll ich", " Er gehört dem ganzen Haushalt (gemeinsam). Soll ich", 1)
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id, "report", DialogTaskKind.REPORT_CONFIRMATION, DialogPriority.CONFIRMATION,
+            reason="Ein Bericht per Push wartet auf ausdrückliche Bestätigung.", requested_by_user_id=user_id,
+            payload=(request, new_report_id(), shared, person),
+        )
+        return self._result(user_input, response, preview)
 
+    async def _async_report_answer(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        task: Any, entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
+            return None
+        manager = self._runtime.dialog_manager
+        reply = _yes_no(user_input.text)
+        if reply is ConfirmationReply.UNCLEAR:
+            if len(user_input.text.split()) > 3:
+                manager.cancel(user_input.conversation_id, task.task_id)
+                return None
+            return self._result(user_input, response, "Bitte antworte mit Ja oder Nein.")
+        manager.cancel(user_input.conversation_id, task.task_id)
+        if reply is ConfirmationReply.NO:
+            return self._result(user_input, response, "In Ordnung, ich richte nichts ein.")
+        request, report_id, shared, person = task.payload
+        config = build_config(report_id, request, person)
+        problem = validate_report_config(config, entities)
+        if problem is not None:
+            return self._result(user_input, response, f"Das richte ich nicht ein ({problem}). Ich habe nichts angelegt.")
+        owner = HOUSEHOLD_OWNER if shared else conversation_user_id(user_input)
+        store = await async_report_store(self.hass)
+        store.records[report_id] = ReportRecord(
+            report_id, request.kind, conversation_user_id(user_input), shared, person,
+        )
+        try:
+            automation_id = await self._automations._automation_store().async_create_automation(
+                config, owner_user_id=owner
+            )
+        except Exception as err:  # noqa: BLE001 - nothing half-created stays
+            store.records.pop(report_id, None)
+            return self._result(user_input, response, f"Der Bericht konnte nicht eingerichtet werden: {err}")
+        store.records[report_id].automation_id = automation_id
+        await self.hass.async_add_executor_job(store.save)
+        report_outcome(TurnOutcomeKind.EXECUTED)
+        return self._result(user_input, response, "Eingerichtet." if request.kind == "arrival" else (
+            "Eingerichtet. Die Details eines Berichts sage ich dir auf „Zeig mir den Haus-Bericht“."
+        ))
+
+    async def _async_report_show(
+        self, user_input: conversation.ConversationInput, entities: list[EntitySnapshot]
+    ) -> str:
+        """The full house report: the last one sent, else as of now (read-only)."""
+        user_id = conversation_user_id(user_input)
+        store = await async_report_store(self.hass)
+        mine = [
+            record for record in store.records.values()
+            if record.kind == "weekly" and record.last_full and (record.shared or record.owner_user_id == user_id)
+        ]
+        if mine:
+            latest = max(mine, key=lambda record: record.last_sent)
+            sent = datetime.fromisoformat(latest.last_sent)
+            return f"Der letzte Haus-Bericht vom {sent:%d.%m.} um {sent:%H:%M} Uhr: " + latest.last_full.removeprefix(
+                "Haus-Bericht: "
+            )
+        facts = await async_weekly_facts(self.hass, entities, dt_util.now())
+        full = render_weekly(facts)[1]
+        return "Einen Haus-Bericht habe ich dir noch nicht geschickt. Nach heutigem Stand: " + full.removeprefix(
+            "Haus-Bericht: "
+        )
 
     # --- B4 vacation -----------------------------------------------------------
 
@@ -293,7 +374,7 @@ class InsightsController:
     async def _async_vacation(
         self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
         request: Any, entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult:
+    ) -> conversation.ConversationResult | None:
         now = dt_util.now()
         store = _vacation_store(self.hass)
         record = await self.hass.async_add_executor_job(store.load)
@@ -304,19 +385,31 @@ class InsightsController:
         manager = self._runtime.dialog_manager
         if request.action == "status":
             return self._answer(user_input, response, _vacation_status(record))
-        if request.action == "end":
+        if request.action in {"end", "return"}:
             if record is None:
-                return self._result(user_input, response, "Der Urlaubsmodus ist nicht aktiv.")
+                if request.action == "return" or names_helper(user_input.text):
+                    # "Ich bin wieder zuhause" without a vacation mode, or
+                    # "Schalte den Urlaubsmodus aus" (the helper device):
+                    # read on as before (7.9.3 A3).
+                    return None
+                return self._result(
+                    user_input, response, "Der Urlaubsmodus ist nicht aktiv; ich habe nichts geändert."
+                )
             helper = f" und schalte „{record.helper}“ aus" if record.helper else ""
             manager.create(
                 user_input.conversation_id, "vacation", DialogTaskKind.VACATION_CONFIRMATION,
                 DialogPriority.CONFIRMATION, reason="Das Ende des Urlaubsmodus wartet auf Ja.",
                 requested_by_user_id=conversation_user_id(user_input), payload=("end", record),
             )
+            welcome = (
+                f"Willkommen zurück! Der Urlaubsmodus läuft noch bis "
+                f"{datetime.fromisoformat(record.end):%d.%m.}. Soll ich ihn beenden? "
+                if request.action == "return" else ""
+            )
             return self._result(
                 user_input, response,
-                f"Ich beende den Urlaubsmodus: Ich lösche seine {len(record.automation_ids)} Automationen{helper}. "
-                "Soll ich?",
+                f"{welcome}Ich beende den Urlaubsmodus: Ich lösche seine {len(record.automation_ids)} "
+                f"Automationen{helper}. Soll ich?",
             )
         if record is not None:
             return self._result(
@@ -597,19 +690,6 @@ def _asks_more(text: str) -> bool:
     """"Was noch?", "Und weiter?", "Mehr", "Sonst noch was?" (B1)."""
     words = [word.casefold().strip(",.;:!?") for word in text.split()]
     return len(words) <= 4 and (bool(set(words) & {"weiter", "mehr"}) or "noch" in words)
-_NO_RECORDER = (
-    "Dafür brauche ich den Verlauf von Home Assistant (Recorder); er ist gerade nicht verfügbar. "
-    "Ich kann dir nur den jetzigen Zustand sagen."
-)
-
-
-def _parse_time(value: object) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 # --- B4 vacation -------------------------------------------------------------

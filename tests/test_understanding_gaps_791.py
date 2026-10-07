@@ -9,7 +9,7 @@ import asyncio
 
 import pytest
 
-from _testhaus import PUSH_OPTIONS, HouseConversation
+from _testhaus import PUSH_OPTIONS, HouseConversation, offers_setup
 
 
 def _house(monkeypatch, tmp_path) -> HouseConversation:
@@ -26,7 +26,7 @@ def _created(house: HouseConversation, text: str, *answers: str) -> dict:
         if "Nur jetzt oder jedes Mal" in turn.speech:
             # Asked only when the sentence did not say it ("jede Minute" does).
             turn = house.say(answer)
-    assert "Soll ich das so einrichten?" in turn.speech or "Soll diese Automation" in turn.speech, turn.speech
+    assert offers_setup(turn.speech) or "Soll diese Automation" in turn.speech, turn.speech
     house.say("Ja.")
     return house.automations()[-1]
 

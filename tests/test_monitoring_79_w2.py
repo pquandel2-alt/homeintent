@@ -16,7 +16,7 @@ import json
 import pytest
 
 from _ha_sim import World, condition_holds, entities_of, fires, for_trigger_fires
-from _testhaus import PUSH_OPTIONS, HouseConversation
+from _testhaus import PUSH_OPTIONS, HouseConversation, offers_setup
 
 RESTART = "Startet Home Assistant neu, beginnt die Wartezeit von vorn."
 RESTART_TODAY = "Startet Home Assistant an diesem Tag neu"
@@ -44,12 +44,12 @@ def _create(monkeypatch, tmp_path, text: str, then: str = "Ja.") -> tuple[str, d
     house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
     preview = house.say(text)
     assert preview.calls == [], text
-    assert "Soll ich das so einrichten" in preview.speech, (text, preview.speech)
+    assert offers_setup(preview.speech), (text, preview.speech)
     assert house.automations() == [], "nothing is written before the confirmation"
     if "Nur heute oder jeden Tag" in preview.speech:
         # Once or every day is asked, never guessed (7.3.3).
         preview = house.say(then)
-        assert "Soll ich das so einrichten" in preview.speech, preview.speech
+        assert offers_setup(preview.speech), preview.speech
         then = "Ja."
     house.say(then)
     [automation] = house.automations()
@@ -157,7 +157,7 @@ def _refused(monkeypatch, tmp_path, text: str) -> str:
     house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
     turn = house.say(text)
     assert turn.calls == [], text
-    assert "Soll ich das so einrichten" not in turn.speech, (text, turn.speech)
+    assert not offers_setup(turn.speech), (text, turn.speech)
     house.say("Ja.")
     assert house.automations() == [], text
     return turn.speech

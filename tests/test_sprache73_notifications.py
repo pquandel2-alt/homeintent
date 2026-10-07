@@ -13,7 +13,7 @@ import itertools
 
 import pytest
 
-from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation
+from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, offers_setup
 
 PHILIPP, ANNA = PHONES
 
@@ -119,7 +119,7 @@ def test_event_notification_matrix(monkeypatch, tmp_path, event, frame, connecto
     house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
     preview = house.say(text)
     assert preview.calls == [], text
-    assert "Soll ich das so einrichten" in preview.speech, (text, preview.speech)
+    assert offers_setup(preview.speech), (text, preview.speech)
     house.say("Ja.")
     [automation] = house.automations()
     assert _trigger_entities(automation) == expected, (text, automation)

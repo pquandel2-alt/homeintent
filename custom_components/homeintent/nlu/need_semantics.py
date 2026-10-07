@@ -237,7 +237,10 @@ def interpret_need(words: Sequence[str], *, question: bool = False) -> NeedMeani
                 word_set & {"haus", "wohnung", "weg", "los", "jetzt", "tschuess", "verlasse", "verlassen"}
             ):
                 continue
-            if concept.key == "arrive" and not (word_set & {"zurueck", "heim", "zuhause", "daheim", "angekommen", "heimgekommen"}):
+            if concept.key == "arrive" and not (
+                word_set & {"zurueck", "heim", "zuhause", "daheim", "angekommen", "heimgekommen"}
+                or {"wieder", "da"} <= word_set  # "Wir sind wieder da" (7.9.3 A3)
+            ):
                 continue
             if concept.key == "morning" and not word_set & {"aufstehen", "aufgestanden", "wach"}:
                 continue

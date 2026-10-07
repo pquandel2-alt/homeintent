@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from _testhaus import PUSH_OPTIONS, HouseConversation
+from _testhaus import PUSH_OPTIONS, HouseConversation, offers_setup
 
 # (subject phrase, plural subject phrase, value, unit word)
 _SUBJECTS = (
@@ -38,7 +38,7 @@ def _house(monkeypatch, tmp_path) -> HouseConversation:
 
 def _trigger(house: HouseConversation, text: str) -> dict:
     turn = house.say(text)
-    assert "Soll ich das so einrichten?" in turn.speech, (text, turn.speech)
+    assert offers_setup(turn.speech), (text, turn.speech)
     assert "verlässt" not in turn.speech, turn.speech
     house.say("Ja.")
     [automation] = house.automations()[-1:]

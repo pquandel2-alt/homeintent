@@ -71,7 +71,8 @@ def test_non_admin_with_option_creates_the_push_automation(monkeypatch, tmp_path
     house = _house(monkeypatch, tmp_path)
     house.say(SENTENCE)
     answer = house.say("Ja.").speech
-    assert answer == "Automation wurde erstellt."
+    # 7.9.3 A1: the kitchen window is already open, "Ja" also sends that now.
+    assert answer == "Automation wurde erstellt. Die Nachricht zu Küchenfenster (offen) habe ich dir gerade geschickt."
     automations = house.automations()
     assert len(automations) == 1
     reloads = [call for call in house.calls if call[:2] == ("automation", "reload")]
@@ -87,8 +88,11 @@ def test_the_created_push_automation_reaches_annas_phone(monkeypatch, tmp_path):
     house.say("Ja.")
     (automation,) = house.automations()
     assert automation["triggers"][0]["entity_id"] == "binary_sensor.kuechenfenster"
+    # 7.9.3 A1: "Ja" already sent the open kitchen window to Anna's phone.
+    (_, immediate), = house.sink.notify_calls
+    assert immediate["entity_id"] == ["notify.handy_anna_nachricht"]
     asyncio.run(house.sink.async_run_automation_actions(automation["actions"]))
-    (_, payload), = house.sink.notify_calls
+    (_, payload), = house.sink.notify_calls[1:]
     assert payload["entity_id"] == ["notify.handy_anna_nachricht"]
 
 

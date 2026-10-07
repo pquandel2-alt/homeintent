@@ -349,3 +349,16 @@ reset_test_state:
       required: false
       default: false
       selector: {boolean: {}}
+
+send_report:
+  name: Bericht senden
+  description: >-
+    Interner Dienst für bestätigte Berichte (Zusammenfassung beim Heimkommen,
+    wöchentlicher Haus-Bericht): sendet genau eine Push-Nachricht an den
+    Eigentümer bzw. den bestätigten Haushalt. Schaltet nie Geräte.
+  fields:
+    report_id:
+      name: Bericht-ID
+      required: true
+      selector:
+        text:

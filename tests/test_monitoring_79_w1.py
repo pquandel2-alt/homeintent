@@ -18,7 +18,7 @@ from dataclasses import replace
 import pytest
 
 from _ha_sim import World, entities_of, fires
-from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities
+from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities, offers_setup
 
 WINDOWS = sorted({
     "binary_sensor.badezimmerfenster", "binary_sensor.buerofenster",
@@ -54,7 +54,7 @@ def _create(monkeypatch, tmp_path, text: str, entities=None) -> tuple[str, dict]
     house = HouseConversation(monkeypatch, entities=entities, tmp_path=tmp_path, options=PUSH_OPTIONS)
     preview = house.say(text)
     assert preview.calls == [], text
-    assert "Soll ich das so einrichten" in preview.speech, (text, preview.speech)
+    assert offers_setup(preview.speech), (text, preview.speech)
     assert house.automations() == [], "nothing is written before the confirmation"
     house.say("Ja.")
     [automation] = house.automations()
@@ -225,7 +225,7 @@ def _refused(monkeypatch, tmp_path, text: str, entities=None) -> str:
     house = HouseConversation(monkeypatch, entities=entities, tmp_path=tmp_path, options=PUSH_OPTIONS)
     turn = house.say(text)
     assert turn.calls == [], text
-    assert "Soll ich das so einrichten" not in turn.speech, (text, turn.speech)
+    assert not offers_setup(turn.speech), (text, turn.speech)
     house.say("Ja.")
     assert house.automations() == [], text
     return turn.speech

@@ -138,6 +138,77 @@ def _end_date(words: list[str], today: date) -> tuple[date, str] | None:
 _TRAVEL_WORDS = frozenset({
     "urlaub", "ferien", "verreist", "weg", "unterwegs", "fahren", "fahre", "fliegen", "fliege", "reisen", "reise",
 })
+# What a vacation, a trip or an absence is called (7.9.3 A3).
+_SUBJECT_STEMS = ("urlaub", "ferien", "reise", "abwesenheit")
+# Ending it: "vorbei", "zu Ende", "beenden", "aus", "abschalten" …
+_END_WORDS = frozenset({
+    "vorbei", "beendet", "beende", "beenden", "aus", "ausschalten", "abschalten", "deaktiviere",
+    "deaktivieren", "deaktiviert", "stoppe", "stoppen",
+})
+# Coming back: "zurück", "heim", "angekommen", "wieder da/zuhause/daheim/hier".
+_RETURN_WORDS = frozenset({
+    "zurueck", "heim", "heimgekommen", "heimgekehrt", "angekommen", "zurueckgekommen", "zurueckgekehrt",
+    "wiederda",
+})
+_PLACE_AFTER_WIEDER = frozenset({"da", "zuhause", "daheim", "hier", "zurueck", "heim"})
+# A program, mode or preset whose *value* is "Urlaub" (7.9.3 A2).
+_SETTING_NOUNS = frozenset({
+    "modus", "programm", "preset", "betriebsart", "profil", "voreinstellung", "einstellung", "betriebsmodus",
+})
+_VALUE_WORDS = ("urlaub", "ferien", "abwesen")
+# A statement about people: first person with being, travelling or leaving.
+_PERSON_VERBS = frozenset({
+    "bin", "sind", "fahren", "fahre", "fliegen", "fliege", "gehen", "gehe", "reisen", "reise", "verreisen",
+    "verreise", "machen", "mache", "waren", "war", "kommen", "komme",
+})
+
+
+def _subject_named(words: Sequence[str]) -> bool:
+    return any(word.startswith(_SUBJECT_STEMS) for word in words) or "verreist" in words
+
+
+def _person_statement(words: Sequence[str]) -> bool:
+    """"Ich bin / wir sind / wir fahren …": a statement about people."""
+    present = set(words)
+    return bool(present & {"ich", "wir"}) and bool(present & _PERSON_VERBS)
+
+
+def device_value_reading(text: str) -> bool:
+    """"Stell das Heizprogramm auf Urlaub", "Modus Urlaub", "Preset
+    Abwesend": the word is the *value* of a device setting, never the
+    vacation mode (7.9.3 A2).  A statement about people ("Wir sind bis
+    Sonntag auf Urlaub") stays the vacation reading."""
+    words = _words(text)
+    if _person_statement(words):
+        return False
+    for index, word in enumerate(words):
+        if not word.startswith(_VALUE_WORDS) or word.startswith("urlaubsmodus"):
+            continue
+        before = words[index - 1] if index else ""
+        after = words[index + 1] if index + 1 < len(words) else ""
+        if before == "auf" or before in _SETTING_NOUNS or before.endswith(tuple(_SETTING_NOUNS)):
+            return True
+        if after in _SETTING_NOUNS and not (word == "urlaubs" and after == "modus"):
+            return True
+    return False
+
+
+def _returns(words: Sequence[str]) -> bool:
+    """Coming back: "zurück", "heimgekommen", "wieder da/zuhause"."""
+    words = " ".join(words).replace("zu hause", "zuhause").split()
+    glued = [a + b if a == "wieder" and b in _PLACE_AFTER_WIEDER else a for a, b in zip(words, [*words[1:], ""])]
+    present = set(glued)
+    if present & _RETURN_WORDS - {"wiederda"}:
+        return True
+    return any(word.startswith("wieder") and word[len("wieder"):] in _PLACE_AFTER_WIEDER for word in glued)
+
+
+def _ends(words: Sequence[str]) -> bool:
+    """Ending: "vorbei", "zu Ende", "beenden", "aus", "abschalten", "ist um"."""
+    present = set(words)
+    return bool(present & _END_WORDS) or {"zu", "ende"} <= present or (
+        bool(present & {"um", "rum"}) and "ist" in present
+    )
 
 
 def parse_vacation_request(text: str, today: date) -> VacationRequest | None:
@@ -152,25 +223,37 @@ def parse_vacation_request(text: str, today: date) -> VacationRequest | None:
             index + 1 >= len(words) or words[index + 1] not in {"da", "zuhause", "daheim", "zu"}
         ):
             return None
+    if device_value_reading(text):
+        return None  # "Stell das Heizprogramm auf Urlaub" is a device command (A2)
+    if present & {"wenn", "sobald", "falls"}:
+        return None  # a condition, never a statement
     away_words = present | ({"weg"} if any(
         a == "nicht" and b in {"da", "zuhause", "daheim"} for a, b in zip(words, words[1:])
     ) else set())
     vacation = bool(present & {"urlaub", "urlaubsmodus", "ferien", "verreist"}) or any(
         word.startswith("urlaub") for word in words
     )
+    subject = vacation or _subject_named(words)
     if vacation and present & {"was", "wie", "ist", "laeuft"} and present & {"macht", "an", "aktiv", "laeuft", "lange", "stand"}:
-        if not present & {"bis"}:
+        if not present & {"bis"} and not _ends(words):
             return VacationRequest("status")
-    if (vacation and present & {"vorbei", "beendet", "beende", "beenden", "aus", "ausschalten", "deaktiviere"}) or (
-        present & {"zurueck"} and present & {"wir", "ich"} and present & {"sind", "bin"} and "bis" not in present
-    ):
+    question = bool(present & {"was", "wie", "welche", "warst", "wann", "wo", "wer"})
+    if subject and not question and "bis" not in present and (_ends(words) or _returns(words)):
+        # "Urlaub vorbei", "Die Reise ist zu Ende", "Wir sind aus dem
+        # Urlaub zurück", "Beende die Abwesenheit" (A3).
         return VacationRequest("end")
+    if not question and "bis" not in present and _returns(words) and (
+        present & {"ich", "wir"} or words[:2] == ["wieder", "da"]
+    ):
+        # "Wir sind wieder da", "Ich bin wieder zuhause": a return; ends a
+        # running vacation mode only after its own question (A3).
+        return VacationRequest("return")
     away = vacation or (
         away_words & {"weg", "verreist", "unterwegs"} and present & {"bin", "sind"} and "bis" in present
     )
     if not away:
         return None
-    if present & {"wenn", "sobald", "falls", "was", "wie", "welche", "warst", "war"}:
+    if question or present & {"war"}:
         return None
     found = _end_date(words, today)
     simulate = bool(present & {"simuliere", "simulier", "anwesenheitssimulation", "simulation"}) or (
@@ -185,6 +268,12 @@ def parse_vacation_request(text: str, today: date) -> VacationRequest | None:
     if found is None:
         return VacationRequest("start", None, "", simulate)
     return VacationRequest("start", found[0], found[1], simulate)
+
+
+def names_helper(text: str) -> bool:
+    """"Schalte den Urlaubsmodus aus" names the helper device."""
+    words = _words(text)
+    return "urlaubsmodus" in words or ("urlaubs" in words and "modus" in words)
 
 
 # --- plan ------------------------------------------------------------------------

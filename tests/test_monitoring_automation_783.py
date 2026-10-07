@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities
+from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities, offers_setup
 
 PHILIPP = PHONES[0]
 WINDOWS = {
@@ -41,7 +41,7 @@ def _create(monkeypatch, tmp_path, text: str, entities=None) -> dict:
     )
     preview = house.say(text)
     assert preview.calls == [], text
-    assert "Soll ich das so einrichten" in preview.speech, (text, preview.speech)
+    assert offers_setup(preview.speech), (text, preview.speech)
     assert house.automations() == [], "nothing is written before the confirmation"
     house.say("Ja.")
     [automation] = house.automations()
@@ -361,7 +361,7 @@ def _refused(monkeypatch, tmp_path, text: str, entities=None) -> str:
     )
     turn = house.say(text)
     assert turn.calls == [], text
-    assert "Soll ich das so einrichten" not in turn.speech, (text, turn.speech)
+    assert not offers_setup(turn.speech), (text, turn.speech)
     house.say("Ja.")
     assert house.automations() == [], text
     return turn.speech

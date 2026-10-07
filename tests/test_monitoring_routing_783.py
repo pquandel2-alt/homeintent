@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities
+from _testhaus import PHONES, PUSH_OPTIONS, HouseConversation, house_entities, offers_setup
 
 PEOPLE = ("person.anna", "person.lena", "person.philipp")
 
@@ -79,7 +79,7 @@ def _create(monkeypatch, tmp_path, text: str, household: tuple[str, ...] = ()) -
         asyncio.run(house.entity._runtime_data.user_contexts.async_set_household(list(household), confirmed=True))
     preview = house.say(text)
     assert preview.calls == [], text
-    assert "Soll ich das so einrichten" in preview.speech, (text, preview.speech)
+    assert offers_setup(preview.speech), (text, preview.speech)
     assert house.automations() == [], "nothing is written before the confirmation"
     house.say("Ja.")
     [automation] = house.automations()
@@ -224,6 +224,6 @@ def test_an_unreadable_request_still_reaches_the_monitor_goal(monkeypatch, tmp_p
     """The goal path is not removed: what the reader cannot read stays there."""
     house = HouseConversation(monkeypatch, tmp_path=tmp_path, options=PUSH_OPTIONS)
     turn = house.say("Wenn ich gehe und die Haustür nicht verriegelt ist, sag mir Bescheid.")
-    assert "Soll ich das so einrichten" not in turn.speech
+    assert not offers_setup(turn.speech)
     # The test house has no monitor-goal store: the goal path answers.
     assert "Goal-Persistenz" in turn.speech, turn.speech

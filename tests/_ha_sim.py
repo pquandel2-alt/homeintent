@@ -125,6 +125,8 @@ def trigger_fires(trigger: dict, world: World, changed: str | None, before: str 
             return False
         if "from" in trigger and before != trigger["from"]:
             return False
+        if before in trigger.get("not_from", ()):  # 7.9.3: e.g. a restart (unknown -> home)
+            return False
         return _seconds(trigger.get("for")) == 0
     if kind == "time":
         return changed is None and world.clock == tuple(int(p) for p in trigger["at"].split(":")[:2])
@@ -143,6 +145,10 @@ def trigger_fires(trigger: dict, world: World, changed: str | None, before: str 
 
         # Home Assistant fires when the value crosses into the range.
         return inside(world.states[changed]) and not inside(before)
+    if kind == "homeassistant":
+        # Fires only when Home Assistant starts (7.9.3), modelled as the
+        # pseudo change ``"homeassistant.start"``.
+        return trigger.get("event") == "start" and changed == "homeassistant.start"
     raise AssertionError(f"unmodelled trigger {kind}")
 
 

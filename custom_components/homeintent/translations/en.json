@@ -133,6 +133,11 @@
       "name": "Delete monitor goal",
       "description": "Deletes a persistent HomeIntent monitor goal by goal ID."
     },
+    "send_report": {
+      "name": "Send report",
+      "description": "Internal service for confirmed reports (summary on arrival, weekly house report): sends exactly one push to the owner or the confirmed household. Never switches devices.",
+      "fields": {"report_id": {"name": "Report ID", "description": "Id of the confirmed report."}}
+    },
     "reset_test_state": {
       "name": "Reset test state",
       "description": "Administrators only: forgets conversation context, open questions and the execution trace; learned bindings only on request.",

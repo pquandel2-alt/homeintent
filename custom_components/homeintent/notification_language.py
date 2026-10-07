@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from .entities import EntitySnapshot
+from .entities import EntitySnapshot, format_spoken_number
 from .nlu.action_model import NotificationRecipientKind
 from .nlu.automation_model import (
     NumericComparator,
@@ -1080,16 +1080,21 @@ def runtime_message(
             units = {item.unit for item in members}
             unit = next(iter(units)) if len(units) == 1 else None
             suffix = f" {unit}" if unit else ""
+            # The spoken form is a real example from the house (7.9.3 A5):
+            # the sensor that is closest to the reported side right now.
+            example, value = _numeric_example(members, trigger)
             return (
-                f"<Gerät>: <Wert>{suffix}",
+                f"{example.friendly_name}: {value}{suffix}",
                 "{{ trigger.to_state.name }}: {{ trigger.to_state.state }}" + suffix,
             )
     if trigger.type is TriggerType.STATE and trigger.raw_to == ("unavailable",) and target is not None:
-        if len(_matching_entities(target, entities)) > 1:
+        members = _matching_entities(target, entities)
+        if len(members) > 1:
             duration = spoken_duration(int(trigger.for_seconds or 0)) if trigger.for_seconds else None
             since = f" {_since(duration)}" if duration else ""
+            example = next((item for item in members if item.state == "unavailable"), members[0])
             return (
-                f"<Gerät> ist{since} nicht erreichbar.",
+                f"{example.friendly_name} ist{since} nicht erreichbar.",
                 "{{ trigger.to_state.name }} ist" + since + " nicht erreichbar.",
             )
     if trigger.type is TriggerType.PRESENCE and trigger.presence_event is not None:
@@ -1121,8 +1126,29 @@ def runtime_message(
             + "{% if ns.places %}; {{ (ns.places[:-1] | join(', ') ~ ' und ' ~ ns.places[-1])"
             " if ns.places | length > 1 else ns.places[0] }} ist noch " + what + "{% endif %}."
         )
-        return (f"{head}; <Räume> ist noch {what}.", template)
+        on_now = [where[entity_id] for entity_id in sorted(where) if by_id[entity_id].state == "on"]
+        places = list(dict.fromkeys(on_now or [where[sorted(where)[0]]]))
+        spoken_places = places[0] if len(places) == 1 else ", ".join(places[:-1]) + " und " + places[-1]
+        return (f"{head}; {spoken_places} ist noch {what}.", template)
     return None
+
+
+def _numeric_example(members: Sequence[EntitySnapshot], trigger: TriggerModel) -> tuple[EntitySnapshot, str]:
+    """A real sensor and value for the preview example (7.9.3 A5): the
+    lowest value for "unter", the highest for "über", the threshold when no
+    sensor reports a number."""
+    numbers: list[tuple[float, EntitySnapshot]] = []
+    for item in members:
+        try:
+            numbers.append((float(item.state), item))
+        except (TypeError, ValueError):
+            continue
+    if not numbers:
+        fallback = trigger.threshold if trigger.threshold is not None else 0
+        return sorted(members, key=lambda item: item.entity_id)[0], format_spoken_number(fallback)
+    below = trigger.comparator is NumericComparator.BELOW
+    value, item = (min if below else max)(numbers, key=lambda pair: (pair[0], pair[1].entity_id))
+    return item, format_spoken_number(round(value) if float(value).is_integer() else value)
 
 
 def _condition_entities_on(conditions: Sequence[Any]) -> tuple[str, ...]:
