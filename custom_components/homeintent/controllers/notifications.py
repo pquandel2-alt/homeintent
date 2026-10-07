@@ -21,11 +21,13 @@ from ..nlu.action_model import (
     ActionModel,
     ActionType,
     NotificationRecipient,
+    NotificationRecipientKind,
 )
 from ..nlu.automation_model import AutomationModel, TriggerTarget
 from ..nlu.context import ConversationContextStore
 from ..notification_request import async_deliver_notification_request, NotificationRequest
 from ..presence_scope import bind_presence_scope, presence_scope, scope_failure
+from ..automation_ownership import turn_is_shared
 from ..notification_target import (
     named_notification_targets,
     NotificationTargetResolver,
@@ -132,6 +134,9 @@ class NotificationController:
         """
         resolver: NotificationTargetResolver | None = None
         failure: str | None = None
+        # A shared monitor/automation notifies the confirmed household
+        # (7.9.2 A3), whoever asked for it.
+        shared = turn_is_shared(self._hass(), self.entry.options, user_input)
 
         def materialize(step: ActionModel | ActionGroup) -> ActionModel | ActionGroup:
             nonlocal resolver, failure
@@ -154,12 +159,17 @@ class NotificationController:
                 return step
             if resolver is None:
                 resolver = self._notification_target_resolver(entities)
-            resolution = resolver.resolve(recipient.kind, conversation_user_id(user_input))
+            kind = (
+                NotificationRecipientKind.HOUSEHOLD
+                if shared and recipient.kind is NotificationRecipientKind.CURRENT_USER
+                else recipient.kind
+            )
+            resolution = resolver.resolve(kind, conversation_user_id(user_input))
             if not resolution.resolved:
                 failure = resolution_failure_text(resolution)
                 return step
             return replace(step, recipient=NotificationRecipient(
-                recipient.kind,
+                kind,
                 entity_ids=resolution.entity_ids,
                 service_ids=resolution.service_ids,
                 label=resolution.label,

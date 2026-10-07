@@ -29,6 +29,22 @@ IMPLICIT_ACTION_LEVELS = (
 DEFAULT_IMPLICIT_ACTION_LEVEL = "propose"
 CONF_ALLOW_NON_ADMIN_CRITICAL = "allow_non_admin_critical"
 CONF_ALLOW_NON_ADMIN_AUTOMATIONS = "allow_non_admin_automations"
+# 7.9.1 Teil B: "spoken" answers every turn aloud (default); "tone" plays a
+# short confirmation sound instead when everything said was done.
+CONF_RESPONSE_STYLE = "response_style"
+RESPONSE_STYLE_SPOKEN = "spoken"
+RESPONSE_STYLE_TONE = "tone"
+RESPONSE_STYLES = (RESPONSE_STYLE_SPOKEN, RESPONSE_STYLE_TONE)
+DEFAULT_RESPONSE_STYLE = RESPONSE_STYLE_SPOKEN
+# Optional own sound (media-source:// or a local /local/... path); empty:
+# the integration's own confirm.mp3.
+CONF_CONFIRMATION_MEDIA_ID = "confirmation_media_id"
+# 7.9.2 A1: bounded wait for a device's state report after a write.
+CONF_EFFECT_WAIT_SECONDS = "effect_wait_seconds"
+DEFAULT_EFFECT_WAIT_SECONDS = 2.0
+# 7.9.2 A3: voice devices without a signed-in user speak for the household
+# (manage shared monitors/automations only). Off by default.
+CONF_HOUSEHOLD_VOICE_DEVICES = "household_voice_devices"
 CONF_CONTEXT_TTL_SECONDS = "context_ttl_seconds"
 CONF_CUSTOM_ALIASES = "custom_aliases"
 CONF_CONTROL_USER_IDS = "control_user_ids"

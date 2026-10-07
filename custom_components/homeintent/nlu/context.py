@@ -138,6 +138,8 @@ class PendingAutomationConfirmation:
 
     model: AutomationModel
     requested_by_user_id: str | None = None
+    # 7.9.2 A3: the automation belongs to the household ("für uns alle").
+    shared: bool = False
 
 
 @dataclass(frozen=True)

@@ -42,6 +42,14 @@ class DialogTaskKind(StrEnum):
     MONITOR_EVENT = "monitor_event"
     UNUSUAL_OPT_IN = "unusual_opt_in"
     MONITOR_DELETE = "monitor_delete"
+    # 7.9.1 A6: a question for exactly one part of a monitoring request.
+    MONITOR_PART = "monitor_part"
+    # 7.9.1 A7: the short monitor list; "Was macht die erste?" asks for one in full.
+    MONITOR_LIST = "monitor_list"
+    # 7.9.2 B4: the vacation-mode preview waits for "Ja" (start or end).
+    VACATION_CONFIRMATION = "vacation_confirmation"
+    # 7.9.2 B2: "Soll ich das automatisch machen?" after a recognized habit.
+    HABIT_OFFER = "habit_offer"
 
 
 class DialogPriority(IntEnum):

@@ -62,6 +62,9 @@ class AutomationSummary:
     # The automation's own description (HomeIntent writes the spoken preview
     # there since 7.9 W8).
     description: str | None = None
+    # 7.9.1 A2: who confirmed it (sidecar ``owner_user_id``); ``None`` for
+    # older or hand-made automations - those only an administrator manages.
+    owner_user_id: str | None = None
 
 
 def automations_named(

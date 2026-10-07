@@ -9,6 +9,7 @@ automation preview, never stored before.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -40,16 +41,53 @@ from ..monitoring_management import MonitoringOperation, MonitoringRequest
 from ..rate_monitor import describe_rule
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..proactive_model import SituationKind
-from ..security_control import conversation_user_id
+from ..notification_target import NotificationTargetResolver, resolution_failure_text
+from ..nlu.action_model import NotificationRecipientKind
+from ..automation_ownership import (
+    HOUSEHOLD_OWNER,
+    async_management_refusal,
+    async_owner_name,
+    household_voice,
+    mark_shared_turn,
+    may_manage,
+    may_share,
+    shared_turn_text,
+    turn_is_shared,
+)
+from ..missing_part import MissingPart, PartRequest, complete_request, read_part_answer
+from ..security_control import conversation_user_id, user_is_admin
+from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..user_context import BindingStatus
+
+
+# "bis gestern um 7 Uhr" etc.: the stale time is replaced by the answer.
+_CLOCK_TAIL_RE = re.compile(r"\s+bis\b.*$", re.IGNORECASE)
 
 
 class MonitoringController:
     """Stages and confirms HomeIntent-run monitors."""
 
-    def __init__(self, *, runtime: Any, automation_store: Callable[[], Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        runtime: Any,
+        automation_store: Callable[[], Any] | None = None,
+        hass: Callable[[], Any] | None = None,
+        options: Callable[[], Mapping[str, object]] | None = None,
+    ) -> None:
         self._runtime = runtime
         self._automation_store = automation_store
+        self._hass_of = hass
+        self._options_of = options
+        self._shared_open: dict[str, str] = {}
+
+    @property
+    def _options(self) -> Mapping[str, object]:
+        return self._options_of() if self._options_of is not None else {}
+
+    @property
+    def _hass(self) -> Any:
+        return self._hass_of() if self._hass_of is not None else None
 
     def stage_value_monitor(
         self,
@@ -62,18 +100,40 @@ class MonitoringController:
         conversation_id = user_input.conversation_id
         actor_id = conversation_user_id(user_input)
         contexts = self._runtime.user_contexts
+        if turn_is_shared(self._hass, self._options, user_input):
+            # 7.9.2 A3: a shared monitor notifies the confirmed household.
+            resolution = NotificationTargetResolver.from_options(self._options, contexts).resolve(
+                NotificationRecipientKind.HOUSEHOLD, None
+            )
+            if not resolution.resolved or contexts is None:
+                response.async_set_speech(f"{resolution_failure_text(resolution)} Ich habe nichts eingerichtet.")
+                return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+            recipients = tuple(contexts.household.person_entity_ids)
+            owner: str | None = HOUSEHOLD_OWNER
+        else:
+            recipients = ()
+            owner = actor_id
         binding = contexts.resolve_current_person(actor_id) if contexts is not None else None
-        if binding is None or binding.status is not BindingStatus.RESOLVED or binding.person_entity_id is None:
+        if not recipients and (
+            binding is None or binding.status is not BindingStatus.RESOLVED or binding.person_entity_id is None
+        ):
             response.async_set_speech(
                 "Ich weiß noch nicht, welche Person du bist. Bitte ordne deinem "
                 "HomeIntent-Benutzer eine Person zu, dann kann ich dir solche Meldungen schicken."
             )
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
         assert contexts is not None
-        targets = contexts.resolve_notification_targets(binding.person_entity_id)
-        if targets.status is not BindingStatus.RESOLVED:
+        targets = (
+            contexts.resolve_notification_targets(binding.person_entity_id)
+            if not recipients and binding is not None and binding.person_entity_id is not None
+            else None
+        )
+        if targets is not None and targets.status is not BindingStatus.RESOLVED:
             response.async_set_speech(
-                "Welches bestätigte Gerät soll ich für diese Push-Benachrichtigung verwenden?"
+                # A statement, not a question: the answer is a setting, not a
+                # reply in this conversation (7.9.1 A6).
+                "Für dich sind mehrere Push-Geräte bestätigt. Lege im Learning Center fest, "
+                "welches ich für Meldungen nehmen soll; ich habe nichts eingerichtet."
                 if targets.status is BindingStatus.AMBIGUOUS
                 else "Für dich ist noch kein bestätigtes Push-Ziel konfiguriert."
             )
@@ -89,11 +149,11 @@ class MonitoringController:
                 "value_change", entity_id=rule.entity_id, delta=rule.delta, unit=rule.unit,
                 direction=rule.direction.value, window_seconds=rule.window_seconds,
             ),
-            recipient_person_ids=(binding.person_entity_id,),
+            recipient_person_ids=recipients or ((binding.person_entity_id,) if binding is not None and binding.person_entity_id else ()),
             delivery_channel=DeliveryChannel.PUSH,
             notification_severity=NotificationSeverity.WARNING,
             provenance=GoalProvenance(
-                source_utterance=user_input.text, user_id=actor_id, conversation_id=conversation_id,
+                source_utterance=user_input.text, user_id=owner, conversation_id=conversation_id,
             ),
             lifecycle=GoalLifecycle.MONITOR,
         )
@@ -145,6 +205,7 @@ class MonitoringController:
         confirmed = replace(goal, provenance=replace(goal.provenance, confirmed=True))
         window = goal.trigger.window_seconds if goal.trigger is not None else None
         await store.async_save(MonitorRecord(confirmed, cooldown_seconds=window or 300))
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(
             f"Eingerichtet. Ich überwache {proposal.subject} selbst und melde mich, sobald die "
             "Änderung eintritt."
@@ -167,8 +228,19 @@ class MonitoringController:
         goals = self._runtime.monitor_goals
         records = await goals.async_load() if goals is not None else ()
         monitors = collect_monitors(automations, records, entities)
+        is_admin = await user_is_admin(self._hass, user_input)
+        actor = conversation_user_id(user_input)
+        voice = household_voice(self._hass, self._options, user_input)
+        if request.operation in {MonitoringOperation.LIST, MonitoringOperation.ASK} and not is_admin:
+            # Non-administrators see their own monitors (7.9.1 A2) and the
+            # shared ones (7.9.2 A3).
+            monitors = [
+                item for item in monitors
+                if may_manage(item.owner_user_id, actor, False, household_voice=voice)
+            ]
         chosen = matching(monitors, request.subject, entities)
-        spoken_subject = f" für „{request.subject}“" if request.subject else ""
+        said = request.spoken_subject or request.subject
+        spoken_subject = f" für „{said}“" if said else ""
 
         def say(text: str, query: bool = False) -> conversation.ConversationResult:
             if query:
@@ -176,14 +248,52 @@ class MonitoringController:
             response.async_set_speech(text)
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
+        if request.operation is MonitoringOperation.ASK:
+            # "Beobachtest du das Garagentor?" - from the list (7.9.1 A7).
+            if not chosen:
+                watched = f"„{said}“" if said else "das"
+                return say(f"Nein, {watched} überwache ich gerade nicht.", query=True)
+            running = [item for item in chosen if item.enabled]
+            if not running:
+                return say(
+                    f"Nein, gerade nicht: {_count_word(len(chosen), 'Überwachung')}"
+                    f"{spoken_subject} ist ausgeschaltet.", query=True,
+                )
+            return say(
+                "Ja: " + "; ".join(short_label(item) for item in running) + ".", query=True
+            )
         if request.operation is MonitoringOperation.LIST:
             if not chosen:
                 return say(f"Gerade läuft keine Überwachung{spoken_subject}.", query=True)
+            owners: dict[str | None, str] = {}
+            if is_admin:
+                for item in chosen:
+                    if item.owner_user_id not in owners:
+                        owners[item.owner_user_id] = (
+                            await async_owner_name(self._hass, item.owner_user_id) or "ohne Eigentümer"
+                        )
+            # Spoken short form (7.9.1 A7): what each one watches; the full
+            # preview only when asked ("Was macht die erste?").
             parts = [
-                f"„{item.label.rstrip('.')}“" + ("" if item.enabled else " (ausgeschaltet)")
+                short_label(item)
+                + (
+                    " (gemeinsam)" if item.owner_user_id == HOUSEHOLD_OWNER
+                    else f" (von {owners[item.owner_user_id]})" if is_admin and item.owner_user_id != actor
+                    else ""
+                )
+                + ("" if item.enabled else " (ausgeschaltet)")
                 for item in chosen
             ]
             head = "Es läuft eine Überwachung" if len(chosen) == 1 else f"Es laufen {len(chosen)} Überwachungen"
+            self._runtime.dialog_manager.create(
+                conversation_id,
+                "monitor-list",
+                DialogTaskKind.MONITOR_LIST,
+                DialogPriority.FOLLOWUP,
+                reason="Die Liste der Überwachungen kann genauer erklärt werden.",
+                requested_by_user_id=actor,
+                payload=tuple(chosen),
+            )
             return say(f"{head}: " + "; ".join(parts) + ".", query=True)
         if not chosen:
             return say(f"Ich finde keine Überwachung{spoken_subject}.")
@@ -194,14 +304,23 @@ class MonitoringController:
                 + ". Welche meinst du? Nenne sie bitte genauer."
             )
         monitor = chosen[0]
+        if request.operation is MonitoringOperation.SHARE:
+            return say(await self._async_share(user_input, monitor, store, goals, records, is_admin))
+        refusal = await async_management_refusal(
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung", options=self._options,
+        )
+        if refusal is not None:
+            return say(refusal)
         if request.operation is MonitoringOperation.STOP:
             if monitor.automation_id is not None and store is not None:
                 await store.async_disable_automation(monitor.automation_id)
             elif monitor.goal_id is not None and goals is not None:
                 record = next(item for item in records if item.goal.goal_id == monitor.goal_id)
                 await goals.async_save(replace(record, enabled=False))
+            report_outcome(TurnOutcomeKind.EXECUTED)
+            # The short form of the list (7.9.2 A6), not the full preview.
             return say(
-                f"Ausgeschaltet: „{monitor.label.rstrip('.')}“. Sie bleibt gespeichert, bis du sie löschst."
+                f"Ausgeschaltet: {short_label(monitor)}. Sie bleibt gespeichert, bis du sie löschst."
             )
         if request.operation is MonitoringOperation.DELETE:
             self._runtime.dialog_manager.create(
@@ -216,7 +335,7 @@ class MonitoringController:
             return say(f"Soll ich die Überwachung „{monitor.label.rstrip('.')}“ löschen?")
         # PAUSE
         if request.hour is None or request.day_offset is None:
-            return say("Bis wann? Sag zum Beispiel: „Pausiere die Garagen-Meldung bis morgen um 7 Uhr.“")
+            return say(self._ask_until(user_input, "Bis wann? Sag zum Beispiel: „bis morgen um 7 Uhr“."))
         if monitor.automation_id is None or store is None:
             return say(
                 "Überwachungen, die ich selbst ausführe, kann ich ausschalten, aber nicht zeitlich "
@@ -226,13 +345,126 @@ class MonitoringController:
             hour=request.hour, minute=request.minute, second=0, microsecond=0
         )
         if resume <= now:
-            return say("Dieser Zeitpunkt liegt schon in der Vergangenheit. Bis wann soll ich pausieren?")
+            return say(self._ask_until(
+                user_input, "Dieser Zeitpunkt liegt schon in der Vergangenheit. Bis wann soll ich pausieren?"
+            ))
         await store.async_pause_automation_until(monitor.automation_id, resume)
+        report_outcome(TurnOutcomeKind.EXECUTED)
         day = "morgen" if request.day_offset == 1 else "heute" if request.day_offset == 0 else resume.strftime("%d.%m.")
         return say(
-            f"Pausiert bis {day} um {resume:%H:%M} Uhr: „{monitor.label.rstrip('.')}“. Danach schalte ich "
+            f"Pausiert bis {day} um {resume:%H:%M} Uhr: {short_label(monitor)}. Danach schalte ich "
             "sie automatisch wieder ein."
         )
+
+    async def _async_share(
+        self,
+        user_input: conversation.ConversationInput,
+        monitor: Any,
+        store: Any,
+        goals: Any,
+        records: Any,
+        is_admin: bool,
+    ) -> str:
+        """"Mach die Fensterüberwachung für alle" (7.9.2 A3): owner or admin."""
+        if monitor.owner_user_id == HOUSEHOLD_OWNER:
+            return f"Die Überwachung „{short_label(monitor)}“ gilt schon für den ganzen Haushalt."
+        if not may_share(monitor.owner_user_id, conversation_user_id(user_input), is_admin):
+            owner = await async_owner_name(self._hass, monitor.owner_user_id) or "ein Administrator"
+            return f"Gemeinsam machen kann diese Überwachung nur {owner} oder ein Administrator."
+        # Shared monitors notify the confirmed household; without one the
+        # answer is the same honest one as for "uns".
+        contexts = self._runtime.user_contexts
+        resolution = NotificationTargetResolver.from_options(self._options, contexts).resolve(
+            NotificationRecipientKind.HOUSEHOLD, None
+        )
+        if not resolution.resolved or contexts is None:
+            return f"{resolution_failure_text(resolution)} Ich habe nichts geändert."
+        if monitor.automation_id is not None and store is not None:
+            await store.async_set_owner(
+                monitor.automation_id, HOUSEHOLD_OWNER, tuple(resolution.entity_ids)
+            )
+        elif monitor.goal_id is not None and goals is not None:
+            record = next(item for item in records if item.goal.goal_id == monitor.goal_id)
+            goal = record.goal
+            await goals.async_save(replace(record, goal=replace(
+                goal,
+                recipient_person_ids=tuple(contexts.household.person_entity_ids),
+                provenance=replace(goal.provenance, user_id=HOUSEHOLD_OWNER),
+            )))
+        else:
+            return "Diese Überwachung kann ich nicht ändern."
+        report_outcome(TurnOutcomeKind.EXECUTED)
+        return (
+            f"Erledigt: Die Überwachung „{short_label(monitor)}“ gilt jetzt für den ganzen Haushalt "
+            "(gemeinsam); Meldungen gehen an alle bestätigten Personen im Haushalt."
+        )
+
+    def answer_open_question(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+    ) -> conversation.ConversationResult | str | None:
+        """The turn after a monitor list or a one-part question: a result,
+        the completed request text to run again, or ``None`` (not consumed)."""
+        manager = self._runtime.dialog_manager
+        if task.kind is DialogTaskKind.MONITOR_LIST:
+            manager.cancel(user_input.conversation_id, task.task_id)
+            return self.answer_list_detail(user_input, response, task)
+        request = getattr(task, "payload", None)
+        if not isinstance(request, PartRequest):
+            return None
+        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
+            return None
+        phrase = read_part_answer(request.part, user_input.text)
+        if phrase is None:
+            if len(user_input.text.split()) <= 3:
+                # A short reply that is no such part: ask again, never guess.
+                response.async_set_speech(
+                    f"Das habe ich nicht als {request.spoken_part} verstanden. {request.question}"
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            # A complete new request ends the question without effect.
+            manager.cancel(user_input.conversation_id, task.task_id)
+            return None
+        manager.cancel(user_input.conversation_id, task.task_id)
+        return complete_request(request, phrase)
+
+    def answer_list_detail(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+    ) -> conversation.ConversationResult | None:
+        """"Was genau macht die erste?" after the short list (7.9.1 A7)."""
+        monitors = getattr(task, "payload", None)
+        if not isinstance(monitors, tuple) or not monitors:
+            return None
+        if getattr(task, "requested_by_user_id", None) not in {None, conversation_user_id(user_input)}:
+            return None
+        index = ordinal_index(user_input.text, len(monitors))
+        if index is None:
+            return None
+        monitor = monitors[index]
+        response.response_type = intent.IntentResponseType.QUERY_ANSWER
+        response.async_set_speech(monitor.label.rstrip(".") + ".")
+        return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+
+    def _ask_until(self, user_input: conversation.ConversationInput, question: str) -> str:
+        """"Bis wann?" opens a typed dialog: the answer is the time (7.9.1 A6)."""
+        original = _CLOCK_TAIL_RE.sub("", user_input.text).strip().rstrip(".!?")
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id,
+            "monitor-part",
+            DialogTaskKind.MONITOR_PART,
+            DialogPriority.FOLLOWUP,
+            reason="Eine Rückfrage nach der Uhrzeit ist offen.",
+            requested_by_user_id=conversation_user_id(user_input),
+            payload=PartRequest(MissingPart.UNTIL, question, original_text=f"{original}."),
+        )
+        return question
 
     async def async_handle_monitor_delete(
         self,
@@ -257,10 +489,17 @@ class MonitoringController:
         if reply is ConfirmationReply.NO:
             response.async_set_speech("In Ordnung, die Überwachung bleibt.")
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
+        refusal = await async_management_refusal(
+            self._hass, user_input, monitor.owner_user_id, noun="Überwachung", options=self._options,
+        )
+        if refusal is not None:
+            response.async_set_speech(refusal)
+            return conversation.ConversationResult(response=response, conversation_id=conversation_id)
         if monitor.automation_id is not None and self._automation_store is not None:
             await self._automation_store().async_delete_automation(monitor.automation_id)
         elif monitor.goal_id is not None and self._runtime.monitor_goals is not None:
             await self._runtime.monitor_goals.async_delete(monitor.goal_id)
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(f"Gelöscht: „{monitor.label.rstrip('.')}“.")
         return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
@@ -282,6 +521,10 @@ class MonitoringController:
             requested_by_user_id=conversation_user_id(user_input),
             payload=words,
         )
+        shared = shared_turn_text()
+        if shared is not None:
+            # The answer continues a request "für uns alle" (7.9.2 A3).
+            self._shared_open[user_input.conversation_id] = shared
         response.async_set_speech(question)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -298,6 +541,9 @@ class MonitoringController:
         answer = user_input.text.strip().rstrip(".!?").strip()
         if not answer:
             return None
+        shared = self._shared_open.pop(user_input.conversation_id, None)
+        if shared is not None:
+            mark_shared_turn(shared)
         head = f"Überwache {' '.join(str(word) for word in words)} und"
         lowered = answer[:1].casefold() + answer[1:]
         if lowered.split()[0] in {"wenn", "sobald", "falls", "ob"}:
@@ -422,6 +668,8 @@ class Monitor:
     entity_ids: frozenset[str]
     automation_id: str | None = None
     goal_id: str | None = None
+    # 7.9.1 A2: who set it up (``None`` for older ones: administrators only).
+    owner_user_id: str | None = None
 
 
 def _notifies(actions: Any) -> bool:
@@ -451,6 +699,7 @@ def collect_monitors(
         found.append(Monitor(
             label, bool(automation.enabled), frozenset(automation.referenced_entity_ids),
             automation_id=automation.automation_id,
+            owner_user_id=getattr(automation, "owner_user_id", None),
         ))
     for record in records:
         rule = rate_rule_of(record.goal)
@@ -460,13 +709,64 @@ def collect_monitors(
             )
             found.append(Monitor(
                 label, record.enabled, frozenset({rule.entity_id}), goal_id=record.goal.goal_id,
+                owner_user_id=record.goal.provenance.user_id,
             ))
         elif record.goal.provenance.source_utterance:
             found.append(Monitor(
                 record.goal.provenance.source_utterance, record.enabled, frozenset(),
-                goal_id=record.goal.goal_id,
+                goal_id=record.goal.goal_id, owner_user_id=record.goal.provenance.user_id,
             ))
     return found
+
+
+_COUNT_WORDS = ("keine", "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn")
+
+
+def _count_word(count: int, noun: str) -> str:
+    return f"{_COUNT_WORDS[count] if count < len(_COUNT_WORDS) else count} {noun}"
+
+
+def short_label(monitor: Monitor) -> str:
+    """What a monitor watches, without its full preview: the conditional
+    clause up to the main clause ("…, sende ich dir …", "…, dann …")."""
+    text = monitor.label.strip().rstrip(".")
+    words = text.split()
+    short = text
+    if words and words[0].casefold() in {"wenn", "sobald", "falls"}:
+        for index, word in enumerate(words[:-1]):
+            if not word.endswith(","):
+                continue
+            following = words[index + 1].casefold()
+            after = words[index + 2].casefold() if index + 2 < len(words) else ""
+            if following == "dann" or after == "ich":
+                short = " ".join(words[: index + 1]).rstrip(",")
+                break
+        short = short[:1].casefold() + short[1:]
+    if monitor.goal_id is not None and "selbst" not in short:
+        short += " (das überwache ich selbst)"
+    return short
+
+
+_ORDINALS = {
+    "erste": 0, "ersten": 0, "zweite": 1, "zweiten": 1, "dritte": 2, "dritten": 2,
+    "vierte": 3, "vierten": 3, "fünfte": 4, "fünften": 4,
+}
+
+
+def ordinal_index(text: str, count: int) -> int | None:
+    """"Was macht die erste?", "die letzte", "Nummer 2" -> index, or ``None``."""
+    keys = [word.strip(",.;:!?").casefold() for word in text.split()]
+    if len(keys) > 8:
+        return None
+    for position, key in enumerate(keys):
+        if key in _ORDINALS and _ORDINALS[key] < count:
+            return _ORDINALS[key]
+        if key in {"letzte", "letzten"}:
+            return count - 1
+        if key == "nummer" and position + 1 < len(keys) and keys[position + 1].isdigit():
+            number = int(keys[position + 1])
+            return number - 1 if 1 <= number <= count else None
+    return None
 
 
 def _stem(word: str) -> str:

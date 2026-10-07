@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 
 from .entities import EntitySnapshot, format_spoken_number, normalize_for_compare
+from .device_health import answer_health_query
 from .productivity import parse_duration_seconds
 
 
@@ -27,30 +28,11 @@ def match_advanced_query(
     text: str, entities: list[EntitySnapshot], now: datetime
 ) -> str | None:
     value = normalize_for_compare(text)
-    if re.search(r"\b(?:nicht erreichbar|nicht verfuegbar|unverfuegbar|offline)\b", value):
-        affected = [e.friendly_name for e in entities if e.state in {"unavailable", "unknown"}]
-        return (
-            "Alle für HomeIntent ausgewählten Geräte sind erreichbar."
-            if not affected else "Nicht erreichbar sind: " + _join(affected) + "."
-        )
-
-    battery = re.search(r"\b(?:batterie|batterien|akkus?)\b.*?\b(?:unter|weniger als)\s+(\d{1,3})", value)
-    if battery:
-        threshold = min(100, int(battery.group(1)))
-        affected = []
-        for entity in entities:
-            if entity.device_class != "battery":
-                continue
-            try:
-                level = float(entity.state)
-            except ValueError:
-                continue
-            if level < threshold:
-                affected.append(f"{entity.friendly_name} mit {level:g} Prozent")
-        return (
-            f"Keine Batterie liegt unter {threshold} Prozent."
-            if not affected else "Unter dem Grenzwert liegen: " + _join(affected) + "."
-        )
+    # 7.9.2 B3: one rule for batteries and reachability (device_health):
+    # only released devices, never helpers or scenes whose state is unknown.
+    health = answer_health_query(text, entities)
+    if health is not None:
+        return health
 
     if re.search(r"\b(?:meisten|hoechsten)\b.*\b(?:strom|leistung|verbrauch)\b|"
                  r"\b(?:strom|leistung|verbrauch)\b.*\b(?:meisten|hoechsten)\b", value):

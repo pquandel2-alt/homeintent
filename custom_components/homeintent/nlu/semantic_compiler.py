@@ -37,6 +37,7 @@ from .degree_semantics import (
 from .constraint_resolver import Constraints, resolve_candidates
 from .device_ontology import analyse_word, entity_genera
 from .entity_resolution import (
+    exact_registry_name,
     ResolutionStatus,
     ResolveStatus,
     mentioned_entities,
@@ -362,37 +363,42 @@ def _compile_measurement_query(
             for token in analysis.unexplained_tokens
             if normalize_for_compare(token) not in _STOP_WORDS
         }:
-            return None
-        ranked = rank_semantic_targets(
-            text,
-            entities,
-            domains=frozenset({domain}),
-            ignored_tokens=frozenset(
-                _STOP_WORDS
-                | {
-                    normalize_for_compare(canonical),
-                    normalize_for_compare(label),
-                    normalize_for_compare(property_name),
-                }
-            ),
-            index=(world_model.entity_index if world_model is not None else None),
-        )
-        compatible = tuple(
-            candidate
-            for candidate in ranked
-            if device_class is None or candidate.entity.device_class == device_class
-        )
-        if not compatible:
-            return None
-        best_score = compatible[0].score
-        best = tuple(item for item in compatible if item.score == best_score)
-        if len(best) != 1:
-            return None
-        named_entity = best[0].entity
-        if _has_unexplained_meaning(
-            analysis, (named_entity.friendly_name, *named_entity.aliases)
-        ):
-            return None
+            # 7.9.2 A5: "Wie hoch ist der Stromverbrauch?" - exactly one
+            # registry name without a room contains the spoken word.
+            named_entity = _exact_property_name(text, entities, domain, device_class)
+            if named_entity is None:
+                return None
+        else:
+            ranked = rank_semantic_targets(
+                text,
+                entities,
+                domains=frozenset({domain}),
+                ignored_tokens=frozenset(
+                    _STOP_WORDS
+                    | {
+                        normalize_for_compare(canonical),
+                        normalize_for_compare(label),
+                        normalize_for_compare(property_name),
+                    }
+                ),
+                index=(world_model.entity_index if world_model is not None else None),
+            )
+            compatible = tuple(
+                candidate
+                for candidate in ranked
+                if device_class is None or candidate.entity.device_class == device_class
+            )
+            if not compatible:
+                return None
+            best_score = compatible[0].score
+            best = tuple(item for item in compatible if item.score == best_score)
+            if len(best) != 1:
+                return None
+            named_entity = best[0].entity
+            if _has_unexplained_meaning(
+                analysis, (named_entity.friendly_name, *named_entity.aliases)
+            ):
+                return None
         area_id = floor_id = None
         matched = [named_entity]
     else:
@@ -456,7 +462,7 @@ def _compile_measurement_query(
                 text=target_text,
                 entity_id=(named_entity.entity_id if named_entity else None),
                 domain=domain,
-                device_class=device_class,
+                device_class=(named_entity.device_class if named_entity is not None else device_class),
             ),
             area=(
                 AreaReference(
@@ -484,6 +490,27 @@ def _compile_measurement_query(
         ),
         resolved_entities=matched,
     )
+
+
+def _exact_property_name(
+    text: str, entities: list[EntitySnapshot], domain: str, device_class: str | None
+) -> EntitySnapshot | None:
+    """The one room-less sensor whose registry name contains a spoken word
+    as a whole word (7.9.2 A5, same rule as automation grounding)."""
+    # "Stromverbrauch" names power and energy alike; the registry name and
+    # the sensor's own class decide which one is meant.
+    family = {device_class} | ({"power", "energy"} if device_class in {"power", "energy"} else set())
+    candidates = [
+        entity for entity in entities
+        if entity.domain == domain and (device_class is None or entity.device_class in family)
+    ]
+    hits = {
+        hit.entity_id: hit
+        for word in re.findall(r"[\wäöüÄÖÜß-]+", text)
+        if normalize_for_compare(word) not in _STOP_WORDS
+        for hit in exact_registry_name(word, candidates)
+    }
+    return next(iter(hits.values())) if len(hits) == 1 else None
 
 
 def _compile_comparison_query(

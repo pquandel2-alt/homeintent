@@ -34,6 +34,7 @@ __all__ = (
     "analyse_word",
     "entity_genera",
     "entity_has_genus",
+    "entity_name_mentions",
     "genus",
     "genus_forms",
     "lookup_genus_word",
@@ -85,6 +86,8 @@ class Genus:
     # a device: it can be made quieter or stopped, but "Musik an" needs a
     # source and is never read as switching a speaker on.
     forbidden_actions: frozenset[str] = frozenset()
+    # Membership by name evidence alone, whatever the device class (7.9.2).
+    name_only: bool = False
 
     @property
     def singular(self) -> str:
@@ -169,8 +172,18 @@ GENERA: tuple[Genus, ...] = (
     _g("switch", "Schalter|Zwischenstecker|Aktor", "Schalter", M, {"switch"}, in_everything=True),
     _g("socket", "Steckdose|Stecker|Steckerleiste|Mehrfachsteckdose", "Steckdosen", F, {"switch"},
        {"outlet"}, parent="switch", in_everything=True),
-    _g("valve", "Ventil|Bewässerung|Sprenger",
-       "Ventile", N, {"valve"}, extra_forms=("Bewaesserung",)),
+    _g("valve", "Ventil|Absperrventil|Wasserventil|Magnetventil",
+       "Ventile", N, {"valve"}),
+    # 7.9.2 A2: the two valve kinds the access rule distinguishes. Both are
+    # known by name only - Home Assistant's valve classes (water, gas) do
+    # not say what a water valve feeds.
+    _g("irrigation", "Bewässerung|Beregnung|Sprenger|Rasensprenger|Regner|Bewässerungsventil|"
+       "Tropfbewässerung|Gartenbewässerung|Rasenbewässerung|Beetbewässerung|Tropfschlauch",
+       "Bewässerungen", F, {"valve"}, parent="valve", name_only=True,
+       extra_forms=("Bewaesserung", "Bewaesserungsventil")),
+    _g("main_valve", "Hauptventil|Hauptwasserventil|Haupthahn|Hauptwasserhahn|Hauptabsperrventil|"
+       "Zuleitung|Wasserzuleitung|Hauptzuleitung|Hauptabsperrung",
+       "Hauptventile", N, {"valve"}, parent="valve", name_only=True),
     # --- Melder -----------------------------------------------------------
     _g("smoke_detector", "Rauchmelder|Brandmelder|Feuermelder", "Rauchmelder", M,
        {"binary_sensor"}, {"smoke"}, sensor=True),
@@ -192,10 +205,12 @@ GENERA: tuple[Genus, ...] = (
        {"carbon_dioxide"}, extra_forms=("Luftqualitaet",), sensor=True),
     _g("power_sensor", "Leistung|Stromaufnahme|Strom|Verbrauch|Stromverbrauch", "Leistungen", F,
        {"sensor"}, {"power"}, sensor=True),
-    _g("energy_sensor", "Energie|Energieverbrauch|Zähler|Stromzähler|Energiezähler", "Energiezähler",
+    _g("energy_sensor", "Energie|Energieverbrauch|Zähler|Stromzähler|Energiezähler|Zählerstand", "Energiezähler",
        F, {"sensor"}, {"energy"}, extra_forms=("Zaehler",), sensor=True),
     _g("battery_sensor", "Batterie|Akku|Batteriestand|Ladestand|Akkustand|Akkuladung", "Batterien", F, {"sensor"},
        {"battery"}, extra_forms=("Akkus",), sensor=True),
+    _g("wind_sensor", "Wind|Windgeschwindigkeit|Windsensor|Windmesser|Anemometer|Windstärke", "Windsensoren",
+       M, {"sensor"}, {"wind_speed"}, sensor=True),
     _g("illuminance_sensor", "Helligkeit|Helligkeitssensor|Lichtsensor|Beleuchtungsstärke", "Helligkeiten",
        F, {"sensor"}, {"illuminance"}, sensor=True),
     # --- Sonstiges --------------------------------------------------------
@@ -462,6 +477,8 @@ def _direct_member(entity: EntitySnapshot, item: Genus) -> GenusMatch | None:
     ):
         return None
     by_name = _name_mentions(entity, item.key)
+    if item.name_only:
+        return GenusMatch(item, by_class=False, by_name=True) if by_name else None
     if item.device_classes is None:
         return GenusMatch(item, by_class=True, by_name=by_name)
     if entity.device_class in item.device_classes:
@@ -508,6 +525,11 @@ def entity_genera(entity: EntitySnapshot) -> frozenset[str]:
 
 def entity_has_genus(entity: EntitySnapshot, key: str) -> bool:
     return key in entity_genera(entity)
+
+
+def entity_name_mentions(entity: EntitySnapshot, key: str) -> bool:
+    """Whether a word of the entity's name or aliases names genus ``key``."""
+    return _name_mentions(entity, key)
 
 
 @dataclass(frozen=True)

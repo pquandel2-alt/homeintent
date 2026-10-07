@@ -18,11 +18,9 @@ intents:
   HassAutomationDelete:
     data:
       - sentences:
-          - "lösche die automation für {name}"
-          - "lösche die automation {name}"
-          - "lösche die automation die {name} schaltet"
-          - "lösche die automation die {name} steuert"
-          - "entferne die automation für {name}"
-          - "entferne die automation {name}"
-          - "entferne die automation die {name} schaltet"
-          - "entferne die automation die {name} steuert"
+          # 7.9.1 A5: the same object forms as for monitors - short
+          # imperatives and prepositional objects ("vom", "fürs", "zur").
+          - "(lösche|lösch|entferne|entfern) die automation (für|fürs|vom|von|zum|zur|für das|für die|für den) {name}"
+          - "(lösche|lösch|entferne|entfern) die automation {name}"
+          - "(lösche|lösch|entferne|entfern) die automation die {name} (schaltet|steuert)"
+          - "(kannst|könntest) du die automation [(für|fürs|vom|von|zum|zur|für das|für die|für den)] {name} (löschen|entfernen)"

@@ -46,6 +46,19 @@ from ..nlu.automation_model import (
     TriggerModel,
     TriggerType,
 )
+from ..missing_part import MissingPart, PartRequest
+from ..device_health import parse_health_report, report_message
+from ..nlu.action_model import ActionModel, ActionType, NotificationRecipient, NotificationRecipientKind
+from ..nlu.condition_model import ConditionModel, ConditionNode, ConditionType
+from ..nlu.automation_model import render_automation_tree
+from ..automation_ownership import HOUSEHOLD_OWNER, shared_turn_text, turn_is_shared
+from ..nlu.automation_access import (
+    open_ended_irrigation,
+    AccessOpening,
+    access_openings,
+    describe_access_refusal,
+    notice_instead_of_opening,
+)
 from ..nlu.automation_preview import render_automation_preview
 from ..notification_language import describe_event
 from ..nlu.automation_validator import validate_automation
@@ -72,10 +85,44 @@ from ..nlu.recurrence import (
 from ..nlu.word_cues import has_word
 from ..security_control import conversation_user_id, user_is_admin
 from ..service_call import ServiceCallPlan
+from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..world_model import WorldModel
 
 _LOGGER = logging.getLogger(__name__)
 
+
+_GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
+# The interval of a repeated reminder ("jede Minute", "alle 5 Minuten").
+_INTERVAL_HEADS = frozenset({"jede", "jeden", "jedes", "alle"})
+_INTERVAL_UNITS = ("sekunde", "minute", "stunde", "viertelstunde")
+
+
+def _without_repeat_interval(text: str) -> str:
+    words = text.split()
+    kept: list[str] = []
+    index = 0
+    while index < len(words):
+        if words[index].casefold() in _INTERVAL_HEADS:
+            for length in (2, 3):
+                unit = words[index + length - 1].casefold().strip(",.") if index + length - 1 < len(words) else ""
+                if unit.startswith(_INTERVAL_UNITS):
+                    index += length
+                    break
+            else:
+                kept.append(words[index])
+                index += 1
+            continue
+        kept.append(words[index])
+        index += 1
+    return " ".join(kept)
+
+
+# Words that mark an automation sentence's trigger (7.9.2 A2).
+_TRIGGER_WORD_RE = re.compile(
+    r"\b(?:wenn|sobald|falls|jeden|jede|jedes|täglich|taeglich|morgens|abends|nachts|"
+    r"um\s+\d|bei\s+sonnen\w*|werktags|wochenends)\b",
+    re.IGNORECASE,
+)
 
 class AutomationRuntime(Protocol):
     """The one runtime service this controller uses."""
@@ -145,6 +192,38 @@ def spoken_summary(preview: str) -> str:
     return text.strip()
 
 
+def access_openings_for(
+    hass: HomeAssistant | None,
+    actions: tuple[Any, ...] | list[Any],
+    entities: list[EntitySnapshot],
+) -> tuple[AccessOpening, ...]:
+    """Every access the automation ``actions`` would open (7.9.1 A1),
+    including through the scripts and scenes they run (static effect
+    graph). Shared by new automations and action edits. Without ``hass``
+    only the direct actions are checked."""
+    probe = AutomationModel(triggers=(), actions=tuple(actions))
+    controlled_ids = resolve_automation_action_entity_ids(probe, entities)
+    composite_ids = sorted(
+        entity.entity_id for entity in entities
+        if entity.entity_id in controlled_ids
+        and is_composite_entity(entity.entity_id, entity.attributes)
+    )
+    effects = (
+        build_plan_effects(hass, ServiceCallPlan("homeassistant", "turn_on", composite_ids))
+        if composite_ids and hass is not None else None
+    )
+    roots: dict[str, str] = {}
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
+    if effects is not None:
+        for graph in effects.graphs:
+            for effect in graph.effects:
+                for entity_id in effect.entity_ids:
+                    roots.setdefault(entity_id, names.get(graph.root, graph.root))
+    return access_openings(
+        probe.actions, entities, effects.effects if effects is not None else (), roots
+    )
+
+
 def start_now(model: AutomationModel) -> AutomationModel:
     """The same reminder, once, starting in a few seconds (7.9 W5)."""
     return replace(
@@ -192,6 +271,100 @@ class AutomationController:
     def _automation_store(self) -> AutomationExecutor:
         return self._executor()
 
+    def access_openings_of(
+        self, model: AutomationModel, entities: list[EntitySnapshot]
+    ) -> tuple[AccessOpening, ...]:
+        """Every access this automation would open (7.9.1 A1)."""
+        return access_openings_for(self.hass, model.actions, entities)
+
+    def _guard_access(
+        self, model: AutomationModel, entities: list[EntitySnapshot]
+    ) -> tuple[AutomationModel | None, str | None]:
+        """``(model, None)`` when nothing opens an access; otherwise
+        ``(offer, refusal)`` - the notification offered instead (or
+        ``None`` when nothing sensible remains) and the spoken refusal."""
+        openings = self.access_openings_of(model, entities)
+        if not openings:
+            return model, None
+        offer = notice_instead_of_opening(model, entities)
+        return offer, describe_access_refusal(openings)
+
+    def offer_preview(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        model: AutomationModel,
+        entities: list[EntitySnapshot],
+        requested_by_user_id: str | None,
+    ) -> None:
+        """Store ``model`` for a "Ja" and speak its preview - the one place
+        every confirmed automation passes before it may be offered.
+
+        An automation that would open an access is never offered (7.9.1
+        A1): HomeIntent says so and offers a notification instead.
+        """
+        endless = open_ended_irrigation(model.actions, entities)
+        if endless:
+            # 7.9.2 A2: an irrigation valve may open by itself, never
+            # without its end - ask for the duration, nothing is stored.
+            self._context_store.clear(user_input.conversation_id)
+            names = " und ".join(f"„{item.name}“" for item in endless)
+            question = (
+                f"Wie lange soll {names} jeweils laufen? Eine Bewässerung ohne Ende lege ich nicht an."
+            )
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "monitor-part",
+                DialogTaskKind.MONITOR_PART,
+                DialogPriority.FOLLOWUP,
+                reason="Eine Rückfrage nach der Dauer ist offen.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=PartRequest(
+                    MissingPart.DURATION, question, original_text=shared_turn_text() or user_input.text
+                ),
+            )
+            response.async_set_speech(question)
+            return
+        offer, refusal = self._guard_access(model, entities)
+        prefix = ""
+        if refusal is not None:
+            if offer is None:
+                self._context_store.clear(user_input.conversation_id)
+                response.async_set_speech(
+                    f"{refusal} Ich habe nichts angelegt. Ich kann dich stattdessen "
+                    "benachrichtigen, dann entscheidest du selbst."
+                )
+                return
+            offer, failure = self._notifications.materialize_recipients(offer, user_input, entities)
+            if failure is not None:
+                self._context_store.clear(user_input.conversation_id)
+                response.async_set_speech(f"{refusal} Ich habe nichts angelegt.")
+                return
+            model = offer
+            prefix = f"{refusal} Stattdessen melde ich es dir, dann entscheidest du selbst. "
+        shared = turn_is_shared(self.hass, self.entry.options, user_input)
+        self._context_store.set(
+            user_input.conversation_id,
+            ConversationContext(
+                last_command=None,
+                last_entities=(),
+                last_area=None,
+                pending_clarification=None,
+                pending_automation_confirmation=PendingAutomationConfirmation(
+                    model=model,
+                    requested_by_user_id=requested_by_user_id,
+                    shared=shared,
+                ),
+            ),
+        )
+        preview = render_automation_preview(model, entities)
+        if shared:
+            # 7.9.2 A3: said before the "Ja", not discovered later.
+            preview = preview.replace(
+                " Soll ", " Sie gehört dem ganzen Haushalt (gemeinsam). Soll ", 1
+            )
+        response.async_set_speech(prefix + preview)
+
     def decide_recurrence(
         self,
         user_input: conversation.ConversationInput,
@@ -231,6 +404,11 @@ class AutomationController:
                 return replace(result, model=once_model, validation_error=None)
         if recurrence is Recurrence.ONCE:
             return replace(result, model=replace(model, max_runs=1))
+        if self.access_openings_of(model, entities) or open_ended_irrigation(model.actions, entities):
+            # Refused (or turned into a notification), or the duration is
+            # asked first (7.9.2 A2) by offer_preview -
+            # nothing to ask about "nur heute oder jeden Tag" (7.9.1 A1).
+            return result
         self._runtime.dialog_manager.create(
             user_input.conversation_id,
             "recurrence-choice",
@@ -256,11 +434,15 @@ class AutomationController:
     ) -> AutomationMatchResult | conversation.ConversationResult:
         """"Erinnere mich alle 10 Minuten, bis das Tor zu ist" (7.9 W5): only
         now, or every time the situation starts - asked, never guessed."""
-        said = recurrence_of(user_input.text)
+        # "jede Minute" is the reminder's interval, not "jedes Mal" (7.9.2
+        # A6): the same question as for "alle 5 Minuten".
+        said = recurrence_of(_without_repeat_interval(user_input.text))
         if said is Recurrence.RECURRING:
             return replace(result, model=replace(result.model, ask_start=False))
         if said is Recurrence.ONCE:
             return replace(result, model=start_now(result.model))
+        if self.access_openings_of(result.model, entities):
+            return result
         self._runtime.dialog_manager.create(
             user_input.conversation_id,
             "recurrence-choice",
@@ -391,6 +573,28 @@ class AutomationController:
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        openings = self.access_openings_of(confirmation.model, entities)
+        if openings:
+            # Defense in depth (7.9.1 A1): whatever path stored this draft,
+            # an automation that opens an access is never written.
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                f"{describe_access_refusal(openings)} Ich habe nichts angelegt.",
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
+        if open_ended_irrigation(confirmation.model.actions, entities):
+            # Defense in depth (7.9.2 A2): never an irrigation without end.
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                "Eine Bewässerung ohne Ende lege ich nicht an. Ich habe nichts angelegt.",
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+
         controlled_ids = resolve_automation_action_entity_ids(
             confirmation.model, entities
         )
@@ -475,6 +679,7 @@ class AutomationController:
                 scheduled_for=model.scheduled_for,
                 once=model.once,
                 max_runs=model.max_runs,
+                owner_user_id=HOUSEHOLD_OWNER if confirmation.shared else current_user_id,
             )
         except Exception as err:  # noqa: BLE001 - a YAML write + service call can fail in ways beyond HomeAssistantError; must not propagate as "Unexpected error during intent recognition"
             _LOGGER.error("Automation creation failed: %s", err)
@@ -497,6 +702,7 @@ class AutomationController:
                 user_id=turn.user_id, utterance=turn.utterance, origin=None,
                 attended=True, now=dt_util.now(),
             )
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(AUTOMATION_CREATED_TEXT)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -531,26 +737,84 @@ class AutomationController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            result = replace(result, model=materialized)
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=result.model,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
+            self.offer_preview(
+                user_input, response, materialized, entities, conversation_user_id(user_input)
             )
-            response.async_set_speech(render_automation_preview(result.model, entities))
         else:
             self._context_store.clear(user_input.conversation_id)
             response.async_set_speech(result.response_text)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
+        )
+
+    def handle_health_report(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        """"Sag mir jeden Sonntag, welche Batterien unter 30 % sind" (7.9.2
+        B3): a recurring report - preview and "Ja", the time asked if
+        missing. Never answered right away (the schedule would be lost)."""
+        report = parse_health_report(user_input.text)
+        if report is None:
+            return None
+        if report.hour is None:
+            question = "Um wie viel Uhr soll ich dir den Bericht schicken? Sag zum Beispiel: „um 10 Uhr“."
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "monitor-part",
+                DialogTaskKind.MONITOR_PART,
+                DialogPriority.FOLLOWUP,
+                reason="Eine Rückfrage nach der Uhrzeit ist offen.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=PartRequest(MissingPart.CLOCK, question, original_text=user_input.text),
+            )
+            response.async_set_speech(question)
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+        message = report_message(report, entities)
+        if message is None:
+            what = "Batteriesensor" if report.kind == "battery" else "freigegebenes Gerät"
+            response.async_set_speech(f"Ich sehe kein {what}; einen Bericht darüber kann ich nicht einrichten.")
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+        conditions = (
+            (ConditionNode(condition=ConditionModel(type=ConditionType.WEEKDAY, weekdays=report.weekdays)),)
+            if report.weekdays else ()
+        )
+        model = AutomationModel(
+            triggers=(TriggerModel(type=TriggerType.TIME, time_hour=report.hour, time_minute=report.minute),),
+            conditions=conditions,
+            actions=(ActionModel(
+                type=ActionType.NOTIFY, message=message[0], message_template=message[1],
+                recipient=NotificationRecipient(NotificationRecipientKind.CURRENT_USER),
+            ),),
+            source_text=user_input.text,
+        )
+        error = validate_automation(model)
+        return self.handle_match_result(
+            user_input, response, AutomationMatchResult(model, render_automation_tree(model), error), entities
+        )
+
+    def action_ambiguity_question(
+        self, text: str, entities: list[EntitySnapshot]
+    ) -> AutomationClarificationResult | None:
+        """An automation whose action named several devices of one kind
+        asks which one (7.9.2 A2) - only when the sentence has a trigger,
+        never for a plain command, and only where the device path has
+        nothing better to say than "kein eindeutig passendes Gerät".
+        Answered as the one missing device."""
+        ambiguity = self._engine.take_action_ambiguity()
+        if ambiguity is None or not ambiguity.kind_words or not _TRIGGER_WORD_RE.search(text):
+            return None
+        feedback = self._engine.failure_feedback(text, entities)
+        if feedback is not None and not feedback.startswith(_GENERIC_UNKNOWN_TARGET):
+            return None
+        return AutomationClarificationResult(
+            response_text=ambiguity.question,
+            part=PartRequest(
+                MissingPart.DEVICE, ambiguity.question,
+                replaces=ambiguity.kind_words, choices=ambiguity.choices,
+            ),
         )
 
     def handle_clarification_result(
@@ -561,9 +825,26 @@ class AutomationController:
     ) -> conversation.ConversationResult:
         """Ask the one open question of an automation draft - nothing runs.
 
-        Only a device choice keeps the draft; the answer ("Die linke.")
-        continues exactly this automation and nothing else.
+        A device choice keeps the draft; the answer ("Die linke.")
+        continues exactly this automation and nothing else. A question for
+        one missing part ("In welchem Zeitraum?") opens a typed dialog
+        whose answer is read only as that part (7.9.1 A6).
         """
+        if result.clarification is None and result.part is not None:
+            self._context_store.clear(user_input.conversation_id)
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "monitor-part",
+                DialogTaskKind.MONITOR_PART,
+                DialogPriority.FOLLOWUP,
+                reason=f"Eine Rückfrage nach dem {result.part.spoken_part} ist offen.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=replace(result.part, original_text=shared_turn_text() or user_input.text),
+            )
+            response.async_set_speech(result.response_text)
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         if result.clarification is not None:
             self._context_store.set(
                 user_input.conversation_id,
@@ -665,20 +946,9 @@ class AutomationController:
             self._world_model,
         )
         if revised is not None and revised.validation_error is None:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=revised.model,
-                        requested_by_user_id=pending.requested_by_user_id,
-                    ),
-                ),
+            self.offer_preview(
+                user_input, response, revised.model, entities, pending.requested_by_user_id
             )
-            response.async_set_speech(render_automation_preview(revised.model, entities))
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
@@ -717,20 +987,9 @@ class AutomationController:
             self._context_store.clear(user_input.conversation_id)
             response.async_set_speech(completed.response_text)
         else:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model=completed.model,
-                        requested_by_user_id=conversation_user_id(user_input),
-                    ),
-                ),
+            self.offer_preview(
+                user_input, response, completed.model, entities, conversation_user_id(user_input)
             )
-            response.async_set_speech(render_automation_preview(completed.model, entities))
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
@@ -902,19 +1161,7 @@ class AutomationController:
                 + validation_error.name
             )
         else:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_automation_confirmation=PendingAutomationConfirmation(
-                        model, conversation_user_id(user_input)
-                    ),
-                ),
-            )
-            response.async_set_speech(render_automation_preview(model, entities))
+            self.offer_preview(user_input, response, model, entities, conversation_user_id(user_input))
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )

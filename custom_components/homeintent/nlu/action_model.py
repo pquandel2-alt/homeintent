@@ -121,6 +121,11 @@ class ActionModel:
     service_name: str | None = None  # REGISTERED_SERVICE, closed allow-list
     service_data: Mapping[str, object] = field(default_factory=dict)
     max_repeats: int | None = None  # REPEAT - the upper bound the preview names
+    # NOTIFY (7.9.2 A6): HomeIntent's own Home Assistant template that names
+    # at run time what happened (device and value, rooms with light on).
+    # Built from validated entity ids only, never from user text; ``message``
+    # holds its spoken form for the preview.
+    message_template: str | None = None
 
 
 @dataclass(frozen=True)

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from .automation_access import access_openings, describe_access_refusal, irrigation_openings
 from .device_ontology import entity_genera, genus
 from .semantic_catalog import COLOR_TEMPERATURE_SPOKEN
 from ..entities import EntitySnapshot
@@ -65,10 +66,15 @@ _PLURAL_NOUN_DE = {
     "Rollladen": "Rollläden", "Heizung": "Heizungen", "Sensor": "Sensoren",
     "Medienplayer": "Medienplayer", "Ventil": "Ventile", "Fenster": "Fenster",
     "Tür": "Türen", "Gerät": "Geräte", "Steckdose": "Steckdosen",
+    "Garagentor": "Garagentore", "Tor": "Tore", "Markise": "Markisen",
+    "Jalousie": "Jalousien", "Vorhang": "Vorhänge", "Raffstore": "Raffstores",
 }
 _DEVICE_CLASS_NOUN_DE = {
     "window": "Fenster", "door": "Tür", "garage_door": "Garagentor", "opening": "Öffnung",
     "motion": "Bewegungsmelder", "occupancy": "Anwesenheitssensor",
+    # Cover classes (7.9.1 A1): a garage door is never called "Rollladen".
+    "garage": "Garagentor", "gate": "Tor", "awning": "Markise", "shutter": "Rollladen",
+    "blind": "Jalousie", "curtain": "Vorhang", "shade": "Rollo",
 }
 _WEEKDAY_SPOKEN_DE = {
     "mon": "Montag", "tue": "Dienstag", "wed": "Mittwoch", "thu": "Donnerstag",
@@ -114,6 +120,36 @@ def _format_delay(seconds: int | None) -> str:
         minutes = seconds // 60
         return "1 Minute" if minutes == 1 else f"{minutes} Minuten"
     return f"{seconds} Sekunden"
+
+
+def _every(seconds: int | None) -> str:
+    """"jede Minute", "jede Stunde", "alle 10 Minuten"."""
+    from ..notification_language import spoken_duration
+
+    if seconds == 60:
+        return "jede Minute"
+    if seconds == 3600:
+        return "jede Stunde"
+    return f"alle {spoken_duration(seconds or 0)}"
+
+
+def _cover_noun(members: list[EntitySnapshot]) -> str | None:
+    """The most specific device kind every member shares, from the
+    ontology (device class first, then name), or ``None``."""
+    classes = {member.device_class for member in members}
+    if len(classes) == 1 and None not in classes:
+        named = _DEVICE_CLASS_NOUN_DE.get(next(iter(classes)) or "")
+        if named is not None:
+            return named
+    if not members:
+        return None
+    shared = frozenset.intersection(*(entity_genera(member) for member in members)) - {"device"}
+    label = min(
+        (genus(key) for key in shared),
+        key=lambda item: (item.parent is None, item.key),
+        default=None,
+    )
+    return label.singular if label is not None else None
 
 
 def _speak_target(
@@ -167,6 +203,14 @@ def _speak_target(
             and (target.device_class is None or entity.device_class == target.device_class)
             and target.area_id is not None and entity.area_id == target.area_id
         ]
+        if target.device_class is None and target.domain == "cover":
+            # The domain alone says "Rollladen"; the devices it resolves to
+            # say what they are (Garagentor, Markise, Tor) - 7.9.1 A1.
+            noun = _cover_noun(members) or _cover_noun([
+                entity for entity in entity_by_id.values()
+                if entity.domain == "cover" and target.floor_id is not None
+                and entity.floor_id == target.floor_id
+            ]) or noun
         if (
             prefer_name and target.quantifier is None and len(members) == 1
             and not target.exclude_entity_ids
@@ -439,15 +483,21 @@ def _speak_action_leaf(
 ) -> str:
     target = _speak_target(action.target, entity_by_id, area_name_by_id) if action.target is not None else None
     domain = _action_domain(action, entity_by_id)
+    if action.duration_seconds:
+        # 7.9.2 A2: the end is spoken as part of the action.
+        from .action_duration import inverse_of
+
+        inverse = inverse_of(replace(action, duration_seconds=None))
+        start = _speak_action_leaf(replace(action, duration_seconds=None), entity_by_id, area_name_by_id)
+        end = _speak_action_leaf(inverse, entity_by_id, area_name_by_id) if inverse is not None else ""
+        end_verb = end.rsplit(" ", 1)[-1] if end else "beenden"
+        return f"{start} und nach {_format_delay(action.duration_seconds)} wieder {end_verb}"
     if action.type is ActionType.TURN_ON and domain in _OPEN_CLOSE_DOMAINS:
         return f"{target} öffnen"
     if action.type is ActionType.TURN_OFF and domain in _OPEN_CLOSE_DOMAINS:
         return f"{target} schließen"
     if action.type is ActionType.TURN_ON:
-        text = f"{target} einschalten"
-        if action.duration_seconds:
-            text = f"{text} (für {_format_delay(action.duration_seconds)})"
-        return text
+        return f"{target} einschalten"
     if action.type is ActionType.TURN_OFF:
         return f"{target} ausschalten"
     if action.type is ActionType.SET_BRIGHTNESS:
@@ -470,6 +520,11 @@ def _speak_action_leaf(
         from .automation_operations import describe_registered_operation
 
         described = describe_registered_operation(action.service_domain, action.service_name, action.service_data)
+        if action.service_domain == "valve" and action.service_name in {"open_valve", "close_valve"}:
+            # "Bewässerung Garten öffnen", not "bei Ventil im Bereich Garten
+            # das Ventil öffnen" (7.9.2 A2).
+            named = _speak_target(action.target, entity_by_id, area_name_by_id, prefer_name=True)
+            return f"{named} {'öffnen' if action.service_name == 'open_valve' else 'schließen'}"
         if " " not in described:
             # A plain verb names the one device: "Küchenradio einschalten".
             named = _speak_target(action.target, entity_by_id, area_name_by_id, prefer_name=True)
@@ -570,7 +625,7 @@ def _speak_follow_ups(model: AutomationModel, entities: list[EntitySnapshot]) ->
         if step.type is ActionType.REPEAT and step.delay_seconds and step.max_repeats:
             total = spoken_duration(step.delay_seconds * step.max_repeats)
             parts.append(
-                f"Danach wiederhole ich sie alle {spoken_duration(step.delay_seconds)}, solange "
+                f"Danach wiederhole ich sie {_every(step.delay_seconds)}, solange "
                 f"{holding(step.if_condition)} – höchstens {step.max_repeats}-mal, also längstens {total}."
             )
         if step.type is ActionType.ESCALATE and step.timeout_seconds:
@@ -737,6 +792,8 @@ def _speak_measured_trigger(trigger: TriggerModel, entities: list[EntitySnapshot
     if trigger.type is not TriggerType.NUMERIC_STATE or (
         trigger.measurement is None
         and trigger.comparator not in {NumericComparator.AT_LEAST, NumericComparator.AT_MOST}
+        # A sensor is named with its unit (7.9.2 A6), never "Sensor im Bereich …".
+        and (trigger.target is None or trigger.target.domain not in {"sensor", None})
     ):
         return None
     from ..notification_language import describe_event
@@ -761,6 +818,10 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
     already-resolved ``entity_id``s, never to re-resolve or guess anything
     new.
     """
+    openings = access_openings(model.actions, entities)
+    if openings:
+        # Same rule as the validator (7.9.1 A1): never offered for a "Ja".
+        return f"{describe_access_refusal(openings)} Ich habe nichts angelegt."
     entity_by_id = _entity_lookup(entities)
     area_name_by_id = _area_name_lookup(entities)
     notification_actions = _notification_actions(model)
@@ -800,4 +861,13 @@ def render_automation_preview(model: AutomationModel, entities: list[EntitySnaps
         )
     for note in model.notes:
         sentence = f"{sentence} {note}"
+    for watering in irrigation_openings(model.actions, entities):
+        # 7.9.2 A2: an automatically opening valve is said explicitly.
+        if watering.closes_after_seconds is None:
+            when = "und schließt nicht von selbst"
+        elif watering.closes_after_seconds:
+            when = f"und schließt nach {_format_delay(watering.closes_after_seconds)} wieder"
+        else:
+            when = "und wird im selben Ablauf wieder geschlossen"
+        sentence = f"{sentence} Achtung: „{watering.name}“ öffnet sich dabei automatisch {when}."
     return f"Automation erkannt: {sentence} Soll diese Automation erstellt werden?"

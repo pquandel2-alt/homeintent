@@ -5,11 +5,14 @@ both directions (it fires / it does not fire), not only its preview.
 Covered (exactly what the generator emits for monitoring requests):
 
 * triggers: ``state`` (``to``/``from``/``for``, entity lists = any member),
-  ``time`` (``at``);
+  ``time`` (``at``), ``numeric_state`` (``above``/``below``, fires on the
+  crossing, 7.9.2);
 * conditions: ``state`` (entity list = *all* members), ``or``/``and``/``not``,
   ``time`` (``after``/``before``), ``template`` for the typed inactivity
   condition (see ``_template_holds``);
-* actions: ``notify.send_message``, ``delay``, ``condition``,
+* actions: ``notify.send_message`` (a message template HomeIntent built
+  itself is rendered with Jinja, ``is_state`` and ``trigger.to_state``,
+  7.9.2), ``delay``, ``condition``,
   ``wait_for_trigger`` with ``timeout``/``continue_on_timeout``, ``repeat``
   with ``until`` (evaluated on a timeline, see ``run``).
 
@@ -49,6 +52,7 @@ class World:
 
     states: dict[str, str]
     since: dict[str, int] = field(default_factory=dict)  # seconds in current state
+    names: dict[str, str] = field(default_factory=dict)  # friendly names (7.9.2)
     clock: tuple[int, int] = (12, 0)  # local hour, minute
     changed_today: dict[str, bool] = field(default_factory=dict)  # left rest state since midnight
 
@@ -116,13 +120,29 @@ def trigger_fires(trigger: dict, world: World, changed: str | None, before: str 
         now = world.states[changed]
         if now == before:
             return False
-        if "to" in trigger and now != trigger["to"]:
+        wanted = trigger.get("to")
+        if wanted is not None and now not in (wanted if isinstance(wanted, list) else [wanted]):
             return False
         if "from" in trigger and before != trigger["from"]:
             return False
         return _seconds(trigger.get("for")) == 0
     if kind == "time":
         return changed is None and world.clock == tuple(int(p) for p in trigger["at"].split(":")[:2])
+    if kind == "numeric_state":
+        if changed is None or changed not in entities_of(trigger):
+            return False
+
+        def inside(value: str | None) -> bool:
+            try:
+                number = float(value)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return False
+            if "above" in trigger and not number > float(trigger["above"]):
+                return False
+            return not ("below" in trigger and not number < float(trigger["below"]))
+
+        # Home Assistant fires when the value crosses into the range.
+        return inside(world.states[changed]) and not inside(before)
     raise AssertionError(f"unmodelled trigger {kind}")
 
 
@@ -138,7 +158,8 @@ def for_trigger_fires(automation: dict, world: World, entity: str) -> bool:
     for trigger in automation["triggers"]:
         if trigger["trigger"] != "state" or entity not in entities_of(trigger):
             continue
-        if "to" in trigger and world.states[entity] != trigger["to"]:
+        wanted = trigger.get("to")
+        if wanted is not None and world.states[entity] not in (wanted if isinstance(wanted, list) else [wanted]):
             continue
         needed = _seconds(trigger.get("for"))
         if needed and world.held_for(entity) >= needed:
@@ -171,11 +192,44 @@ def _state_template(text: str, world: World) -> bool:
     return result
 
 
+def render_message(message: str, world: World, trigger_entity: str | None = None) -> str:
+    """A message template as Home Assistant renders it (7.9.2): Jinja with
+    ``is_state``, ``states`` and ``trigger.to_state`` and Home Assistant's
+    ``float(default)`` filter - nothing else is provided, so a template
+    using more fails the test."""
+    if "{{" not in message and "{%" not in message:
+        return message
+    from types import SimpleNamespace
+
+    import jinja2
+
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined, extensions=["jinja2.ext.loopcontrols"])
+
+    def to_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    env.filters["float"] = to_float
+    to_state = (
+        SimpleNamespace(name=world.names.get(trigger_entity, trigger_entity), state=world.states[trigger_entity])
+        if trigger_entity is not None else None
+    )
+    return env.from_string(message).render(
+        is_state=lambda entity, state: world.states.get(entity) == state,
+        states=lambda entity: world.states.get(entity, "unknown"),
+        trigger=SimpleNamespace(to_state=to_state),
+        namespace=jinja2.utils.Namespace,
+    )
+
+
 def run(
     actions: list[dict],
     world: World,
     events: dict[int, Callable[[World], None]] | None = None,
     horizon: int = 24 * 3600,
+    trigger_entity: str | None = None,
 ) -> list[Sent]:
     """Run an action sequence on a timeline (seconds from the trigger).
 
@@ -214,7 +268,10 @@ def run(
             if now > horizon:
                 return False
             if step.get("action") == "notify.send_message":
-                sent.append(Sent(now, tuple(step["target"]["entity_id"]), step["data"]["message"]))
+                sent.append(Sent(
+                    now, tuple(step["target"]["entity_id"]),
+                    render_message(step["data"]["message"], world, trigger_entity),
+                ))
             elif step.get("action") == "homeintent.delete_automation":
                 continue
             elif "delay" in step:

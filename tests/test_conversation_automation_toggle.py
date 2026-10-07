@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 import _ha_stub  # noqa: E402
+from _users import as_user, install_users  # noqa: E402
 
 _ha_stub.install()
 
@@ -75,7 +76,10 @@ def _make_entity(monkeypatch, tmp_path: Path) -> NluConversationEntity:
 
 
 def _run(entity: NluConversationEntity, text: str, conversation_id: str = "conv-1"):
-    user_input = ConversationInput(text=text, conversation_id=conversation_id)
+    # Managing needs the owner or an administrator (7.9.1 A2): the
+    # management mechanics run as an administrator.
+    install_users(entity.hass)
+    user_input = ConversationInput(text=text, conversation_id=conversation_id, context=as_user("admin"))
     return asyncio.run(entity._async_handle_message(user_input, chat_log=None))
 
 

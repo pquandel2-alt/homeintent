@@ -178,6 +178,7 @@ from .nlu.automation_sentence_split import (
 )
 from .nlu.automation_validator import validate_automation
 from .nlu.automation_operations import validate_registered_operation
+from .nlu.action_duration import irrigation_clause, split_action_duration, with_duration
 from .nlu.condition_model import (
     ConditionModel,
     ConditionNode,
@@ -373,8 +374,13 @@ _AUTOMATION_DELETE_RE = re.compile(r"\blösch\w*\b|\bentfern\w*\b", re.IGNORECAS
 # ``_AUTOMATION_ENABLE_RE`` (see AutomationToggleParser's own docstring).
 # Grepped empirically against every existing intent YAML - no other grammar
 # uses "aktivier"/"deaktivier" for anything else.
-_AUTOMATION_DISABLE_RE = re.compile(r"\bdeaktivier\w*\b", re.IGNORECASE)
-_AUTOMATION_ENABLE_RE = re.compile(r"\baktivier\w*\b", re.IGNORECASE)
+_AUTOMATION_DISABLE_RE = re.compile(
+    r"\bdeaktivier\w*\b|\bstopp\w*\b|\bbeend\w*\b|\b(?:aus|ab)schalten\b|\bschalt\w*\b.*\baus\b",
+    re.IGNORECASE,
+)
+_AUTOMATION_ENABLE_RE = re.compile(
+    r"\baktivier\w*\b|\beinschalten\b|\bschalt\w*\b.*\b(?:ein|an)\b", re.IGNORECASE
+)
 
 # "einmalig(e)"/"nur einmal" marks a fire-once automation (new feature, Wave
 # 12 "Einmalige Automation") - matched and *stripped* from the normalized
@@ -396,6 +402,24 @@ _REPEAT_COUNTS = {
     "zwei": 2, "drei": 3, "vier": 4, "fünf": 5, "sechs": 6,
     "sieben": 7, "acht": 8, "neun": 9, "zehn": 10,
 }
+
+
+@dataclass(frozen=True)
+class ActionAmbiguity:
+    """An automation action whose device kind matched several devices."""
+
+    action_text: str
+    question: str
+    choices: tuple[str, ...]
+    kind_words: tuple[str, ...]
+
+
+def _kind_words(document: LanguageDocument) -> tuple[str, ...]:
+    """The device-kind words of the clause ("Bewässerung")."""
+    return tuple(
+        token.text for token in document.tokens
+        if token.is_word and (analysis := analyse_word(token.canonical)) is not None and analysis.genera
+    )
 
 
 def _clarification_question(clarification: ClarificationRequest) -> str:
@@ -856,6 +880,8 @@ class NluEngine:
             raise FileNotFoundError(f"No intent YAML files found in {relative_time_dir}")
         relative_time_intents: Intents = Intents.from_files(relative_time_yaml_files)
 
+        # 7.9.2 A2: the last ambiguous automation action (see take_action_ambiguity).
+        self._action_ambiguity: ActionAmbiguity | None = None
         # Automation-Grammatiken/Parser (Integration Wave Migrationsschritt 1):
         # nur geladen und instanziiert, noch nicht an _select_parser()/match()
         # angeschlossen - reines Laden ohne Routing, Regressionsrisiko ≈ 0.
@@ -3133,6 +3159,17 @@ class NluEngine:
         commands. Automation-only actions remain available through the
         established dedicated parser as the fallback.
         """
+        seconds, untimed = split_action_duration(text)
+        if seconds is not None:
+            # "… für 20 Minuten ein": do it, wait, undo it - one automation
+            # (7.9.2 A2). An action without an opposite with a spoken
+            # duration is not understood; the duration is never dropped.
+            inner = self._parse_action_semantically(untimed, context)
+            return with_duration(inner, seconds) if inner else None
+        watering = irrigation_clause(text)
+        if watering is not None:
+            # "bewässere den Garten" is the act of opening the irrigation.
+            text = watering
         clause = parse_notification_clause(text)
         if clause is not None:
             # One notification meaning for immediate, delayed, reminder and
@@ -3156,6 +3193,18 @@ class NluEngine:
         narrowed = self._ontology_understanding(document, context.entities, None, direct)
         if narrowed is _REFUSED:
             return None
+        if isinstance(narrowed, MatchResult) and narrowed.clarification is not None:
+            # 7.9.2 A2: an automation action naming several devices of a
+            # kind ("die Bewässerung" with two irrigation valves) is asked
+            # about, never guessed; the conversation turns it into a
+            # one-part question if no automation reading succeeds.
+            self._action_ambiguity = ActionAmbiguity(
+                text,
+                narrowed.response_text,
+                tuple(entity.friendly_name for entity in narrowed.clarification.candidates),
+                _kind_words(document),
+            )
+            return None
         if narrowed is not None:
             commands = narrowed.commands if isinstance(narrowed, CommandPlan) else (narrowed,)
             lifted = tuple(
@@ -3174,6 +3223,11 @@ class NluEngine:
         if action is not None:
             return (action,)
         return self._automation_action_parser.parse(text, context)
+
+    def take_action_ambiguity(self) -> "ActionAmbiguity | None":
+        """The last ambiguous automation action, once (7.9.2 A2)."""
+        found, self._action_ambiguity = self._action_ambiguity, None
+        return found
 
     def parse_automation_actions(
         self,
@@ -3642,6 +3696,7 @@ class NluEngine:
             trace=outcome.trace,
             monitored_object=outcome.monitored_object,
             vague_situation=outcome.vague_situation,
+            part=outcome.part,
         )
 
     def resolve_event_clarification(

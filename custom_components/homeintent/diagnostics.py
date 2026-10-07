@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .effect_wait import wait_statistics
 from .const import (
     CONF_AGENT_COOLDOWN_SECONDS,
     CONF_AGENT_DELIVERY_CHANNELS,
@@ -20,6 +21,12 @@ from .const import (
     CONF_BANTER_LEVEL,
     CONF_ADMIN_ONLY_ENTITIES,
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
+    CONF_RESPONSE_STYLE,
+    CONF_CONFIRMATION_MEDIA_ID,
+    CONF_EFFECT_WAIT_SECONDS,
+    CONF_HOUSEHOLD_VOICE_DEVICES,
+    DEFAULT_EFFECT_WAIT_SECONDS,
+    DEFAULT_RESPONSE_STYLE,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
     CONF_CONTEXT_TTL_SECONDS,
@@ -147,6 +154,11 @@ async def async_get_config_entry_diagnostics(
         "allow_non_admin_automations": entry.options.get(
             CONF_ALLOW_NON_ADMIN_AUTOMATIONS, True
         ),
+        "response_style": entry.options.get(CONF_RESPONSE_STYLE, DEFAULT_RESPONSE_STYLE),
+        "confirmation_media_custom": bool(entry.options.get(CONF_CONFIRMATION_MEDIA_ID)),
+        "effect_wait_seconds": entry.options.get(CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS),
+        "effect_wait": wait_statistics(hass),
+        "household_voice_devices": bool(entry.options.get(CONF_HOUSEHOLD_VOICE_DEVICES, False)),
         "context_ttl_seconds": entry.options.get(CONF_CONTEXT_TTL_SECONDS, 30),
         "proactive_agent_enabled": entry.options.get(CONF_AGENT_ENABLED, True),
         "agent_delivery_channels": entry.options.get(

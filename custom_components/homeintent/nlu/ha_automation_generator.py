@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import replace, dataclass
 from enum import Enum, auto
 from typing import Any, Callable
 
@@ -575,7 +575,7 @@ def _generate_addressed_notification(
     assert recipient is not None and action.message is not None
     if not recipient.materialized:
         return None, GenerationError.NOTIFY_RECIPIENT_UNRESOLVED
-    data = {"message": action.message, "title": "HomeIntent"}
+    data = {"message": action.message_template or action.message, "title": "HomeIntent"}
     steps: list[dict[str, Any]] = []
     if recipient.entity_ids:
         known = {entity.entity_id for entity in entities if entity.domain == "notify"}
@@ -597,6 +597,22 @@ def _generate_addressed_notification(
 
 
 def _generate_action_leaf(action: ActionModel, entities: list[EntitySnapshot]) -> tuple[dict[str, Any] | None, GenerationError | None]:
+    if action.duration_seconds:
+        # 7.9.2 A2: "für 20 Minuten" - the end is part of the same
+        # automation: do it, wait, undo it. Never just "do it".
+        from .action_duration import inverse_of
+
+        inverse = inverse_of(action)
+        if inverse is None:
+            return None, GenerationError.UNSUPPORTED_ACTION_TYPE
+        start, error = _generate_action_leaf(replace(action, duration_seconds=None), entities)
+        if error is not None:
+            return None, error
+        end, error = _generate_action_leaf(inverse, entities)
+        if error is not None:
+            return None, error
+        assert start is not None and end is not None
+        return {"sequence": [start, {"delay": {"seconds": action.duration_seconds}}, end]}, None
     if action.type is ActionType.DELAY:
         assert action.delay_seconds is not None
         return {"delay": {"seconds": action.delay_seconds}}, None
@@ -722,10 +738,18 @@ def _generate_action_leaf(action: ActionModel, entities: list[EntitySnapshot]) -
         return config, None
 
     if action.type is ActionType.TURN_ON:
-        service = "cover.open_cover" if domain == "cover" else "homeassistant.turn_on"
+        service = (
+            "cover.open_cover" if domain == "cover"
+            else "valve.open_valve" if domain == "valve"
+            else "homeassistant.turn_on"
+        )
         return {"action": service, "target": {"entity_id": _entity_id_field(candidates)}}, None
     if action.type is ActionType.TURN_OFF:
-        service = "cover.close_cover" if domain == "cover" else "homeassistant.turn_off"
+        service = (
+            "cover.close_cover" if domain == "cover"
+            else "valve.close_valve" if domain == "valve"
+            else "homeassistant.turn_off"
+        )
         return {"action": service, "target": {"entity_id": _entity_id_field(candidates)}}, None
     if action.type is ActionType.SET_BRIGHTNESS:
         assert action.value is not None

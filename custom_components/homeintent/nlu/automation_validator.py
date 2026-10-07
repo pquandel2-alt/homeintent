@@ -41,11 +41,18 @@ from __future__ import annotations
 from .semantic_catalog import COLOR_TEMPERATURE_WORDS
 from enum import Enum, auto
 
+from typing import TYPE_CHECKING, Iterable, Sequence
+
 from .action_model import ActionGroup, ActionModel, ActionType
+from .automation_access import access_openings, open_ended_irrigation
 from .automation_operations import validate_registered_operation
 from .automation_model import AutomationModel, NumericComparator, TriggerModel, TriggerTarget, TriggerType
 from .condition_model import ConditionModel, ConditionNode, ConditionType, LogicalOperator
 from .measurement import MeasurementProperty, is_valid_value, spec_for
+
+if TYPE_CHECKING:
+    from ..effect_graph import Effect
+    from ..entities import EntitySnapshot
 
 # Reused verbatim from nlu/validator.py's own _CLIMATE_TEMPERATURE_MIN/MAX
 # (Regel 6, no new bound invented) - already enforced at parse time by
@@ -82,9 +89,19 @@ class AutomationValidationError(Enum):
     INVALID_TIME = auto()
     INVALID_LOGIC = auto()
     INCOMPLETE_AUTOMATION = auto()
+    # 7.9.1 A1: the automation would open a garage door, gate, door drive,
+    # valve or lock unattended (``automation_access.access_openings``).
+    UNSAFE_ACCESS_OPENING = auto()
+    # 7.9.2 A2: an irrigation valve may open by itself, but never without
+    # its end in the same automation (``automation_access``).
+    IRRIGATION_WITHOUT_END = auto()
 
 
-def validate_automation(model: AutomationModel) -> AutomationValidationError | None:
+def validate_automation(
+    model: AutomationModel,
+    entities: "Sequence[EntitySnapshot] | None" = None,
+    effects: "Iterable[Effect]" = (),
+) -> AutomationValidationError | None:
     """The V5.21 pipeline itself: returns the first violated
     ``AutomationValidationError``, or ``None`` if ``model`` is safe to hand
     to a future HA generator (V5.25). There is no separate "Safety
@@ -93,6 +110,10 @@ def validate_automation(model: AutomationModel) -> AutomationValidationError | N
     its own either, since hassil's grammar-level ``recognize()`` already
     rejects anything not shaped like a sentence before a parser ever calls
     into these semantic-model constructors.
+
+    With ``entities`` (and the effects of the scripts/scenes it runs) the
+    access policy runs as the last stage: an automation never opens an
+    access by itself (7.9.1 A1, ``automation_access``).
     """
     error = _validate_semantic(model)
     if error is not None:
@@ -109,6 +130,10 @@ def validate_automation(model: AutomationModel) -> AutomationValidationError | N
         error = _validate_action_step(action)
         if error is not None:
             return error
+    if entities is not None and access_openings(model.actions, entities, effects):
+        return AutomationValidationError.UNSAFE_ACCESS_OPENING
+    if entities is not None and open_ended_irrigation(model.actions, entities):
+        return AutomationValidationError.IRRIGATION_WITHOUT_END
     return None
 
 
@@ -372,6 +397,12 @@ def _validate_action_leaf(action: ActionModel) -> AutomationValidationError | No
         return AutomationValidationError.INVALID_PARAMETER
     if action.duration_seconds is not None and action.duration_seconds < 0:
         return AutomationValidationError.INVALID_PARAMETER
+    if action.duration_seconds and action.type is not ActionType.TURN_ON:
+        # Only an action with an opposite carries a duration (7.9.2 A2).
+        from .action_duration import inverse_of
+
+        if inverse_of(action) is None:
+            return AutomationValidationError.INVALID_PARAMETER
     if action.type is ActionType.WAIT and action.wait_condition is not None:
         return _validate_condition_node(action.wait_condition, depth=1)
     if action.type is ActionType.REPEAT and not (

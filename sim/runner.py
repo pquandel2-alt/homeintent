@@ -4,12 +4,18 @@ Usage: python runner.py [--only substring] [--category name] [--out results/run.
 
 Every scenario starts from a reset house and a fresh conversation. Steps:
 
-- ``say``      sentence (options: ``user``, ``device`` = area name, ``expect``)
+- ``say``      sentence (options: ``user``, ``device`` = area name, ``household`` =
+               satellite turn without a signed-in user, ``expect``)
 - ``set``      drive a simulated sensor: {"set": entity_id, "value": ...}
 - ``wait``     seconds
 - ``service``  admin service call {"service": "domain.name", "data": {...}}
 - ``options``  update HomeIntent options (merged into current options)
 - ``check``    expectation block evaluated without speaking
+- ``pipeline`` sentence through the real Assist pipeline (text in, TTS end)
+  on the simulated satellite's device; records whether TTS was produced
+
+``say`` with ``satellite: True`` speaks as the simulated voice satellite
+(``assist_satellite.kuechen_satellit``); its announcements are logged.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ import aiohttp
 from haclient import WS, HAError, load_tokens, rest
 
 AGENT = "conversation.homeintent"
+SATELLITE = "assist_satellite.kuechen_satellit"
 HERE = Path(__file__).resolve().parent
 
 
@@ -41,6 +48,8 @@ class Runner:
         self.ws: dict[str, WS] = {}
         self.area_devices: dict[str, str] = {}
         self.full_reset = False
+        self.satellite_device: str | None = None
+        self.pipeline_id: str | None = None
 
     async def __aenter__(self):
         for user in ("admin", "anna", "lena"):
@@ -50,7 +59,27 @@ class Runner:
         for dev in devs:
             if dev.get("area_id") and dev.get("manufacturer") == "Haus-Simulation" and dev.get("model") == "light":
                 self.area_devices.setdefault(areas[dev["area_id"]], dev["id"])
+            if dev.get("manufacturer") == "Haus-Simulation" and dev.get("model") == "assist_satellite":
+                self.satellite_device = dev["id"]
         return self
+
+    async def ensure_pipeline(self) -> str:
+        """An Assist pipeline with HomeIntent and the simulated TTS (7.9.1 B)."""
+        if self.pipeline_id is not None:
+            return self.pipeline_id
+        listed = await self.admin.call("assist_pipeline/pipeline/list")
+        for item in listed["pipelines"]:
+            if item["name"] == "HomeIntent Testbett":
+                self.pipeline_id = item["id"]
+                return item["id"]
+        created = await self.admin.call(
+            "assist_pipeline/pipeline/create", conversation_engine=AGENT, conversation_language="de",
+            language="de", name="HomeIntent Testbett", stt_engine=None, stt_language=None,
+            tts_engine="tts.sprachausgabe", tts_language="de", tts_voice=None,
+            wake_word_entity=None, wake_word_id=None,
+        )
+        self.pipeline_id = created["id"]
+        return created["id"]
 
     async def __aexit__(self, *exc):
         for ws in self.ws.values():
@@ -59,6 +88,17 @@ class Runner:
     @property
     def admin(self) -> WS:
         return self.ws["admin"]
+
+    async def effect_wait_statistics(self) -> dict[str, Any] | None:
+        try:
+            entries = await rest(self.session, "GET", "/api/config/config_entries/entry", self.tokens["admin"])
+            entry = next(e for e in entries if e["domain"] == "homeintent")
+            diag = await rest(
+                self.session, "GET", f"/api/diagnostics/config_entry/{entry['entry_id']}", self.tokens["admin"]
+            )
+        except Exception:  # noqa: BLE001 - statistics are informative only
+            return None
+        return (diag.get("data") or {}).get("effect_wait")
 
     async def service(self, name: str, data: dict | None = None, response: bool = False) -> Any:
         domain, service = name.split(".", 1)
@@ -173,6 +213,18 @@ class Runner:
             played = [p["media_id"] for p in log.get("played_media", [])]
             if not any(expect["played"] in m for m in played):
                 problems.append(f"Keine Medienausgabe mit '{expect['played']}' (erhalten: {played})")
+        if "announce_count" in expect:
+            # Bestätigungston (7.9.1 B): genau so viele Ansagen auf dem Satelliten.
+            tones = [
+                a for a in log.get("announcements", [])
+                if "announce_match" not in expect or expect["announce_match"] in (a.get("media_id") or a.get("message") or "")
+            ]
+            if len(tones) != expect["announce_count"]:
+                problems.append(f"{len(tones)} Ansagen statt {expect['announce_count']} (erhalten: {log.get('announcements')})")
+        if "speech_empty" in expect and (not (turn.get("speech") or "").strip()) != expect["speech_empty"]:
+            problems.append(f"Sprachausgabe {'nicht ' if expect['speech_empty'] else ''}leer: {turn.get('speech')!r}")
+        if "tts" in expect and bool(turn.get("tts")) != expect["tts"]:
+            problems.append(f"TTS {'nicht ' if expect['tts'] else ''}erzeugt: {turn.get('pipeline_events')}")
         if "continue" in expect and bool(turn.get("continue_conversation")) != expect["continue"]:
             problems.append(f"continue_conversation={turn.get('continue_conversation')}")
         return problems
@@ -192,8 +244,26 @@ class Runner:
                     payload = {"text": step["say"], "agent_id": AGENT, "language": "de", "conversation_id": conv_ids.get(step.get("conv", user))}
                     if step.get("device"):
                         payload["device_id"] = self.area_devices[step["device"]]
+                    if step.get("satellite"):
+                        payload["satellite_id"] = SATELLITE
+                        payload["device_id"] = self.satellite_device
                     t0 = time.perf_counter()
-                    res = await self.ws[user].call("conversation/process", **payload)
+                    if step.get("household"):
+                        # Satellite turn without a signed-in user (7.9.2 A3).
+                        user = step.get("conv", "household")
+                        voice = await self.service("haus_sim.voice", {
+                            "text": step["say"], "agent_id": AGENT, "conversation_id": conv_ids.get(user),
+                        }, response=True)
+                        res = {
+                            "conversation_id": voice.get("conversation_id"),
+                            "continue_conversation": voice.get("continue_conversation"),
+                            "response": {
+                                "speech": {"plain": {"speech": voice.get("speech")}},
+                                "response_type": voice.get("response_type"),
+                            },
+                        }
+                    else:
+                        res = await self.ws[user].call("conversation/process", **payload)
                     rec["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
                     conv_ids[step.get("conv", user)] = res.get("conversation_id")
                     resp = res["response"]
@@ -201,6 +271,21 @@ class Runner:
                     rec["response_type"] = resp.get("response_type")
                     rec["continue_conversation"] = res.get("continue_conversation")
                     await asyncio.sleep(step.get("settle", 1.0))
+                elif "pipeline" in step:
+                    await self.service("haus_sim.clear_log")
+                    events = await self.admin.run_pipeline(
+                        step["pipeline"], end_stage="tts", pipeline=await self.ensure_pipeline(),
+                        device_id=self.satellite_device,
+                        conversation_id=conv_ids.get(step.get("conv", "admin")),
+                    )
+                    kinds = [event["type"] for event in events]
+                    rec["pipeline_events"] = kinds
+                    rec["tts"] = "tts-start" in kinds
+                    intent_end = next((e for e in events if e["type"] == "intent-end"), None)
+                    response = ((intent_end or {}).get("data") or {}).get("intent_output", {}).get("response", {})
+                    rec["speech"] = response.get("speech", {}).get("plain", {}).get("speech")
+                    rec["response_type"] = response.get("response_type")
+                    await asyncio.sleep(step.get("settle", 1.5))
                 elif "set" in step:
                     await self.service("haus_sim.set", {"entity_id": step["set"], "value": step["value"]})
                     await asyncio.sleep(step.get("settle", 0.5))
@@ -216,6 +301,7 @@ class Runner:
                     rec["notifications"] = log["notifications"]
                     rec["spoken"] = log["spoken"]
                     rec["played_media"] = log["played_media"]
+                    rec["announcements"] = log.get("announcements", [])
                     rec["problems"] = self.evaluate(step["expect"], rec, await self.states(), log)
             except Exception as err:  # noqa: BLE001 - a crash is a finding
                 rec["problems"] = [f"Ausnahme: {type(err).__name__}: {err}"]
@@ -246,6 +332,7 @@ async def main() -> None:
         and s["category"] not in args.exclude_category
     ]
     results = []
+    effect_wait: dict[str, Any] | None = None
     async with aiohttp.ClientSession() as session:
         async with Runner(session, load_tokens()) as runner:
             runner.full_reset = args.full_reset
@@ -261,6 +348,11 @@ async def main() -> None:
                             print(f"         call {c}")
                     for p in st.get("problems") or []:
                         print(f"       ✗ {p}")
+            effect_wait = await runner.effect_wait_statistics()
+    if effect_wait is not None:
+        # 7.9.2 A1: extra wait for device reports, measured by HomeIntent
+        # itself (not part of the language-understanding latency budget).
+        print(f"Zusätzliche Wartezeit auf Geräte-Rückmeldung: {json.dumps(effect_wait, ensure_ascii=False)}")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(out.read_text()) if out.exists() else {}

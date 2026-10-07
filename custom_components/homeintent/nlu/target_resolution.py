@@ -567,8 +567,26 @@ def resolve_description(
         )
     if description.explicit:
         matches = tuple(description.explicit)
-        if description.place is not None and len(matches) > 1:
-            narrowed = tuple(entity for entity in matches if description.place.contains(entity))
+        spoken_place = description.place
+        if spoken_place is not None and spoken_place.kind is not PlaceKind.HERE:
+            # A spoken room, floor or "draußen" is never dropped silently
+            # (7.9.1 A4): a named device elsewhere is said, not chosen.
+            narrowed = tuple(entity for entity in matches if spoken_place.contains(entity))
+            if not narrowed:
+                elsewhere = matches[0]
+                where = (
+                    f" {dative_location_phrase(elsewhere.area_name)}" if elsewhere.area_name else ""
+                )
+                return TargetResolution(
+                    ResolutionOutcome.NONE, description, matches[:3],
+                    message=(
+                        f"„{elsewhere.friendly_name}“ ist nicht {spoken_place.label}, sondern"
+                        f"{where or ' woanders'}. Ich habe nichts ausgeführt."
+                    ),
+                )
+            matches = narrowed
+        elif spoken_place is not None and len(matches) > 1:
+            narrowed = tuple(entity for entity in matches if spoken_place.contains(entity))
             matches = narrowed or matches
         if domains is not None:
             matches = tuple(entity for entity in matches if entity.domain in domains) or matches

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from ..entities import (
     EntitySnapshot,
@@ -23,6 +23,8 @@ from .semantic_catalog import DOMAIN_WORDS
 from .target_resolution import resolve_phrase
 
 __all__ = (
+    "exact_registry_name",
+    "registry_name_hits",
     "ResolutionResult", "ResolutionStatus", "ResolveResult", "ResolveStatus",
     "all_mentioned_entities", "mentioned_entities", "resolve_entities_by_domain", "resolve_entity",
     "resolve_phrase", "resolve_mentioned_target", "resolve_named_target",
@@ -419,3 +421,32 @@ def resolve_query_targets(
     if not candidates:
         return ()
     return tuple(candidates)
+
+
+def registry_name_hits(
+    noun_word: str | None, candidates: Sequence[EntitySnapshot]
+) -> tuple[EntitySnapshot, ...]:
+    """Every room-less candidate whose registry name contains the spoken
+    noun as a whole word (7.9.2 A5)."""
+    if not noun_word:
+        return ()
+    word = normalize_for_compare(noun_word.strip("-"))
+    return tuple(
+        entity for entity in candidates
+        if entity.area_id is None
+        and any(
+            word in normalize_for_compare(name).replace("-", " ").split()
+            for name in (entity.friendly_name, *entity.aliases)
+        )
+    )
+
+
+def exact_registry_name(
+    noun_word: str | None, candidates: Sequence[EntitySnapshot]
+) -> tuple[EntitySnapshot, ...]:
+    """The one candidate whose registry name contains the spoken noun as a
+    whole word and that has no room (7.9.2 A5): "der Stromverbrauch" with
+    a sensor "Stromverbrauch Haus" among four power sensors. Several such
+    names, or none, change nothing - the question stays."""
+    hits = registry_name_hits(noun_word, candidates)
+    return hits if len(hits) == 1 else ()

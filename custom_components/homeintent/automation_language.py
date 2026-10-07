@@ -35,7 +35,9 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable
 
+from .device_health import is_availability_event
 from .nlu.automation_lexicon import rejoin_stt, resolve_repairs
+from .nlu.device_ontology import lookup_genus_word
 from .nlu.automation_model import NumericComparator, PresenceEvent, SunEvent
 from .nlu.lexicon import weekday_vocabulary
 from .nlu.measurement import TravelDirection
@@ -74,10 +76,51 @@ _DETECTOR_EVENT_VERBS = frozenset({
 })
 
 
+_COMPARISON_WORDS = {"über": "über", "unter": "unter", "ab": "mindestens"}
+_PREPARED_UNITS = frozenset({"kmh", "lux", "grad", "prozent", "watt", "ppm"})
+
+
+def _join_kmh(text: str) -> str:
+    """"km/h", "km / h", "Kilometer pro Stunde" -> one unit word (7.9.2 A6)."""
+    for spelling in ("km / h", "km/ h", "km /h", "km/h", "Km/h", "KM/H"):
+        text = text.replace(spelling, "kmh")
+    words = text.split()
+    joined: list[str] = []
+    index = 0
+    while index < len(words):
+        if [word.casefold() for word in words[index:index + 3]] == ["kilometer", "pro", "stunde"]:
+            joined.append("kmh")
+            index += 3
+            continue
+        joined.append(words[index])
+        index += 1
+    return " ".join(joined)
+
+
+def _bei_measurement(text: str) -> str:
+    """"Bei Wind über 40 kmh fahr …" -> "Wenn Wind über 40 kmh liegt, fahr …"
+    (7.9.2 A6): a prepositional event of a measured quantity."""
+    words = text.split()
+    if not words or words[0].casefold() != "bei":
+        return text
+    for index in (2, 3):
+        if index + 2 >= len(words):
+            continue
+        comparator = words[index].casefold()
+        number = words[index + 1]
+        unit = words[index + 2].casefold().strip(",")
+        if comparator in _COMPARISON_WORDS and number.replace(",", "").replace(".", "").isdigit() and unit in _PREPARED_UNITS:
+            subject = " ".join(words[1:index])
+            rest = " ".join(words[index + 3:])
+            return f"Wenn {subject} {_COMPARISON_WORDS[comparator]} {number} {unit} liegt, {rest}".strip()
+    return text
+
+
 def prepare_automation_text(raw: str) -> PreparedText:
     """Repairs first (they need the hesitation markers), then shared normalization."""
     repair = resolve_repairs(raw)
-    text = _JEDES_MAL_RE.sub("immer ", repair.text)
+    text = _bei_measurement(_join_kmh(repair.text))
+    text = _JEDES_MAL_RE.sub("immer ", text)
     text = _IMMER_DANN_RE.sub("immer", text)
     text = rejoin_stt(text)
     # "ich hätte gern eine Nachricht" is a wish addressed to the speaker;
@@ -273,6 +316,8 @@ ACTION_OPENERS = frozenset({
     "schliesse", "stelle", "stell", "setze", "setz", "starte", "stoppe", "aktiviere",
     "deaktiviere", "dimme", "dimm", "drehe", "dreh", "spiele", "spiel", "kannst", "könntest",
     "bitte", "dann", "sperre", "entsperre", "lass", "lasse",
+    # 7.9.2 A2: irrigation verbs ("bewässere den Garten 15 Minuten").
+    "bewässere", "bewässer", "bewaessere", "beregne", "sprenge", "gieße", "giess", "giesse",
 })
 
 
@@ -501,6 +546,11 @@ class ValueUnit(Enum):
     KILOWATT = auto()
     WATT_HOUR = auto()
     KILOWATT_HOUR = auto()
+    # Concentration (7.9.1 A3): "über 1200 ppm" only for sensors in ppm.
+    PPM = auto()
+    # 7.9.2 A6 (Markise): illuminance and wind speed.
+    LUX = auto()
+    KMH = auto()
 
 
 @dataclass(frozen=True)
@@ -636,6 +686,8 @@ _BELOW_WORDS = (
     "kleiner als", "unterhalb von", "unter",
 )
 _AT_LEAST_WORDS = ("mindestens", "wenigstens")
+_ABOVE_VERBS = frozenset({"übersteigt", "übersteigen", "überschreitet", "überschreiten", "übertrifft"})
+_BELOW_VERBS = frozenset({"unterschreitet", "unterschreiten"})
 _AT_MOST_WORDS = ("höchstens", "maximal", "nicht mehr als")
 
 _NUMBER_TOKEN_RE = re.compile(r"^[-−]?\d+(?:[.,]\d+)?$")
@@ -646,12 +698,29 @@ _UNIT_WORDS = {
     "wattstunden": ValueUnit.WATT_HOUR, "wattstunde": ValueUnit.WATT_HOUR, "wh": ValueUnit.WATT_HOUR,
     "kilowattstunden": ValueUnit.KILOWATT_HOUR, "kilowattstunde": ValueUnit.KILOWATT_HOUR,
     "kwh": ValueUnit.KILOWATT_HOUR,
+    "ppm": ValueUnit.PPM,
+    "lux": ValueUnit.LUX, "lx": ValueUnit.LUX,
+    "km/h": ValueUnit.KMH, "kmh": ValueUnit.KMH, "stundenkilometer": ValueUnit.KMH,
+    "stundenkilometern": ValueUnit.KMH,
 }
 # A counting period for energy ("heute", "diese Woche", 7.9 W4): only a meter
 # that restarts with that period can answer it.
 METER_PERIOD_WORDS = {"heute": "daily", "täglich": "daily", "woche": "weekly", "monat": "monthly"}
 _ARTICLE_NUMBERS = frozenset({"ein", "eine", "eins", "einer", "einen", "einem"})
 
+# Copulas and particles around an availability predicate (7.9.2 B3).
+_AVAILABILITY_FILLERS = frozenset({"ist", "sind", "wird", "werden", "geht", "gehen", "mehr", "länger", "als"})
+# "schnell fällt", "plötzlich steigt" - a rate without its numbers (7.9.2 A6).
+_VAGUE_RATE_RE = re.compile(
+    r"\b(?:schnell|rasch|rapide|stark|plötzlich|ploetzlich|deutlich|sprunghaft)\s+"
+    r"(?:ab|an)?(?:fällt|faellt|sinkt|steigt|fallen|sinken|steigen)\b",
+    re.IGNORECASE,
+)
+# "die Sonne scheint", "Sonnenschein", "es sonnig ist" (7.9.2 A6).
+_SUNSHINE_RE = re.compile(
+    r"\bsonne\s+(?:scheint|scheinen|strahlt|knallt)\b|\bsonnenschein\b|\bsonnig\b",
+    re.IGNORECASE,
+)
 _RELATIVE_CHANGE_RE = re.compile(
     r"\bum\s+\S+\s+(?:grad|prozent|%)\b"
     r"|\b\S+\s+(?:grad|prozent)\s+(?:wärmer|kälter|mehr|weniger|heller|dunkler)\b"
@@ -664,7 +733,7 @@ _DURATION_RE = re.compile(
     # Duration modifiers stack: "seit mehr als", "schon länger als" (7.8.3).
     r"(?:\b(?:seit|länger\s+als|mehr\s+als|über|mindestens|für|schon)\s+)*"
     r"(?:(?P<number>-?\d+|[a-zäöüß]+)\s+|(?P<half>eine\s+halbe|einer\s+halben)\s+)"
-    r"(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag)\b(?:\s+lang)?",
+    r"(?P<unit>sekunden?|minuten?|stunden?|tagen?|tage|tag|wochen?)\b(?:\s+lang)?",
     re.IGNORECASE,
 )
 _DOWN_RE = re.compile(
@@ -698,9 +767,22 @@ _STATE_WORDS: dict[str, SemanticState] = {
         ("zugeht", "zugegangen", "geschlossen", "schließt", "zugemacht", "zumacht"),
         SemanticState.CLOSED,
     ),
+    # Travel participles of covers name the end position (7.9.1 A7): an
+    # awning "eingefahren" is closed, "ausgefahren" open; a shutter
+    # "hochgefahren" is open, "heruntergefahren" closed.
+    **dict.fromkeys(
+        ("ausgefahren", "hochgefahren", "raufgefahren", "aufgefahren", "hinaufgefahren"),
+        SemanticState.OPEN,
+    ),
+    **dict.fromkeys(
+        ("eingefahren", "heruntergefahren", "runtergefahren", "hinuntergefahren", "zugefahren"),
+        SemanticState.CLOSED,
+    ),
     **dict.fromkeys(
         ("angeht", "angegangen", "eingeschaltet", "einschaltet", "angeschaltet", "anschaltet",
-         "angemacht", "anmacht", "anspringt", "angesprungen"),
+         "angemacht", "anmacht", "anspringt", "angesprungen",
+         # a light that "brennt/leuchtet" is on (7.9.1 A7)
+         "brennt", "brennen", "leuchtet", "leuchten"),
         SemanticState.ON,
     ),
     **dict.fromkeys(
@@ -708,6 +790,10 @@ _STATE_WORDS: dict[str, SemanticState] = {
         SemanticState.OFF,
     ),
 }
+_TRAVEL_PARTICIPLES = frozenset({
+    "ausgefahren", "hochgefahren", "raufgefahren", "aufgefahren", "hinaufgefahren",
+    "eingefahren", "heruntergefahren", "runtergefahren", "hinuntergefahren", "zugefahren",
+})
 # Particles that are a state only in predicate position ("auf ist", "an bleibt").
 _PARTICLE_STATES: dict[str, SemanticState] = {
     "auf": SemanticState.OPEN, "zu": SemanticState.CLOSED,
@@ -760,14 +846,14 @@ def _duration_seconds(match: re.Match[str]) -> int | None:
     unit = match.group("unit").casefold()
     multiplier = (
         1 if unit.startswith("sekunde") else 60 if unit.startswith("minute")
-        else 86400 if unit.startswith("tag") else 3600
+        else 86400 if unit.startswith("tag") else 604800 if unit.startswith("woche") else 3600
     )
     if match.group("half") is not None:
         return multiplier // 2 if multiplier >= 60 else None
     raw = match.group("number")
     if raw is None:
         return None
-    if raw.casefold() in {"eine", "einer", "einem", "ein"}:
+    if raw.casefold() in {"eine", "einer", "einem", "ein", "einen"}:
         amount = 1
     elif raw.lstrip("-").isdigit():
         amount = int(raw)
@@ -845,6 +931,41 @@ def read_event_roles(event_text: str) -> EventRoles:
         event_text.strip(" ,.!?"), flags=re.IGNORECASE,
     )
     text, conditions = _extract_conditions(source)
+    availability = is_availability_event(text.split())
+    if availability is not None:
+        # "wenn ein Gerät nicht mehr erreichbar ist", "wenn der
+        # Bewegungsmelder im Flur ausfällt" (7.9.2 B3).
+        duration = _DURATION_RE.search(text)
+        seconds = _duration_seconds(duration) if duration is not None else None
+        rest = text
+        if duration is not None:
+            rest = (text[:duration.start()] + " " + text[duration.end():]).strip()
+        words = rest.split()
+        span = is_availability_event(words)
+        if span is not None:
+            words = words[:span[0]] + words[span[1]:]
+        unreachable = tuple(
+            word.strip(",.;:!?") for word in words
+            if word.strip(",.;:!?").casefold() not in _AVAILABILITY_FILLERS
+        )
+        return EventRoles(
+            source, subject_words=unreachable, unsupported="unavailable", for_seconds=seconds,
+            conditions=conditions,
+        )
+    if _VAGUE_RATE_RE.search(text) and not re.search(r"\d", text):
+        # "wenn die Außentemperatur schnell fällt" (7.9.2 A6): a change
+        # without amount and period - both are asked, never guessed.
+        return EventRoles(
+            source, subject_words=tuple(text.strip(" ,.").split()), unsupported="vague_rate",
+            conditions=conditions,
+        )
+    if _SUNSHINE_RE.search(text):
+        # "wenn die Sonne scheint" (7.9.2 A6): a brightness, never a guessed
+        # value - grounding asks for the threshold.
+        return EventRoles(
+            source, subject_words=tuple(text.strip(" ,.").split()), unsupported="sunshine",
+            conditions=conditions,
+        )
     if _RELATIVE_CHANGE_RE.search(text):
         change = read_relative_change(text)
         if change is not None:
@@ -915,6 +1036,18 @@ def read_event_roles(event_text: str) -> EventRoles:
         if next_unit is not None and not words[index].endswith("%"):
             consumed.add(index + 1)
         comparator = _comparator(preceded)
+        if comparator is NumericComparator.EQUAL:
+            # "3000 Watt übersteigt/unterschreitet" (7.9.2): the verb after
+            # the value is the comparator.
+            follows = keys[index + 2] if next_unit is not None and index + 2 < len(keys) else (
+                keys[index + 1] if index + 1 < len(keys) else ""
+            )
+            if follows in _ABOVE_VERBS:
+                comparator = NumericComparator.ABOVE
+                consumed.add(keys.index(follows, index))
+            elif follows in _BELOW_VERBS:
+                comparator = NumericComparator.BELOW
+                consumed.add(keys.index(follows, index))
         break
     if value is None:
         for index, key in enumerate(keys):
@@ -954,6 +1087,10 @@ def read_event_roles(event_text: str) -> EventRoles:
             # elsewhere ("die Fenster oben") it stays a place.
             state = SemanticState.OPEN if keys[-2] in _UP_POSITION_WORDS else SemanticState.CLOSED
             consumed.add(len(keys) - 2)
+        if state is not None and any(key in _TRAVEL_PARTICIPLES for key in keys) and set(keys) & _STATIVE_COPULAS:
+            # "der Rollladen ist heruntergefahren": an end position, no
+            # travel direction (7.9.1 A7).
+            direction = None
         full_travel = state is not None and any(key in _FULL_TRAVEL for key in keys)
         if "bewegung" in keys and any(
             key in _MOTION_VERBS for key in keys
@@ -971,6 +1108,13 @@ def read_event_roles(event_text: str) -> EventRoles:
             motion, occupancy, state = True, True, SemanticState.ON
         elif state is None and set(keys) & {"niemand", "keiner"} and set(keys) & _PRESENT_VERBS:
             motion, occupancy, state = True, True, SemanticState.OFF
+        if motion:
+            # Movement has no end position: "oben/unten" is the floor where
+            # it is watched, never a cover state (7.9.1 A4).
+            consumed -= {
+                index for index in consumed
+                if keys[index] in _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
+            }
 
     subject: list[str] = []
     for index, word in enumerate(words):
@@ -989,7 +1133,7 @@ def read_event_roles(event_text: str) -> EventRoles:
             continue
         if (
             key in _UP_POSITION_WORDS | _DOWN_POSITION_WORDS
-            and state is not None and value is None and not full_travel and not motion
+            and state is not None and value is None and not full_travel
         ):
             # "wenn oben kein Fenster mehr offen ist": the state comes from
             # another word, so "oben/unten" is the place (7.9 W1).
@@ -1170,6 +1314,9 @@ _ABSENCE_FILLERS = frozenset({
 _UNTIL_RE = re.compile(r"\bbis\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*uhr\b", re.IGNORECASE)
 
 
+_CLOCK_TOKEN_RE = re.compile(r"\d{1,2}:\d{2}")
+
+
 def _until_time(text: str) -> tuple[int, int] | None:
     match = _UNTIL_RE.search(text)
     if match is None:
@@ -1184,7 +1331,7 @@ def _absence_subject(words: tuple[str, ...]) -> tuple[tuple[str, ...], str | Non
     kept: list[str] = []
     for word in words:
         key = word.casefold()
-        if key in _ABSENCE_FILLERS or _UNTIL_RE.fullmatch(key) or key.isdigit():
+        if key in _ABSENCE_FILLERS or _UNTIL_RE.fullmatch(key) or key.isdigit() or _CLOCK_TOKEN_RE.fullmatch(key):
             continue
         kept.append(word)
     agent: str | None = None
@@ -1287,17 +1434,39 @@ _LEAVE_RE = re.compile(
     r"\b(?:das\s+haus|die\s+wohnung)\s+verl(?:ässt|asse|assen|ässt)\b"
     r"|\bweg(?:geh\w*|gegangen|fähr\w*|fahr\w*|gefahren)\b"
     r"|\baus\s+dem\s+haus\s+geh\w*\b"
-    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b"
-    # "wenn ich gehe", "wenn Anna geht": intransitive "gehen" closing the
-    # clause (verb-final) means leaving; with a separated particle ("auf
-    # geht", "aus geht") it is a device state, never presence (7.8.3).
-    r"|(?<!\bauf\s)(?<!\bzu\s)(?<!\baus\s)(?<!\ban\s)(?<!\bvor\s)(?<!\bein\s)"
+    r"|\blos(?:fähr\w*|fahr\w*|gefahren)\b",
+    re.IGNORECASE,
+)
+# "wenn ich gehe", "wenn Anna geht": intransitive "gehen" closing the clause
+# (verb-final) means leaving; with a separated particle ("auf geht", "aus
+# geht") it is a device state, never presence (7.8.3).
+_GO_FINAL_RE = re.compile(
+    r"(?<!\bauf\s)(?<!\bzu\s)(?<!\baus\s)(?<!\ban\s)(?<!\bvor\s)(?<!\bein\s)"
     r"\bgeh(?:e|st|t|en)\s*$",
     re.IGNORECASE,
 )
+# A comparator-value phrase before the verb ("über 24 Grad geht", "unter
+# 10 geht", "auf über 1200 ppm geht") makes "gehen" a value predicate - the
+# measured value goes somewhere, nobody leaves (7.9.1 A3).
+_VALUE_BEFORE_VERB_RE = re.compile(
+    r"\b(?:" + "|".join(
+        re.escape(word).replace("\\ ", r"\s+")
+        for word in sorted(
+            {"über", "ueber", "unter", "auf", "bis", "mehr als", "weniger als", "höher als",
+             "niedriger als", "größer als", "kleiner als", "oberhalb von", "unterhalb von",
+             "mindestens", "höchstens", "maximal"},
+            key=len, reverse=True,
+        )
+    ) + r")\s+[-−]?\d",
+    re.IGNORECASE,
+)
+_NUMBER_WORD_RE = re.compile(r"\d")
 _PRESENT_VERBS = frozenset({
     "ist", "sind", "da", "kommt", "betritt", "reinkommt", "hereinkommt", "rein", "herein",
     "anwesend", "drin", "befindet",
+    # "im Wohnzimmer 2 Stunden niemand war" (7.9.1 A7): with a span, the
+    # past tense names the same lasting absence.
+    "war", "waren", "gewesen",
 })
 _PRESENCE_FILLERS = frozenset({
     "hat", "habe", "hast", "ist", "bin", "bist", "sind", "wieder", "gerade", "dann",
@@ -1305,9 +1474,24 @@ _PRESENCE_FILLERS = frozenset({
 })
 
 
+def _goes_away(text: str) -> re.Match[str] | None:
+    """Verb-final "gehen" read as leaving - never after a comparator-value
+    phrase and never with a measured value or a device as subject: "die
+    Temperatur … über 24 Grad geht" is a threshold (7.9.1 A3)."""
+    match = _GO_FINAL_RE.search(text)
+    if match is None:
+        return None
+    before = text[:match.start()]
+    if _VALUE_BEFORE_VERB_RE.search(before) or _NUMBER_WORD_RE.search(before):
+        return None
+    if any(lookup_genus_word(word.strip(",.;:!?")) for word in before.split()):
+        return None
+    return match
+
+
 def _presence(text: str) -> tuple[PresenceEvent, tuple[int, int]] | None:
     arrive = _ARRIVE_RE.search(text)
-    leave = _LEAVE_RE.search(text)
+    leave = _LEAVE_RE.search(text) or _goes_away(text)
     if (arrive is None) == (leave is None):
         return None
     match = arrive or leave

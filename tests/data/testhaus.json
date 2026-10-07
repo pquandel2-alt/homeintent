@@ -2936,6 +2936,7 @@
   "attributes": {
    "is_closed": true,
    "current_position": 0,
+   "device_class": "water",
    "friendly_name": "Bewässerung Garten",
    "supported_features": 15
   },
@@ -2956,6 +2957,7 @@
   "state": "open",
   "attributes": {
    "is_closed": false,
+   "device_class": "water",
    "friendly_name": "Hauptwasserventil",
    "supported_features": 3
   },

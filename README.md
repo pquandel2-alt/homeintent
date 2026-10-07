@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.0** (Überwachungsaufträge vollständig: Gesamtzustände, Inaktivität, Änderungsraten, Verbrauch, Wiederholen und Eskalieren, Überwachungen verwalten)
+- Aktuelle Version: **7.9.2** (Wirkung kurz abwarten, Bewässerung nach Zeitplan, gemeinsame Überwachungen für Sprachgeräte, Zusammenfassung, Gewohnheiten, Batterien und Ausfälle, Urlaubsmodus, Verbrauch)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,85 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.2 neu?
+
+Befunde aus dem Nachtest 7.9.1 behoben, dazu neue Fähigkeiten:
+
+- **Wirkung kurz abwarten:** Nach einem Befehl wartet HomeIntent
+  ereignisgesteuert höchstens 2 s (Option `effect_wait_seconds`, 0–5) auf die
+  Rückmeldung der Geräte. Ein Rollladen, der in die verlangte Richtung fährt,
+  ist ein Erfolg (Bestätigungston). Gegenrichtung, „nicht erreichbar“ und
+  keine Rückmeldung werden ehrlich gesprochen.
+- **Bewässerung nach Zeitplan:** „Jeden Morgen um 6 Uhr bewässere den Garten
+  15 Minuten“ öffnet das Bewässerungsventil und schließt es nach der Dauer in
+  derselben Automation; ohne Dauer fragt HomeIntent „Wie lange?“. Nur
+  Bewässerungsventile öffnen sich automatisch – Tore, Türen, Schlösser, Gas-
+  und Hauptventile nie.
+- **Sprachgeräte im Haus sprechen für den Haushalt** (Option, Standard aus):
+  Ein Satellit ohne angemeldeten Benutzer verwaltet gemeinsame Überwachungen
+  („Mach die Garagen-Meldung für alle“, „… für uns alle“); persönliche
+  bleiben gesperrt. Die Liste zeigt „(gemeinsam)“.
+- **Ehrlicher und genauer:** Die Vorschau nennt Räume einer Etage ohne
+  Melder; ein eindeutiger Registry-Name („Stromverbrauch Haus“) gewinnt vor
+  der Rückfrage; Markise mit Sonne/Lux/Wind, „schnell fällt“ mit Rückfrage,
+  „noch Licht an“ nennt die Räume, „irgendeine Batterie“ nennt das Gerät.
+- **Was war los?** „Was war los, während ich weg war?“, „Was ist heute
+  passiert?“ – Ereignisse aus dem Recorder, wichtigste zuerst, Rest mit
+  „Was noch?“.
+- **Gewohnheiten:** wiederkehrende eigene Handlungen (mindestens 4 von 7
+  Tagen) werden einmal als Automation vorgeschlagen; „Schlag mir nichts mehr
+  vor“ schaltet das ab.
+- **Batterien und Ausfälle:** „Welche Batterien sind schwach?“, „Sag mir
+  jeden Sonntag um 10 Uhr, welche Batterien unter 30 % sind“, „Melde dich,
+  wenn ein Gerät nicht mehr erreichbar ist“ (ab 10 Minuten, keine Flut nach
+  einem Neustart).
+- **Urlaubsmodus:** „Ich bin bis Sonntag weg“ – strengere Meldungen,
+  optional Anwesenheitssimulation mit Lichtern, Urlaubs-Helfer; am Ende wird
+  alles zurückgenommen.
+- **Verbrauch:** „Wie viel Strom hat die Waschmaschine heute verbraucht?“
+  (kWh aus Zähler oder geschätzt aus der Leistung), „Was hat heute am meisten
+  verbraucht?“, Kosten nur mit Strompreis. Details: `docs/umsetzung-7.9.2.md`.
+
+## Was ist in Version 7.9.1 neu?
+
+Befunde aus dem Nachtest 7.9.0 behoben, dazu ein Bestätigungston:
+
+- **Zugänge öffnen sich nie automatisch:** Eine Automation öffnet kein
+  Garagentor, Tor, keine Tür, kein Ventil und kein Schloss – auch nicht über
+  ein Skript oder eine Szene. HomeIntent sagt das und bietet stattdessen eine
+  Benachrichtigung an („Garagentor jetzt öffnen? Das entscheidest du
+  selbst.“). Schließen bleibt mit Bestätigung erlaubt. Die Vorschau nennt die
+  Geräteart (Garagentor, Tor, Markise, Jalousie) statt „Rollladen“.
+- **Überwachungen gehören jemandem:** Pausieren, aus-/einschalten,
+  bearbeiten und löschen darf nur, wer sie angelegt hat, oder ein
+  Administrator. Nicht-Admins sehen nur ihre eigenen Überwachungen; ältere
+  Automationen ohne Eigentümer verwaltet nur ein Administrator. Eine
+  Sprachquelle ohne angemeldeten Benutzer ist weder Eigentümer noch Admin.
+- **Grenzwert mit „geht“:** „wenn die Temperatur über 24 Grad geht“ ist
+  wieder ein Grenzwert; neu versteht HomeIntent `ppm`.
+- **Ort schränkt immer ein:** „im Keller“, „oben“, „draußen“ fallen nie auf
+  Geräte anderswo zurück; ohne Gerät dort folgt eine ehrliche Antwort.
+- **Verwalten in allen Objektformen:** „Lösch die Überwachung vom
+  Garagentor“, „Kannst du die Automation fürs Flurlicht ausschalten?“ – nie
+  mehr an den Kalender.
+- **Antworten auf eigene Rückfragen:** „In welchem Zeitraum?“ – „Innerhalb
+  von 10 Minuten.“; ebenso Uhrzeit, Zählbeginn, Gerät, Empfänger und
+  „Bis wann?“ beim Pausieren.
+- **Mehr Verständnis:** Wiederholung mit „solange“, „höchstens einmal pro
+  Minute“, Wochen, „die Waschmaschine zieht mehr als 2000 Watt“, „das Haus
+  verbraucht mehr als 5 kW“, „noch Licht an“, „Markise eingefahren“,
+  Zählerstand als Grenzwert, „Prüfe, ob …“ als Frage, „bei Auffälligkeiten“,
+  „Beobachtest du das Garagentor?“ und eine kurze Liste der Überwachungen
+  („Was genau macht die erste?“ für die volle Vorschau).
+- **Bestätigungston (Option „Antwortstil“ = `tone`):** Wurde alles
+  ausgeführt, kommt keine Sprache, sondern ein kurzer Ton auf dem Gerät, von
+  dem der Befehl kam (Satellit über `assist_satellite.announce`,
+  Mediaplayer über `media_player.play_media`). Fragen, Fehler, Teilerfolge,
+  noch nicht bestätigte Wirkungen und Antworten auf Abfragen werden immer
+  gesprochen; im Text-Chat steht „Erledigt.“. Standard bleibt `spoken`.
+  Eigener Ton: Option `confirmation_media_id` (nur `media-source://`,
+  `/local/…`). Details: `docs/umsetzung-7.9.1.md`.
 
 ## Was ist in Version 7.9.0 neu?
 
@@ -2284,6 +2363,35 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.2:
+
+```text
+8492 passed, 12 skipped, 0 failed (Stub-Suite, lokal); tests_ha 16 passed
+Sprachverständnis-Gate: 463 passed
+Korpus-Signaturen 7.9.2 (docs/perf/corpus-signatures-7.9.2.json): gegenüber 7.9.1 eine begründete IR-Änderung, Engine unverändert (docs/perf/corpus-signatures-7.9.2-begruendung.md)
+Arbiter-Shadow 2131 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2108 EQUIVALENT
+Entwicklungs-Benchmark 7.7 461/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 215/215 (inklusive Proaktiv; 198 bisherige + 17 neue „Nachtest 7.9.2“), check_log 0 Befunde
+Zusätzliche Wartezeit auf Geräte-Rückmeldung (live): 3 von 511 Turns warteten (0,5 s; 2,0 s; 2,0 s), alle übrigen 0 ms
+Automationssprache 5000 Entitäten p95 20,3 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 171
+```
+
+Geprüfter Release-Stand von Version 7.9.1:
+
+```text
+7936 passed, 12 skipped, 0 failed (Stub-Suite, lokal)
+Sprachverständnis-Gate: 463 passed
+Korpus-Signaturen 7.9.1: 3679 Sätze, gegenüber 7.9.0 eine begründete Änderung (docs/perf/corpus-signatures-7.9.1-begruendung.md)
+Arbiter-Shadow 2101 gleichwertig, 7 nicht messbar, 0 SAFETY_DRIFT; Shadow-Vergleich 2078 EQUIVALENT
+Entwicklungs-Benchmark 7.7 461/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 198/198 (inklusive Proaktiv; 186 bisherige + 12 neue „Nachtest 7.9.1“), check_log 0 Befunde
+Automationssprache 5000 Entitäten p95 25,3 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 173
+```
+
 Geprüfter Release-Stand von Version 7.9.0:
 
 ```text
@@ -2335,7 +2443,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.0.json
+  --check docs/perf/corpus-signatures-7.9.2.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

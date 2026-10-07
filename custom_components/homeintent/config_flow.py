@@ -46,6 +46,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .shadow_runtime import CONF_SHADOW_MODE, SHADOW_MODES
+from .energy_query import CONF_ENERGY_PRICE
 from .const import (
     CONF_ATTENTION_BUDGET_ENABLED,
     CONF_CRITICAL_MULTI_CHANNEL_ENABLED,
@@ -76,6 +77,13 @@ from .const import (
     CONF_AGENT_QUIET_START,
     CONF_ANOMALY_THRESHOLD_PERCENT,
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
+    CONF_CONFIRMATION_MEDIA_ID,
+    CONF_EFFECT_WAIT_SECONDS,
+    CONF_HOUSEHOLD_VOICE_DEVICES,
+    DEFAULT_EFFECT_WAIT_SECONDS,
+    CONF_RESPONSE_STYLE,
+    DEFAULT_RESPONSE_STYLE,
+    RESPONSE_STYLES,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
     CONF_EFFECT_GRAPH_UNKNOWN,
@@ -327,6 +335,28 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
                         default=defaults.get(CONF_ALLOW_NON_ADMIN_AUTOMATIONS, True),
                     ): bool,
+                    vol.Optional(
+                        CONF_RESPONSE_STYLE,
+                        default=defaults.get(CONF_RESPONSE_STYLE, DEFAULT_RESPONSE_STYLE),
+                    ): vol.In(RESPONSE_STYLES),
+                    vol.Optional(
+                        CONF_CONFIRMATION_MEDIA_ID,
+                        description={
+                            "suggested_value": defaults.get(CONF_CONFIRMATION_MEDIA_ID, "")
+                        },
+                    ): str,
+                    vol.Optional(
+                        CONF_EFFECT_WAIT_SECONDS,
+                        default=defaults.get(CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=5)),
+                    vol.Optional(
+                        CONF_HOUSEHOLD_VOICE_DEVICES,
+                        default=defaults.get(CONF_HOUSEHOLD_VOICE_DEVICES, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_ENERGY_PRICE,
+                        default=defaults.get(CONF_ENERGY_PRICE, 0.0),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=10)),
                     vol.Optional(
                         CONF_CONTEXT_TTL_SECONDS,
                         default=defaults.get(CONF_CONTEXT_TTL_SECONDS, 30),

@@ -18,6 +18,8 @@ from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_pl
 from .plan_origin import PlanOrigin
 from .risk import RiskLevel
 from .service_call import ServiceCallPlan
+from .effect_wait import PendingEffect, expectations_for, judge_now
+from .turn_outcome import TurnOutcomeKind, defer_outcome, report_outcome
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,60 @@ class ExecutionResult:
 
 
 async def async_execute_service_plan(
+    hass: HomeAssistant,
+    plan: ServiceCallPlan,
+    entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],
+    options: Mapping[str, object],
+    *,
+    is_admin: bool,
+    user_id: str | None,
+    confirmed: bool,
+    audit_trail: AuditTrail | None = None,
+    audit_actor_id: str | None = None,
+    effect_monitor: EffectMonitor | None = None,
+    origin: PlanOrigin = PlanOrigin.EXPLICIT_COMMAND,
+    attended: bool = True,
+    binding_confirmed: bool = False,
+    context: Context | None = None,
+    scope: ConfirmedScope | None = None,
+) -> ExecutionResult:
+    """The single physical write path; reports what the turn did (7.9.1 B).
+
+    ``EXECUTED`` when the write ran and every target shows the requested
+    state or moves in the requested direction (7.9.2 A1); a target that has
+    not reported yet is handed to the turn, which waits for it (bounded,
+    event-driven) before the reply is decided. A write that did not run is
+    ``NOT_DONE``.
+    """
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
+    expectations = expectations_for(plan, lambda entity_id: _snapshot(hass, entity_id), names)
+    result = await _async_execute_service_plan(
+        hass, plan, entities, options, is_admin=is_admin, user_id=user_id, confirmed=confirmed,
+        audit_trail=audit_trail, audit_actor_id=audit_actor_id, effect_monitor=effect_monitor,
+        origin=origin, attended=attended, binding_confirmed=binding_confirmed, context=context,
+        scope=scope,
+    )
+    if not result.executed:
+        report_outcome(TurnOutcomeKind.NOT_DONE)
+        return result
+    pending = PendingEffect(expectations)
+    judge_now(hass, pending)
+    if pending.confirmed:
+        report_outcome(TurnOutcomeKind.EXECUTED)
+    elif not defer_outcome(pending):
+        report_outcome(TurnOutcomeKind.UNCONFIRMED)
+    return result
+
+
+def _snapshot(hass: HomeAssistant, entity_id: str) -> tuple[str | None, Mapping[str, object] | None]:
+    states = getattr(hass, "states", None)
+    state = states.get(entity_id) if states is not None else None
+    if state is None:
+        return None, None
+    return getattr(state, "state", None), getattr(state, "attributes", None)
+
+
+async def _async_execute_service_plan(
     hass: HomeAssistant,
     plan: ServiceCallPlan,
     entities: list[EntitySnapshot] | tuple[EntitySnapshot, ...],

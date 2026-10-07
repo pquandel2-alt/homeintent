@@ -23,6 +23,8 @@ from ..automation_action_edit import (
     select_candidate_reply,
 )
 from ..automation_executor import AutomationExecutor
+from ..automation_ownership import async_management_refusal
+from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..automation_management import (
     AutomationManagementKind,
     AutomationManagementRequest,
@@ -36,9 +38,11 @@ from ..automation_structure_edit import (
     AutomationEditSection,
     AutomationStructureEditRequest,
 )
+from .automations import access_openings_for
 from ..engine import AutomationDeletionMatchResult, AutomationToggleMatchResult, NluEngine
 from ..entities import EntitySnapshot
 from ..execution_context import user_facing_error
+from ..nlu.automation_access import describe_access_refusal
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
 from ..nlu.context import (
     ConversationContext,
@@ -88,11 +92,34 @@ class AutomationManagementController:
         executor: Callable[[], AutomationExecutor],
         engine: NluEngine,
         world_model: Callable[[], WorldModel | None],
+        hass: Callable[[], Any] | None = None,
+        options: Callable[[], Mapping[str, object]] | None = None,
     ) -> None:
         self._context_store = context_store
         self._executor = executor
         self._engine = engine
         self._world_model_of = world_model
+        self._hass_of = hass
+        self._options_of = options
+
+    async def _async_refusal(
+        self, user_input: conversation.ConversationInput, automation: Any
+    ) -> str | None:
+        """Owner or administrator only (7.9.1 A2); ``None`` when allowed."""
+        hass = self._hass_of() if self._hass_of is not None else None
+        return await async_management_refusal(
+            hass, user_input, getattr(automation, "owner_user_id", None),
+            options=self._options_of() if self._options_of is not None else None,
+        )
+
+    def _refuse(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse, text: str
+    ) -> conversation.ConversationResult:
+        self._context_store.clear(user_input.conversation_id)
+        response.async_set_error(intent.IntentResponseErrorCode.FAILED_TO_HANDLE, text)
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id
+        )
 
     @property
     def _world_model(self) -> WorldModel | None:
@@ -527,6 +554,10 @@ class AutomationManagementController:
             response.async_set_speech("Abgebrochen. Es wurde nichts verändert.")
             return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
         request = pending.request
+        if pending.automation is not None:
+            refusal = await self._async_refusal(user_input, pending.automation)
+            if refusal is not None:
+                return self._refuse(user_input, response, refusal)
         try:
             if request.kind is AutomationManagementKind.CLEAN_EXPIRED:
                 removed = await self._automation_store().async_cleanup_expired_scheduled_automations(dt_util.now())
@@ -579,6 +610,10 @@ class AutomationManagementController:
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
                 f"Fehler beim Ändern der Automation: {user_facing_error(err)}",
             )
+        else:
+            if pending.automation is not None:
+                # One named automation changed exactly as asked (7.9.1 B).
+                report_outcome(TurnOutcomeKind.EXECUTED)
         return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
     async def async_handle_deletion_confirmation_reply(
@@ -611,6 +646,9 @@ class AutomationManagementController:
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        refusal = await self._async_refusal(user_input, deletion.automation)
+        if refusal is not None:
+            return self._refuse(user_input, response, refusal)
         try:
             await self._automation_store().async_delete_automation(
                 deletion.automation.automation_id
@@ -625,6 +663,7 @@ class AutomationManagementController:
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(AUTOMATION_DELETED_TEXT)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -639,6 +678,9 @@ class AutomationManagementController:
         """Apply an unambiguous enable/disable result immediately."""
         self._context_store.clear(user_input.conversation_id)
         if result.automation is not None:
+            refusal = await self._async_refusal(user_input, result.automation)
+            if refusal is not None:
+                return self._refuse(user_input, response, refusal)
             try:
                 if result.enable:
                     await self._automation_store().async_enable_automation(
@@ -658,18 +700,24 @@ class AutomationManagementController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+            report_outcome(TurnOutcomeKind.EXECUTED)
         response.async_set_speech(result.response_text)
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
 
-    def handle_deletion_match_result(
+    async def async_handle_deletion_match_result(
         self,
         user_input: conversation.ConversationInput,
         response: intent.IntentResponse,
         result: AutomationDeletionMatchResult,
     ) -> conversation.ConversationResult:
-        """Store an unambiguous deletion candidate for confirmation."""
+        """Store an unambiguous deletion candidate for confirmation - only
+        for its owner or an administrator (7.9.1 A2)."""
+        if result.automation is not None:
+            refusal = await self._async_refusal(user_input, result.automation)
+            if refusal is not None:
+                return self._refuse(user_input, response, refusal)
         if result.automation is not None:
             self._context_store.set(
                 user_input.conversation_id,
@@ -712,6 +760,10 @@ class AutomationManagementController:
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+        if len(candidates) == 1:
+            refusal = await self._async_refusal(user_input, candidates[0])
+            if refusal is not None:
+                return self._refuse(user_input, response, refusal)
         pending_edit = PendingAutomationStructureEdit(
             request=request,
             candidates=candidates,
@@ -772,6 +824,8 @@ class AutomationManagementController:
                 + ", ".join(_automation_label(item) for item in candidates)
                 + "."
             )
+        elif (refusal := await self._async_refusal(user_input, next(iter(candidates)))) is not None:
+            return self._refuse(user_input, response, refusal)
         else:
             automation = next(iter(candidates))
             reordered = reordered_actions(automation.actions, operation)
@@ -951,6 +1005,9 @@ class AutomationManagementController:
                 response.async_set_speech("Abgebrochen. Die Automation wurde nicht verändert.")
             else:
                 assert pending.automation is not None
+                refusal = await self._async_refusal(user_input, pending.automation)
+                if refusal is not None:
+                    return self._refuse(user_input, response, refusal)
                 request: AutomationStructureEditRequest = pending.request
                 try:
                     await self._automation_store().async_replace_automation_section(
@@ -1028,6 +1085,9 @@ class AutomationManagementController:
                 response.async_set_speech("Bitte antworte mit Ja oder Nein.")
             else:
                 assert pending.automation is not None and pending.action_text is not None
+                refusal = await self._async_refusal(user_input, pending.automation)
+                if refusal is not None:
+                    return self._refuse(user_input, response, refusal)
                 try:
                     await self._automation_store().async_replace_automation_actions(
                         pending.automation.automation_id,
@@ -1098,6 +1158,17 @@ class AutomationManagementController:
         if not actions:
             response.async_set_speech(
                 "Die neue Aktion habe ich nicht eindeutig verstanden. Bitte nenne eine vollständige Geräteaktion."
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        openings = access_openings_for(
+            self._hass_of() if self._hass_of is not None else None, tuple(actions), entities
+        )
+        if openings:
+            # An edit never sneaks an opening into an automation (7.9.1 A1).
+            response.async_set_speech(
+                f"{describe_access_refusal(openings)} Die Automation bleibt unverändert."
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id

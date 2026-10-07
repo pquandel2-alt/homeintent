@@ -1,6 +1,6 @@
 {
  "beschreibung": "Klassifikation aller Regex-Muster (scripts/regex_inventory.py)",
- "maximum_semantic_sentence_pattern": 173,
+ "maximum_semantic_sentence_pattern": 171,
  "verlauf": {
   "7.5.0": 272,
   "7.5.1": 258,
@@ -11,20 +11,6 @@
   "7.8.0": 173
  },
  "eintraege": [
-  {
-   "id": "custom_components/homeintent/advanced_queries.py::match_advanced_query::51126ae8ce",
-   "datei": "custom_components/homeintent/advanced_queries.py",
-   "bereich": "match_advanced_query",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
-  {
-   "id": "custom_components/homeintent/advanced_queries.py::match_advanced_query::704b1a1241",
-   "datei": "custom_components/homeintent/advanced_queries.py",
-   "bereich": "match_advanced_query",
-   "klasse": "SEMANTIC_SENTENCE_PATTERN",
-   "quelle": "heuristik"
-  },
   {
    "id": "custom_components/homeintent/advanced_queries.py::match_advanced_query::7b8390fbfe",
    "datei": "custom_components/homeintent/advanced_queries.py",
@@ -292,9 +278,16 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_followup.py::_INTERVAL_RE::0716d7a16a",
+   "id": "custom_components/homeintent/automation_followup.py::_INTERVAL_RE::d9bd822657",
    "datei": "custom_components/homeintent/automation_followup.py",
    "bereich": "_INTERVAL_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_followup.py::_BOUND_RE::607ce9b4eb",
+   "datei": "custom_components/homeintent/automation_followup.py",
+   "bereich": "_BOUND_RE",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -516,6 +509,20 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/automation_language.py::_VAGUE_RATE_RE::a00a059c45",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_VAGUE_RATE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_SUNSHINE_RE::b81b151d68",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_SUNSHINE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/automation_language.py::_RELATIVE_CHANGE_RE::d3c0543e82",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_RELATIVE_CHANGE_RE",
@@ -523,7 +530,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::9ab8b4c076",
+   "id": "custom_components/homeintent/automation_language.py::_DURATION_RE::f98c627e46",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_DURATION_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -628,6 +635,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/automation_language.py::read_event_roles::caf5b0b18d",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "read_event_roles",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/automation_language.py::read_event_roles::d54d815e1f",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "read_event_roles",
@@ -663,6 +677,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/automation_language.py::_CLOCK_TOKEN_RE::8682635379",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_CLOCK_TOKEN_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/automation_language.py::_ARRIVE_RE::c415dfd6c9",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_ARRIVE_RE",
@@ -670,10 +691,31 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_language.py::_LEAVE_RE::492440ce4c",
+   "id": "custom_components/homeintent/automation_language.py::_LEAVE_RE::00f0a47c05",
    "datei": "custom_components/homeintent/automation_language.py",
    "bereich": "_LEAVE_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_GO_FINAL_RE::ad8245ec02",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_GO_FINAL_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_VALUE_BEFORE_VERB_RE::ac9b2e0c49",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_VALUE_BEFORE_VERB_RE",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_language.py::_NUMBER_WORD_RE::caf5b0b18d",
+   "datei": "custom_components/homeintent/automation_language.py",
+   "bereich": "_NUMBER_WORD_RE",
+   "klasse": "STRUCTURAL",
    "quelle": "heuristik"
   },
   {
@@ -793,6 +835,13 @@
    "datei": "custom_components/homeintent/automation_notification.py",
    "bereich": "_ACTION_TRAILING_NOTIFY_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/automation_ownership.py::_MONITORING_CUE_RE::8ab575b593",
+   "datei": "custom_components/homeintent/automation_ownership.py",
+   "bereich": "_MONITORING_CUE_RE",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -1356,6 +1405,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/controllers/automations.py::_TRIGGER_WORD_RE::8b20a087a0",
+   "datei": "custom_components/homeintent/controllers/automations.py",
+   "bereich": "_TRIGGER_WORD_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/controllers/automations.py::_NO_CONDITION_RE::90787e8edf",
    "datei": "custom_components/homeintent/controllers/automations.py",
    "bereich": "_NO_CONDITION_RE",
@@ -1387,6 +1443,13 @@
    "id": "custom_components/homeintent/controllers/learning.py::LearningController.async_handle_learning_turn::48c6f7946d",
    "datei": "custom_components/homeintent/controllers/learning.py",
    "bereich": "LearningController.async_handle_learning_turn",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/controllers/monitoring.py::_CLOCK_TAIL_RE::c37de039c9",
+   "datei": "custom_components/homeintent/controllers/monitoring.py",
+   "bereich": "_CLOCK_TAIL_RE",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -1507,6 +1570,13 @@
    "datei": "custom_components/homeintent/conversation_location.py",
    "bereich": "_LOCAL_REFERENCE_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/device_health.py::_CLOCK_RE::9829b13a5f",
+   "datei": "custom_components/homeintent/device_health.py",
+   "bereich": "_CLOCK_RE",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -1727,14 +1797,14 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/engine.py::_AUTOMATION_DISABLE_RE::df72ea721c",
+   "id": "custom_components/homeintent/engine.py::_AUTOMATION_DISABLE_RE::94f22d5ddd",
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "_AUTOMATION_DISABLE_RE",
-   "klasse": "MORPHOLOGICAL",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/engine.py::_AUTOMATION_ENABLE_RE::98ca7426a8",
+   "id": "custom_components/homeintent/engine.py::_AUTOMATION_ENABLE_RE::58e4d26298",
    "datei": "custom_components/homeintent/engine.py",
    "bereich": "_AUTOMATION_ENABLE_RE",
    "klasse": "MORPHOLOGICAL",
@@ -2616,6 +2686,34 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/missing_part.py::read_part_answer::f56813bd60",
+   "datei": "custom_components/homeintent/missing_part.py",
+   "bereich": "read_part_answer",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/missing_part.py::_CONJUNCTION_RE::dfd52bde93",
+   "datei": "custom_components/homeintent/missing_part.py",
+   "bereich": "_CONJUNCTION_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/missing_part.py::complete_request::20edcfb28f",
+   "datei": "custom_components/homeintent/missing_part.py",
+   "bereich": "complete_request",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/missing_part.py::complete_request::a8ff75fed5",
+   "datei": "custom_components/homeintent/missing_part.py",
+   "bereich": "complete_request",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/monitoring_management.py::_CLOCK_RE::fce7521f94",
    "datei": "custom_components/homeintent/monitoring_management.py",
    "bereich": "_CLOCK_RE",
@@ -2630,9 +2728,30 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/monitoring_management.py::names_managed_object::3fcc0d17d6",
+   "datei": "custom_components/homeintent/monitoring_management.py",
+   "bereich": "names_managed_object",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/native_timer.py::_name_key::322258b281",
    "datei": "custom_components/homeintent/native_timer.py",
    "bereich": "_name_key",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/action_duration.py::_seconds::8d692b6b14",
+   "datei": "custom_components/homeintent/nlu/action_duration.py",
+   "bereich": "_seconds",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/action_duration.py::_IRRIGATION_VERB_RE::29da5e282c",
+   "datei": "custom_components/homeintent/nlu/action_duration.py",
+   "bereich": "_IRRIGATION_VERB_RE",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -3817,6 +3936,13 @@
    "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
    "bereich": "_compile_measurement_query",
    "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_exact_property_name::a16d7cd4c7",
+   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
+   "bereich": "_exact_property_name",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -5099,12 +5225,19 @@
    "bereich": "_UNDO_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
    "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/vacation.py::_end_date::53b5a85386",
+   "datei": "custom_components/homeintent/vacation.py",
+   "bereich": "_end_date",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
   }
  ],
  "anzahl": {
-  "LEXICAL": 382,
-  "MORPHOLOGICAL": 38,
-  "STRUCTURAL": 134,
-  "SEMANTIC_SENTENCE_PATTERN": 173
+  "LEXICAL": 395,
+  "MORPHOLOGICAL": 37,
+  "STRUCTURAL": 143,
+  "SEMANTIC_SENTENCE_PATTERN": 171
  }
 }

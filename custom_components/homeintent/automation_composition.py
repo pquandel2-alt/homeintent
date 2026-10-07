@@ -27,6 +27,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable, Sequence
 
+from .missing_part import MissingPart, PartRequest
 from .automation_grounding import (
     GroundedEvent,
     GroundingStatus,
@@ -81,6 +82,7 @@ from .notification_language import (
     describe_unchanged_today,
     describe_whole_set_state,
     parse_notification_clause,
+    runtime_message,
     trigger_message,
 )
 
@@ -178,6 +180,8 @@ class CompositionOutcome:
     # "wenn etwas Ungewöhnliches passiert" (7.9 W7): no event of its own -
     # answered from the proactive situation catalog, never invented.
     vague_situation: bool = False
+    # The one part a question asks for (7.9.1 A6).
+    part: PartRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -615,6 +619,9 @@ def honesty_notes(interpreted: EventInterpretation) -> tuple[str, ...]:
 
     if any(unchanged(node) for node in interpreted.conditions):
         notes.append(RESTART_TODAY_NOTE)
+    if interpreted.grounded is not None:
+        # What the grounding found the spoken place cannot cover (7.9.2 A4).
+        notes.extend(interpreted.grounded.notes)
     roles = interpreted.grounded.roles if interpreted.grounded is not None else None
     if roles is not None and roles.agent:
         notes.append(
@@ -999,13 +1006,17 @@ def build_automation(
 ) -> CompositionOutcome:
     assert interpreted.trigger is not None
     if reading.unresolved_recipient is not None:
+        question = (
+            f"Ich finde kein eindeutiges Benachrichtigungsziel für {reading.unresolved_recipient}. "
+            "Wen soll ich benachrichtigen?"
+        )
         return CompositionOutcome(
             OutcomeKind.CLARIFY,
-            speech=(
-                f"Ich finde kein eindeutiges Benachrichtigungsziel für {reading.unresolved_recipient}. "
-                "Wen soll ich benachrichtigen?"
-            ),
+            speech=question,
             trace=replace(trace, grounding="recipient", reason="recipient_unresolved"),
+            part=PartRequest(
+                MissingPart.RECIPIENT, question, replaces=tuple(reading.unresolved_recipient.split())
+            ),
         )
     triggers = (
         tuple(
@@ -1015,9 +1026,19 @@ def build_automation(
         if interpreted.alternatives
         else (interpreted.trigger,)
     )
+    steps = reading.steps
+    if reading.notification is not None and not reading.notification.message and len(triggers) == 1:
+        # 7.9.2 A6: the push names the device/rooms at run time.
+        detail = runtime_message(triggers[0], interpreted.conditions, entities)
+        if detail is not None:
+            steps = tuple(
+                replace(step, message=detail[0], message_template=detail[1])
+                if isinstance(step, ActionModel) and step.type is ActionType.NOTIFY else step
+                for step in steps
+            )
     model = AutomationModel(
         triggers=triggers, conditions=interpreted.conditions,
-        actions=reading.steps, source_text=source_text, situation=interpreted.situation,
+        actions=steps, source_text=source_text, situation=interpreted.situation,
         situation_parts=interpreted.situation_parts, notes=honesty_notes(interpreted),
     )
     canonical = (
@@ -1084,7 +1105,16 @@ def compose_event_automation(
         return change
     if interpreted.trigger is None:
         grounded = interpreted.grounded
-        if not notification_only and (
+        missing_meter = (
+            # "Bei Wind über 40 km/h …" in a house without a wind sensor
+            # (7.9.2 A6): the measured quantity is understood, the device
+            # does not exist - say so instead of "nicht erkannt".
+            grounded is not None and grounded.status is GroundingStatus.NOT_FOUND
+            and grounded.roles is not None and grounded.roles.value is not None
+            and grounded.subject is not None and grounded.subject.noun is not None
+            and grounded.subject.noun.domain == "sensor"
+        )
+        if not notification_only and not missing_meter and (
             grounded is None
             or grounded.status in {GroundingStatus.NOT_APPLICABLE, GroundingStatus.NOT_FOUND,
                                    GroundingStatus.AMBIGUOUS}
@@ -1194,7 +1224,14 @@ def failure_outcome(
         status in {GroundingStatus.MISSING_SUBJECT, GroundingStatus.NOT_FOUND}
         or (status is GroundingStatus.UNSUPPORTED and grounded.question)
     ):
-        return CompositionOutcome(OutcomeKind.CLARIFY, speech=grounded.question, trace=failed)
+        part = (
+            PartRequest(
+                grounded.missing, grounded.question or "",
+                replaces=grounded.roles.subject_words if grounded.roles is not None else (),
+            )
+            if grounded.missing is not None else None
+        )
+        return CompositionOutcome(OutcomeKind.CLARIFY, speech=grounded.question, trace=failed, part=part)
     return CompositionOutcome(OutcomeKind.UNSUPPORTED, speech=unsupported_text(reason), trace=failed)
 
 

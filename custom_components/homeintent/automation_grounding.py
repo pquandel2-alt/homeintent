@@ -30,7 +30,8 @@ from enum import Enum, auto
 from typing import Sequence
 
 from .automation_language import METER_PERIOD_WORDS, EventRoles, ValueUnit
-from .entities import EntitySnapshot, normalize_for_compare
+from .entities import EntitySnapshot, is_outdoor_entity, normalize_for_compare
+from .nlu.entity_resolution import registry_name_hits
 from .nlu.automation_lexicon import NounClass, noun_class, split_compound
 from .nlu.automation_model import NumericComparator, TriggerModel, TriggerTarget, TriggerType
 from .nlu.constraint_resolver import Constraints, resolve_candidates
@@ -45,6 +46,8 @@ from .nlu.measurement import (
     is_valid_value,
     percent_property_for_domain,
 )
+from .missing_part import MissingPart
+from .nlu.device_ontology import analyse_word
 from .nlu.place_model import Place, PlaceKind, PlaceLexicon, build_place_lexicon
 from .nlu.semantic_state import SemanticState
 from .nlu.target_resolution import genus_members
@@ -97,6 +100,9 @@ class GroundedEvent:
     # "alle Fenster zu" (7.9 W1): the trigger fires when any member reaches
     # the state; the whole set must be in it (a condition over all members).
     aggregate: bool = False
+    # The one part the question asks for (7.9.1 A6): the answer in the
+    # next turn is read as exactly this part.
+    missing: MissingPart | None = None
 
 
 _ANY_WORDS = frozenset({
@@ -304,6 +310,12 @@ def read_subject(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> Su
         index += 1
     if noun is None and not modifiers and area is None:
         implicit = True
+    if quantifier is Quantifier.BARE and noun_word is not None and not modifiers:
+        analysis = analyse_word(noun_word)
+        if analysis is not None and analysis.mass and not analysis.plural:
+            # "wenn noch Licht an ist": a mass noun without article means
+            # any of it - an existential reading, never "welches?" (7.9.1 A7).
+            quantifier = Quantifier.ANY
     del joined
     return SubjectReading(
         noun=noun,
@@ -547,7 +559,12 @@ def _missing_subject_question(roles: EventRoles) -> str:
     if roles.value is None:
         return "Welches Gerät meinst du?"
     number = f"{roles.value:g}".replace(".", ",")
-    unit = {ValueUnit.PERCENT: " Prozent", ValueUnit.DEGREE: " Grad"}.get(roles.unit or ValueUnit.NONE, "")
+    unit = {
+        ValueUnit.PERCENT: " Prozent", ValueUnit.DEGREE: " Grad", ValueUnit.PPM: " ppm",
+        ValueUnit.LUX: " Lux", ValueUnit.KMH: " km/h",
+    }.get(
+        roles.unit or ValueUnit.NONE, ""
+    )
     comparator = roles.comparator or NumericComparator.EQUAL
     if comparator is NumericComparator.EQUAL:
         return f"Was soll {number}{unit} erreichen?"
@@ -565,6 +582,12 @@ _SCALE = {"W": 1.0, "kW": 1000.0, "Wh": 1.0, "kWh": 1000.0}
 _RATE_NOUNS = ("leistung", "stromaufnahme")
 
 
+# A unit that alone names the measured quantity (a sensor class).
+_UNIT_IMPLIES_NOUN = {
+    ValueUnit.DEGREE: "temperatur", ValueUnit.LUX: "helligkeit", ValueUnit.KMH: "windgeschwindigkeit",
+}
+
+
 def _sensor_unit_ok(entity: EntitySnapshot, unit: ValueUnit) -> bool:
     if unit is ValueUnit.NONE:
         return True
@@ -574,6 +597,12 @@ def _sensor_unit_ok(entity: EntitySnapshot, unit: ValueUnit) -> bool:
         return entity.unit in {"W", "kW"}
     if unit in _ENERGY_UNITS:
         return entity.unit in {"Wh", "kWh"}
+    if unit is ValueUnit.PPM:
+        return entity.unit == "ppm"
+    if unit is ValueUnit.LUX:
+        return entity.unit in {"lx", "lux"}
+    if unit is ValueUnit.KMH:
+        return entity.unit == "km/h"
     return entity.unit == "%"
 
 
@@ -583,6 +612,63 @@ def _in_sensor_unit(value: float, unit: ValueUnit, entity: EntitySnapshot) -> fl
     if spoken is None or entity.unit not in _SCALE:
         return value
     return value * spoken[1] / _SCALE[entity.unit]
+
+
+# Verbs whose subject draws power (7.9.1 A7): "die Waschmaschine zieht mehr
+# als 2000 Watt", "das Haus verbraucht mehr als 5 kW".
+_CONSUMPTION_VERBS = frozenset({
+    "zieht", "ziehen", "verbraucht", "verbrauchen", "nimmt", "nehmen", "braucht", "brauchen",
+    "aufnimmt", "frisst", "zieht's",
+})
+_NOW_WORDS = frozenset({"gerade", "aktuell", "momentan", "jetzt", "derzeit", "auf", "auf einmal"})
+# The household as a whole: its meter has no room.
+_WHOLE_HOUSE_WORDS = frozenset({"haus", "hauses", "wohnung", "haushalt", "insgesamt", "gesamt", "alles"})
+
+
+def _ground_consumption(
+    roles: EventRoles, entities: Sequence[EntitySnapshot]
+) -> GroundedEvent | None:
+    """A consumption verb with a power value is the power of its subject."""
+    if roles.unit not in _POWER_UNITS:
+        return None
+    keys = [normalize_for_compare(word) for word in roles.subject_words]
+    if not set(keys) & _CONSUMPTION_VERBS:
+        return None
+    owner = tuple(
+        word for word, key in zip(roles.subject_words, keys)
+        if key not in _CONSUMPTION_VERBS and key not in _NOW_WORDS and key not in _DEFINITE_WORDS
+    )
+    owner_keys = {normalize_for_compare(word) for word in owner}
+    if not owner or owner_keys <= _WHOLE_HOUSE_WORDS:
+        meters = [
+            entity for entity in entities
+            if entity.domain == "sensor" and entity.device_class == "power"
+            and entity.unit in {"W", "kW"} and entity.area_id is None
+        ]
+        if len(meters) != 1:
+            return GroundedEvent(
+                GroundingStatus.NOT_FOUND if not meters else GroundingStatus.AMBIGUOUS,
+                candidates=tuple(meters),
+                question=(
+                    "Ich finde keinen Leistungssensor für das ganze Haus. Welchen Sensor meinst du?"
+                    if not meters else _which_question(
+                        read_subject(("Leistung",), entities), sorted(meters, key=lambda item: item.friendly_name)
+                    )
+                ),
+                roles=roles, missing=MissingPart.DEVICE if not meters else None,
+            )
+        sensor = meters[0]
+        assert roles.value is not None
+        trigger = TriggerModel(
+            type=TriggerType.NUMERIC_STATE,
+            target=TriggerTarget(domain="sensor", device_class="power", entity_id=sensor.entity_id),
+            comparator=roles.comparator or NumericComparator.ABOVE,
+            threshold=_in_sensor_unit(roles.value, roles.unit, sensor),
+            for_seconds=roles.for_seconds,
+        )
+        return GroundedEvent(GroundingStatus.RESOLVED, trigger=trigger, candidates=(sensor,), roles=roles)
+    # "die Waschmaschine zieht": the power of the named appliance.
+    return ground_event(replace(roles, subject_words=("die", "Leistung", "der", *owner)), entities)
 
 
 def _ground_energy(
@@ -618,6 +704,32 @@ def _ground_energy(
         and (subject.area_id is None or e.area_id == subject.area_id)
     ]
     spoken_period = {"daily": "täglichem", "weekly": "wöchentlichem", "monthly": "monatlichem"}
+    meter_word = normalize_for_compare(subject.noun_word or "").replace("-", "")
+    if period is None and ("zaehler" in meter_word or "zählerstand" in meter_word):
+        # "der Energiezähler über 12000 kWh" (7.9.1 A7): the meter *reading*
+        # is a valid threshold - no counting period is involved.
+        meters = [
+            e for e in subject_candidates(subject, entities)
+            if e.domain == "sensor" and e.device_class == "energy" and e.unit in {"Wh", "kWh"}
+        ] if subject.noun is not None else []
+        if len(meters) == 1:
+            assert roles.value is not None and roles.unit is not None
+            trigger = TriggerModel(
+                type=TriggerType.NUMERIC_STATE,
+                target=TriggerTarget(domain="sensor", device_class="energy", entity_id=meters[0].entity_id),
+                comparator=roles.comparator or NumericComparator.ABOVE,
+                threshold=_in_sensor_unit(roles.value, roles.unit, meters[0]),
+                for_seconds=roles.for_seconds,
+            )
+            return GroundedEvent(
+                GroundingStatus.RESOLVED, trigger=trigger, candidates=(meters[0],), subject=subject, roles=roles
+            )
+        if len(meters) > 1:
+            ordered = sorted(meters, key=lambda item: item.friendly_name)
+            return GroundedEvent(
+                GroundingStatus.AMBIGUOUS, candidates=tuple(ordered),
+                question=_which_question(subject, ordered), subject=subject, roles=roles,
+            )
     if period is None:
         return GroundedEvent(
             GroundingStatus.UNSUPPORTED, reason="energy_period",
@@ -625,7 +737,7 @@ def _ground_energy(
                 "Ab wann soll ich den Verbrauch zählen – heute, diese Woche oder diesen Monat? "
                 "Einen Gesamtzähler rechne ich nicht selbst um."
             ),
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.PERIOD,
         )
     meters = [e for e in energy if str(e.attributes.get("meter_period", "")).casefold() == period]
     if len(meters) == 1:
@@ -663,8 +775,159 @@ def _ground_energy(
     )
 
 
+_RATE_WORDS = frozenset({
+    "schnell", "rasch", "rapide", "stark", "plötzlich", "ploetzlich", "deutlich", "sprunghaft",
+    "fällt", "faellt", "sinkt", "steigt", "fallen", "sinken", "steigen", "abfällt", "ansteigt",
+})
+
+
+def _spoken_name_first(
+    words: Sequence[str], candidates: Sequence[EntitySnapshot]
+) -> list[EntitySnapshot]:
+    """A sensor whose whole registry name was spoken ("die Außentemperatur")
+    is meant; the compound's modifier is no room (7.9.2 A6)."""
+    spoken = {normalize_for_compare(word.strip(",.")) for word in words}
+    named = [entity for entity in candidates if normalize_for_compare(entity.friendly_name) in spoken]
+    return named or list(candidates)
+
+
+def _ground_vague_rate(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
+    """"die Außentemperatur schnell fällt" (7.9.2 A6): the sensor is grounded,
+    amount and period are asked with the 7.9.1 part dialog."""
+    words = tuple(word for word in roles.subject_words if word.casefold().strip(",.") not in _RATE_WORDS)
+    subject = read_subject(words, entities)
+    candidates = [entity for entity in subject_candidates(subject, entities) if entity.domain == "sensor"]
+    if subject.modifiers:
+        candidates = [entity for entity in candidates if _matches_modifiers(entity, subject.modifiers)]
+    if subject.place is not None:
+        candidates = [entity for entity in candidates if subject.place.contains(entity)]
+    candidates = _spoken_name_first(words, candidates)
+    adverb = next(
+        (word for word in roles.subject_words if word.casefold().strip(",.") in _RATE_WORDS - {
+            "fällt", "faellt", "sinkt", "steigt", "fallen", "sinken", "steigen", "abfällt", "ansteigt",
+        }),
+        "schnell",
+    )
+    if len(candidates) != 1:
+        noun = (subject.noun_word or "Messwert").strip("-")
+        if not candidates:
+            return GroundedEvent(
+                GroundingStatus.NOT_FOUND,
+                question=f"Ich finde keinen Sensor „{noun}“. Welchen Sensor meinst du?",
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
+            )
+        return GroundedEvent(
+            GroundingStatus.AMBIGUOUS,
+            candidates=tuple(sorted(candidates, key=lambda item: item.friendly_name)),
+            question=_which_question(subject, sorted(candidates, key=lambda item: item.friendly_name)),
+            subject=subject, roles=replace(roles, subject_words=(adverb,)),
+        )
+    sensor = candidates[0]
+    unit = "Grad" if sensor.unit in {"°C", "°F", "K"} else "Prozent" if sensor.unit == "%" else (sensor.unit or "")
+    return GroundedEvent(
+        GroundingStatus.UNSUPPORTED, reason="vague_rate",
+        question=(
+            f"Um wie viel und in welchem Zeitraum? Sag zum Beispiel: „um 3 {unit} in einer Stunde“. "
+            f"„{sensor.friendly_name}“ misst gerade {sensor.state} {sensor.unit or ''}".rstrip() + "."
+        ),
+        subject=subject, roles=replace(roles, subject_words=(adverb,)), missing=MissingPart.RATE,
+    )
+
+
+# "ein Gerät", "irgendein Gerät", "eines der Geräte": every released device.
+_ANY_DEVICE_WORDS = frozenset({
+    "ein", "eine", "eines", "einer", "irgendein", "irgendeine", "irgendeines", "irgendwelche",
+    "gerät", "geräte", "geraet", "geraete", "der", "die", "das", "von", "den", "meiner", "meine",
+    "etwas", "sensor", "sensoren", "aktor", "aktoren",
+})
+
+
+def _ground_unavailable(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
+    """"ein Gerät nicht mehr erreichbar ist" / "der Bewegungsmelder im Flur
+    ausfällt" (7.9.2 B3): state ``unavailable`` held for a minimum time."""
+    from .device_health import UNAVAILABLE_MIN_SECONDS, device_entities
+
+    words = [word for word in roles.subject_words if word]
+    generic = bool(words) and all(word.casefold() in _ANY_DEVICE_WORDS for word in words)
+    if generic or not words:
+        candidates = device_entities(entities)
+        subject = read_subject((), entities)
+    else:
+        subject = read_subject(tuple(words), entities)
+        candidates = list(subject_candidates(subject, entities)) if subject.noun is not None else list(
+            _named_candidates(subject, entities)
+        )
+        if subject.modifiers:
+            candidates = [entity for entity in candidates if _matches_modifiers(entity, subject.modifiers)]
+        if subject.place is not None:
+            candidates = [entity for entity in candidates if subject.place.contains(entity)]
+        candidates = _spoken_name_first(words, candidates)
+        if not candidates:
+            spoken = " ".join(words)
+            return GroundedEvent(
+                GroundingStatus.NOT_FOUND,
+                question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
+            )
+        if len(candidates) > 1 and subject.quantifier is not Quantifier.ANY:
+            ordered = sorted(candidates, key=lambda item: item.friendly_name)
+            return GroundedEvent(
+                GroundingStatus.AMBIGUOUS, candidates=tuple(ordered),
+                question=_which_question(subject, ordered), subject=subject, roles=roles,
+            )
+    if not candidates:
+        return GroundedEvent(GroundingStatus.NOT_FOUND, question="Ich sehe kein freigegebenes Gerät.", roles=roles)
+    ids = tuple(sorted(entity.entity_id for entity in candidates))
+    target = TriggerTarget(entity_id=ids[0]) if len(ids) == 1 else TriggerTarget(entity_ids=ids)
+    trigger = TriggerModel(
+        type=TriggerType.STATE, target=target, state=SemanticState.INACTIVE,
+        raw_to=("unavailable",), for_seconds=roles.for_seconds or UNAVAILABLE_MIN_SECONDS,
+    )
+    return GroundedEvent(
+        GroundingStatus.RESOLVED, trigger=trigger, candidates=tuple(candidates), subject=subject, roles=roles,
+    )
+
+
+def _ground_sunshine(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
+    """"Wenn die Sonne scheint" (7.9.2 A6): honestly mapped to an outdoor
+    brightness sensor, and the threshold is asked - never guessed."""
+    sensors = sorted(
+        (
+            entity for entity in entities
+            if entity.domain == "sensor" and entity.device_class == "illuminance" and is_outdoor_entity(entity)
+        ),
+        key=lambda entity: entity.friendly_name,
+    )
+    if not sensors:
+        return GroundedEvent(
+            GroundingStatus.UNSUPPORTED, reason="sunshine_without_sensor",
+            question=(
+                "Ob die Sonne scheint, kann ich ohne Helligkeitssensor draußen nicht erkennen. "
+                "Ich kann stattdessen bei Sonnenaufgang oder zu einer festen Uhrzeit auslösen."
+            ),
+            roles=roles,
+        )
+    now = ", ".join(
+        f"„{entity.friendly_name}“ misst gerade {entity.state} {entity.unit or 'lx'}" for entity in sensors[:2]
+    )
+    return GroundedEvent(
+        GroundingStatus.UNSUPPORTED, reason="sunshine_threshold",
+        question=(
+            f"Ab welcher Helligkeit scheint für dich die Sonne? {now}. "
+            "Sag zum Beispiel: „ab 30000 Lux“."
+        ),
+        roles=roles, missing=MissingPart.THRESHOLD,
+    )
+
+
 def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
     """Ground one event clause; never guesses a device."""
+    if roles.unsupported == "sunshine":
+        return _ground_sunshine(roles, entities)
+    if roles.unsupported == "vague_rate":
+        return _ground_vague_rate(roles, entities)
+    if roles.unsupported == "unavailable":
+        return _ground_unavailable(roles, entities)
     if roles.unsupported is not None:
         return GroundedEvent(
             GroundingStatus.UNSUPPORTED,
@@ -678,6 +941,9 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
     energy = _ground_energy(roles, entities)
     if energy is not None:
         return energy
+    consumption = _ground_consumption(roles, entities)
+    if consumption is not None:
+        return consumption
     if roles.absent is not None and not roles.motion:
         idle = _ground_appliance_idle(roles, entities)
         if idle is not None:
@@ -712,15 +978,23 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
             question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät meinst du?",
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.DEVICE,
         )
     if roles.motion and subject.noun is None:
         detector = "bewegungsmelder"
-        if roles.occupancy and any(
-            (entity.device_class or "") in {"occupancy", "presence"}
-            and (subject.area_id is None or entity.area_id == subject.area_id)
-            for entity in entities
-        ):
+
+        def _here(entity: EntitySnapshot, classes: set[str]) -> bool:
+            return (
+                (entity.device_class or "") in classes
+                and (subject.area_id is None or entity.area_id == subject.area_id)
+                and (subject.place is None or subject.place.contains(entity))
+            )
+
+        occupancy_here = any(_here(entity, {"occupancy", "presence"}) for entity in entities)
+        motion_here = any(_here(entity, {"motion"}) for entity in entities)
+        if occupancy_here and (roles.occupancy or not motion_here):
+            # "niemand", or a place whose only detector is a presence sensor
+            # (it notices movement, too) - 7.9.1 A4/A7.
             detector = "präsenzmelder"
         subject = SubjectReading(
             noun=noun_class(detector), noun_word=detector.capitalize(),
@@ -728,6 +1002,8 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             unknown_location=subject.unknown_location,
             modifiers=tuple(m for m in subject.modifiers if m not in {"bewegung", "eine"}),
             quantifier=Quantifier.ANY, implicit=False,
+            # A spoken floor or "draußen" stays a hard limit (7.9.1 A4).
+            place=subject.place,
         )
     if subject.unknown_location is not None:
         return GroundedEvent(
@@ -754,9 +1030,12 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             place=subject.place,
         )
     if subject.noun is None and subject.implicit:
-        if roles.value is not None and roles.unit is ValueUnit.DEGREE:
+        implied = _UNIT_IMPLIES_NOUN.get(roles.unit) if roles.value is not None and roles.unit else None
+        if implied is not None:
+            # "es draußen kälter als 5 Grad", "heller als 30000 Lux"
+            # (7.9.2 A6), "Wind über 40 km/h": the unit names the quantity.
             subject = SubjectReading(
-                noun=noun_class("temperatur"), noun_word="Temperatur",
+                noun=noun_class(implied), noun_word=implied[:1].upper() + implied[1:],
                 area_id=subject.area_id, area_name=subject.area_name, unknown_location=None,
                 modifiers=subject.modifiers, quantifier=Quantifier.DEFINITE, implicit=False,
                 place=subject.place,
@@ -781,7 +1060,7 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
             return GroundedEvent(
                 GroundingStatus.NOT_FOUND,
                 question=f"Ich finde kein Gerät „{spoken}“. Welches Gerät soll ich überwachen?",
-                subject=subject, roles=roles,
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
             )
         if not candidates:
             # Not a device we can type - leave it to the established parsers
@@ -805,11 +1084,11 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                 question=f"Mit „{noun}“ können {options} gemeint sein. Welche meinst du?",
                 subject=subject, roles=roles,
             )
-    if subject.place is not None and len(candidates) > 1:
-        # "wenn es draußen kälter als 5 Grad wird": the spoken place narrows
-        # the measured quantity (7.8 B5) - never the action's device.
-        placed = [entity for entity in candidates if subject.place.contains(entity)]
-        candidates = placed or candidates
+    if subject.place is not None:
+        # "wenn es draußen kälter als 5 Grad wird", "im Keller": the spoken
+        # place limits the measured quantity (7.8 B5) - always, also with a
+        # single candidate, and never falls back to every device (7.9.1 A4).
+        candidates = [entity for entity in candidates if subject.place.contains(entity)]
     if not candidates:
         where = (
             f" {dative_location_phrase(subject.area_name)}" if subject.area_name
@@ -827,13 +1106,14 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                     "Ohne ihn kann ich nicht erkennen, ob sich dort etwas bewegt. "
                     "Welchen Melder soll ich stattdessen nehmen?"
                 ),
-                subject=subject, roles=roles,
+                subject=subject, roles=roles, missing=MissingPart.DEVICE,
             )
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
             question=f"Ich finde{where} kein passendes Gerät für „{noun}“. Welches Gerät meinst du?",
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.DEVICE,
         )
+    floor_notes = _unwatched_rooms_note(roles, subject, candidates, entities)
     if aggregate:
         if not candidates:
             noun = (subject.noun_word or "diese Geräte").strip("-")
@@ -842,7 +1122,11 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                 question=f"Ich finde keine Geräte für „alle {noun}“. Welche Geräte meinst du?",
                 subject=subject, roles=roles,
             )
-        return replace(_project(roles, subject, candidates, entities), aggregate=True)
+        return replace(_project(roles, subject, candidates, entities), aggregate=True, notes=floor_notes)
+    if len(candidates) > 1 and subject.quantifier is not Quantifier.ANY:
+        # 7.9.2 A5: room-less registry names containing the spoken noun
+        # win; one decides, several narrow the question to themselves.
+        candidates = list(registry_name_hits(subject.noun_word, candidates) or candidates)
     if len(candidates) > 1 and subject.quantifier is not Quantifier.ANY:
         generic_any = (
             roles.value is None
@@ -857,7 +1141,44 @@ def ground_event(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Groun
                 question=_which_question(subject, sorted(candidates, key=lambda item: item.friendly_name)),
                 subject=subject, roles=roles,
             )
-    return _project(roles, subject, candidates, entities)
+    projected = _project(roles, subject, candidates, entities)
+    return replace(projected, notes=projected.notes + floor_notes) if floor_notes else projected
+
+
+def _unwatched_rooms_note(
+    roles: EventRoles,
+    subject: SubjectReading,
+    candidates: Sequence[EntitySnapshot],
+    entities: Sequence[EntitySnapshot],
+) -> tuple[str, ...]:
+    """"Im Obergeschoss gibt es nur im Schlafzimmer einen Melder; Badezimmer
+    und Kinderzimmer kann ich nicht beobachten." (7.9.2 A4)
+
+    For inactivity on a floor, every room of the floor (from the registry
+    as HomeIntent sees it) that none of the chosen detectors covers is
+    named - never silently left out.
+    """
+    place = subject.place
+    if not (roles.motion and roles.absent is not None) or place is None or place.kind is not PlaceKind.FLOOR:
+        return ()
+    rooms = {entity.area_name for entity in entities if entity.area_name and place.contains(entity)}
+    watched = {entity.area_name for entity in candidates if entity.area_name}
+    unwatched = sorted(rooms - watched)
+    if not unwatched or not watched:
+        return ()
+    detectors = {
+        entity.area_name for entity in entities
+        if entity.area_name in unwatched and entity.domain == "binary_sensor"
+        and entity.device_class in {"motion", "occupancy", "presence"}
+    }
+    where = " und ".join(dative_location_phrase(name) for name in sorted(watched))
+    listed = unwatched[0] if len(unwatched) == 1 else ", ".join(unwatched[:-1]) + " und " + unwatched[-1]
+    head = place.label[:1].upper() + place.label[1:]
+    if not detectors:
+        count = "einen Melder" if len(watched) == 1 else "Melder"
+        return (f"{head} gibt es nur {where} {count}; {listed} kann ich nicht beobachten.",)
+    verb = "bleibt" if len(unwatched) == 1 else "bleiben"
+    return (f"{head} beobachte ich nur {where}; {listed} {verb} dabei unbeobachtet.",)
 
 
 def _ground_change(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> GroundedEvent:
@@ -872,11 +1193,11 @@ def _ground_change(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Gro
             question="Welcher Messwert soll sich ändern? Nenne zum Beispiel „die Temperatur im Keller“.",
             subject=subject, roles=roles,
         )
-    candidates = [
+    candidates = _spoken_name_first(roles.subject_words, [
         entity for entity in subject_candidates(subject, entities)
         if entity.domain == "sensor" and _sensor_unit_ok(entity, change.unit)
         and change.unit is not ValueUnit.NONE
-    ]
+    ])
     if not candidates:
         where = f" {dative_location_phrase(subject.area_name)}" if subject.area_name else ""
         unit = "Grad" if change.unit is ValueUnit.DEGREE else "Prozent"
@@ -884,7 +1205,7 @@ def _ground_change(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Gro
         return GroundedEvent(
             GroundingStatus.NOT_FOUND,
             question=f"Ich finde{where} keinen Sensor „{noun}“, der in {unit} misst. Welchen Sensor meinst du?",
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.DEVICE,
         )
     if len(candidates) > 1:
         ordered = sorted(candidates, key=lambda item: item.friendly_name)
@@ -901,7 +1222,7 @@ def _ground_change(roles: EventRoles, entities: Sequence[EntitySnapshot]) -> Gro
                 "In welchem Zeitraum? Sag zum Beispiel: „…, wenn die Temperatur innerhalb "
                 "einer Stunde um 3 Grad fällt.“"
             ),
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.WINDOW,
         )
     return GroundedEvent(GroundingStatus.RESOLVED, candidates=tuple(candidates), subject=subject, roles=roles)
 
@@ -957,7 +1278,7 @@ def _ground_appliance_idle(
                 f"Bis wann soll ich prüfen, ob {spoken} gelaufen ist? Sag zum Beispiel: "
                 f"„Melde dich, wenn {spoken} bis 20 Uhr nicht gelaufen ist.“"
             ),
-            subject=subject, roles=roles,
+            subject=subject, roles=roles, missing=MissingPart.UNTIL,
         )
     evidence = running or status
     if len(evidence) != 1 or (roles.for_seconds is not None and not running):

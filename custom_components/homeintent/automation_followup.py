@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Sequence
 
+from .missing_part import MissingPart, PartRequest
 from .automation_composition import (
     CompositionOutcome,
     OutcomeKind,
@@ -68,16 +69,33 @@ _VAGUE_RE = re.compile(
     r"merkwürdige|auffällige|verdächtige|unerwartete|besondere|eigenartige|sonderbare)s\b",
     re.IGNORECASE,
 )
+# "bei Auffälligkeiten" (7.9.1 A7): the same vague situation, as a noun
+# after "bei" - a closed word class, read token by token.
+_VAGUE_NOUNS = frozenset({
+    "auffälligkeiten", "unregelmäßigkeiten", "besonderheiten", "ungewöhnlichem", "auffälligem",
+    "seltsamem", "komischem", "merkwürdigem", "verdächtigem",
+})
+
+
+def _names_vague_situation(text: str) -> bool:
+    if _VAGUE_RE.search(text):
+        return True
+    keys = [word.strip(",.;:!?").lower() for word in text.split()]
+    return any(key == "bei" and following in _VAGUE_NOUNS for key, following in zip(keys, keys[1:]))
 _WATCH_WORD_RE = re.compile(r"\b(?:überwach|beobacht|acht|pass\s+auf|behalt)\w*", re.IGNORECASE)
 _LOCK_ACTION_RE = re.compile(
     r"\b(?:schließ\w*|sperr\w*)\s+(?:\S+\s+){0,3}?ab\b|\bverriegel\w*|\bverriegle\b|\babschließen\b",
     re.IGNORECASE,
 )
 _INTERVAL_RE = re.compile(
-    r"\balle\s+(?:\d+|[a-zäöüß]+)\s+(?:minuten?|stunden?)\b|\bjede[n]?\s+(?:minute|stunde)\b"
-    r"|\b(?:minütlich|stündlich)\b",
+    r"\balle\s+(?P<count>\d+|[a-zäöüß]+)\s+(?P<unit>sekunden?|minuten?|stunden?)\b"
+    r"|\bjede[n]?\s+(?P<single>sekunde|minute|stunde)\b"
+    r"|\b(?P<adverb>sekündlich|minütlich|stündlich)\b",
     re.IGNORECASE,
 )
+# The bound of a repetition, anywhere after the interval: "…, solange die
+# Haustür offen ist" (7.9.1 A7) - the interval and the bound need not touch.
+_BOUND_RE = re.compile(r"\b(?P<kind>bis|solange)\s+(?P<bound>[^,.!?]+)", re.IGNORECASE)
 _EVENT_WORD_RE = re.compile(r"\b(?:wenn|sobald|falls|bis|solange)\b", re.IGNORECASE)
 _REMIND_VERB_RE = re.compile(r"\berinnere\s+mich\b", re.IGNORECASE)
 _ESCALATE_RE = re.compile(
@@ -112,13 +130,21 @@ def _seconds(count: str, unit: str) -> int | None:
     )
     if amount is None or amount <= 0:
         return None
-    return int(amount) * (3600 if unit.casefold().startswith("stunde") else 60)
+    key = unit.casefold()
+    return int(amount) * (3600 if key.startswith("stunde") else 1 if key.startswith("sekunde") else 60)
+
+
+def _interval_seconds(match: re.Match[str]) -> int | None:
+    single = (match.group("single") or match.group("adverb") or "").casefold()
+    if single:
+        return 3600 if single.startswith(("stunde", "stünd")) else 1 if single.startswith(("sekund", "sekünd")) else 60
+    return _seconds(match.group("count"), match.group("unit"))
 
 
 def split_repeat(text: str) -> RepeatSpan | None:
     match = _REPEAT_RE.search(text)
     if match is None:
-        return None
+        return _split_separated_repeat(text)
     single = (match.group("single") or match.group("adverb") or "").casefold()
     seconds = (
         3600 if single.startswith(("stunde", "stünd")) else 60 if single
@@ -134,6 +160,25 @@ def split_repeat(text: str) -> RepeatSpan | None:
     # timed reminder with its own text.
     rest = _REMIND_VERB_RE.sub("melde dich", rest)
     return RepeatSpan(rest, seconds, match.group("kind").casefold() == "bis", match.group("bound").strip())
+
+
+def _split_separated_repeat(text: str) -> RepeatSpan | None:
+    """"Schick mir alle 5 Minuten eine Nachricht, solange die Haustür offen
+    ist": interval and bound with the notification between them (7.9.1 A7).
+    Also reports intervals below a minute, which the caller refuses."""
+    interval = _INTERVAL_RE.search(text)
+    if interval is None:
+        return None
+    bound = _BOUND_RE.search(text, interval.end())
+    if bound is None:
+        return None
+    seconds = _interval_seconds(interval)
+    if seconds is None:
+        return None
+    rest = (text[:interval.start()] + text[interval.end():bound.start()] + text[bound.end():])
+    rest = " ".join(rest.split()).strip(" ,")
+    rest = _REMIND_VERB_RE.sub("melde dich", rest)
+    return RepeatSpan(rest, seconds, bound.group("kind").casefold() == "bis", bound.group("bound").strip())
 
 
 _NOTIFY_WORD_RE = re.compile(
@@ -192,10 +237,16 @@ def _state_reading(
         trigger is None or trigger.type is not TriggerType.STATE or trigger.state not in _COMPLEMENT
         or reading.conditions or trigger.target is None
     ):
-        question = reading.grounded.question if reading.grounded is not None else None
+        grounded = reading.grounded
+        question = grounded.question if grounded is not None else None
         return CompositionOutcome(
             OutcomeKind.CLARIFY if question else OutcomeKind.UNSUPPORTED,
             speech=question or f"„{text}“ kann ich keinem Gerätezustand zuordnen.",
+            part=(
+                PartRequest(grounded.missing, question or "", replaces=grounded.roles.subject_words)
+                if grounded is not None and grounded.missing is not None and grounded.roles is not None
+                else None
+            ),
         )
     return trigger
 
@@ -212,7 +263,7 @@ def compose_with_followups(
     monitored = open_monitoring_object(raw_text)
     if monitored is not None:
         return _open_request(monitored, entities)
-    if _VAGUE_RE.search(raw_text) and (
+    if _names_vague_situation(raw_text) and (
         _NOTIFY_WORD_RE.search(raw_text) or _WATCH_WORD_RE.search(raw_text)
     ):
         # "Melde dich, wenn etwas Ungewöhnliches passiert" (7.9 W7): an
@@ -222,6 +273,15 @@ def compose_with_followups(
     if escalation is not None:
         return _compose_escalation(escalation, entities, readers)
     repeat = split_repeat(raw_text)
+    if repeat is not None and repeat.interval_seconds < 60:
+        # Never faster than once a minute (7.9 W5) - said, not "nicht verstanden".
+        return CompositionOutcome(
+            OutcomeKind.UNSUPPORTED,
+            speech=(
+                "So oft melde ich mich nicht: höchstens einmal pro Minute. Sag zum Beispiel "
+                "„jede Minute“ oder „alle 5 Minuten“."
+            ),
+        )
     if repeat is not None:
         return _compose_repeat(repeat, raw_text, entities, readers)
     if _INTERVAL_RE.search(raw_text) and _EVENT_WORD_RE.search(raw_text):
@@ -394,9 +454,14 @@ def _compose_escalation(
     second = notification_action(clause, message, tuple(entities))
     if second is None:
         who = clause.recipient_name or "diese Person"
+        question = f"Ich finde kein eindeutiges Benachrichtigungsziel für {who}. Wen soll ich benachrichtigen?"
         return CompositionOutcome(
             OutcomeKind.CLARIFY,
-            speech=f"Ich finde kein eindeutiges Benachrichtigungsziel für {who}. Wen soll ich benachrichtigen?",
+            speech=question,
+            part=(
+                PartRequest(MissingPart.RECIPIENT, question, replaces=tuple(who.split()))
+                if clause.recipient_name else None
+            ),
         )
     escalate = ActionModel(
         type=ActionType.ESCALATE,

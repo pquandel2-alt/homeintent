@@ -2,7 +2,7 @@
   "domain": "haus_sim",
   "name": "Haus-Simulation (HomeIntent Testbett)",
   "codeowners": [],
-  "dependencies": ["conversation", "homeassistant"],
+  "dependencies": ["conversation", "homeassistant", "assist_satellite"],
   "after_dependencies": ["person"],
   "documentation": "https://github.com/pquandel2-alt/homeintent",
   "config_flow": true,

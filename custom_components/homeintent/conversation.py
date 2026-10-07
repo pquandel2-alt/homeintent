@@ -73,7 +73,13 @@ from .hass_entities import (
 )
 from .history_query import parse_history_query
 from .household_query import match_household_query
-from .monitoring_management import parse_monitoring_management
+from .embedded_question import embedded_check_question
+from .response_style import apply_response_style
+from .turn_outcome import begin_outcomes, end_outcomes
+from .effect_wait import append_speech, async_settle_turn
+from .automation_ownership import begin_shared_turn
+from .controllers.insights import InsightsController
+from .monitoring_management import names_managed_object, parse_monitoring_management
 from .house_graph import HouseGraph, parse_relation_specs
 from .management_understanding import understand_management
 from .proactive_dialog import V12_TASK_KINDS
@@ -185,6 +191,7 @@ from .routine_binding_intent import interpret_routine_binding
 
 
 from .productivity import TimerRequest, TodoRequest
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -454,7 +461,10 @@ class NluConversationEntity(
             entities=lambda: build_entity_snapshots(self.hass, self.entry),
             conversation_area=lambda user_input: resolve_conversation_area(self.hass, user_input),
         )
-        self._monitoring = MonitoringController(runtime=runtime, automation_store=self._automation_store)
+        self._monitoring = MonitoringController(
+            runtime=runtime, automation_store=self._automation_store, hass=lambda: self.hass,
+            options=lambda: self.entry.options,
+        )
         self._comfort = ComfortController(
             hass=lambda: self.hass,
             entry=entry,
@@ -480,6 +490,7 @@ class NluConversationEntity(
             executor=self._automation_store,
             engine=self._engine,
             world_model=lambda: self._world_model,
+            hass=lambda: self.hass, options=lambda: self.entry.options,
         )
         self._automations = AutomationController(
             hass=lambda: self.hass,
@@ -491,6 +502,10 @@ class NluConversationEntity(
             runtime=runtime,
             notifications=self._notifications,
             record_execution=self._record_execution,
+        )
+        self._insights = InsightsController(
+            hass=lambda: self.hass, entry=entry, runtime=runtime, automations=self._automations,
+            entities=lambda: build_entity_snapshots(self.hass, self.entry),
         )
         # Rebuilt every turn in _async_handle_message() (World Model Wave,
         # 2026-08-14); None only until the first turn.
@@ -551,13 +566,21 @@ class NluConversationEntity(
             )
         # One Home Assistant context per turn: every execution in this turn
         # shares one execution id (7.3.2).
+        user_input = begin_shared_turn(user_input)  # "… für uns alle" (7.9.2 A3)
         turn = begin_turn(user_input, conversation_user_id(user_input), user_input.text)
+        self._engine.take_action_ambiguity()  # nothing stale from an earlier turn
+        outcomes, outcome_token = begin_outcomes()
         self._current_chat_log = chat_log
         try:
             result = await self._async_handle_message_inner(user_input, chat_log)
+            notes = await async_settle_turn(self.hass, outcomes, self.entry.options)
         finally:
+            end_outcomes(outcome_token)
             end_turn(turn)
-        suffix = self._take_turn_suffix(user_input.conversation_id)
+        append_speech(result.response, notes)
+        suffix = self._take_turn_suffix(user_input.conversation_id) or (
+            await self._insights.async_offer_after_turn(user_input, outcomes)
+        )
         if suffix:
             # "Soll ich mir … merken?" after an executed command (7.4.1).
             speech = result.response.speech
@@ -566,15 +589,16 @@ class NluConversationEntity(
                 if isinstance(speech, dict) else str(speech or "")
             )
             result.response.async_set_speech(f"{spoken} {suffix}".strip())
-        self._apply_continue_conversation(user_input, result)
+        awaiting_answer = self._apply_continue_conversation(user_input, result) or bool(suffix)
+        # Speech or confirmation tone: decided here, once, from typed facts.
+        apply_response_style(self.hass, self.entry.options, user_input, result, outcomes, awaiting_answer)
         return result
-
 
     def _apply_continue_conversation(
         self,
         user_input: conversation.ConversationInput,
         result: conversation.ConversationResult,
-    ) -> None:
+    ) -> bool:
         """Flag the turn as awaiting an answer, for clients that can listen on.
 
         Read back from the context store rather than from anything the turn
@@ -583,13 +607,13 @@ class NluConversationEntity(
         """
         conversation_id = result.conversation_id or user_input.conversation_id
         if conversation_id is None:
-            return
+            return False
         active = active_pending_dialog(self._context_store.get(conversation_id))
         awaiting_answer = (
             active is not None and active.kind in _CONTINUE_CONVERSATION_KINDS
         ) or self._runtime_data.dialog_manager.has_open_question(conversation_id)
         if not awaiting_answer:
-            return
+            return False
         # ConversationResult grew this field in Home Assistant 2025.2 and is a
         # slots dataclass, so on an older core the assignment raises instead of
         # silently adding an attribute. Setting it after construction (rather
@@ -599,6 +623,7 @@ class NluConversationEntity(
             result.continue_conversation = True
         except AttributeError:  # pragma: no cover - pre-2025.2 cores only
             pass
+        return True
 
     async def _async_handle_message_inner(
         self,
@@ -917,6 +942,18 @@ class NluConversationEntity(
                         replace(user_input, text=combined), chat_log
                     )
 
+        if active_dialog is None and active_task is not None and active_task.kind in {
+            DialogTaskKind.MONITOR_LIST, DialogTaskKind.MONITOR_PART,
+        }:
+            # "Was macht die erste?" after the short list (7.9.1 A7); "In
+            # welchem Zeitraum?" -> "Innerhalb von 10 Minuten." (A6): read
+            # only as the asked part, the completed request runs again.
+            answered = self._monitoring.answer_open_question(user_input, response, active_task)
+            if isinstance(answered, str):
+                return await self._async_handle_message_inner(replace(user_input, text=answered), chat_log)
+            if answered is not None:
+                return answered
+
         if (
             active_dialog is None
             and active_task is not None
@@ -1013,6 +1050,9 @@ class NluConversationEntity(
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        reading = await self._insights.async_handle_reading(user_input, response, entities, active_dialog)
+        if reading is not None:  # summaries, consumption, status questions (7.9.2 B)
+            return reading
         if active_dialog is None:
             # "Warum ist der Saugroboter angegangen?": answered only from HA's
             # context chain and the execution trace (7.3.2).
@@ -1605,6 +1645,12 @@ class NluConversationEntity(
                 response=response, conversation_id=user_input.conversation_id
             )
 
+        checked = embedded_check_question(user_input.text)
+        if checked is not None:
+            # "Prüfe, ob das Garagentor offen ist" (7.9.1 A7): a question
+            # answered now, never an automation.
+            return await self._async_handle_message_inner(replace(user_input, text=checked), chat_log)
+
         monitoring_request = parse_monitoring_management(user_input.text)
         if monitoring_request is not None:
             # "Welche Überwachungen laufen?", "Stopp die Fensterüberwachung"
@@ -1668,6 +1714,9 @@ class NluConversationEntity(
         ):
             return self._queries.handle_audit_query(user_input, response)
 
+        insight = await self._insights.async_handle(user_input, response, entities)
+        if insight is not None:  # reports, consumption, summaries, vacation, habits (7.9.2 B)
+            return insight
         # A trigger/notification request ("Benachrichtige mich, wenn der Akku
         # unter 20 Prozent fällt") shares words with read-only queries but is
         # never answered as one.
@@ -1715,7 +1764,10 @@ class NluConversationEntity(
                         entity for entity in entities
                         if entity.domain != "todo" or entity.entity_id in personal_todos
                     ]
-        management = understand_management(
+        # A management verb on a monitor or automation never reaches the
+        # calendar, a list or a reminder (7.9.1 A5).
+        managed_object = names_managed_object(user_input.text)
+        management = None if managed_object else understand_management(
             language_document,
             productivity_entities,
             all_calendars,
@@ -1741,7 +1793,7 @@ class NluConversationEntity(
                 user_input, response, management.payload, all_calendars
             )
 
-        calendar_draft = start_calendar_event_draft(
+        calendar_draft = None if managed_object else start_calendar_event_draft(
             user_input.text, calendars, dt_util.now()
         )
         if calendar_draft is not None:
@@ -2259,6 +2311,9 @@ class NluConversationEntity(
                 result = direct_understanding.payload
 
         if result is None:
+            # 7.9.2 A2: an automation whose action named several devices.
+            result = self._automations.action_ambiguity_question(user_input.text, entities)
+        if result is None:
             return await self._devices.async_handle_no_match(user_input, response, entities)
 
         if isinstance(result, MatchResult) and result.failure_text is not None:
@@ -2334,7 +2389,7 @@ class NluConversationEntity(
             )
 
         if isinstance(result, AutomationDeletionMatchResult):
-            return self._management.handle_deletion_match_result(
+            return await self._management.async_handle_deletion_match_result(
                 user_input, response, result
             )
 

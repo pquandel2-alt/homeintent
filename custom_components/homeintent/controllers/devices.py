@@ -27,6 +27,7 @@ from homeassistant.helpers import intent
 from ..areas import AreaSnapshot
 from ..audit_log import AuditTrail
 from ..const import NOT_UNDERSTOOD_TEXT
+from ..monitoring_management import names_managed_object
 from ..controllers.replies import confirmation_question, execution_failure_text, with_effect_summary
 from ..device_result import DeviceControlResult
 from ..effect_graph import build_plan_effects
@@ -431,7 +432,13 @@ class DeviceController:
         response_parts: list[str] = []
         multi_undo_parts: list[UndoPlan] = []
         multi_undo_supported = True
-        for sub_result in result.commands:
+        names = {entity.entity_id: entity.friendly_name for entity in entities}
+
+        def plan_names(plan: ServiceCallPlan) -> str:
+            ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+            return " und ".join(names.get(entity_id, entity_id) for entity_id in ids)
+
+        for index, sub_result in enumerate(result.commands):
             if sub_result.plan is None:
                 response_parts.append(sub_result.response_text)
                 continue
@@ -466,9 +473,18 @@ class DeviceController:
                     sub_result.plan.entity_id,
                     error,
                 )
+                # A partial result names what was not done (7.9.1 Teil B).
+                skipped = [
+                    plan_names(later.plan) for later in result.commands[index + 1:]
+                    if later.plan is not None
+                ]
+                failed = f"Nicht ausgeführt: {plan_names(sub_result.plan)} ({error})."
+                if skipped:
+                    failed += f" Danach habe ich auch {' und '.join(skipped)} nicht mehr geschaltet."
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {error}",
+                    " ".join([*response_parts, failed])
+                    if response_parts else f"Fehler beim Ausführen: {error} {failed}",
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
@@ -840,7 +856,12 @@ class DeviceController:
                 # refusal) is answered honestly (7.3.3).
                 "Gerade ist keine Frage offen, auf die sich das beziehen könnte. "
                 "Ich habe nichts ausgeführt."
-                if bare_reply else NOT_UNDERSTOOD_TEXT
+                if bare_reply
+                # A management verb on a monitor or automation that nothing
+                # matched: say so, never "nicht verstanden" (7.9.1 A5).
+                else "Ich finde keine passende Überwachung oder Automation dazu. Ich habe nichts geändert."
+                if names_managed_object(user_input.text)
+                else NOT_UNDERSTOOD_TEXT
             ),
         )
         return conversation.ConversationResult(
