@@ -44,6 +44,22 @@ HASS=../havenv/bin/hass ./run_ha.sh        # HA starten/neu starten (Port 8123)
 Für einen sauberen Neustart `config/.storage`, `config/home-assistant_v2.db*`
 löschen und `automations.yaml` aus git wiederherstellen.
 
+Seit 7.9.3:
+
+- `bootstrap.py` prüft, dass eine neue Installation mit dem
+  Bestätigungston (`response_style = tone`) startet, und stellt das
+  Testbett danach wie eine aus 7.9.2 aktualisierte Installation auf
+  `spoken` (der Katalog prüft den gesprochenen Wortlaut; Ton-Szenarien
+  schalten selbst um).
+- Die fremde Benutzer-Automation „Rollläden abends schließen“
+  (Sonnenuntergang) ist im Testbett aus (`initial_state: false`): sie schloss
+  bei Läufen über den Sonnenuntergang Rollläden zwischen zwei Schritten.
+- Szenario-Schritt `trigger`: löst eine von HomeIntent angelegte Automation
+  sofort aus (`automation.trigger`, Bedingungen laufen echt; nur der
+  Haus-Bericht nutzt zusätzlich `skip_condition` für den Wochentag), statt
+  auf ein Zeitmuster zu warten. `weather.zuhause` ist über `haus_sim.set`
+  steuerbar (Zustand, tägliche und stündliche Vorhersage, Regen ab Stunde).
+
 `./fresh_ha.sh` erledigt den sauberen Neustart samt `bootstrap.py` in einem
 Schritt (für Vergleichsläufe immer frisch starten: Listen, Bindungen und
 Verlauf eines früheren Laufs verfälschen sonst einzelne Szenarien).

@@ -59,11 +59,11 @@ async def ensure_user(ws: WS, session, spec, admin: bool) -> str:
     return user["id"]
 
 
-async def ensure_entry(session, token: str, handler: str, answers: dict | None = None) -> None:
+async def ensure_entry(session, token: str, handler: str, answers: dict | None = None) -> bool:
     entries = await rest(session, "GET", "/api/config/config_entries/entry", token)
     title = (answers or {}).get("calendar_name") or (answers or {}).get("todo_list_name")
     if any(e["domain"] == handler and (title is None or e["title"] == title) for e in entries):
-        return
+        return False
     # A cold Home Assistant (first CI start) may still be installing the
     # requirements of an integration's dependencies; retry briefly.
     for attempt in range(90):
@@ -78,6 +78,36 @@ async def ensure_entry(session, token: str, handler: str, answers: dict | None =
         flow = await rest(session, "POST", f"/api/config/config_entries/flow/{flow['flow_id']}", token, json=answers or {})
     if flow.get("type") != "create_entry":
         raise HAError(f"{handler}: {flow}")
+    return True
+
+
+async def existing_installation_style(session, token: str) -> None:
+    """7.9.3 B5: a new installation starts with the confirmation tone.
+
+    The test bed checks that once and then behaves like an installation
+    updated from 7.9.2, which keeps its stored ``response_style``
+    ("spoken"): the catalogue checks the spoken wording, tone scenarios
+    switch to ``tone`` themselves.
+    """
+    entries = await rest(session, "GET", "/api/config/config_entries/entry", token)
+    entry = next(e for e in entries if e["domain"] == "homeintent")
+    flow = await rest(session, "POST", "/api/config/config_entries/options/flow", token, json={"handler": entry["entry_id"]})
+    values = {}
+    for field in flow["data_schema"]:
+        desc = field.get("description") or {}
+        if "suggested_value" in desc:
+            values[field["name"]] = desc["suggested_value"]
+        elif "default" in field:
+            values[field["name"]] = field["default"]
+    print(f"response_style der neuen Installation: {values.get('response_style')!r}")
+    if values.get("response_style") != "tone":
+        raise HAError(f"Neue Installation ohne Bestätigungston: {values.get('response_style')!r}")
+    data = {k: v for k, v in values.items() if v is not None}
+    data["response_style"] = "spoken"
+    res = await rest(session, "POST", f"/api/config/config_entries/options/flow/{flow['flow_id']}", token, json=data)
+    if res.get("type") != "create_entry":
+        raise HAError(f"options rejected: {res}")
+    await asyncio.sleep(3)
 
 
 async def import_history(ws: WS) -> None:
@@ -150,8 +180,10 @@ async def main() -> None:
         await ensure_entry(session, llat, "local_calendar", {"calendar_name": "Familie"})
         await ensure_entry(session, llat, "local_calendar", {"calendar_name": "Müllabfuhr"})
         await ensure_entry(session, llat, "local_todo", {"todo_list_name": "Arbeitsliste"})
-        await ensure_entry(session, llat, "homeintent")
+        created = await ensure_entry(session, llat, "homeintent")
         await asyncio.sleep(3)
+        if created:
+            await existing_installation_style(session, llat)
 
         async with WS(session, llat) as ws:
             persons = await ws.call("person/list")

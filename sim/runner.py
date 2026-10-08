@@ -217,7 +217,10 @@ class Runner:
             # Bestätigungston (7.9.1 B): genau so viele Ansagen auf dem Satelliten.
             tones = [
                 a for a in log.get("announcements", [])
-                if "announce_match" not in expect or expect["announce_match"] in (a.get("media_id") or a.get("message") or "")
+                if "announce_match" not in expect
+                or expect["announce_match"] in " ".join(
+                    str(a.get(key) or "") for key in ("media_id", "message", "preannounce_media_id")
+                )
             ]
             if len(tones) != expect["announce_count"]:
                 problems.append(f"{len(tones)} Ansagen statt {expect['announce_count']} (erhalten: {log.get('announcements')})")
@@ -302,12 +305,14 @@ class Runner:
                     wanted = _norm(step["trigger"])
                     matches = [
                         s["entity_id"] for s in (await self.states()).values()
-                        if s["entity_id"].startswith("automation.")
+                        if s["entity_id"].startswith("automation.") and s["state"] != "unavailable"
                         and wanted in _norm(s["attributes"].get("friendly_name"))
                     ]
                     if len(matches) != 1:
                         raise HAError(f"Automation '{step['trigger']}' nicht eindeutig: {matches}")
-                    await self.service("automation.trigger", {"entity_id": matches[0], "skip_condition": False})
+                    await self.service("automation.trigger", {
+                        "entity_id": matches[0], "skip_condition": bool(step.get("skip_condition", False)),
+                    })
                     await asyncio.sleep(step.get("settle", 2.0))
                 if "expect" in step:
                     log = await self.sim_log()

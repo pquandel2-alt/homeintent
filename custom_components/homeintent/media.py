@@ -211,6 +211,9 @@ def resolve_media(
             candidates = [p for p in players if _match_source(request.source_words, _sources(p)) is not None]
         if not candidates and satellite_area_id is not None:
             candidates = [player for player in players if player.area_id == satellite_area_id]
+        if not candidates and request.op == "resume":
+            # "Weiter" after "Pause": the paused player continues.
+            candidates = [player for player in players if player.state == "paused"]
         if not candidates:
             candidates = [player for player in players if player.state == "playing"]
             if not candidates and request.op in {"pause", "next", "previous", "louder", "quieter", "off", "volume"}:

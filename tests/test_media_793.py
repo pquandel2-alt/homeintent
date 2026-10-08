@@ -176,3 +176,18 @@ def test_play_at_the_satellite(monkeypatch, tmp_path):
                 else entity for entity in entities]
     turn = _house(monkeypatch, tmp_path, entities=entities, area=bedroom).say("Spiel Musik.")
     assert _media_calls(turn) == [("media_play", {"entity_id": SPEAKER})], turn.speech
+
+
+@pytest.mark.parametrize("text", _PLAIN["resume"])
+def test_resume_continues_the_paused_player(monkeypatch, tmp_path, text):
+    """Live finding 7.9.3: "Weiter." right after "Pause." asked which device."""
+    entities = with_states(house_entities(), media_player__kuechenradio="paused")
+    turn = _house(monkeypatch, tmp_path, entities=entities).say(text)
+    assert _media_calls(turn) == [("media_play", {"entity_id": RADIO})], turn.speech
+
+
+def test_resume_with_two_paused_asks(monkeypatch, tmp_path):
+    entities = with_states(house_entities(), media_player__kuechenradio="paused",
+                           media_player__lautsprecher_schlafzimmer="paused")
+    turn = _house(monkeypatch, tmp_path, entities=entities).say("Weiter.")
+    assert turn.speech.startswith("Welches Gerät meinst du: ") and _media_calls(turn) == [], turn.speech

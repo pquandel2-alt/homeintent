@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.2** (Wirkung kurz abwarten, Bewässerung nach Zeitplan, gemeinsame Überwachungen für Sprachgeräte, Zusammenfassung, Gewohnheiten, Batterien und Ausfälle, Urlaubsmodus, Verbrauch)
+- Aktuelle Version: **7.9.3** (Wetter, „Wo ist …?“, Musik, Bewässerung nur ohne Regen, Bestätigungston als Standard, wöchentlicher Haus-Bericht, Überwachungen ändern, schon erfüllte Bedingungen beim Anlegen)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,39 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.3 neu?
+
+Befunde aus dem Nachtest 7.9.2 behoben, dazu neue Fähigkeiten:
+
+- **Schon erfüllt beim Anlegen:** Liegen beim Einrichten einer Überwachung
+  schon Geräte über bzw. unter der Grenze (Batterie 9 %, Fenster offen),
+  nennt die Vorschau sie mit Wert und fragt, ob die Nachricht gleich kommen
+  soll („Ja“ = einrichten und jetzt schicken, „Nein“ = nur einrichten).
+- **Urlaub:** „Stell das Heizprogramm auf Urlaub“ ist wieder ein
+  Gerätebefehl; „Wir sind wieder da“ beendet einen aktiven Urlaubsmodus nach
+  Rückfrage.
+- **Zusammenfassung:** mehr Formen („Was hab ich verpasst?“), chronologisch,
+  mehrtägig mit Datum, begrenzt und gemessen; auf Wunsch per Push beim
+  Heimkommen.
+- **Keine Platzhalter:** Vorschauen nennen ein echtes Beispiel aus dem Haus.
+- **Wetter:** „Wie wird das Wetter morgen?“, „Brauche ich einen Schirm?“ aus
+  `weather.*`; „Wenn Regen angesagt ist, fahr die Markise ein“ als Automation.
+- **Wo ist jemand?** „Wo ist Anna?“, „Ist jemand zuhause?“, „Seit wann ist
+  Anna weg?“ – nie Koordinaten, Zonen anderer nur für Admins oder mit der
+  Option „Aufenthaltsort im Haushalt teilen“.
+- **Musik:** „Spiel Bayern 3 in der Küche“, „Pause“, „Weiter“, „Lauter“,
+  „Lautstärke 30“, „Was läuft gerade?“ – Quellen nur aus `source_list`.
+- **Bewässerung nur ohne Regen:** „… aber nur wenn es nicht geregnet hat bzw.
+  nicht regnen soll“ aus Regensensor, Regenmenge und Vorhersage.
+- **Bestätigungston als Standard** für neue Installationen (bestehende
+  behalten ihre Einstellung) und ein zweiter Ton, wenn sich nur ein Gerät
+  nicht zurückmeldet („Stehlampe meldet sich nicht“).
+- **Haus-Bericht:** „Schick mir jeden Sonntag um 18 Uhr einen Haus-Bericht“ –
+  Batterien, Ausfälle, Verbrauch, Meldungen der Woche.
+- **Überwachungen ändern:** „Ändere die Garagen-Meldung auf 15 Minuten“,
+  „Schick die Fenster-Warnung auch an Anna“ – mit „Vorher/Nachher“ und „Ja“.
+  Details: `docs/umsetzung-7.9.3.md`.
 
 ## Was ist in Version 7.9.2 neu?
 
@@ -117,7 +150,8 @@ Befunde aus dem Nachtest 7.9.0 behoben, dazu ein Bestätigungston:
   dem der Befehl kam (Satellit über `assist_satellite.announce`,
   Mediaplayer über `media_player.play_media`). Fragen, Fehler, Teilerfolge,
   noch nicht bestätigte Wirkungen und Antworten auf Abfragen werden immer
-  gesprochen; im Text-Chat steht „Erledigt.“. Standard bleibt `spoken`.
+  gesprochen; im Text-Chat steht „Erledigt.“. Standard bleibt `spoken`
+  (ab 7.9.3: `tone` für neue Installationen).
   Eigener Ton: Option `confirmation_media_id` (nur `media-source://`,
   `/local/…`). Details: `docs/umsetzung-7.9.1.md`.
 
@@ -2363,6 +2397,12 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.3:
+
+```text
+RELEASE793
+```
+
 Geprüfter Release-Stand von Version 7.9.2:
 
 ```text
@@ -2443,7 +2483,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.2.json
+  --check docs/perf/corpus-signatures-7.9.3.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

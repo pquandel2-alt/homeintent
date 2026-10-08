@@ -521,12 +521,24 @@ def render_state_history_result(
     )
 
 
+def _recorder_job(hass):
+    """The recorder's own executor for database reads (7.9.3: Home Assistant
+    warns about database access in the general executor); the general one
+    only where no recorder instance exists (the read then fails honestly)."""
+    try:
+        from homeassistant.components.recorder import get_instance
+
+        return get_instance(hass).async_add_executor_job
+    except Exception:  # noqa: BLE001 - no recorder: the read reports it
+        return hass.async_add_executor_job
+
+
 async def _async_execute_state_history_query(hass, query: StateHistoryQuery) -> str:
     """Read one bounded entity history through recorder's supported API."""
     try:
         from homeassistant.components.recorder import history
 
-        result = await hass.async_add_executor_job(
+        result = await _recorder_job(hass)(
             partial(
                 history.get_significant_states,
                 hass,
@@ -565,7 +577,7 @@ async def async_read_numeric_samples(
     try:
         from homeassistant.components.recorder import history
 
-        result = await hass.async_add_executor_job(
+        result = await _recorder_job(hass)(
             partial(
                 history.get_significant_states,
                 hass,
@@ -608,7 +620,7 @@ async def async_read_state_rows(
     try:
         from homeassistant.components.recorder import history
 
-        result = await hass.async_add_executor_job(
+        result = await _recorder_job(hass)(
             partial(
                 history.get_significant_states,
                 hass,
@@ -654,7 +666,7 @@ async def async_get_transition_evidence(
     try:
         from homeassistant.components.recorder import history
 
-        result = await hass.async_add_executor_job(
+        result = await _recorder_job(hass)(
             partial(
                 history.get_significant_states,
                 hass,

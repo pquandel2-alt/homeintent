@@ -933,6 +933,9 @@ class SimSatellite(SimEntity, AssistSatelliteEntity):
             "media_id": announcement.original_media_id,
             "message": announcement.message,
             "preannounce": announcement.preannounce_media_id is not None,
+            # 7.9.3 B5: which sound came first (the notice tone before
+            # "Stehlampe meldet sich nicht.").
+            "preannounce_media_id": announcement.preannounce_media_id,
             "time": dt_util.utcnow().isoformat(),
         })
 
