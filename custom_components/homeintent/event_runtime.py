@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -18,7 +20,8 @@ from .const import (
     CONF_ROUTINE_MIN_OBSERVATIONS,
 )
 from .agent_config_validation import parse_event_categories
-from .hass_entities import build_entity_snapshots
+from .entities import EntitySnapshot
+from .hass_entities import build_entity_snapshots, is_selected_entity
 from .entities import spoken_state
 from .agent_event import AgentMode
 from .effect_monitor import ExpectedEffect
@@ -43,6 +46,17 @@ from .situation import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Pending selected state changes waiting for the single worker (7.9.4 P0).
+# Each one costs milliseconds; the bound only keeps memory finite should the
+# event loop fall hopelessly behind.
+MAX_PENDING_EVENTS = 4096
+# Events processed against one entity snapshot. The original per-event tasks
+# also read the state machine only once they ran, i.e. after the burst.
+MAX_BATCH_EVENTS = 256
+_DROP_WARNING_INTERVAL_SECONDS = 60.0
+# The worker hands the event loop back after this much work in one go.
+_YIELD_AFTER_SECONDS = 0.02
+
 
 class SituationRuntime:
     """Normalizes selected HA events and emits bounded AgentEvents."""
@@ -55,25 +69,115 @@ class SituationRuntime:
         self._runtime_data = runtime_data
         self._seen: set[str] = set()
         self._decision_engine = ProactiveDecisionEngine()
+        self._pending: asyncio.Queue[Any] | None = None
+        self._worker: asyncio.Task[None] | None = None
+        self._stopped = False
+        self._dropped = 0
+        self._last_drop_warning: float | None = None
 
     def async_start(self) -> Any:
         self._runtime_data.effect_monitor.set_expired_handler(
             self.async_handle_expected_effect_expired
         )
+        self._stopped = False
         bus = getattr(self._hass, "bus", None)
         listen = getattr(bus, "async_listen", None)
         if listen is None:
             unlisten = lambda: None
         else:
-            unlisten = listen("state_changed", self.async_handle_state_changed)
+            # A plain event-loop callback: Home Assistant runs it inline for
+            # every state change in the house, so it only filters and queues.
+            # One worker does the real work; no task per event (7.9.4 P0).
+            unlisten = listen("state_changed", self.async_enqueue_state_changed)
 
         def stop() -> None:
             unlisten()
+            self._stopped = True
+            worker, self._worker = self._worker, None
+            if worker is not None and not worker.done():
+                worker.cancel()
+            self._pending = None
             self._runtime_data.effect_monitor.set_expired_handler(None)
 
         return stop
 
+    @callback
+    def async_enqueue_state_changed(self, raw_event: Any) -> None:
+        """Queue a selected entity's state change; drop everything else."""
+        if self._stopped:
+            return
+        data = getattr(raw_event, "data", None)
+        if not isinstance(data, dict):
+            return
+        entity_id = data.get("entity_id")
+        if not isinstance(entity_id, str) or data.get("new_state") is None:
+            return
+        if not is_selected_entity(self._hass, self._entry, entity_id):
+            return
+        if self._pending is None:
+            self._pending = asyncio.Queue(maxsize=MAX_PENDING_EVENTS)
+        try:
+            self._pending.put_nowait(raw_event)
+        except asyncio.QueueFull:
+            self._dropped += 1
+            now = time.monotonic()
+            if (
+                self._last_drop_warning is None
+                or now - self._last_drop_warning >= _DROP_WARNING_INTERVAL_SECONDS
+            ):
+                self._last_drop_warning = now
+                _LOGGER.warning(
+                    "HomeIntent is behind on state changes; %s events skipped so far",
+                    self._dropped,
+                )
+            return
+        if self._worker is None or self._worker.done():
+            # Not eager: the bus callback stays cheap and never re-enters.
+            self._worker = self._hass.async_create_background_task(
+                self._async_drain(), "HomeIntent situation events", eager_start=False
+            )
+
+    async def _async_drain(self) -> None:
+        queue = self._pending
+        slice_started = time.monotonic()
+        while queue is not None and not queue.empty() and not self._stopped:
+            batch = [queue.get_nowait()]
+            while len(batch) < MAX_BATCH_EVENTS and not queue.empty():
+                batch.append(queue.get_nowait())
+            entities = build_entity_snapshots(self._hass, self._entry)
+            by_id = {item.entity_id: item for item in entities}
+            for raw_event in batch:
+                if self._stopped:
+                    return
+                try:
+                    await self._async_process_state_changed(raw_event, entities, by_id)
+                except Exception:  # noqa: BLE001 - one event must not stop the worker
+                    _LOGGER.exception("HomeIntent state change evaluation failed")
+                # A burst never monopolizes the loop, yet the worker keeps
+                # pace with the events Home Assistant fires meanwhile.
+                if time.monotonic() - slice_started >= _YIELD_AFTER_SECONDS:
+                    await asyncio.sleep(0)
+                    slice_started = time.monotonic()
+            queue = self._pending
+
     async def async_handle_state_changed(self, raw_event: Any) -> None:
+        data = getattr(raw_event, "data", {})
+        if not isinstance(data, dict):
+            return
+        entity_id = data.get("entity_id")
+        if not isinstance(entity_id, str) or data.get("new_state") is None:
+            return
+        entities = build_entity_snapshots(self._hass, self._entry)
+        await self._async_process_state_changed(
+            raw_event, entities, {item.entity_id: item for item in entities}
+        )
+
+    async def _async_process_state_changed(
+        self,
+        raw_event: Any,
+        entities: list[EntitySnapshot],
+        by_id: dict[str, EntitySnapshot],
+    ) -> None:
         data = getattr(raw_event, "data", {})
         if not isinstance(data, dict):
             return
@@ -82,7 +186,6 @@ class SituationRuntime:
         old_state = data.get("old_state")
         if not isinstance(entity_id, str) or new_state is None:
             return
-        entities = build_entity_snapshots(self._hass, self._entry)
         thermal_tracker = self._runtime_data.thermal_tracker
         if thermal_tracker is not None:
             try:
@@ -92,7 +195,7 @@ class SituationRuntime:
                 )
             except Exception:  # noqa: BLE001 - learning must not break HA event flow
                 _LOGGER.exception("HomeIntent thermal experience update failed")
-        entity = next((item for item in entities if item.entity_id == entity_id), None)
+        entity = by_id.get(entity_id)
         if entity is None:
             return
         self._runtime_data.effect_monitor.observe(entity_id, entity.state)
