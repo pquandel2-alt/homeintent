@@ -162,8 +162,15 @@ class ThermalExperienceTracker:
         *,
         occurred_at: datetime,
     ) -> None:
+        # Called for every selected state change: without an active cycle
+        # there is nothing to observe and nothing to write (7.9.4 P0 - an
+        # unconditional fsync per event saturated Home Assistant's executor
+        # during startup).
+        if not self._active:
+            return
         by_id = {item.entity_id: item for item in entities}
         completed: list[tuple[str, ActiveThermalCycle, bool]] = []
+        changed = False
         for climate_id, cycle in tuple(self._active.items()):
             sensor = by_id.get(cycle.binding.temperature_entity_id)
             climate = by_id.get(climate_id)
@@ -195,9 +202,10 @@ class ThermalExperienceTracker:
                 and item.device_class == "window"
                 and item.state.casefold() in {"on", "open", "opening"}
             )
-            if windows:
+            if windows and not cycle.window_opened:
                 cycle = replace(cycle, window_opened=True)
                 self._active[climate_id] = cycle
+                changed = True
             current = _temperature(sensor)
             invalid = (
                 sensor.state in {"unknown", "unavailable"}
@@ -229,7 +237,8 @@ class ThermalExperienceTracker:
                 await self._manager.async_invalidate_thermal_model(
                     cycle.binding.area_id, "measurement_source_removed"
                 )
-        await self._async_persist()
+        if completed or changed:
+            await self._async_persist()
 
     async def async_finalize(
         self,

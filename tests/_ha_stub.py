@@ -214,7 +214,7 @@ def install() -> None:
             return task
 
         def async_create_background_task(
-            self, target: Any, name: str | None = None
+            self, target: Any, name: str | None = None, eager_start: bool = True
         ) -> asyncio.Task[Any]:
             return self.async_create_task(target, name=name)
 

@@ -81,6 +81,9 @@ class MonitorGoalStore:
         # state change asks this set first, so no disk read happens for
         # sensors nobody watches.
         self._watched: frozenset[str] | None = None
+        # Single flight for the first read: a burst of sensor events before
+        # it finishes must not start one disk read each (7.9.4 P0).
+        self._watched_lock = asyncio.Lock()
 
     async def async_load(self) -> tuple[MonitorRecord, ...]:
         records = tuple(await asyncio.to_thread(self._read))
@@ -89,7 +92,9 @@ class MonitorGoalStore:
 
     async def async_watched_entities(self) -> frozenset[str]:
         if self._watched is None:
-            await self.async_load()
+            async with self._watched_lock:
+                if self._watched is None:
+                    await self.async_load()
         return self._watched or frozenset()
 
     async def async_save(self, record: MonitorRecord) -> None:

@@ -66,6 +66,22 @@ def get_selected_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> list[str
     return default_exposed_entities(hass)
 
 
+def is_selected_entity(hass: HomeAssistant, entry: ConfigEntry, entity_id: str) -> bool:
+    """Whether ``entity_id`` is one of ``get_selected_entity_ids()``.
+
+    The same rule for a single entity, without listing the whole state
+    machine: state-change listeners ask this for every event in the house.
+    """
+    selected = entry.options.get(CONF_SELECTED_ENTITIES)
+    if selected is None:
+        selected = entry.data.get(CONF_SELECTED_ENTITIES)
+    if selected:
+        return entity_id in selected
+    return entity_id.split(".", 1)[0] in SELECTABLE_DOMAINS and async_should_expose(
+        hass, conversation.DOMAIN, entity_id
+    )
+
+
 def _friendly(state: State) -> str:
     """Friendly name of a state, falling back to the entity_id."""
     return state.attributes.get("friendly_name") or state.entity_id
