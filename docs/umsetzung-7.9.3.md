@@ -309,6 +309,7 @@ unveränderte Negations-Sperre und führt nichts aus.)
 | `test_system_context_761` | nach „Ja“ keine Nachricht | sofortige Nachricht zu den schon erfüllten Geräten | A1: „Ja“ heißt einrichten **und** jetzt schicken. |
 | `test_device_health_792` (Vorschau) | „\<Gerät\>: \<Wert\> %“ | „zum Beispiel „Batterie Rauchmelder oben: 9 %““ | A5: keine Platzhalter. |
 | `test_effect_wait_792` (`too_late`, `partial`, `wait_zero`), `test_response_style_791` (unbestätigt) | gesprochener Satz | zweiter Ton (`notice`) | B5: nur Rückmeldung fehlt → zweiter Ton; Gegenrichtung/`unavailable`/Teilerfolg bleiben gesprochen und unverändert getestet. |
+| Live-Szenario `n792-a1-delay-long` | gesprochen „… noch nicht zurückgemeldet“, kein Ton | zweiter Ton (`notice.mp3`) mit „Flurlicht meldet sich nicht.“ | B5, wie oben. |
 | `test_automation_model` | Liste der Auslösertypen | plus `WEATHER` | B1. |
 | `tests_ha` (Options-Flow) | `response_style` `spoken` | `tone` bei neuer Installation | B5-Migration: neue Installationen `tone`, bestehende behalten ihren Wert (eigener Test). |
 

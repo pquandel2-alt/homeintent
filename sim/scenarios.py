@@ -1037,11 +1037,15 @@ S("n792-a1-delay-short", L792, "A1: Gerät meldet nach 0,5 s – Ton, keine Spra
   say("Schalte das Flurlicht ein.", satellite=True, settle=3, calls=["light.flurlicht:turn_on"],
       speech_empty=True, announce_count=1, state={"light.flurlicht": "on"}),
   SPOKEN)
-S("n792-a1-delay-long", L792, "A1: Gerät meldet erst nach 3 s – ehrliche Sprache, kein Ton",
+# 7.9.3 B5 (geänderte Erwartung): „ausgeführt, aber keine Rückmeldung in der
+# Wartezeit“ ist kein langer Satz mehr, sondern der zweite Ton mit kurzer
+# Ansage. Gegenrichtung und „nicht erreichbar“ bleiben gesprochen.
+S("n792-a1-delay-long", L792, "A1: Gerät meldet erst nach 3 s – zweiter Ton mit kurzer Ansage (seit 7.9.3)",
   TONE,
   service("haus_sim.configure", {"target": "light.flurlicht", "report_delay": 3}),
   say("Schalte das Flurlicht ein.", satellite=True, settle=4, calls=["light.flurlicht:turn_on"],
-      speech_empty=False, announce_count=0, all=["noch nicht zurückgemeldet"]),
+      speech_empty=True, announce_count=1, announce_match="notice.mp3"),
+  check(announce_count=1, announce_match="Flurlicht meldet sich nicht."),
   SPOKEN)
 S("n792-a1-cover-moving", L792, "A1: Rollladen fährt in die verlangte Richtung – Ton",
   TONE,
