@@ -81,16 +81,28 @@ async def ensure_entry(session, token: str, handler: str, answers: dict | None =
     return True
 
 
-async def remove_online_weather(session, token: str) -> None:
-    """The onboarding adds the met.no forecast (internet). Where it is
-    reachable (CI) the house would have two weather entities and every
-    weather question would rightly ask which one; the test bed keeps only
-    the simulated, settable ``weather.zuhause`` (7.9.3 B1)."""
-    entries = await rest(session, "GET", "/api/config/config_entries/entry", token)
-    for entry in entries:
-        if entry["domain"] == "met":
-            await rest(session, "DELETE", f"/api/config/config_entries/entry/{entry['entry_id']}", token)
-            print(f"met.no-Wetter entfernt ({entry['title']})")
+async def remove_online_weather(session, token: str, *, final: bool = False) -> None:
+    """The onboarding adds the met.no forecast (internet), asynchronously.
+    Where it is reachable (CI) the house would have two weather entities and
+    every weather question would rightly ask which one; the test bed keeps
+    only the simulated, settable ``weather.zuhause`` (7.9.3 B1). Called right
+    after the onboarding and once more at the end (``final``), which fails
+    if any other weather entity is still there."""
+    for _attempt in range(30 if final else 1):
+        entries = await rest(session, "GET", "/api/config/config_entries/entry", token)
+        for entry in entries:
+            if entry["domain"] == "met":
+                await rest(session, "DELETE", f"/api/config/config_entries/entry/{entry['entry_id']}", token)
+                print(f"met.no-Wetter entfernt ({entry['title']})")
+        if not final:
+            return
+        states = await rest(session, "GET", "/api/states", token)
+        foreign = [s["entity_id"] for s in states
+                   if s["entity_id"].startswith("weather.") and s["entity_id"] != "weather.zuhause"]
+        if not foreign:
+            return
+        await asyncio.sleep(1)
+    raise HAError(f"Fremde Wetter-Entitäten im Testbett: {foreign}")
 
 
 async def existing_installation_style(session, token: str) -> None:
@@ -213,6 +225,7 @@ async def main() -> None:
             await ws.call("homeassistant/expose_entity", assistants=["conversation"], entity_ids=entity_ids, should_expose=True)
             await import_history(ws)
             agents = await ws.call("conversation/agent/list", language="de")
+        await remove_online_weather(session, llat, final=True)
 
         async def llat_for(spec) -> str:
             short = await login(session, spec[0], spec[2])
