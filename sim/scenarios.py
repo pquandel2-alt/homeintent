@@ -1162,3 +1162,140 @@ S("n792-b2-habits", L792, "B2: Gewohnheiten – ehrliche Antwort ohne Verlauf, A
   say("Welche Gewohnheiten hast du erkannt?", none=["nicht gefunden"]),
   say("Hast du Vorschläge für Automationen?", all=["keinen neuen vorschlag"]),
   say("Schlag mir nichts mehr vor.", all=["keine automationen mehr vor"]))
+
+
+# ========================================================= Nachtest 7.9.3
+L793 = "Nachtest 7.9.3"
+
+
+def trigger(alias_part: str, settle: float = 3.0) -> dict[str, Any]:
+    """Eine von HomeIntent angelegte Automation jetzt auslösen (echte Bedingungen)."""
+    return {"trigger": alias_part, "settle": settle}
+
+
+WEATHER_RESET = set_("weather.zuhause", {"reset_forecast": True, "condition": "partlycloudy"}, settle=1)
+
+S("n793-a1-battery-already-low", L793, "A1: Batterie schon darunter – nach „Ja“ sofort eine Push-Nachricht",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn eine Batterie unter 20 Prozent fällt.", no_calls=True,
+      all=["rauchmelder oben", "schon darunter"]),
+  service("haus_sim.clear_log"),
+  say(YES, settle=3, any=["erstellt"], notify_count=1, notify_match="Schon beim Einrichten der Überwachung erfüllt"),
+  say("Welche Automationen hast du angelegt?", any=["batterie"]))
+S("n793-a1-only-create", L793, "A1: „Nur einrichten“ – keine Sofortmeldung",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn eine Batterie unter 20 Prozent fällt.", no_calls=True, all=["schon darunter"]),
+  service("haus_sim.clear_log"),
+  say("Nur einrichten.", settle=3, any=["erstellt"], notify_count=0))
+S("n793-a2-heating-vacation", L793, "A2: „Heizprogramm auf Urlaub“ stellt den Select um",
+  service("haus_sim.reset", {"full": True}),
+  service("input_boolean.turn_off", {"entity_id": "input_boolean.urlaubsmodus"}),
+  say("Stell das Heizprogramm auf Urlaub.", settle=2, calls=["select.heizprogramm:select_option"],
+      state={"select.heizprogramm": "Urlaub", "input_boolean.urlaubsmodus": "off"}, none=["urlaubsmodus"]),
+  say("Stell das Heizprogramm auf Komfort.", settle=2, state={"select.heizprogramm": "Komfort"}))
+S("n793-a3-back-home", L793, "A3: „Wir sind wieder da“ beendet den Urlaub, danach keine Urlaubsmeldung",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  service("input_boolean.turn_off", {"entity_id": "input_boolean.urlaubsmodus"}),
+  say("Wir sind wieder da.", no_calls=True, all=["urlaubsmodus ist nicht aktiv"], none=["soll ich"]),
+  say("Ich bin bis Sonntag weg.", no_calls=True, all=["urlaubsmodus"]),
+  say(YES, settle=3, state={"input_boolean.urlaubsmodus": "on"}),
+  say("Wir sind wieder da.", no_calls=True, all=["willkommen zurück", "soll ich"]),
+  service("haus_sim.clear_log"),
+  say(YES, settle=3, state={"input_boolean.urlaubsmodus": "off"}),
+  wait(3), check(notify_count=0, notify_match="urlaub"),
+  say("Was macht der Urlaubsmodus gerade?", all=["der urlaubsmodus ist aus"]))
+S("n793-a4-summary-date", L793, "A4: Zusammenfassung nennt den Tag und keine eigenen Wege doppelt",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  set_("device_tracker.handy_philipp", "not_home", settle=3),
+  set_("binary_sensor.haustuer", "on", settle=2), set_("binary_sensor.haustuer", "off", settle=2),
+  set_("device_tracker.handy_philipp", "home", settle=4),
+  say("Was habe ich verpasst?", all=["heute", "haustür"], none=["es läuft"]))
+S("n793-a5-real-example", L793, "A5: Vorschau nennt ein echtes Beispiel statt Platzhalter",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Sag mir Bescheid, wenn die Temperatur im Wohnzimmer unter 18 Grad fällt.", no_calls=True,
+      all=["zum beispiel"], none=["{", "}", "<", "xx"]),
+  say("Nein."))
+S("n793-b1-weather", L793, "B1: Wetterfragen aus der weather-Entität",
+  service("haus_sim.reset", {"full": True}), WEATHER_RESET,
+  say("Wie ist das Wetter gerade?", no_calls=True, all=["wettervorhersage"]),
+  say("Wie wird das Wetter morgen?", no_calls=True, all=["morgen", "regen"]),
+  set_("weather.zuhause", {"rain_from_hour": 2}, settle=1),
+  say("Regnet es heute noch?", no_calls=True, all=["ja"]),
+  WEATHER_RESET,
+  say("Brauche ich heute einen Schirm?", no_calls=True, all=["nein"]))
+S("n793-b1-awning-rain", L793, "B1: Markise bei Regenvorhersage einfahren – wirkt nur bei Regen",
+  service("haus_sim.reset", {"full": True}), WEATHER_RESET,
+  service("cover.open_cover", {"entity_id": "cover.markise"}), wait(8),
+  say("Wenn Regen angesagt ist, fahr die Markise ein.", no_calls=True,
+      all=["laut wettervorhersage", "markise", "alle 30 minuten"]),
+  say(YES, settle=2, any=["erstellt"]),
+  service("haus_sim.clear_log"),
+  trigger("Wenn Regen angesagt ist"),
+  check(not_calls=["cover.markise:close_cover"], state={"cover.markise": "open"}),
+  set_("weather.zuhause", {"rain_from_hour": 1}, settle=1),
+  trigger("Wenn Regen angesagt ist", settle=8),
+  check(calls=["cover.markise:close_cover"], state={"cover.markise": "closed"}),
+  WEATHER_RESET)
+S("n793-b2-where", L793, "B2: „Wo ist Anna?“ – Zone nur mit Recht oder Haushaltsfreigabe",
+  service("haus_sim.reset", {"full": True}),
+  options(share_household_location=False),
+  set_("device_tracker.handy_anna", "not_home", settle=3),
+  say("Wo ist Anna?", no_calls=True, all=["anna ist unterwegs"], none=["latitude", "48,"]),
+  say("Wo ist Anna?", user="anna", no_calls=True, any=["anna ist unterwegs", "anna ist in der zone"]),
+  say("Ist jemand zuhause?", no_calls=True, all=["philipp"]),
+  options(share_household_location=True),
+  say("Wo ist Anna?", no_calls=True, any=["anna ist unterwegs", "anna ist in der zone"]),
+  options(share_household_location=False),
+  set_("device_tracker.handy_anna", "home", settle=3))
+S("n793-b3-music", L793, "B3: Musik starten, pausieren, lauter, „Was läuft?“",
+  service("haus_sim.reset", {"full": True}),
+  say("Spiel Bayern 3 in der Küche.", settle=3, calls=["media_player.kuechenradio:select_source"]),
+  check(state={"media_player.kuechenradio": {"state": "playing", "source": "Bayern 3"}}),
+  say("Was läuft gerade?", no_calls=True, all=["küchenradio"]),
+  say("Lauter.", settle=2, calls=["media_player.kuechenradio:volume_up"]),
+  say("Pause.", settle=2, calls=["media_player.kuechenradio:media_pause"],
+      state={"media_player.kuechenradio": "paused"}),
+  say("Weiter.", settle=2, calls=["media_player.kuechenradio:media_play"],
+      state={"media_player.kuechenradio": "playing"}),
+  say("Spiel Antenne 1 in der Küche.", no_calls=True, all=["finde ich bei", "verfügbar"]))
+S("n793-b4-irrigation", L793, "B4: Bewässerung fällt nach Regen aus, läuft bei Trockenheit",
+  service("haus_sim.reset", {"full": True}), WEATHER_RESET,
+  set_("weather.zuhause", {"daily": {"0": {"condition": "sunny", "precipitation_probability": 5}}}, settle=1),
+  say("Bewässere jeden Morgen um 6 Uhr 20 Minuten, aber nur wenn es nicht geregnet hat bzw. nicht regnen soll.",
+      no_calls=True, all=["bewässerung garten öffnen", "regensensor", "heute kein regen angesagt"]),
+  say(YES, settle=2, any=["erstellt"]),
+  set_("binary_sensor.regensensor", True, settle=2), set_("binary_sensor.regensensor", False, settle=2),
+  service("haus_sim.clear_log"),
+  trigger("Bewässere jeden Morgen"),
+  check(not_calls=["valve.bewaesserung:open_valve"]),
+  WEATHER_RESET)
+S("n793-b5-notice-tone", L793, "B5: Ton ist Standard; fehlende Rückmeldung gibt den zweiten Ton",
+  service("haus_sim.reset", {"full": True}), TONE,
+  service("haus_sim.configure", {"target": "light.flurlicht", "report_delay": 0.5}),
+  say("Schalte das Flurlicht ein.", satellite=True, settle=3, calls=["light.flurlicht:turn_on"],
+      speech_empty=True, announce_count=1),
+  service("haus_sim.configure", {"target": "light.flurlicht", "report_delay": 0}),
+  service("haus_sim.configure", {"target": "light.stehlampe", "unavailable": False, "report_delay": 30}),
+  say("Schalte die Stehlampe ein.", satellite=True, settle=12, calls=["light.stehlampe:turn_on"],
+      announce_count=1, announce_match="notice"),
+  service("haus_sim.configure", {"target": "light.stehlampe", "report_delay": 0}),
+  SPOKEN)
+S("n793-b6-house-report", L793, "B6: Haus-Bericht – Vorschau, Senden, Inhalt",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Schick mir jeden Sonntag um 18 Uhr einen Haus-Bericht.", no_calls=True,
+      all=["jeden sonntag um 18:00 uhr", "haus-bericht", "zum beispiel"]),
+  say(YES, settle=2, any=["erstellt", "eingerichtet"]),
+  service("haus_sim.clear_log"),
+  trigger("Haus-Bericht", settle=4),
+  check(notify_count=1, notify_match="Haus-Bericht"),
+  say("Was stand im Haus-Bericht?", no_calls=True, any=["batterie", "nicht erreichbar", "kwh"]))
+S("n793-b7-monitor-edit", L793, "B7: Überwachung ändern – neue Wirkung nach „Ja“",
+  service("haus_sim.reset", {"full": True}), PUSH_BOTH, *BIND_PHONES,
+  say("Melde dich, wenn das Garagentor länger als 10 Minuten offen ist.", no_calls=True),
+  say(YES, settle=2, any=["erstellt"]),
+  say("Ändere die Garagen-Meldung auf 1 Minute.", no_calls=True, all=["vorher: nach 10 minuten", "nachher"]),
+  say(YES, settle=2, all=["geändert"]),
+  service("haus_sim.clear_log"),
+  service("cover.open_cover", {"entity_id": "cover.garagentor"}),
+  wait(75), check(notify_count=1, notify_match="garagentor"),
+  service("cover.close_cover", {"entity_id": "cover.garagentor"}))

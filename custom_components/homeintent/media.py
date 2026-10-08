@@ -27,6 +27,7 @@ from .service_call import ServiceCallPlan
 
 __all__ = (
     "MediaRequest",
+    "claims_other_target",
     "MediaResolution",
     "now_playing",
     "parse_media_request",
@@ -77,6 +78,8 @@ def parse_media_request(text: str) -> MediaRequest | None:
     present = set(words)
     if not words or present & {"wenn", "sobald", "falls", "nicht", "kein", "keine"}:
         return None
+    if present & {"alle", "allen", "saemtliche", "saemtlichen"}:
+        return None  # "Pausiere alle Medien": the multi-target plan with its preview
     if words[0] in {"was", "welches", "welcher", "wer"} and present & _QUERY_WORDS and (
         present & {"gerade", "jetzt", "da", "lied", "titel", "song", "radio", "musik", "im", "in", "auf", "am"}
         or len(words) <= 3
@@ -117,7 +120,9 @@ def parse_media_request(text: str) -> MediaRequest | None:
         "im", "in", "am", "auf", "spielen"
     }):
         return MediaRequest("resume", text=text)
-    if words[0] in {"spiel", "spiele", "spielen", "leg", "lege", "starte"} or (
+    if words[0] in {"spiel", "spiele", "spielen", "leg", "lege"} or (
+        words[0] == "starte" and present & {"musik", "radio"}
+    ) or (
         words[0] in {"mach", "mache"} and present & {"musik"} and "an" in present
     ):
         rest = [word for word in words[1:] if word not in {"bitte", "mal", "doch", "etwas", "auf", "an", "ab", "ein"}]
@@ -224,7 +229,9 @@ def resolve_media(
     if request.op == "pause":
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_pause", player.entity_id), f"{name} pausiert.")
     if request.op == "off":
-        return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_pause", player.entity_id), f"{name} pausiert.")
+        # "Musik aus" switches the player off, like every "aus" command
+        # before 7.9.3 (dev benchmark 7.7, line 235); "Pause" pauses.
+        return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "turn_off", player.entity_id), f"{name} ausgeschaltet.")
     if request.op == "resume":
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_play", player.entity_id), f"{name} spielt weiter.")
     if request.op == "next":
@@ -313,3 +320,33 @@ def now_playing(request: MediaRequest, entities: Sequence[EntitySnapshot], satel
             parts.append(f"{player.friendly_name} spielt; einen Titel meldet es nicht")
     return "; ".join(parts) + "."
 
+
+
+_OTHER_TARGET_WORDS = frozenset({
+    "timer", "wecker", "skript", "script", "szene", "routine", "automation", "es", "ihn", "ihm",
+})
+
+
+def claims_other_target(text: str, entities: Sequence[EntitySnapshot]) -> bool:
+    """The sentence is for the established paths: it names a media player
+    itself (except next/previous track, which only HomeIntent's media
+    reading knows), another device, a timer/script/monitoring, or refers
+    back with a pronoun ("Kannst du es pausieren?")."""
+    words = _words(text)
+    present = set(words)
+    if present & _OTHER_TARGET_WORDS:
+        return True
+    key = " " + " ".join(words) + " "
+    from .monitoring_management import _monitoring_noun  # noqa: PLC2701 - the one noun rule
+
+    if any(_monitoring_noun(word)[0] for word in words):
+        return True
+    for entity in entities:
+        for name in (entity.friendly_name, *entity.aliases):
+            folded = " ".join(_words(name))
+            if folded and f" {folded} " in key:
+                if entity.domain != _MEDIA_DOMAIN:
+                    return True
+                if not (present & (_NEXT_WORDS | _PREVIOUS_WORDS)):
+                    return True
+    return False

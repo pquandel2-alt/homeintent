@@ -43,7 +43,7 @@ _PLAIN = {
     "off": ("Mach die Musik aus.", "Musik aus.", "Schalte die Musik aus."),
 }
 _SERVICES = {"pause": "media_pause", "resume": "media_play", "next": "media_next_track",
-             "previous": "media_previous_track", "louder": "volume_up", "quieter": "volume_down", "off": "media_pause"}
+             "previous": "media_previous_track", "louder": "volume_up", "quieter": "volume_down", "off": "turn_off"}
 
 
 @pytest.mark.parametrize("op,text", [(op, text) for op, texts in _PLAIN.items() for text in texts])
@@ -142,7 +142,7 @@ def test_device_named_commands_keep_their_path(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("text", [
     "Wenn die Musik läuft, mach das Licht aus.", "Spiel nicht so laut.", "Stopp.", "Halt.",
-    "Weiter mit dem Plan.", "Was läuft im Garten schief?", "Lauter Unsinn.",
+    "Weiter mit dem Plan.", "Was läuft im Garten schief?", "Lauter Unsinn.", "Pausiere alle Medien.",
 ])
 def test_no_media_command(text):
     from homeintent.media import parse_media_request

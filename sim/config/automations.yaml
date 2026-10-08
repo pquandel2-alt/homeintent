@@ -11,7 +11,13 @@
         entity_id: light.flurlicht
 - id: "1700000000002"
   alias: Rollläden abends schließen
-  description: Vom Benutzer angelegt (nicht HomeIntent)
+  description: >-
+    Vom Benutzer angelegt (nicht HomeIntent). Im Testbett ab 7.9.3 aus
+    (initial_state false): ein Testlauf über den Sonnenuntergang hinweg
+    schloss sonst zwischen zwei Schritten die Wohnzimmer- und Küchenrollläden
+    und verfälschte Rollladen- und Wirkungsszenarien. Die Automation bleibt als
+    fremde Benutzer-Automation in der Registry sichtbar.
+  initial_state: false
   triggers:
     - trigger: sun
       event: sunset

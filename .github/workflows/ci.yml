@@ -89,6 +89,9 @@ jobs:
         run: >-
           python scripts/benchmark_learning_center.py
           --iterations 100
+      - name: Zusammenfassungs-Latenzbudget prüfen (7.9.3)
+        if: matrix.python-version == '3.12'
+        run: python scripts/benchmark_event_summary.py
       - name: V11-Wirkungsevidenz und V12-Sicherheits-/OOD-Gate
         run: >-
           python -m pytest -q
@@ -232,6 +235,13 @@ jobs:
           custom_components/homeintent/vacation.py
           custom_components/homeintent/controllers/insights.py
           custom_components/homeintent/nlu/action_duration.py
+          custom_components/homeintent/already_met.py
+          custom_components/homeintent/weather.py
+          custom_components/homeintent/presence_query.py
+          custom_components/homeintent/media.py
+          custom_components/homeintent/house_report.py
+          custom_components/homeintent/report_runtime.py
+          custom_components/homeintent/monitor_edit.py
       - name: V11 Pyright-Strict-Scope absichern
         if: matrix.python-version == '3.12'
         run: python -m pyright --project pyrightconfig-v11-strict.json

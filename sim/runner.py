@@ -295,6 +295,20 @@ class Runner:
                     rec["response"] = await self.service(step["service"], self.subst(step.get("data")), response=step.get("response", False))
                 elif "options" in step:
                     await self.set_options(self.subst(step["options"]))
+                elif "trigger" in step:
+                    # 7.9.3: eine von HomeIntent angelegte Automation jetzt
+                    # auslösen (Bedingungen und Aktionen laufen echt), statt
+                    # auf ihr Zeitmuster zu warten.
+                    wanted = _norm(step["trigger"])
+                    matches = [
+                        s["entity_id"] for s in (await self.states()).values()
+                        if s["entity_id"].startswith("automation.")
+                        and wanted in _norm(s["attributes"].get("friendly_name"))
+                    ]
+                    if len(matches) != 1:
+                        raise HAError(f"Automation '{step['trigger']}' nicht eindeutig: {matches}")
+                    await self.service("automation.trigger", {"entity_id": matches[0], "skip_condition": False})
+                    await asyncio.sleep(step.get("settle", 2.0))
                 if "expect" in step:
                     log = await self.sim_log()
                     rec["calls"] = [f"{c['entity_id']}:{c['action']} {json.dumps(c['data'], ensure_ascii=False) if c['data'] else ''}".strip() for c in log["calls"]]

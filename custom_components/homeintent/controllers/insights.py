@@ -36,7 +36,7 @@ from ..house_report import (
     validate_report_config,
 )
 from ..const import CONF_SHARE_HOUSEHOLD_LOCATION
-from ..media import now_playing, parse_media_request, resolve_media
+from ..media import claims_other_target, now_playing, parse_media_request, resolve_media
 from ..presence_query import HABIT_DAYS, PersonState, answer_presence, arrivals, parse_presence_query
 from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
 from ..execution_trace import TRACE_DATA_KEY
@@ -425,7 +425,9 @@ class InsightsController:
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult | None:
         request = parse_media_request(user_input.text)
-        if request is None or self.devices is None:
+        if request is None or self.devices is None or (
+            request.op != "query" and claims_other_target(user_input.text, entities)
+        ):
             return None
         if request.op == "query":
             return self._answer(user_input, response, now_playing(request, entities, self._area_id))
@@ -516,10 +518,10 @@ class InsightsController:
                 payload=PartRequest(MissingPart.CLOCK, question, original_text=user_input.text),
             )
             return self._result(user_input, response, question)
-        labels = {item.entity_id: item.friendly_name for item in entities}
+        target_labels = {item.entity_id: item.friendly_name for item in entities}
         resolver = NotificationTargetResolver.from_options(
             self.entry.options, getattr(self._runtime, "user_contexts", None),
-            label_for=lambda target_id: labels.get(target_id, ""),
+            label_for=lambda target_id: target_labels.get(target_id, ""),
         )
         kind = NotificationRecipientKind.HOUSEHOLD if shared else NotificationRecipientKind.CURRENT_USER
         resolution = resolver.resolve(kind, user_id)

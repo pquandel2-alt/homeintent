@@ -133,6 +133,8 @@ def parse_monitor_edit(text: str) -> MonitorEdit | None:
     if not nouns:
         return None
     noun = nouns[0]
+    if set(keys[max(0, noun - 2):noun]) & {"ein", "eine", "einen", "einer", "einem", "neue", "neuen"}:
+        return None  # "eine Benachrichtigung" is a new one, never a change
     present = set(keys)
     if present & {"welche", "was", "wie", "wann", "zeig", "bis"} and not present & {"zwischen", "von"}:
         return None
@@ -271,7 +273,7 @@ def edit_config(
             for step in _notify_steps(new.get("actions")):
                 data = step.get("data")
                 message = data.get("message") if isinstance(data, dict) else None
-                if isinstance(message, str) and "{{" not in message:
+                if isinstance(data, dict) and isinstance(message, str) and "{{" not in message:
                     # "… seit 10 Minuten offen." names the new duration.
                     data["message"] = message.replace(spoken_seconds(old_seconds), spoken_seconds(edit.seconds), 1)
         return new, None
@@ -290,7 +292,7 @@ def edit_config(
         for step in _notify_steps(new.get("actions")):
             data = step.get("data")
             message = data.get("message") if isinstance(data, dict) else None
-            if isinstance(message, str) and "{{" not in message:
+            if isinstance(data, dict) and isinstance(message, str) and "{{" not in message:
                 # A fixed message naming the old limit names the new one.
                 number = old.split(" ")[1] if " " in old else ""
                 if number:
