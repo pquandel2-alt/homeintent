@@ -2400,7 +2400,15 @@ python -m pytest -q tests_ha
 Geprüfter Release-Stand von Version 7.9.3:
 
 ```text
-RELEASE793
+9662 passed, 12 skipped, 0 failed (Stub-Suite, lokal); tests_ha 16 passed
+Sprachverständnis-Gate: 463 passed
+Korpus-Signaturen 7.9.3 (docs/perf/corpus-signatures-7.9.3.json): gegenüber 7.9.2 0 geänderte Signaturen, 272 neue Sätze (docs/perf/corpus-signatures-7.9.3-begruendung.md)
+Arbiter-Shadow 2150 gleichwertig, 7 nicht messbar, 4 neue Musikbefehle ohne Arbiter-Kandidat, 0 SAFETY_DRIFT; Shadow-Vergleich 2131 EQUIVALENT
+Entwicklungs-Benchmark 7.7 462/503, 7.8 102/107, unsafe_execution_count 0
+Live-Testbett 230/230 (inklusive Proaktiv; 215 bisherige + 15 neue „Nachtest 7.9.3“), check_log 0 Befunde
+Zusammenfassung 5000 Entitäten, 7 Tage p95 123,7 ms (Budget 500 ms); Automationssprache 5000 Entitäten p95 13,4 ms
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+Satzmuster (SEMANTIC_SENTENCE_PATTERN) 171
 ```
 
 Geprüfter Release-Stand von Version 7.9.2:

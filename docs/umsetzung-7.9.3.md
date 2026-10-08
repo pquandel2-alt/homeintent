@@ -317,13 +317,13 @@ unveränderte Negations-Sperre und führt nichts aus.)
 
 | Gate | Ergebnis |
 |---|---|
-| `pytest -q` (Stub-Suite) | 9656 passed, 12 skipped, 0 failed (7.9.2: 8492) |
-| `tests_ha` | TESTS_HA |
+| `pytest -q` (Stub-Suite) | 9662 passed, 12 skipped, 0 failed (7.9.2: 8492) |
+| `tests_ha` (HA 2026.9.2, Python 3.14) | 16 passed |
 | Sprach-Eval (`run_language_eval.sh`) | 463 passed |
 | Korpus-Signaturen (`corpus_shadow.py --check …-7.9.2.json`) | 0 geänderte Signaturen über alle 3826 gemeinsamen Sätze; neue Baseline `corpus-signatures-7.9.3.json` (Begründung: `corpus-signatures-7.9.3-begruendung.md`) |
-| Shadow-Vergleich (`--candidate identity`) | 2108 EQUIVALENT, 0 SAFETY_DRIFT |
-| Arbiter-Shadow | ARBITER |
-| Entwicklungs-Benchmark 7.7 / 7.8 | DEVBENCH |
+| Shadow-Vergleich (`--candidate identity`) | 2131 EQUIVALENT (Korpus um die neuen Szenario-Sätze gewachsen), 0 SAFETY_DRIFT |
+| Arbiter-Shadow | 2161 Sätze: 2150 EQUIVALENT, 7 NOT_MEASURABLE (wie bisher), 4 BEHAVIOR_CHANGE (neue Musikbefehle „Spiel Bayern 3 in der Küche.“, „Lauter.“, „Pause.“, „Weiter.“ aus den neuen Live-Szenarien – der beobachtende Arbiter hat keinen Medienkandidaten), 0 SAFETY_DRIFT |
+| Entwicklungs-Benchmark 7.7 / 7.8 | 462/503 (7.9.2: 461) / 102/107, `unsafe_execution_count` 0 / 0 |
 | Latenz V6 (5000) | p95 2,7 / 4,9 / 7,7 / 2,8 ms (Budget 100) |
 | Automationssprache 5000 Entitäten | p95 13,4 ms (Budget 100) |
 | V10 / V11 / V12 | alle unter Budget (V12 Ereignissturm 2,2 ms von 1000) |
@@ -335,7 +335,40 @@ unveränderte Negations-Sperre und führt nichts aus.)
 
 ## Live-Testbett
 
-LIVE
+`sim/fresh_ha.sh` (frisches HA 2026.9.2, Bootstrap bestätigt `response_style
+= tone` für die neue Installation), `runner.py --strict` über alle
+Kategorien inklusive Proaktiv: **230/230 Szenarien bestanden** (215 bisherige
++ 15 neue „Nachtest 7.9.3“), `check_log.py` **0 Befunde** (seit 7.9.3 auch
+ohne Datenbankzugriff außerhalb des Recorder-Executors). Zusätzliche
+Wartezeit auf Geräte-Rückmeldung: 5 von 556 Turns warteten (p50 2,0 s, alle
+gewollt verzögerten Geräte), alle übrigen 0 ms.
+
+Die neuen Szenarien prüfen die **Wirkung**:
+
+| Szenario | geprüfte Wirkung |
+|---|---|
+| `n793-a1-battery-already-low` | nach „Ja“ genau eine Push-Nachricht „Schon beim Einrichten der Überwachung erfüllt: …“; Überwachung in der Liste |
+| `n793-a1-window-already-open` | Fenster offen → sofortige Nachricht; danach ein weiteres Fenster → genau eine Nachricht |
+| `n793-a1-only-create` | „Nur einrichten.“ → angelegt, keine Nachricht |
+| `n793-a2-heating-vacation` | `select.heizprogramm` = Urlaub, Urlaubs-Helfer bleibt aus |
+| `n793-a3-back-home` | ohne Urlaub keine Wirkung; mit Urlaub Rückfrage, „Ja“ → Helfer aus, danach keine Urlaubsnachricht |
+| `n793-a4-summary-date` | Zusammenfassung nach echter Abwesenheit (gleicher Tag: ohne Tagesangabe) |
+| `n793-a5-real-example` | Vorschau mit echtem Raum, ohne „<“/„>“ |
+| `n793-b1-weather` | Wetterfragen aus der Vorhersage (jetzt, morgen, Regen heute, Schirm) |
+| `n793-b1-awning-rain` | Automation ausgelöst: ohne Regen bleibt die Markise offen, mit Regen in der Vorhersage fährt sie zu |
+| `n793-b2-where` | „Wo ist Anna?“ ohne und mit Haushaltsfreigabe, nie Koordinaten |
+| `n793-b3-music` | Quelle gewählt (`source` = Bayern 3), „Was läuft?“, lauter, Pause (`paused`), Weiter (`playing`), unbekannte Quelle nicht geraten |
+| `n793-b4-irrigation` | nach Regen: Automation ausgelöst, Ventil öffnet nicht |
+| `n793-b5-notice-tone` | Rückmeldung zu spät → zweiter Ton (`notice.mp3`) mit „Stehlampe meldet sich nicht.“ |
+| `n793-b6-house-report` | am falschen Wochentag keine Nachricht; ausgelöst → Push „Haus-Bericht: …“, Details abrufbar |
+| `n793-b7-monitor-edit` | Garagen-Meldung auf 1 Minute geändert → nach 75 s genau die neue Nachricht „… seit 1 Minute offen.“ |
+
+Zwischenlauf: Der erste vollständige Lauf (229 Szenarien, vor dem
+Fensterfall) fand zwei Abweichungen: `n792-a1-delay-long` erwartete noch den
+gesprochenen Satz (B5, Erwartung geändert, siehe oben) und
+`n793-b7-monitor-edit` zählte eine Agent-Frage eines früheren
+Proaktiv-Szenarios zum Garagentor mit (Szenario prüft jetzt genau die
+geänderte Nachricht).
 
 ## Bekannte Grenzen
 
