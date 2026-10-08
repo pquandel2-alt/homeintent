@@ -334,6 +334,7 @@ unveränderte Negations-Sperre und führt nichts aus.)
 | `regex_inventory.py --write` | SEMANTIC_SENTENCE_PATTERN 171 (unverändert), LEXICAL 402, STRUCTURAL 149, MORPHOLOGICAL 37 |
 | Pyright | 0 Fehler (voll, Strict-Scope der CI inkl. 7 neuer Module, V11, V12, Learning Center) |
 | Pyflakes | 0 |
+| GitHub-CI (alle 9 Jobs, inkl. Live-Testbett ohne Proaktiv 220/220, HACS, Hassfest, HA-Smoke-Test) | grün auf `0a4ffa7` (Lauf 429) |
 
 ## Live-Testbett
 
