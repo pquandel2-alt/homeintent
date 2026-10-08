@@ -1320,5 +1320,7 @@ S("n793-b7-monitor-edit", L793, "B7: Überwachung ändern – neue Wirkung nach 
   say(YES, settle=2, all=["geändert"]),
   service("haus_sim.clear_log"),
   service("cover.open_cover", {"entity_id": "cover.garagentor"}),
-  wait(75), check(notify_count=1, notify_match="garagentor"),
+  # Genau die geänderte Nachricht (neue Dauer); Agent-Fragen früherer
+  # Proaktiv-Szenarien zum Garagentor leben im Goal-Store weiter.
+  wait(75), check(notify_count=1, notify_match="Das Garagentor ist seit 1 Minute offen."),
   service("cover.close_cover", {"entity_id": "cover.garagentor"}))
