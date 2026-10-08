@@ -293,6 +293,8 @@ abgesichert:
 | Arbiter-Shadow: „Pausiere alle Medien.“ führte ohne Vorschau aus | Medienlesart griff auch bei „alle …“ | „alle …“ bleibt der Mehrfachplan mit Vorschau |
 | HA-Warnung „accesses the database without the database executor“ (Haus-Bericht, Verbrauch) | Recorder-Lesungen im allgemeinen Executor | `history_query._recorder_job()`: Executor des Recorders; `check_log.py` zählt die Warnung jetzt immer |
 | Pyright: zwei Optional-Zugriffe in `monitor_edit.py`, ein überschatteter Name in `insights.py` | Typverengung | behoben, neue Module im Strict-Scope der CI |
+| CI-Live-Lauf: Wetter-, Markisen- und Bewässerungsszenarien bekamen „Welche Wettervorhersage meinst du?“ | Das Onboarding legt met.no an; in der CI erreichbar, also zwei Wetter-Entitäten (lokal 403, daher unsichtbar). Die Rückfrage ist das verlangte Verhalten (B1). | `bootstrap.py` entfernt met.no; das Testbett nutzt nur `weather.zuhause` |
+| Prüfsatz „Bewässere nur, wenn es heute nicht regnet“ zitierte „Bewässere nur“ | „nur/bloß/lediglich (dann)“ blieb an der Aktion | gehört jetzt zur Bedingung (`test_the_restricting_particle_belongs_to_the_condition`, 15 Fälle) |
 | Testbett: die Sonnenuntergangs-Automation schloss während Läufen Rollläden | fremde Testbett-Automation | `initial_state: false` mit Begründung in `sim/config/automations.yaml` |
 
 ## Geänderte Test-Erwartungen
@@ -317,7 +319,7 @@ unveränderte Negations-Sperre und führt nichts aus.)
 
 | Gate | Ergebnis |
 |---|---|
-| `pytest -q` (Stub-Suite) | 9662 passed, 12 skipped, 0 failed (7.9.2: 8492) |
+| `pytest -q` (Stub-Suite) | 9677 passed, 12 skipped, 0 failed (7.9.2: 8492) |
 | `tests_ha` (HA 2026.9.2, Python 3.14) | 16 passed |
 | Sprach-Eval (`run_language_eval.sh`) | 463 passed |
 | Korpus-Signaturen (`corpus_shadow.py --check …-7.9.2.json`) | 0 geänderte Signaturen über alle 3826 gemeinsamen Sätze; neue Baseline `corpus-signatures-7.9.3.json` (Begründung: `corpus-signatures-7.9.3-begruendung.md`) |
@@ -329,7 +331,7 @@ unveränderte Negations-Sperre und führt nichts aus.)
 | V10 / V11 / V12 | alle unter Budget (V12 Ereignissturm 2,2 ms von 1000) |
 | Learning Center | Zusammenfassung 4,4 ms, Liste 4,5 ms, Detail 0,2 ms, Evidenz 95 ms |
 | Zusammenfassung (neu) | p95 123,7 ms bei 5000 Entitäten, 7 Tagen (Budget 500 ms) |
-| `regex_inventory.py --write` | SEMANTIC_SENTENCE_PATTERN 171 (unverändert), LEXICAL 401, STRUCTURAL 149, MORPHOLOGICAL 37 |
+| `regex_inventory.py --write` | SEMANTIC_SENTENCE_PATTERN 171 (unverändert), LEXICAL 402, STRUCTURAL 149, MORPHOLOGICAL 37 |
 | Pyright | 0 Fehler (voll, Strict-Scope der CI inkl. 7 neuer Module, V11, V12, Learning Center) |
 | Pyflakes | 0 |
 

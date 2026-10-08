@@ -81,6 +81,18 @@ async def ensure_entry(session, token: str, handler: str, answers: dict | None =
     return True
 
 
+async def remove_online_weather(session, token: str) -> None:
+    """The onboarding adds the met.no forecast (internet). Where it is
+    reachable (CI) the house would have two weather entities and every
+    weather question would rightly ask which one; the test bed keeps only
+    the simulated, settable ``weather.zuhause`` (7.9.3 B1)."""
+    entries = await rest(session, "GET", "/api/config/config_entries/entry", token)
+    for entry in entries:
+        if entry["domain"] == "met":
+            await rest(session, "DELETE", f"/api/config/config_entries/entry/{entry['entry_id']}", token)
+            print(f"met.no-Wetter entfernt ({entry['title']})")
+
+
 async def existing_installation_style(session, token: str) -> None:
     """7.9.3 B5: a new installation starts with the confirmation tone.
 
@@ -176,6 +188,7 @@ async def main() -> None:
             lena_id = await ensure_user(ws, session, CHILD, admin=False)
             llat = await ws.call("auth/long_lived_access_token", client_name=f"sim-{datetime.now().timestamp()}", lifespan=365)
 
+        await remove_online_weather(session, llat)
         await ensure_entry(session, llat, "haus_sim")
         await ensure_entry(session, llat, "local_calendar", {"calendar_name": "Familie"})
         await ensure_entry(session, llat, "local_calendar", {"calendar_name": "Müllabfuhr"})

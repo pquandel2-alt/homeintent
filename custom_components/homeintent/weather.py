@@ -483,7 +483,13 @@ def parse_weather_clause(text: str) -> WeatherClause | None:
         role = "trigger" if not before or before.endswith((".", "!", "?")) else "guard"
         if role == "trigger" and text[end:].strip(" .!?") == "":
             role = "guard"
-        rest = (text[:start] + text[end:]).strip()
+        # "Bewässere nur, wenn …": the restricting particle belongs to the
+        # condition, not to the action that is read again.
+        head = re.sub(r"(?:\s*,)?\s*\b(?:aber\s+)?(?:nur|bloß|lediglich)(?:\s+dann)?\s*,?\s*$", "", text[:start],
+                      flags=re.IGNORECASE)
+        tail = text[end:].lstrip()
+        joiner = " " if head and tail and not head.endswith(" ") and tail[0] not in ".,;!?" else ""
+        rest = (head + joiner + tail).strip()
         rest = re.sub(r"^\s*,\s*", "", rest)
         rest = re.sub(r"\s+,", ",", rest).strip(" ,")
         if role == "trigger" and kinds[0].startswith("no_"):

@@ -184,3 +184,14 @@ def test_the_validator_refuses_a_foreign_source():
 def test_entities_with_states_helper_still_works():
     entities = with_states(house_entities(), binary_sensor__regensensor="on")
     assert next(e for e in entities if e.entity_id == "binary_sensor.regensensor").state == "on"
+
+
+@pytest.mark.parametrize("particle", ["nur", "bloß", "lediglich", "nur dann", "aber nur"])
+@pytest.mark.parametrize("action", ["Bewässere", "Schalte die Gartenpumpe ein", "Bewässere jeden Morgen um 6 Uhr 20 Minuten"])
+def test_the_restricting_particle_belongs_to_the_condition(action, particle):
+    """Prüfsatz „Bewässere nur, wenn es heute nicht regnet“: the action read
+    again (and quoted) is „Bewässere“, never „Bewässere nur“."""
+    from homeintent.weather import parse_weather_clause
+
+    clause = parse_weather_clause(f"{action} {particle}, wenn es heute nicht regnet.")
+    assert clause is not None and clause.rest == f"{action}.", clause

@@ -51,6 +51,10 @@ Seit 7.9.3:
   Testbett danach wie eine aus 7.9.2 aktualisierte Installation auf
   `spoken` (der Katalog prüft den gesprochenen Wortlaut; Ton-Szenarien
   schalten selbst um).
+- Das Onboarding legt die met.no-Wettervorhersage an; `bootstrap.py` entfernt
+  sie wieder. Wo met.no erreichbar ist (CI), gäbe es sonst zwei
+  Wetter-Entitäten, und jede Wetterfrage würde zu Recht nachfragen, welche
+  gemeint ist; das Testbett nutzt nur das steuerbare `weather.zuhause`.
 - Die fremde Benutzer-Automation „Rollläden abends schließen“
   (Sonnenuntergang) ist im Testbett aus (`initial_state: false`): sie schloss
   bei Läufen über den Sonnenuntergang Rollläden zwischen zwei Schritten.

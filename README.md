@@ -2400,7 +2400,7 @@ python -m pytest -q tests_ha
 Geprüfter Release-Stand von Version 7.9.3:
 
 ```text
-9662 passed, 12 skipped, 0 failed (Stub-Suite, lokal); tests_ha 16 passed
+9677 passed, 12 skipped, 0 failed (Stub-Suite, lokal); tests_ha 16 passed
 Sprachverständnis-Gate: 463 passed
 Korpus-Signaturen 7.9.3 (docs/perf/corpus-signatures-7.9.3.json): gegenüber 7.9.2 0 geänderte Signaturen, 272 neue Sätze (docs/perf/corpus-signatures-7.9.3-begruendung.md)
 Arbiter-Shadow 2150 gleichwertig, 7 nicht messbar, 4 neue Musikbefehle ohne Arbiter-Kandidat, 0 SAFETY_DRIFT; Shadow-Vergleich 2131 EQUIVALENT

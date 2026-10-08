@@ -5297,6 +5297,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/weather.py::parse_weather_clause::1ed2fb255b",
+   "datei": "custom_components/homeintent/weather.py",
+   "bereich": "parse_weather_clause",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/weather.py::parse_weather_clause::fec1fa542f",
    "datei": "custom_components/homeintent/weather.py",
    "bereich": "parse_weather_clause",
@@ -5319,7 +5326,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 401,
+  "LEXICAL": 402,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 149,
   "SEMANTIC_SENTENCE_PATTERN": 171
