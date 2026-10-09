@@ -2466,7 +2466,15 @@ python -m pytest -q tests_ha
 Geprüfter Release-Stand von Version 7.9.6:
 
 ```text
-PLATZHALTER
+9745 passed, 12 skipped, 0 failed (Stub-Suite, Python 3.12 und 3.13, auch mit hassil 3.12; RuntimeWarning = Fehler); tests_ha 21 passed
+Neu: tests/test_event_runtime_hardening_796.py 42 Fälle, tests_ha/test_event_runtime_hardening.py 2 Fälle
+Echtes HA, 6000 synchrone Zustandsänderungen ohne Yield + Rauch/Wasser/ExpectedEffect: dropped_critical 0, dropped_lossless 0, worker_starts 1, pending_tasks 0, monitor_store_reads 0, 0,71 s (7.9.5: Rauch und Wasser verloren, 3,61 s)
+Ohne aktiven Verbraucher, 6000 Ereignisse: 0 Queue-Einträge, 0 Snapshots, 0 Worker-Starts
+Sprachverständnis-Gate: 463 passed; Korpus-Signaturen 7.9.6: 4101 Sätze aus 7.9.5 unverändert, 3 neue Einträge, 0 geändert (docs/perf/corpus-signatures-7.9.6-begruendung.md)
+Shadow-Vergleich 2131 EQUIVALENT; Arbiter 0 SAFETY_DRIFT, auch mit RuntimeWarning als Fehler (0 Funde)
+Entwicklungs-Benchmark 7.7 und 7.8: unsafe_execution_count 0; alle Latenzbudgets der CI eingehalten
+Live-Testbett nach frischer Installation und Neustart: 230/230 (inklusive Proaktiv), check_log ohne HomeIntent-Befund, ohne RuntimeWarning und ohne „Something is blocking Home Assistant“
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
 ```
 
 Geprüfter Release-Stand von Version 7.9.5:
