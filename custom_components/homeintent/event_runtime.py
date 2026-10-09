@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
+from collections.abc import Iterable
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -21,7 +23,11 @@ from .const import (
 )
 from .agent_config_validation import parse_event_categories
 from .entities import EntitySnapshot
-from .hass_entities import build_entity_snapshots, is_selected_entity
+from .hass_entities import (
+    SelectedEntityFilter,
+    build_entity_snapshots,
+    snapshot_at_state,
+)
 from .entities import spoken_state
 from .agent_event import AgentMode
 from .effect_monitor import ExpectedEffect
@@ -50,8 +56,9 @@ _LOGGER = logging.getLogger(__name__)
 # Each one costs milliseconds; the bound only keeps memory finite should the
 # event loop fall hopelessly behind.
 MAX_PENDING_EVENTS = 4096
-# Events processed against one entity snapshot. The original per-event tasks
-# also read the state machine only once they ran, i.e. after the burst.
+# Events taken from the queue per snapshot build. The snapshot is the house
+# as it is now; each event is evaluated against the house as it was when the
+# event fired (7.9.5), derived from the queued events' own old/new states.
 MAX_BATCH_EVENTS = 256
 _DROP_WARNING_INTERVAL_SECONDS = 60.0
 # The worker hands the event loop back after this much work in one go.
@@ -69,7 +76,8 @@ class SituationRuntime:
         self._runtime_data = runtime_data
         self._seen: set[str] = set()
         self._decision_engine = ProactiveDecisionEngine()
-        self._pending: asyncio.Queue[Any] | None = None
+        self._is_selected = SelectedEntityFilter(hass, entry)
+        self._pending: deque[Any] | None = None
         self._worker: asyncio.Task[None] | None = None
         self._stopped = False
         self._dropped = 0
@@ -112,13 +120,11 @@ class SituationRuntime:
         entity_id = data.get("entity_id")
         if not isinstance(entity_id, str) or data.get("new_state") is None:
             return
-        if not is_selected_entity(self._hass, self._entry, entity_id):
+        if not self._is_selected(entity_id):
             return
         if self._pending is None:
-            self._pending = asyncio.Queue(maxsize=MAX_PENDING_EVENTS)
-        try:
-            self._pending.put_nowait(raw_event)
-        except asyncio.QueueFull:
+            self._pending = deque()
+        if len(self._pending) >= MAX_PENDING_EVENTS:
             self._dropped += 1
             now = time.monotonic()
             if (
@@ -131,26 +137,42 @@ class SituationRuntime:
                     self._dropped,
                 )
             return
+        self._pending.append(raw_event)
         if self._worker is None or self._worker.done():
             # Not eager: the bus callback stays cheap and never re-enters.
             self._worker = self._hass.async_create_background_task(
-                self._async_drain(), "HomeIntent situation events", eager_start=False
+                self._async_drain(self._pending),
+                "HomeIntent situation events",
+                eager_start=False,
             )
 
-    async def _async_drain(self) -> None:
-        queue = self._pending
+    async def _async_drain(self, queue: deque[Any]) -> None:
+        # The worker belongs to one queue: after a stop (and a restart with a
+        # new queue) a worker that outlived its cancellation must not drain
+        # the new queue next to the new worker (7.9.5).
         slice_started = time.monotonic()
-        while queue is not None and not queue.empty() and not self._stopped:
-            batch = [queue.get_nowait()]
-            while len(batch) < MAX_BATCH_EVENTS and not queue.empty():
-                batch.append(queue.get_nowait())
-            entities = build_entity_snapshots(self._hass, self._entry)
-            by_id = {item.entity_id: item for item in entities}
+        while queue and queue is self._pending and not self._stopped:
+            batch = [queue.popleft() for _ in range(min(len(queue), MAX_BATCH_EVENTS))]
+            try:
+                entities = build_entity_snapshots(self._hass, self._entry)
+            except Exception:  # noqa: BLE001 - must not end the worker (7.9.5)
+                _LOGGER.exception(
+                    "HomeIntent could not read the selected entities; "
+                    "%s state changes not evaluated",
+                    len(batch),
+                )
+                await asyncio.sleep(0)
+                slice_started = time.monotonic()
+                continue
+            # Events still queued fired after this batch; the snapshot
+            # already contains their states, so they are rewound as well.
+            view = _HouseView(entities, (*batch, *queue))
             for raw_event in batch:
-                if self._stopped:
+                if self._stopped or queue is not self._pending:
                     return
                 try:
-                    await self._async_process_state_changed(raw_event, entities, by_id)
+                    current, by_id = view.advance(raw_event)
+                    await self._async_process_state_changed(raw_event, current, by_id)
                 except Exception:  # noqa: BLE001 - one event must not stop the worker
                     _LOGGER.exception("HomeIntent state change evaluation failed")
                 # A burst never monopolizes the loop, yet the worker keeps
@@ -158,7 +180,6 @@ class SituationRuntime:
                 if time.monotonic() - slice_started >= _YIELD_AFTER_SECONDS:
                     await asyncio.sleep(0)
                     slice_started = time.monotonic()
-            queue = self._pending
 
     async def async_handle_state_changed(self, raw_event: Any) -> None:
         data = getattr(raw_event, "data", {})
@@ -167,10 +188,9 @@ class SituationRuntime:
         entity_id = data.get("entity_id")
         if not isinstance(entity_id, str) or data.get("new_state") is None:
             return
-        entities = build_entity_snapshots(self._hass, self._entry)
-        await self._async_process_state_changed(
-            raw_event, entities, {item.entity_id: item for item in entities}
-        )
+        view = _HouseView(build_entity_snapshots(self._hass, self._entry), (raw_event,))
+        entities, by_id = view.advance(raw_event)
+        await self._async_process_state_changed(raw_event, entities, by_id)
 
     async def _async_process_state_changed(
         self,
@@ -487,3 +507,61 @@ class SituationRuntime:
         except ValueError:
             _LOGGER.warning("Invalid configured HomeIntent event categories")
             return frozenset()
+
+
+class _HouseView:
+    """The selected entities as they were when each queued event fired.
+
+    ``build_entity_snapshots()`` returns the house *now*, i.e. after every
+    queued event. 7.9.4 evaluated a whole batch against that one later
+    snapshot: a door that opened and closed again within a batch was seen
+    closed twice, a person who left and came back made no transition, the
+    thermal tracker saw future temperatures (7.9.5). The view first rewinds
+    every entity with a queued event to the ``old_state`` of its earliest
+    one, then ``advance()`` applies each event's ``new_state`` in order.
+
+    Only entities in the snapshot take part: an entity that is no longer
+    selected (or no longer exists) is not evaluated, as before.
+    """
+
+    def __init__(self, entities: list[EntitySnapshot], pending: Iterable[Any]) -> None:
+        self._base = {item.entity_id: item for item in entities}
+        self._by_id = dict(self._base)
+        rewound: set[str] = set()
+        for raw_event in pending:
+            data = _event_data(raw_event)
+            entity_id = data.get("entity_id")
+            if not isinstance(entity_id, str) or entity_id in rewound:
+                continue
+            rewound.add(entity_id)
+            base = self._base.get(entity_id)
+            if base is None:
+                continue
+            old_state = data.get("old_state")
+            if old_state is None:
+                # Created by the event: it did not exist before.
+                del self._by_id[entity_id]
+            else:
+                self._by_id[entity_id] = snapshot_at_state(base, old_state)
+
+    def advance(
+        self, raw_event: Any
+    ) -> tuple[list[EntitySnapshot], dict[str, EntitySnapshot]]:
+        """Apply ``raw_event``; return the house right after it.
+
+        The returned dict is the view itself and changes with the next
+        ``advance()``; the worker evaluates one event at a time.
+        """
+        data = _event_data(raw_event)
+        entity_id = data.get("entity_id")
+        new_state = data.get("new_state")
+        if isinstance(entity_id, str) and new_state is not None:
+            base = self._base.get(entity_id)
+            if base is not None:
+                self._by_id[entity_id] = snapshot_at_state(base, new_state)
+        return list(self._by_id.values()), self._by_id
+
+
+def _event_data(raw_event: Any) -> dict[str, Any]:
+    data = getattr(raw_event, "data", None)
+    return data if isinstance(data, dict) else {}

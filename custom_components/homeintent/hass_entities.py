@@ -9,6 +9,10 @@ back to whatever is exposed to Assist (``async_should_expose``).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import replace
+from typing import Any
+
 from homeassistant.components import conversation
 from homeassistant.components.homeassistant.exposed_entities import (
     async_should_expose,
@@ -58,12 +62,24 @@ def fixed_selection_missing_exposed(hass: HomeAssistant, entry: ConfigEntry) -> 
 
 def get_selected_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     """Return the selected entity_ids from options, falling back to Assist-exposed."""
-    selected = entry.options.get(CONF_SELECTED_ENTITIES)
-    if selected is None:
-        selected = entry.data.get(CONF_SELECTED_ENTITIES)
+    selected = _stored_selection(entry)
     if selected:
         return list(selected)
     return default_exposed_entities(hass)
+
+
+def _stored_selection(entry: ConfigEntry) -> Any:
+    """The fixed selection stored in the entry (options win over data)."""
+    selected = entry.options.get(CONF_SELECTED_ENTITIES)
+    if selected is None:
+        selected = entry.data.get(CONF_SELECTED_ENTITIES)
+    return selected
+
+
+def _is_exposed_selectable(hass: HomeAssistant, entity_id: str) -> bool:
+    return entity_id.split(".", 1)[0] in SELECTABLE_DOMAINS and async_should_expose(
+        hass, conversation.DOMAIN, entity_id
+    )
 
 
 def is_selected_entity(hass: HomeAssistant, entry: ConfigEntry, entity_id: str) -> bool:
@@ -72,14 +88,34 @@ def is_selected_entity(hass: HomeAssistant, entry: ConfigEntry, entity_id: str) 
     The same rule for a single entity, without listing the whole state
     machine: state-change listeners ask this for every event in the house.
     """
-    selected = entry.options.get(CONF_SELECTED_ENTITIES)
-    if selected is None:
-        selected = entry.data.get(CONF_SELECTED_ENTITIES)
+    selected = _stored_selection(entry)
     if selected:
         return entity_id in selected
-    return entity_id.split(".", 1)[0] in SELECTABLE_DOMAINS and async_should_expose(
-        hass, conversation.DOMAIN, entity_id
-    )
+    return _is_exposed_selectable(hass, entity_id)
+
+
+class SelectedEntityFilter:
+    """``is_selected_entity()`` for one entry, O(1) for a fixed selection.
+
+    A state-change listener asks for every event in the house; a fixed
+    selection is a list, so the plain rule is linear in its length (7.9.5).
+    The set is rebuilt whenever the stored selection object changes.
+    """
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self._hass = hass
+        self._entry = entry
+        self._source: Any = None
+        self._members: frozenset[str] = frozenset()
+
+    def __call__(self, entity_id: str) -> bool:
+        selected = _stored_selection(self._entry)
+        if selected:
+            if selected is not self._source:
+                self._members = frozenset(selected)
+                self._source = selected
+            return entity_id in self._members
+        return _is_exposed_selectable(self._hass, entity_id)
 
 
 def _friendly(state: State) -> str:
@@ -188,35 +224,59 @@ def build_entity_snapshots(
         area_id, area_name, area_aliases = _area_info(hass, entity_id, registry_entry=registry_entry)
         floor_id, floor_name, floor_level = _floor_info(hass, area_id)
         domain = entity_id.split(".", 1)[0]
-        device_class = state.attributes.get("device_class")
-        capabilities = derive_capabilities(domain, device_class, state.attributes)
         snapshots.append(
             EntitySnapshot(
                 entity_id=entity_id,
-                friendly_name=_friendly(state),
                 domain=domain,
-                state=state.state,
                 area_id=area_id,
                 area_name=area_name,
                 floor_id=floor_id,
                 floor_name=floor_name,
                 floor_level=floor_level,
-                unit=state.attributes.get("unit_of_measurement"),
-                device_class=device_class,
-                state_class=state.attributes.get("state_class"),
                 aliases=tuple(dict.fromkeys((
                     *_entity_aliases(hass, registry_entry),
                     *custom_aliases.get(entity_id, ()),
                 ))),
                 area_aliases=area_aliases,
                 floor_aliases=_floor_aliases(hass, floor_id),
-                attributes=state.attributes,
-                capabilities=frozenset(c.name for c in capabilities),
-                last_changed=getattr(state, "last_changed", None),
-                last_updated=getattr(state, "last_updated", None),
+                **_state_fields(domain, state),
             )
         )
     return snapshots
+
+
+def _state_fields(domain: str, state: Any) -> dict[str, Any]:
+    """The ``EntitySnapshot`` fields that come from one HA ``State``."""
+    device_class = state.attributes.get("device_class")
+    capabilities = derive_capabilities(domain, device_class, state.attributes)
+    return {
+        "friendly_name": _friendly(state),
+        "state": state.state,
+        "unit": state.attributes.get("unit_of_measurement"),
+        "device_class": device_class,
+        "state_class": state.attributes.get("state_class"),
+        "attributes": state.attributes,
+        "capabilities": frozenset(c.name for c in capabilities),
+        "last_changed": getattr(state, "last_changed", None),
+        "last_updated": getattr(state, "last_updated", None),
+    }
+
+
+def snapshot_at_state(snapshot: EntitySnapshot, state: Any) -> EntitySnapshot:
+    """``snapshot`` as it was when its entity had ``state`` (7.9.5).
+
+    Registry data (area, floor, aliases) stays; everything
+    ``build_entity_snapshots()`` reads from the ``State`` is taken from
+    ``state``, e.g. the ``new_state`` or ``old_state`` of a
+    ``state_changed`` event. An object without attributes only changes
+    the state value.
+    """
+    raw_state = getattr(state, "state", None)
+    if not isinstance(raw_state, str):
+        return snapshot
+    if not isinstance(getattr(state, "attributes", None), Mapping):
+        return replace(snapshot, state=raw_state)
+    return replace(snapshot, **_state_fields(snapshot.domain, state))
 
 
 def build_device_snapshots(hass: HomeAssistant, entry: ConfigEntry) -> list[DeviceSnapshot]:

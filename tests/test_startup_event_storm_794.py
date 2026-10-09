@@ -185,7 +185,7 @@ def test_dynamic_exposure_filter_follows_assist_exposure(monkeypatch):
         hass.bus.fire(_event("automation.x", "off", "on"))  # domain not selectable
         assert runtime._pending is None
         hass.bus.fire(_event(WINDOW, "off", "on"))
-        queued = runtime._pending.qsize() if runtime._pending is not None else 0
+        queued = len(runtime._pending) if runtime._pending is not None else 0
         await _settle(hass)
         stop()
         return queued
