@@ -35,6 +35,8 @@ async def test_burst_evaluates_each_event_against_the_house_at_that_moment(
     sensors = [f"sensor.flow_{index}" for index in range(SENSORS)]
     options = dict(SETUP_OPTIONS)
     options["selected_entities"] = [DOOR, *sensors]
+    # 7.9.6: selected events are evaluated only for an active consumer.
+    options["agent_event_categories"] = "opening_while_away"
     entry = MockConfigEntry(domain=DOMAIN, title="HomeIntent", data={}, options=options)
     entry.add_to_hass(hass)
     hass.states.async_set(DOOR, "off", {"device_class": "door"})

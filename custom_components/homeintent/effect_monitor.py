@@ -29,6 +29,14 @@ class ExpectedEffect:
 ExpiredHandler = Callable[[ExpectedEffect], Awaitable[None]]
 TimeoutResolver = Callable[[ServiceCallPlan], timedelta | None]
 ActionObserver = Callable[[ServiceCallPlan, datetime], None]
+# ``True`` while a state change of the entity is still queued for evaluation.
+PendingProbe = Callable[[str], bool]
+
+# A deadline that passes while the entity's state change still waits in the
+# EventRuntime queue is not a missing effect (7.9.6): the expiry waits for
+# that event, at most this long, re-checking every ``_PENDING_POLL_SECONDS``.
+PENDING_GRACE = timedelta(seconds=60)
+_PENDING_POLL_SECONDS = 0.1
 
 
 class EffectMonitor:
@@ -47,6 +55,11 @@ class EffectMonitor:
         self._handler: ExpiredHandler | None = None
         self._timeout_resolver: TimeoutResolver | None = None
         self._action_observer: ActionObserver | None = None
+        self._pending_probe: PendingProbe | None = None
+        # Entities with a pending effect, kept current on every change so the
+        # EventRuntime asks a set instead of scanning the effects (7.9.6).
+        self._watched: frozenset[str] = frozenset()
+        self._watch_listeners: list[Callable[[], None]] = []
 
     def set_expired_handler(self, handler: ExpiredHandler | None) -> None:
         self._handler = handler
@@ -58,6 +71,25 @@ class EffectMonitor:
     def set_action_observer(self, observer: ActionObserver | None) -> None:
         """Observe accepted actions without granting execution authority."""
         self._action_observer = observer
+
+    def set_pending_probe(self, probe: PendingProbe | None) -> None:
+        """Let an expiry wait for a still queued state change (7.9.6)."""
+        self._pending_probe = probe
+
+    @property
+    def watched_entity_ids(self) -> frozenset[str]:
+        """Entities with at least one pending expected effect (read-only)."""
+        return self._watched
+
+    def add_watch_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call ``listener`` whenever ``watched_entity_ids`` changes."""
+        self._watch_listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._watch_listeners:
+                self._watch_listeners.remove(listener)
+
+        return remove
 
     def register(
         self, plan: ServiceCallPlan, *, now: datetime | None = None
@@ -113,6 +145,7 @@ class EffectMonitor:
                 name=f"homeintent-effect-{effect.effect_id}",
             )
             registered.append(effect)
+        self._update_watched()
         return tuple(registered)
 
     def observe(self, entity_id: str, state: str) -> bool:
@@ -125,6 +158,8 @@ class EffectMonitor:
         ]
         for effect_id in matched:
             self._discard(effect_id)
+        if matched:
+            self._update_watched()
         return bool(matched)
 
     @property
@@ -135,6 +170,7 @@ class EffectMonitor:
         tasks = tuple(self._tasks.values())
         self._tasks.clear()
         self._pending.clear()
+        self._update_watched()
         for task in tasks:
             task.cancel()
         if tasks:
@@ -147,11 +183,21 @@ class EffectMonitor:
         )
         try:
             await asyncio.sleep(delay)
+            waited = 0.0
+            while (
+                self._pending_probe is not None
+                and effect.effect_id in self._pending
+                and self._pending_probe(effect.entity_id)
+                and waited < PENDING_GRACE.total_seconds()
+            ):
+                await asyncio.sleep(_PENDING_POLL_SECONDS)
+                waited += _PENDING_POLL_SECONDS
         except asyncio.CancelledError:
             return
         if self._pending.pop(effect.effect_id, None) is None:
             return
         self._tasks.pop(effect.effect_id, None)
+        self._update_watched()
         if self._handler is not None:
             await self._handler(effect)
 
@@ -160,6 +206,17 @@ class EffectMonitor:
         task = self._tasks.pop(effect_id, None)
         if task is not None:
             task.cancel()
+
+    def _update_watched(self) -> None:
+        watched = frozenset(effect.entity_id for effect in self._pending.values())
+        if watched == self._watched:
+            return
+        self._watched = watched
+        for listener in tuple(self._watch_listeners):
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 - interest bookkeeping cannot break effects
+                _LOGGER.exception("HomeIntent effect interest listener failed")
 
 
 def expected_state(plan: ServiceCallPlan) -> str | None:
@@ -181,4 +238,7 @@ def _expected_state(plan: ServiceCallPlan) -> str | None:
     }.get(plan.service)
 
 
-__all__ = ("ActionObserver", "EffectMonitor", "ExpectedEffect", "TimeoutResolver", "expected_state")
+__all__ = (
+    "ActionObserver", "EffectMonitor", "ExpectedEffect", "PENDING_GRACE", "PendingProbe",
+    "TimeoutResolver", "expected_state",
+)

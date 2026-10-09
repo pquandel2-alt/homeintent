@@ -154,7 +154,6 @@ class SituationEvaluator:
     ) -> tuple[Situation, ...]:
         if event.quality in {EventQuality.UNKNOWN, EventQuality.STALE}:
             return ()
-        by_id = {entity.entity_id: entity for entity in entities}
         situations: list[Situation] = []
         if event.event_type is EventType.SAFETY_ALARM:
             situations.append(
@@ -194,6 +193,10 @@ class SituationEvaluator:
                 )
             )
         if event.area_id and event.event_type is EventType.OPENED:
+            # The house is read only by this rule; scanning it for every
+            # event cost O(entities) per state change under load (7.9.6).
+            # Last snapshot per entity id wins, as with the former dict.
+            by_id = {entity.entity_id: entity for entity in entities}
             heating = tuple(
                 entity
                 for entity in by_id.values()

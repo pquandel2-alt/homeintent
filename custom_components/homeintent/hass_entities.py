@@ -279,6 +279,23 @@ def snapshot_at_state(snapshot: EntitySnapshot, state: Any) -> EntitySnapshot:
     return replace(snapshot, **_state_fields(snapshot.domain, state))
 
 
+def snapshot_from_state(entity_id: str, state: Any) -> EntitySnapshot | None:
+    """A snapshot from a ``State`` alone, without registry data (7.9.6).
+
+    Only for the EventRuntime's last resort when the registry cannot be
+    read: no area, floor or aliases.
+    """
+    raw_state = getattr(state, "state", None)
+    if not isinstance(raw_state, str):
+        return None
+    domain = entity_id.split(".", 1)[0]
+    if not isinstance(getattr(state, "attributes", None), Mapping):
+        return EntitySnapshot(entity_id, entity_id, domain, raw_state)
+    return EntitySnapshot(
+        entity_id=entity_id, domain=domain, **_state_fields(domain, state)
+    )
+
+
 def build_device_snapshots(hass: HomeAssistant, entry: ConfigEntry) -> list[DeviceSnapshot]:
     """Devices that own at least one selected/exposed entity (World Model
     Wave, 2026-08-13). A device with zero selected entities is invisible

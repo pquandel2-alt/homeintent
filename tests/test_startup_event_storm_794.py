@@ -171,7 +171,8 @@ def test_events_of_unselected_entities_create_no_task_and_no_snapshot(monkeypatc
 
 def test_dynamic_exposure_filter_follows_assist_exposure(monkeypatch):
     hass = _hass()
-    runtime, _ = _runtime(hass)
+    # 7.9.6: a selected event is queued only for an active consumer.
+    runtime, _ = _runtime(hass, categories="opening_while_away")
     exposed = {WINDOW}
     monkeypatch.setattr(
         "homeintent.hass_entities.async_should_expose",
@@ -231,7 +232,8 @@ def test_burst_of_selected_events_uses_one_worker_and_few_snapshots(monkeypatch)
 
 def test_events_are_processed_in_order_and_a_failure_does_not_stop_the_worker(monkeypatch):
     hass = _hass()
-    runtime, _ = _runtime(hass, selected=[WINDOW, LIGHT])
+    # 7.9.6: a selected event is queued only for an active consumer.
+    runtime, _ = _runtime(hass, selected=[WINDOW, LIGHT], categories="opening_while_away")
     monkeypatch.setattr(event_runtime, "build_entity_snapshots", lambda *_: [])
     seen: list[str] = []
 
@@ -257,7 +259,8 @@ def test_events_are_processed_in_order_and_a_failure_does_not_stop_the_worker(mo
 
 def test_stop_cancels_the_worker_and_ignores_later_events(monkeypatch):
     hass = _hass()
-    runtime, _ = _runtime(hass, selected=[WINDOW])
+    # 7.9.6: a selected event is queued only for an active consumer.
+    runtime, _ = _runtime(hass, selected=[WINDOW], categories="opening_while_away")
     monkeypatch.setattr(event_runtime, "build_entity_snapshots", lambda *_: [])
     processed: list[Any] = []
 
@@ -283,7 +286,8 @@ def test_stop_cancels_the_worker_and_ignores_later_events(monkeypatch):
 
 def test_queue_is_bounded_and_overflow_is_reported_once(monkeypatch, caplog):
     hass = _hass()
-    runtime, _ = _runtime(hass, selected=[WINDOW])
+    # 7.9.6: a selected event is queued only for an active consumer.
+    runtime, _ = _runtime(hass, selected=[WINDOW], categories="opening_while_away")
     monkeypatch.setattr(event_runtime, "MAX_PENDING_EVENTS", 10)
     monkeypatch.setattr(event_runtime, "build_entity_snapshots", lambda *_: [])
 

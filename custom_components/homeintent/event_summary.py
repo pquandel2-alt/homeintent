@@ -37,6 +37,7 @@ from .entities import EntitySnapshot, normalize_for_compare
 from .energy_query import spoken_period
 
 __all__ = (
+    "ALARM_DEVICE_CLASSES",
     "MAX_EVENTS",
     "MAX_HISTORY_ENTITIES",
     "MAX_SUMMARY_DAYS",
@@ -81,6 +82,8 @@ _BARE_WAR_WORDS = frozenset({
     "19", "20", "21", "22", "23",
 })
 _ALARM_CLASSES = frozenset({"smoke", "moisture", "gas", "carbon_monoxide", "safety", "tamper", "problem"})
+# The same alarm classes rank state changes for the EventRuntime (7.9.6).
+ALARM_DEVICE_CLASSES = _ALARM_CLASSES
 _ENTRY_CLASSES = frozenset({"door", "garage_door", "opening"})
 _WINDOW_CLASSES = frozenset({"window"})
 _MOTION_CLASSES = frozenset({"motion", "occupancy", "presence"})
