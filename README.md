@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.4** (Stabilitäts-Fix: Home Assistant startet mit HomeIntent wieder zuverlässig; Funktionsumfang wie 7.9.3)
+- Aktuelle Version: **7.9.5** (Bugfix: Zustandsänderungen werden auch bei schnellen Folgen mit dem richtigen Zustand ausgewertet; Funktionsumfang wie 7.9.3)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,26 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.5 neu?
+
+Reiner Bugfix der Ereignisverarbeitung, keine neuen Funktionen:
+
+- **Jede Zustandsänderung mit ihrem eigenen Zustand:** 7.9.4 wertete mehrere
+  kurz hintereinander eintreffende Zustandsänderungen gemeinsam gegen den
+  *letzten* Zustand des Hauses aus. Eine Tür, die auf- und gleich wieder
+  zuging, galt beide Male als zu; eine Person, die ging und zurückkam,
+  löste kein „gegangen“ aus; Wertänderungs-Überwachungen und der
+  Heizungs-Lernzyklus sahen spätere Werte. Jetzt sieht jede Änderung genau
+  den Zustand, den sie gesetzt hat, und das übrige Haus so, wie es in diesem
+  Moment war.
+- **Robuster:** Ein Fehler beim Einlesen der Geräte beendet die
+  Ereignisverarbeitung nicht mehr; nach einem Neuladen der Integration kann
+  kein alter Worker neben dem neuen weiterlaufen; die feste Geräteauswahl
+  wird je Ereignis als Mengenabfrage statt als Listendurchlauf geprüft.
+- Die Startup-Verbesserung aus 7.9.4 bleibt vollständig erhalten. Sicherheits-,
+  Bestätigungs-, Berechtigungs- und Datenschutzgrenzen sind unverändert.
+  Details und Messungen: `docs/umsetzung-7.9.5.md`.
 
 ## Was ist in Version 7.9.4 neu?
 
@@ -2412,6 +2432,20 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.5:
+
+```text
+9703 passed, 12 skipped, 0 failed (Stub-Suite, lokal, Python 3.12 und 3.13, auch mit hassil 3.12); tests_ha 19 passed
+Neu: tests/test_event_runtime_correctness_795.py 15 Fälle (gegen 7.9.4: 15 rot), tests_ha/test_event_runtime_correctness.py 1 Fall (gegen 7.9.4: rot, 903 von 1206 Ereignissen mit falschem Zustand)
+Echtes HA, 6000 Zustandsänderungen (Sturmtest 7.9.4): weiterhin kein Task je Ereignis, 0 Schreibvorgänge, 0,49 s (7.9.4: 0,44 s)
+Sprachverständnis-Gate: 463 passed
+Korpus-Signaturen 7.9.5 (docs/perf/corpus-signatures-7.9.5.json): 4098 Sätze aus 7.9.4 unverändert, 3 neue Einträge (Test-Docstrings), 0 geändert (docs/perf/corpus-signatures-7.9.5-begruendung.md)
+Shadow-Vergleich 2131 EQUIVALENT; Arbiter 0 SAFETY_DRIFT
+Entwicklungs-Benchmark 7.7 und 7.8: unsafe_execution_count 0; alle Latenzbudgets der CI eingehalten
+Live-Testbett nach frischer Installation und Neustart: 230/230 (inklusive Proaktiv), HTTP nach Neustart in 2,0 s, check_log ohne HomeIntent-Traceback (einziger Treffer: libturbojpeg von HA, nur wegen des lokalen venv-Pfads gezählt)
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+```
+
 Geprüfter Release-Stand von Version 7.9.4:
 
 ```text
@@ -2520,7 +2554,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.4.json
+  --check docs/perf/corpus-signatures-7.9.5.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

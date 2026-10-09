@@ -93,7 +93,7 @@ async def test_state_change_burst_creates_no_task_or_write_per_event(
     runtime = entry.runtime_data.situation_runtime
     assert getattr(runtime, "_dropped", None) == 0
     pending = runtime._pending
-    assert pending is None or pending.empty()
+    assert not pending
     # Unselected sensors are filtered in the callback; selected ones are
     # all evaluated, in order, by the single worker.
     assert len(processed) == (2 * BURST if selected else 0)
