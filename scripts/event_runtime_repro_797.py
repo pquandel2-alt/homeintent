@@ -10,6 +10,7 @@ They intentionally enqueue bursts without yielding before the worker runs.
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import logging
 import sys
@@ -262,16 +263,27 @@ async def _unload_pending() -> dict[str, Any]:
 
 
 async def _main() -> dict[str, Any]:
-    scenarios = {
-        "full_queue_expected_effect": await _full_effect(),
-        "category_vs_protected": await _priority_order(),
-        "negative_relevance_6000": await _negative_filter(),
-        "drain_6000": await _unique_drain(6000, "drain"),
-        "ten_bursts": await _repeated_bursts(),
-        "unique_50000": await _unique_drain(50_000, "extreme"),
-        "snapshot_retry": await _snapshot_retry(),
-        "unload_pending": await _unload_pending(),
-    }
+    # Each harness deliberately creates reference cycles similar to Home
+    # Assistant's listener ownership.  A real unload releases those roots;
+    # collect between isolated scenarios so the diagnostic process itself
+    # does not make the runtime's bounded retention look cumulative.
+    scenarios: dict[str, dict[str, Any]] = {}
+    scenarios["full_queue_expected_effect"] = await _full_effect()
+    gc.collect()
+    scenarios["category_vs_protected"] = await _priority_order()
+    gc.collect()
+    scenarios["negative_relevance_6000"] = await _negative_filter()
+    gc.collect()
+    scenarios["drain_6000"] = await _unique_drain(6000, "drain")
+    gc.collect()
+    scenarios["ten_bursts"] = await _repeated_bursts()
+    gc.collect()
+    scenarios["unique_50000"] = await _unique_drain(50_000, "extreme")
+    gc.collect()
+    scenarios["snapshot_retry"] = await _snapshot_retry()
+    gc.collect()
+    scenarios["unload_pending"] = await _unload_pending()
+    gc.collect()
     totals = {
         "processed": sum(item["processed"] for item in scenarios.values()),
         "filtered": sum(item["filtered"] for item in scenarios.values()),
