@@ -199,6 +199,17 @@ class ProactiveRuntime:
     def enabled(self) -> bool:
         return self.engine.config.enabled
 
+    def is_relevant_event(self, entity_id: str, device_class: str | None) -> bool:
+        """Whether a state change can matter to V12 beyond its value (7.9.6).
+
+        The detector's own early gate plus the habit triggers; the
+        EventRuntime keeps such changes lossless (never merged).
+        """
+        return (
+            self._detector.is_relevant(entity_id, device_class)
+            or entity_id in self._habit_triggers
+        )
+
     # ------------------------------------------------------------ lifecycle
     async def async_start(self) -> Callable[[], None]:
         if self.enabled:

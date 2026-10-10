@@ -37,8 +37,10 @@ async def test_state_change_burst_creates_no_task_or_write_per_event(
     assert await async_setup_component(hass, "homeassistant", {})
     options = dict(SETUP_OPTIONS)
     if selected:
-        # Every storm sensor is selected: all events reach the worker.
+        # Every storm sensor is selected: all events reach the worker
+        # (7.9.6: which needs an active consumer).
         options["selected_entities"] = [f"sensor.storm_{index}" for index in range(BURST)]
+        options["agent_event_categories"] = "opening_while_away"
     entry = MockConfigEntry(domain=DOMAIN, title="HomeIntent", data={}, options=options)
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

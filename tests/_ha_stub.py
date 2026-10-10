@@ -34,7 +34,19 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
-from unittest.mock import AsyncMock
+from unittest.mock import DEFAULT, AsyncMock
+
+
+def _service_response(*_args: Any, **kwargs: Any) -> Any:
+    """What Home Assistant's ``ServiceRegistry.async_call`` returns (7.9.6).
+
+    ``ServiceResponse``: a mapping for ``return_response=True`` (no matching
+    entity answered: empty), otherwise ``None``. A bare ``AsyncMock`` answered
+    with another ``AsyncMock`` instead, whose ``.items()`` produced a
+    coroutine nobody awaited (the calendar read in ``flatten_calendar_response``
+    raised the "coroutine ... was never awaited" ``RuntimeWarning``).
+    """
+    return {} if kwargs.get("return_response") else None
 
 
 class ServiceMock(AsyncMock):
@@ -44,7 +56,20 @@ class ServiceMock(AsyncMock):
     Since 7.3.2 every HomeIntent service call passes ``context=``; existing
     tests keep asserting domain/service/data/targets unchanged, while the
     context itself is verified by ``tests/test_execution_trace.py``.
+
+    Unless a test sets its own ``return_value`` or ``side_effect``, a call
+    answers like Home Assistant (``_service_response``).
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if "side_effect" not in kwargs and "return_value" not in kwargs:
+            self.side_effect = self._ha_response
+
+    def _ha_response(self, *args: Any, **kwargs: Any) -> Any:
+        if self._mock_return_value is not DEFAULT:
+            return DEFAULT  # a test configured ``return_value``
+        return _service_response(*args, **kwargs)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         context = kwargs.pop("context", None)

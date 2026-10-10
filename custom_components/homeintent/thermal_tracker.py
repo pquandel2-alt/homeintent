@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Mapping, cast
+from typing import Callable, Iterable, Mapping, cast
 
 from .entities import EntitySnapshot
 from .goal_run import GoalRun, GoalRunStatus, GoalRunStore
@@ -60,10 +60,66 @@ class ThermalExperienceTracker:
         self._write_lock = threading.Lock()
         self._generation = 0
         self._written_generation = 0
+        # Window sensors in each active cycle's area, taken from the snapshot
+        # the cycle started (or was restored) with (7.9.6 interest).
+        self._area_windows: dict[str, frozenset[str]] = {}
+        self._watched: frozenset[str] = frozenset()
+        self._watch_listeners: list[Callable[[], None]] = []
 
     @property
     def active(self) -> tuple[ActiveThermalCycle, ...]:
         return tuple(self._active[key] for key in sorted(self._active))
+
+    @property
+    def has_active_cycle(self) -> bool:
+        return bool(self._active)
+
+    @property
+    def watched_entity_ids(self) -> frozenset[str]:
+        """Entities an active cycle reads (read-only, empty without a cycle).
+
+        Climate entity, temperature sensor, configured outdoor sensor and the
+        window sensors of the cycle's area - everything
+        ``async_observe_states`` looks at. The EventRuntime forwards state
+        changes only while this is non-empty (7.9.6).
+        """
+        return self._watched
+
+    def add_watch_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call ``listener`` whenever ``watched_entity_ids`` changes."""
+        self._watch_listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._watch_listeners:
+                self._watch_listeners.remove(listener)
+
+        return remove
+
+    def _remember_windows(
+        self, climate_id: str, area_id: str, entities: Iterable[EntitySnapshot]
+    ) -> None:
+        self._area_windows[climate_id] = frozenset(
+            item.entity_id for item in entities
+            if item.area_id == area_id and item.device_class == "window"
+        )
+
+    def _update_watched(self) -> None:
+        for climate_id in tuple(self._area_windows):
+            if climate_id not in self._active:
+                del self._area_windows[climate_id]
+        watched: set[str] = set()
+        for climate_id, cycle in self._active.items():
+            watched.add(climate_id)
+            watched.add(cycle.binding.temperature_entity_id)
+            if cycle.binding.outdoor_temperature_entity_id is not None:
+                watched.add(cycle.binding.outdoor_temperature_entity_id)
+            watched.update(self._area_windows.get(climate_id, ()))
+        frozen = frozenset(watched)
+        if frozen == self._watched:
+            return
+        self._watched = frozen
+        for listener in tuple(self._watch_listeners):
+            listener()
 
     @property
     def predictive_house(self):
@@ -137,6 +193,8 @@ class ThermalExperienceTracker:
             expected_setpoint=target.value,
             model_id=model.model_id if model is not None else None,
         )
+        self._remember_windows(plan.entity_id, climate.area_id, entities)
+        self._update_watched()
         self._persist()
 
     def associate_goal_run(self, run: GoalRun) -> None:
@@ -217,8 +275,11 @@ class ThermalExperienceTracker:
                 completed.append((climate_id, cycle, False))
             elif current >= cycle.target_celsius - 0.1:
                 completed.append((climate_id, cycle, True))
+        if completed:
+            for climate_id, _cycle, _reached in completed:
+                self._active.pop(climate_id, None)
+            self._update_watched()
         for climate_id, cycle, reached in completed:
-            self._active.pop(climate_id, None)
             observation = ThermalObservation(
                 cycle.started_at, occurred_at, cycle.binding.area_id,
                 cycle.binding.temperature_entity_id,
@@ -251,6 +312,7 @@ class ThermalExperienceTracker:
         cycle = self._active.pop(climate_entity_id, None)
         if cycle is None:
             return None
+        self._update_watched()
         by_id = {item.entity_id: item for item in entities}
         sensor = by_id.get(cycle.binding.temperature_entity_id)
         climate = by_id.get(climate_entity_id)
@@ -334,6 +396,10 @@ class ThermalExperienceTracker:
             if compatible:
                 restored[cycle.binding.climate_entity_id] = cycle
         self._active = restored
+        self._area_windows = {}
+        for climate_id, cycle in restored.items():
+            self._remember_windows(climate_id, cycle.binding.area_id, entities)
+        self._update_watched()
         # Startup runs on the event loop; the document is built here so the
         # worker thread never iterates state the loop may mutate.
         await self._async_persist()

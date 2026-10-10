@@ -38,6 +38,8 @@
     ,"custom_components/homeintent/house_graph.py"
     ,"custom_components/homeintent/memory.py"
     ,"custom_components/homeintent/situation.py"
+    ,"custom_components/homeintent/event_priority.py"
+    ,"custom_components/homeintent/event_interest.py"
     ,"custom_components/homeintent/planner.py"
     ,"custom_components/homeintent/response_planner.py"
     ,"custom_components/homeintent/proactive_decision.py"

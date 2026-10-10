@@ -37,7 +37,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.9.5.json
+          --check docs/perf/corpus-signatures-7.9.6.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
@@ -50,6 +50,16 @@ jobs:
       - name: Arbiter gegen Kaskade (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/arbiter_shadow.py --check
+      - name: Arbiter-Shadow ohne RuntimeWarning (7.9.6, auch bei GC gemeldete)
+        if: matrix.python-version == '3.12'
+        run: >-
+          python -W error::RuntimeWarning scripts/warning_gate.py
+          scripts/arbiter_shadow.py --check
+      - name: EventRuntime-Reproduktion 7.9.6 ohne RuntimeWarning
+        if: matrix.python-version == '3.12'
+        run: >-
+          python -W error::RuntimeWarning scripts/warning_gate.py
+          scripts/event_runtime_repro_796.py
       - name: V9-Latenzbudget bei großer Registry prüfen
         if: matrix.python-version == '3.12'
         run: >-
@@ -114,16 +124,21 @@ jobs:
           tests/test_learning_center_mutations.py
           tests/test_learning_center_panel.py
           tests/test_learning_center_views.py
-      - name: Tests mit Coverage ausführen
+      - name: Tests mit Coverage ausführen (RuntimeWarning = Fehler)
         if: matrix.python-version == '3.12'
         run: >-
           python -m pytest -q
+          -W error::RuntimeWarning
+          -W error::pytest.PytestUnraisableExceptionWarning
           --cov=custom_components/homeintent
           --cov-report=term-missing:skip-covered
           --cov-report=xml
-      - name: Tests ausführen
+      - name: Tests ausführen (RuntimeWarning = Fehler)
         if: matrix.python-version != '3.12'
-        run: python -m pytest -q
+        run: >-
+          python -m pytest -q
+          -W error::RuntimeWarning
+          -W error::pytest.PytestUnraisableExceptionWarning
       - name: Coverage-Bericht speichern
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -211,6 +226,8 @@ jobs:
           custom_components/homeintent/routine_intent.py
           custom_components/homeintent/procedure_intent.py
           custom_components/homeintent/effect_monitor.py
+          custom_components/homeintent/event_priority.py
+          custom_components/homeintent/event_interest.py
           custom_components/homeintent/management_understanding.py
           custom_components/homeintent/goal_model.py
           custom_components/homeintent/goal_run.py
@@ -277,8 +294,11 @@ jobs:
         run: python -m pip install "$(grep -E '^hassil==' requirements-ha-test.txt)"
       - name: Sprachverständnis-Sicherheitsgate
         run: bash scripts/run_language_eval.sh
-      - name: Tests ausführen
-        run: python -m pytest -q
+      - name: Tests ausführen (RuntimeWarning = Fehler)
+        run: >-
+          python -m pytest -q
+          -W error::RuntimeWarning
+          -W error::pytest.PytestUnraisableExceptionWarning
 
   live-testbed:
     # Ende-zu-Ende gegen echtes Home Assistant mit dem simulierten Haus
@@ -342,7 +362,11 @@ jobs:
       - name: Echtes Home Assistant installieren
         run: python -m pip install --requirement requirements-ha-test.txt
       - name: Options Flow und Learning Center gegen echtes Home Assistant prüfen
-        run: python -m pytest -q tests_ha
+        run: >-
+          python -m pytest -q
+          -W error::RuntimeWarning
+          -W error::pytest.PytestUnraisableExceptionWarning
+          tests_ha
 
   learning-center-ui:
     name: Learning Center mobile UI

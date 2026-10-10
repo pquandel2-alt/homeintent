@@ -273,6 +273,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await entry.runtime_data.bindings.async_load()
     await user_contexts.async_load()
     await profile_store.async_load()
+    # The one read of the monitor goals (7.9.6): afterwards events are
+    # evaluated from the store's cache and its interest sets.
+    await monitor_goals.async_load()
     await learning_manager.async_restore_models()
     from .hass_entities import build_entity_snapshots
     await thermal_tracker.async_restore(

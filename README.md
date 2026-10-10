@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.5** (Bugfix: Zustandsänderungen werden auch bei schnellen Folgen mit dem richtigen Zustand ausgewertet; Funktionsumfang wie 7.9.3)
+- Aktuelle Version: **7.9.6** (Bugfix: Sicherheitsereignisse gehen unter Last nicht mehr verloren, keine Ereignisarbeit ohne aktiven Verbraucher; Funktionsumfang wie 7.9.3)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,37 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.6 neu?
+
+Reiner Stabilitäts-, Safety- und Performance-Bugfix der Ereignisverarbeitung,
+keine neuen Funktionen:
+
+- **Sicherheitsereignisse werden unter Last nicht mehr verdrängt:** Rauch-,
+  Gas-, CO-, Wasser- und andere Alarm-/Problemsensoren werden bei voller
+  Warteschlange bevorzugt; sie verdrängen gewöhnliche Messwertänderungen.
+  Geprüft: hinter 6000 synchron eintreffenden Sensoränderungen erreichen
+  Rauch- und Wassermelder die Sicherheitsauswertung (0 verlorene kritische
+  und 0 verlorene verlustfreie Ereignisse, auch im echten Home Assistant).
+- **Keine Arbeit ohne Verbraucher:** Eine Zustandsänderung wird nur noch
+  eingereiht, wenn eine aktive HomeIntent-Funktion sie braucht (Ereignis-
+  kategorien, aktivierter Proaktiv-Kontext, erwartete Gerätewirkung,
+  Überwachungsziel, laufender Heizzyklus) oder sie sicherheitskritisch ist.
+  Ohne aktiven Verbraucher startet kein Worker und es wird kein Snapshot
+  gebaut.
+- **Ein Fehler beim Einlesen der Geräte verliert keine Ereignisse mehr:** Der
+  Stapel bleibt in der Warteschlange und wird mit begrenztem Backoff erneut
+  versucht.
+- **Überwachungsziele aus einem konsistenten Cache:** Die Ziele werden einmal
+  gelesen; Personenwechsel und Wertänderungen lösen keinen Dateizugriff mehr
+  aus. Gleichzeitiges Speichern und Löschen verliert keine Ziele.
+- **Calendar-RuntimeWarning behoben:** Die Ursache lag im Test-Double für
+  `hass.services.async_call` (es lieferte statt einer Service-Antwort ein
+  `AsyncMock`); ein CI-Gate lässt jede RuntimeWarning fehlschlagen.
+- Die historischen Zustandskorrekturen aus 7.9.5 bleiben erhalten. Keine
+  Änderung am Sprachverständnis oder an Sicherheits-, Bestätigungs-,
+  Berechtigungs- und Datenschutzgrenzen. Details, Grenzen und Messungen:
+  `docs/umsetzung-7.9.6.md`.
 
 ## Was ist in Version 7.9.5 neu?
 
@@ -2432,6 +2463,20 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.6:
+
+```text
+9745 passed, 12 skipped, 0 failed (Stub-Suite, Python 3.12 und 3.13, auch mit hassil 3.12; RuntimeWarning = Fehler); tests_ha 21 passed
+Neu: tests/test_event_runtime_hardening_796.py 42 Fälle, tests_ha/test_event_runtime_hardening.py 2 Fälle
+Echtes HA, 6000 synchrone Zustandsänderungen ohne Yield + Rauch/Wasser/ExpectedEffect: dropped_critical 0, dropped_lossless 0, worker_starts 1, pending_tasks 0, monitor_store_reads 0, 0,71 s (7.9.5: Rauch und Wasser verloren, 3,61 s)
+Ohne aktiven Verbraucher, 6000 Ereignisse: 0 Queue-Einträge, 0 Snapshots, 0 Worker-Starts
+Sprachverständnis-Gate: 463 passed; Korpus-Signaturen 7.9.6: 4101 Sätze aus 7.9.5 unverändert, 3 neue Einträge, 0 geändert (docs/perf/corpus-signatures-7.9.6-begruendung.md)
+Shadow-Vergleich 2131 EQUIVALENT; Arbiter 0 SAFETY_DRIFT, auch mit RuntimeWarning als Fehler (0 Funde)
+Entwicklungs-Benchmark 7.7 und 7.8: unsafe_execution_count 0; alle Latenzbudgets der CI eingehalten
+Live-Testbett nach frischer Installation und Neustart: 230/230 (inklusive Proaktiv), check_log ohne HomeIntent-Befund, ohne RuntimeWarning und ohne „Something is blocking Home Assistant“
+Pyright 0 Fehler (voll und alle Strict-Profile), Pyflakes 0
+```
+
 Geprüfter Release-Stand von Version 7.9.5:
 
 ```text
@@ -2554,7 +2599,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.5.json
+  --check docs/perf/corpus-signatures-7.9.6.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

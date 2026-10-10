@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import tempfile
 from dataclasses import dataclass, field, replace
@@ -29,6 +30,9 @@ from .goal_run import (
 )
 from .rate_monitor import ChangeDirection, RateRule, evaluate_rate, finding_message
 from .user_context import BindingStatus, NotificationTargetKind, UserContextStore
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class NotificationCategory(StrEnum):
@@ -74,55 +78,159 @@ class MonitorRecord:
 
 
 class MonitorGoalStore:
+    """Monitor goals on disk, read once and then served from memory (7.9.6).
+
+    7.9.5 read the JSON file again on every ``async_load()`` - once per
+    person transition and per watched sensor change. Now the first load
+    (single flight) fills an immutable record cache; ``async_load()`` returns
+    it without touching the disk until ``async_reload()`` asks for a fresh
+    read. ``async_save()``/``async_delete()`` serialize on one write lock,
+    write the file atomically and only then replace the cache and the
+    derived interest sets, so a failed write leaves both unchanged and two
+    concurrent writers never lose each other's records.
+    """
+
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self._lock = asyncio.Lock()
-        # Entities watched by value-change goals (7.9 W3): every sensor
-        # state change asks this set first, so no disk read happens for
-        # sensors nobody watches.
-        self._watched: frozenset[str] | None = None
-        # Single flight for the first read: a burst of sensor events before
-        # it finishes must not start one disk read each (7.9.4 P0).
-        self._watched_lock = asyncio.Lock()
+        self._records: tuple[MonitorRecord, ...] | None = None
+        # Single flight for reads (7.9.4 P0 for the watched set; 7.9.6 for
+        # the records themselves).
+        self._load_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
+        self._interest = _MonitorInterest.of(())
+        self._listeners: list[Callable[[], None]] = []
+        # File reads so far (tests and the EventRuntime metrics read it).
+        self.read_count = 0
+
+    # -- cache ------------------------------------------------------------
+    @property
+    def loaded(self) -> bool:
+        return self._records is not None
 
     async def async_load(self) -> tuple[MonitorRecord, ...]:
-        records = tuple(await asyncio.to_thread(self._read))
-        self._watched = _watched_entities(records)
-        return records
+        """The cached records; the first call reads the file exactly once.
+
+        An unreadable file (other than a missing one) is reported as empty
+        like before, but it is not cached: the next call reads again.
+        """
+        if self._records is not None:
+            return self._records
+        try:
+            return await self._async_ensure_loaded()
+        except OSError:
+            _LOGGER.warning(
+                "HomeIntent monitor goals could not be read from %s", self.path, exc_info=True
+            )
+            return ()
+
+    async def async_reload(self) -> tuple[MonitorRecord, ...]:
+        """Read the file again on purpose (e.g. after an external change)."""
+        async with self._write_lock:
+            async with self._load_lock:
+                records = tuple(await asyncio.to_thread(self._read))
+                self._replace_cache(records)
+                return records
 
     async def async_watched_entities(self) -> frozenset[str]:
-        if self._watched is None:
-            async with self._watched_lock:
-                if self._watched is None:
-                    await self.async_load()
-        return self._watched or frozenset()
+        """Sensors watched by value-change goals (7.9 W3)."""
+        await self.async_load()
+        return self._interest.value_entity_ids
 
+    # Synchronous, disk-free views for the EventRuntime interest index.
+    @property
+    def watched_value_entity_ids(self) -> frozenset[str]:
+        return self._interest.value_entity_ids
+
+    @property
+    def watched_person_entity_ids(self) -> frozenset[str]:
+        return self._interest.person_entity_ids
+
+    @property
+    def watched_nobody_home_person_ids(self) -> frozenset[str]:
+        return self._interest.nobody_home_person_ids
+
+    @property
+    def nobody_home_uses_household(self) -> bool:
+        """An enabled nobody-home goal follows the configured household.
+
+        Its persons come from ``UserContextStore`` and may change at any
+        time, so every ``person.*`` counts as watched.
+        """
+        return self._interest.nobody_home_uses_household
+
+    def add_change_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call ``listener`` after the cache (and interest sets) changed."""
+        self._listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+        return remove
+
+    # -- writes -----------------------------------------------------------
     async def async_save(self, record: MonitorRecord) -> None:
         if record.goal.kind is not GoalKind.MONITOR_AND_NOTIFY:
             raise ValueError("Only monitor-and-notify goals belong in this store")
         if not record.goal.goal_id:
             raise ValueError("Persistent goals require a goal id")
-        async with self._lock:
-            records = await asyncio.to_thread(self._read)
-            records = [item for item in records if item.goal.goal_id != record.goal.goal_id]
-            records.append(record)
-            await asyncio.to_thread(self._write, records)
-            self._watched = _watched_entities(records)
+        async with self._write_lock:
+            records = await self._async_ensure_loaded()
+            updated = tuple(
+                item for item in records if item.goal.goal_id != record.goal.goal_id
+            ) + (record,)
+            await asyncio.to_thread(self._write, updated)
+            self._replace_cache(updated)
 
     async def async_delete(self, goal_id: str) -> bool:
-        async with self._lock:
-            records = await asyncio.to_thread(self._read)
-            remaining = [item for item in records if item.goal.goal_id != goal_id]
+        async with self._write_lock:
+            records = await self._async_ensure_loaded()
+            remaining = tuple(item for item in records if item.goal.goal_id != goal_id)
             if len(remaining) == len(records):
                 return False
             await asyncio.to_thread(self._write, remaining)
-            self._watched = _watched_entities(remaining)
+            self._replace_cache(remaining)
             return True
 
+    async def _async_ensure_loaded(self) -> tuple[MonitorRecord, ...]:
+        """The cached records, reading them once; raises if unreadable.
+
+        Writers use this instead of ``async_load()``: writing after a failed
+        read would replace the stored goals with the new one alone.
+        """
+        if self._records is not None:
+            return self._records
+        async with self._load_lock:
+            if self._records is None:
+                records = tuple(await asyncio.to_thread(self._read))
+                self._replace_cache(records)
+            assert self._records is not None
+            return self._records
+
+    def _replace_cache(self, records: tuple[MonitorRecord, ...]) -> None:
+        self._records = records
+        self._interest = _MonitorInterest.of(records)
+        for listener in tuple(self._listeners):
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 - bookkeeping must not fail a write
+                _LOGGER.exception("HomeIntent monitor interest listener failed")
+
     def _read(self) -> list[MonitorRecord]:
+        """The stored records; raises on an I/O error other than a missing
+        file (7.9.6: a writer must not replace unreadable goals)."""
+        self.read_count += 1
         try:
-            raw: object = json.loads(self.path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            text = self.path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return []
+        return self._parse(text)
+
+    @staticmethod
+    def _parse(text: str) -> list[MonitorRecord]:
+        try:
+            raw: object = json.loads(text)
+        except json.JSONDecodeError:
             return []
         values = cast(Mapping[str, object], raw).get("goals", ()) if isinstance(raw, Mapping) else ()
         result: list[MonitorRecord] = []
@@ -195,11 +303,39 @@ def rate_rule_of(goal: GoalModel) -> RateRule | None:
     )
 
 
-def _watched_entities(records: Iterable[MonitorRecord]) -> frozenset[str]:
-    return frozenset(
-        rule.entity_id for record in records
-        if record.enabled and (rule := rate_rule_of(record.goal)) is not None
-    )
+@dataclass(frozen=True)
+class _MonitorInterest:
+    """What the enabled goals react to, derived with the record cache."""
+
+    value_entity_ids: frozenset[str]
+    person_entity_ids: frozenset[str]
+    nobody_home_person_ids: frozenset[str]
+    nobody_home_uses_household: bool
+
+    @classmethod
+    def of(cls, records: Iterable[MonitorRecord]) -> "_MonitorInterest":
+        values: set[str] = set()
+        persons: set[str] = set()
+        nobody: set[str] = set()
+        household = False
+        for record in records:
+            if not record.enabled:
+                continue
+            rule = rate_rule_of(record.goal)
+            if rule is not None:
+                values.add(rule.entity_id)
+            trigger = record.goal.trigger
+            if trigger is None:
+                continue
+            if trigger.kind in {"person_leaves_zone", "person_arrives_zone"}:
+                if trigger.person_entity_id:
+                    persons.add(trigger.person_entity_id)
+            elif trigger.kind == "nobody_home":
+                if trigger.household_person_ids:
+                    nobody.update(trigger.household_person_ids)
+                else:
+                    household = True
+        return cls(frozenset(values), frozenset(persons), frozenset(nobody), household)
 
 
 @dataclass
@@ -326,9 +462,12 @@ class MonitorGoalRuntime:
         now = occurred_at or datetime.now(timezone.utc)
         if now.tzinfo is None:
             raise ValueError("Monitor events require timezone-aware timestamps")
+        records = await self.store.async_load()
+        if not records:
+            return ()
         occurrence = occurrence_id or f"{person_entity_id}:{old_state}:{new_state}:{now.isoformat()}"
         results: list[GoalRun] = []
-        for record in await self.store.async_load():
+        for record in records:
             if not record.enabled or not _trigger_matches(
                 record.goal, person_entity_id, old_state, new_state, self.user_contexts
             ):

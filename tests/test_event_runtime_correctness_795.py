@@ -49,6 +49,7 @@ from homeintent.const import (  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.event_runtime import SituationRuntime  # noqa: E402
 from homeintent.runtime_data import HomeIntentRuntimeData  # noqa: E402
+from homeintent.service_call import ServiceCallPlan  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
 from homeassistant.core import HomeAssistant, State  # noqa: E402
 
@@ -264,19 +265,23 @@ def test_value_changes_report_each_events_own_value(monkeypatch):
 
 def test_effect_monitor_observes_every_intermediate_state(monkeypatch):
     hass, house, runtime = _setup(monkeypatch, [LIGHT])
+    effects = runtime._runtime_data.effect_monitor
     observed: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        runtime._runtime_data.effect_monitor, "observe",
+        effects, "observe",
         lambda entity_id, state: observed.append((entity_id, state)),
     )
     house.set(LIGHT, "off")
 
     async def scenario() -> None:
+        # 7.9.6: the effect monitor is a consumer while an effect is pending.
+        effects.register(ServiceCallPlan("light", "turn_on", LIGHT, {}))
         stop = runtime.async_start()
         house.set(LIGHT, "on")
         house.set(LIGHT, "off")
         await _settle(hass)
         stop()
+        await effects.async_close()
 
     asyncio.run(scenario())
     assert observed == [(LIGHT, "on"), (LIGHT, "off")]
@@ -409,6 +414,8 @@ def test_night_opening_closed_in_the_same_batch_is_still_signalled(monkeypatch):
 
 
 def test_failing_snapshot_build_neither_ends_the_worker_nor_hides_it(monkeypatch, caplog):
+    # 7.9.5 still lost the batch the failed build was for ("2 state changes
+    # not evaluated"); 7.9.6 keeps it queued and evaluates it on the retry.
     monkeypatch.setattr(event_runtime, "MAX_BATCH_EVENTS", 2)
     context = _RecordingContext()
     hass, house, runtime = _setup(monkeypatch, [DOOR], proactive_context=context)
@@ -435,14 +442,18 @@ def test_failing_snapshot_build_neither_ends_the_worker_nor_hides_it(monkeypatch
 
     asyncio.run(scenario())
     assert len(hass._tasks) == 1
-    assert [(entity, state) for entity, state, *_ in context.seen] == [(DOOR, "on")]
+    assert [(entity, state) for entity, state, *_ in context.seen] == [
+        (DOOR, "on"), (DOOR, "off"), (DOOR, "on"),
+    ]
     errors = [record for record in caplog.records if record.levelno == logging.ERROR]
     assert len(errors) == 1
-    assert "2 state changes not evaluated" in errors[0].getMessage()
+    assert "3 state changes stay queued" in errors[0].getMessage()
 
 
 def test_a_worker_surviving_its_cancellation_never_drains_a_new_queue(monkeypatch):
     hass, house, runtime = _setup(monkeypatch, [DOOR])
+    # 7.9.6: a selected event is queued only for an active consumer.
+    runtime._entry.options[CONF_AGENT_EVENT_CATEGORIES] = "opening_while_away"
     house.set(DOOR, "off")
     processed: list[str] = []
 
@@ -505,8 +516,12 @@ def test_runtime_uses_the_set_filter_for_every_house_event(monkeypatch):
     hass = HomeAssistant()
     hass.bus = _Bus()
     selected = [f"sensor.s_{index}" for index in range(3000)]
+    # 7.9.6: a selected event is queued only for an active consumer.
     runtime = SituationRuntime(
-        hass, ConfigEntry(options={CONF_SELECTED_ENTITIES: selected}),
+        hass, ConfigEntry(options={
+            CONF_SELECTED_ENTITIES: selected,
+            CONF_AGENT_EVENT_CATEGORIES: "device_unavailable",
+        }),
         HomeIntentRuntimeData(),
     )
     def _linear(*_args: Any) -> bool:
