@@ -1238,7 +1238,11 @@ S("n793-b1-weather", L793, "B1: Wetterfragen aus der weather-Entität",
   service("haus_sim.reset", {"full": True}), WEATHER_RESET,
   say("Wie ist das Wetter gerade?", no_calls=True, all=["wettervorhersage"]),
   say("Wie wird das Wetter morgen?", no_calls=True, all=["morgen", "regen"]),
-  set_("weather.zuhause", {"rain_from_hour": 2}, settle=1),
+  # Offset 0 keeps the simulated rain in the current local day even when the
+  # CI job reaches this scenario shortly before midnight.  A positive offset
+  # made this fixture depend on wall-clock time and produced a correct "Nein"
+  # from HomeIntent once the forecast crossed midnight.
+  set_("weather.zuhause", {"rain_from_hour": 0}, settle=1),
   say("Regnet es heute noch?", no_calls=True, all=["ja"]),
   WEATHER_RESET,
   say("Brauche ich heute einen Schirm?", no_calls=True, all=["nein"]))
@@ -1251,7 +1255,9 @@ S("n793-b1-awning-rain", L793, "B1: Markise bei Regenvorhersage einfahren – wi
   service("haus_sim.clear_log"),
   trigger("Wenn Regen angesagt ist"),
   check(not_calls=["cover.markise:close_cover"], state={"cover.markise": "open"}),
-  set_("weather.zuhause", {"rain_from_hour": 1}, settle=1),
+  # Keep this live fixture independent of the local hour for the same reason
+  # as n793-b1-weather above.
+  set_("weather.zuhause", {"rain_from_hour": 0}, settle=1),
   trigger("Wenn Regen angesagt ist", settle=8),
   check(calls=["cover.markise:close_cover"], state={"cover.markise": "closed"}),
   WEATHER_RESET)
