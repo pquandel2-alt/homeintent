@@ -84,11 +84,18 @@ class _Bus:
 
 
 def _event(entity_id: str, old: str, new: str, offset: int = 0) -> Any:
+    # The window's states carry its device class like Home Assistant's do;
+    # the category filter reads it from the event (7.9.7).
+    attributes = {"device_class": "window"} if entity_id == WINDOW else {}
     return SimpleNamespace(
         data={
             "entity_id": entity_id,
-            "old_state": SimpleNamespace(state=old),
-            "new_state": SimpleNamespace(state=new),
+            "old_state": SimpleNamespace(
+                entity_id=entity_id, state=old, attributes=attributes,
+            ),
+            "new_state": SimpleNamespace(
+                entity_id=entity_id, state=new, attributes=attributes,
+            ),
         },
         time_fired=T0 + timedelta(seconds=offset),
         context=SimpleNamespace(id=f"ctx-{entity_id}-{offset}"),
@@ -249,7 +256,9 @@ def test_events_are_processed_in_order_and_a_failure_does_not_stop_the_worker(mo
         for state in ("1", "boom", "2", "3"):
             hass.bus.fire(_event(WINDOW, "x", state))
         await _settle(hass)
-        hass.bus.fire(_event(LIGHT, "x", "4"))  # a finished worker restarts
+        # A finished worker restarts. (7.9.7: the window again - the
+        # light is no input of ``opening_while_away`` any more.)
+        hass.bus.fire(_event(WINDOW, "x", "4"))
         await _settle(hass)
         stop()
 

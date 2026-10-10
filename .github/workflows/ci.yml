@@ -37,7 +37,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.9.6.json
+          --check docs/perf/corpus-signatures-7.9.7.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
@@ -60,6 +60,11 @@ jobs:
         run: >-
           python -W error::RuntimeWarning scripts/warning_gate.py
           scripts/event_runtime_repro_796.py
+      - name: EventRuntime-Reproduktion 7.9.7 ohne RuntimeWarning
+        if: matrix.python-version == '3.12'
+        run: >-
+          python -W error::RuntimeWarning scripts/warning_gate.py
+          scripts/event_runtime_repro_797.py
       - name: V9-Latenzbudget bei großer Registry prüfen
         if: matrix.python-version == '3.12'
         run: >-

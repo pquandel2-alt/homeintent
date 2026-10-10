@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.6** (Bugfix: Sicherheitsereignisse gehen unter Last nicht mehr verloren, keine Ereignisarbeit ohne aktiven Verbraucher; Funktionsumfang wie 7.9.3)
+- Aktuelle Version: **7.9.7** (Bugfix: erwartete Gerätewirkungen und Überwachungsziele gehen unter Last nicht mehr verloren, Ereigniskategorien verarbeiten nur ihre eigenen Ereignisse, kein Speicherrest nach Lastspitzen; Funktionsumfang wie 7.9.3)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,36 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.7 neu?
+
+Reiner Stabilitäts-, Überlastungs- und Speicher-Bugfix der
+Ereignisverarbeitung, keine neuen Funktionen:
+
+- **Direkt beobachtete Ereignisse haben Vorrang vor gewöhnlichen:** Die
+  Zustandsänderung eines Geräts mit erwarteter Wirkung, eines
+  Überwachungsziels (Person, Messwert) oder eines laufenden Heizzyklus wird
+  nicht mehr hinter tausenden gewöhnlichen Ereignissen verworfen. 7.9.6
+  meldete in diesem Fall fälschlich „Die erwartete Gerätewirkung wurde nicht
+  beobachtet“. Ein Sicherheitsereignis verdrängt zuerst gewöhnliche
+  Ereignisse und nie zuerst eine erwartete Wirkung.
+- **Ereigniskategorien verarbeiten nur, was ihre Regel braucht:** Eine
+  aktivierte Kategorie wie `safety` macht nicht mehr jeden Schalter und jeden
+  Temperatursensor des Hauses zum Ereignis. Geprüft: 6000 gewöhnliche
+  Schalter- und Sensoränderungen unter `safety` erzeugen 0 Warteschlangen-
+  Einträge, 0 Snapshots und keinen Worker; der Rauchmelder bleibt relevant.
+- **Proaktiv-Kontext nur für relevante Ereignisse:** Was der Proaktiv-Kontext
+  selbst als irrelevant einstuft, startet keinen Worker mehr.
+- **Kein Speicherrest nach Lastspitzen:** Nach vollständig abgearbeiteter
+  Warteschlange werden alle Hilfsstrukturen sofort freigegeben (7.9.6 hielt
+  nach 6000 Ereignissen noch 6000 Ereignis-/Zustandsobjekte). Die gesamte
+  Buchführung ist hart begrenzt, auch bei 50 000 verschiedenen Geräten;
+  reicht sie nicht, wird die Hausansicht ausdrücklich eingeschränkt statt
+  zukünftige Zustände zu zeigen.
+- Alle Korrekturen aus 7.9.4 bis 7.9.6 bleiben erhalten. Keine Änderung am
+  Sprachverständnis oder an Sicherheits-, Bestätigungs-, Berechtigungs- und
+  Datenschutzgrenzen. Details, Grenzen und Messungen:
+  `docs/umsetzung-7.9.7.md`.
 
 ## Was ist in Version 7.9.6 neu?
 
@@ -2463,6 +2493,12 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.7:
+
+```text
+RELEASE_STAND_797
+```
+
 Geprüfter Release-Stand von Version 7.9.6:
 
 ```text
@@ -2599,7 +2635,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.6.json
+  --check docs/perf/corpus-signatures-7.9.7.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

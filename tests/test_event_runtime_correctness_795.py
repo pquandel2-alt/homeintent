@@ -454,7 +454,9 @@ def test_a_worker_surviving_its_cancellation_never_drains_a_new_queue(monkeypatc
     hass, house, runtime = _setup(monkeypatch, [DOOR])
     # 7.9.6: a selected event is queued only for an active consumer.
     runtime._entry.options[CONF_AGENT_EVENT_CATEGORIES] = "opening_while_away"
-    house.set(DOOR, "off")
+    # The door carries its device class: ``opening_while_away`` reads it
+    # from the event (7.9.7).
+    house.set(DOOR, "off", device_class="door")
     processed: list[str] = []
 
     async def scenario() -> None:
@@ -471,15 +473,15 @@ def test_a_worker_surviving_its_cancellation_never_drains_a_new_queue(monkeypatc
 
         monkeypatch.setattr(runtime, "_async_process_state_changed", _process)
         stop = runtime.async_start()
-        house.set(DOOR, "hangs")
-        house.set(DOOR, "lost")  # still queued when the runtime stops
+        house.set(DOOR, "hangs", device_class="door")
+        house.set(DOOR, "lost", device_class="door")  # still queued when the runtime stops
         for _ in range(3):
             await asyncio.sleep(0)
         stop()
         await asyncio.sleep(0)
         restarted_stop = runtime.async_start()
         for state in ("1", "2", "3"):
-            house.set(DOOR, state)
+            house.set(DOOR, state, device_class="door")
         for _ in range(3):
             await asyncio.sleep(0)
         gate.set()
@@ -538,8 +540,10 @@ def test_runtime_uses_the_set_filter_for_every_house_event(monkeypatch):
                 "entity_id": f"sensor.fremd_{index}",
                 "old_state": None, "new_state": State("x", "1"),
             }))
+        # 7.9.7: ``device_unavailable`` needs a change to ``unavailable``.
         hass.bus.fire(SimpleNamespace(data={
-            "entity_id": "sensor.s_2999", "old_state": None, "new_state": State("x", "1"),
+            "entity_id": "sensor.s_2999", "old_state": None,
+            "new_state": State("x", "unavailable"),
         }))
         pending: Any = runtime._pending
         queued = 0 if pending is None else len(pending)

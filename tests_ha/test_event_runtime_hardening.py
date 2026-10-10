@@ -95,8 +95,11 @@ async def test_six_thousand_changes_without_a_yield_keep_critical_and_lossless(
     hass.states.async_set(LIGHT, "off")
     options = dict(SETUP_OPTIONS)
     options["selected_entities"] = [*sensors, SMOKE, MOISTURE, LIGHT]
-    # A house-wide consumer: every selected change is of interest.
-    options["agent_event_categories"] = "safety"
+    # A house-wide consumer: every selected change is of interest (7.9.7:
+    # ``safety`` alone asks only for safety devices; routine detection with
+    # its category still observes every selected entity).
+    options["agent_event_categories"] = "safety,routine_anomaly"
+    options["routine_detection_enabled"] = True
     entry = await _setup(hass, options)
     data = entry.runtime_data
     runtime = data.situation_runtime

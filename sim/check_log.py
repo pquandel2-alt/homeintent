@@ -7,7 +7,10 @@ Acceptance rule of the live test: no traceback from HomeIntent, no
 that points at HomeIntent code; no recorder read outside the recorder's
 executor (7.9.3). Since 7.9.6 also, wherever they come from: a RuntimeWarning
 (e.g. "coroutine ... was never awaited"), "Task was destroyed but it is
-pending" and "Something is blocking Home Assistant".
+pending" and "Something is blocking Home Assistant". Since 7.9.7 also a
+dropped safety-critical ("SAFETY: HomeIntent dropped ...") or watched state
+change (expected effect, monitor goal, thermal cycle): the test bed never
+comes near the queue bound, so any such drop is unexpected.
 """
 
 from __future__ import annotations
@@ -29,7 +32,8 @@ _BAD_RE = re.compile(
 _ANY_RE = re.compile(
     r"accesses the database without the database executor|"
     r"RuntimeWarning|was never awaited|Task was destroyed but it is pending|"
-    r"Something is blocking Home Assistant"
+    r"Something is blocking Home Assistant|"
+    r"SAFETY: HomeIntent dropped|HomeIntent dropped a watched state change"
 )
 
 

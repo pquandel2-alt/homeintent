@@ -25,7 +25,7 @@ from .const import (
 from .agent_config_validation import parse_event_categories
 from .entities import EntitySnapshot
 from .event_interest import EventInterestIndex
-from .event_priority import EventPriority
+from .event_priority import EVICTION_ORDER, PRIORITY_RANK, EventPriority
 from .hass_entities import (
     SelectedEntityFilter,
     build_entity_snapshots,
@@ -58,8 +58,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Live entries (to evaluate or kept for the house view) waiting for the single
 # worker (7.9.4 P0). The bound keeps memory finite; under overload the
-# priority decides what goes first (7.9.6): coalescible before lossless,
-# critical never for ordinary events.
+# rank decides what goes first (7.9.6, ranks split in 7.9.7): an incoming
+# event displaces only queued events of a strictly lower rank.
 MAX_PENDING_EVENTS = 4096
 # Events taken from the queue per snapshot build. The snapshot is the house
 # as it is now; each event is evaluated against the house as it was when the
@@ -68,12 +68,31 @@ MAX_PENDING_EVENTS = 4096
 # O(queue / batch) rewinds of the whole queue; 7.9.6 takes 1024 instead of
 # 256 (the view is exact for any batch size, a snapshot per batch remains).
 MAX_BATCH_EVENTS = 1024
+# Evicted entries left in the queue before it is rebuilt (they hold no event
+# or state any more, 7.9.7: a fixed bound instead of one growing with the
+# queue).
+MAX_TOMBSTONES = 1024
+# Entities whose given-up changes are remembered for the house view, and
+# merged evaluations whose first previous state is carried (7.9.7). Beyond
+# that the exact history is given up explicitly (``history_degraded``)
+# instead of growing with the number of distinct entities.
+MAX_GAPS = 4096
+MAX_CARRIED = 4096
+# Upper bound of everything one generation retains that refers to events or
+# states: queue (live + tombstones), ``latest`` (queued + one batch in
+# flight), gaps and carried previous states. The helper deques only hold
+# entries of the queue.
+MAX_RETAINED_ENTRIES = (
+    MAX_PENDING_EVENTS + MAX_TOMBSTONES
+    + MAX_PENDING_EVENTS + MAX_BATCH_EVENTS
+    + MAX_GAPS + MAX_CARRIED
+)
 _DROP_WARNING_INTERVAL_SECONDS = 60.0
 # The worker hands the event loop back after this much work in one go.
 _YIELD_AFTER_SECONDS = 0.02
 # A failed snapshot build keeps the batch queued and is retried with an
 # exponential backoff (7.9.6); after ``SNAPSHOT_MAX_ATTEMPTS`` failures in a
-# row the batch is evaluated without registry data (critical and lossless
+# row the batch is evaluated without registry data (all but coalescible
 # events) instead of waiting forever.
 SNAPSHOT_MAX_ATTEMPTS = 5
 SNAPSHOT_RETRY_BASE_SECONDS = 0.05
@@ -87,19 +106,31 @@ class EventRuntimeMetrics:
 
     ``received`` = ``filtered_unselected`` + ``filtered_no_interest`` +
     ``queued`` + events rejected by a full queue (``dropped_*`` of the
-    incoming event). ``coalesced`` counts evaluations merged into a later
+    incoming event). ``filtered_by_category`` is the part of
+    ``filtered_no_interest`` filtered while agent event categories are
+    configured (7.9.7). ``coalesced`` counts evaluations merged into a later
     event of the same entity; ``dropped_*`` counts evaluations lost to the
-    queue bound, per priority. ``view_evictions`` counts history-only
-    entries given up under overload (no evaluation is lost by that).
+    queue bound, per rank; ``dropped_lossless`` is the sum of the protected,
+    routine and category drops (the 7.9.6 rank they were split from).
+    ``view_evictions`` counts history-only entries given up under overload
+    (no evaluation is lost by that). ``history_degraded`` counts given-up
+    changes whose exact history no longer fit the bookkeeping bound
+    (``MAX_GAPS``/``MAX_CARRIED``); ``max_retained_entries`` is the
+    high-water mark of the retained references (``MAX_RETAINED_ENTRIES``);
+    ``cleanup_runs`` counts releases of the bookkeeping after a full drain.
     """
 
     received: int = 0
     filtered_unselected: int = 0
     filtered_no_interest: int = 0
+    filtered_by_category: int = 0
     queued: int = 0
     processed: int = 0
     coalesced: int = 0
     dropped_coalescible: int = 0
+    dropped_category: int = 0
+    dropped_routine: int = 0
+    dropped_protected: int = 0
     dropped_lossless: int = 0
     dropped_critical: int = 0
     view_evictions: int = 0
@@ -109,6 +140,10 @@ class EventRuntimeMetrics:
     snapshot_degraded_batches: int = 0
     worker_starts: int = 0
     max_queue_depth: int = 0
+    history_degraded: int = 0
+    history_degraded_batches: int = 0
+    max_retained_entries: int = 0
+    cleanup_runs: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return dict(asdict(self))
@@ -147,6 +182,10 @@ class _Entry:
         self.previous = old_state
         self.process = True
         self.status = _QUEUED
+
+    def release(self) -> None:
+        """Drop the references to the event and its states."""
+        self.event = self.old_state = self.new_state = self.previous = None
 
 
 class _Gap:
@@ -191,6 +230,12 @@ class _Generation:
     A worker belongs to exactly one generation; after a stop (and a restart
     with a new generation) an old worker can neither drain nor count into
     the new one (7.9.5/7.9.6).
+
+    Besides the queue (global order) every evictable rank has its own deque
+    (oldest first) so a full queue finds the lowest-ranked victim without a
+    scan. Entries leave the helper deques lazily (stale heads) and on
+    ``compact()``; after a full drain ``release_drained()`` empties every
+    structure (7.9.7) - the metrics stay.
     """
 
     def __init__(self) -> None:
@@ -198,20 +243,45 @@ class _Generation:
         self.live = 0
         self.tombstones = 0
         self.seq = 0
-        self.coalescible: deque[_Entry] = deque()
+        self.by_priority: dict[EventPriority, deque[_Entry]] = {
+            priority: deque() for priority in EVICTION_ORDER
+        }
         self.view_only: deque[_Entry] = deque()
-        self.lossless: deque[_Entry] = deque()
         self.latest: dict[str, _Entry] = {}
         self.carry_previous: dict[str, Any] = {}
         self.unprocessed_by_entity: dict[str, int] = {}
         self.gaps: dict[str, _Gap] = {}
+        # Changes given up without a gap (``MAX_GAPS``) lie between these
+        # sequence numbers (0: the history is exact).
+        self.history_degraded_from = 0
+        self.history_degraded_until = 0
+        self.gaps_pruned_at: int | None = None
         self.metrics = EventRuntimeMetrics()
         self.stopped = False
         self.created_queue = False
         self.snapshot_failures_in_row = 0
         self.last_drop_warning: float | None = None
         self.last_critical_warning: float | None = None
+        self.last_protected_warning: float | None = None
+        self.last_degraded_warning: float | None = None
         self.last_snapshot_error: float | None = None
+
+    # Per-rank deques by name (tests, diagnostics).
+    @property
+    def coalescible(self) -> deque[_Entry]:
+        return self.by_priority[EventPriority.COALESCIBLE]
+
+    @property
+    def category(self) -> deque[_Entry]:
+        return self.by_priority[EventPriority.CATEGORY]
+
+    @property
+    def routine(self) -> deque[_Entry]:
+        return self.by_priority[EventPriority.ROUTINE]
+
+    @property
+    def protected(self) -> deque[_Entry]:
+        return self.by_priority[EventPriority.PROTECTED]
 
     def oldest_live_seq(self) -> int | None:
         while self.queue and self.queue[0].status != _QUEUED:
@@ -219,25 +289,33 @@ class _Generation:
             self.tombstones -= 1
         return self.queue[0].seq if self.queue else None
 
-    def take(self, limit: int) -> list[_Entry]:
+    def take(self, limit: int, until_seq: int | None = None) -> list[_Entry]:
+        """Up to ``limit`` queued entries in order (none after ``until_seq``)."""
         batch: list[_Entry] = []
         while self.queue and len(batch) < limit:
-            entry = self.queue.popleft()
+            entry = self.queue[0]
             if entry.status != _QUEUED:
+                self.queue.popleft()
                 self.tombstones -= 1
                 continue
+            if until_seq is not None and entry.seq > until_seq:
+                break
+            self.queue.popleft()
             entry.status = _TAKEN
             self.live -= 1
             batch.append(entry)
-        while self.coalescible and self.coalescible[0].status != _QUEUED:
-            self.coalescible.popleft()
-        while self.lossless and self.lossless[0].status != _QUEUED:
-            self.lossless.popleft()
-        while self.view_only and self.view_only[0].status != _QUEUED:
-            self.view_only.popleft()
+        for order in (*self.by_priority.values(), self.view_only):
+            while order and order[0].status != _QUEUED:
+                order.popleft()
         # Gaps stay until a view built after them no longer needs them
         # (``_HouseView.for_batch``): this batch may still predate them.
         return batch
+
+    def finish(self, entry: _Entry) -> None:
+        """``entry`` is evaluated (or given up): release what refers to it."""
+        entry.status = _DONE
+        if self.latest.get(entry.entity_id) is entry:
+            del self.latest[entry.entity_id]
 
     def queued_entries(self) -> list[_Entry]:
         return [entry for entry in self.queue if entry.status == _QUEUED]
@@ -249,18 +327,109 @@ class _Generation:
         else:
             self.unprocessed_by_entity.pop(entity_id, None)
 
-    def record_gap(self, entity_id: str, seq: int, old_state: Any, new_state: Any) -> None:
+    def record_gap(self, entity_id: str, seq: int, old_state: Any, new_state: Any) -> bool:
+        """Remember a given-up change for the house view of queued events.
+
+        ``False`` when the change no longer fits ``MAX_GAPS``: the exact
+        history is given up up to ``seq`` (``history_degraded_until``).
+        """
         oldest = self.oldest_live_seq()
+        if oldest is None:
+            # Nothing queued precedes it: every later view already sees it.
+            return True
         gap = self.gaps.get(entity_id)
-        if gap is None or oldest is None or gap.last_seq < oldest:
-            self.gaps[entity_id] = _Gap(seq, old_state, new_state)
-        else:
+        if gap is not None and gap.last_seq >= oldest:
             gap.extend(seq, old_state, new_state)
+            return True
+        if gap is None and len(self.gaps) >= MAX_GAPS and self.gaps_pruned_at != oldest:
+            # Gaps entirely before the oldest queued event are no longer
+            # needed; prune once per oldest event, not per change.
+            self.gaps_pruned_at = oldest
+            for stale in [key for key, item in self.gaps.items() if item.last_seq < oldest]:
+                del self.gaps[stale]
+        if gap is None and len(self.gaps) >= MAX_GAPS:
+            if not self.history_degraded_until:
+                self.history_degraded_from = seq
+            self.history_degraded_until = max(self.history_degraded_until, seq)
+            self.metrics.history_degraded += 1
+            return False
+        self.gaps[entity_id] = _Gap(seq, old_state, new_state)
+        return True
+
+    def carry(self, entity_id: str, previous: Any) -> None:
+        """Carry an unevaluated previous state to the entity's next event."""
+        if entity_id in self.carry_previous:
+            return
+        if len(self.carry_previous) >= MAX_CARRIED:
+            # The next evaluation reports its own old state instead.
+            self.metrics.history_degraded += 1
+            return
+        self.carry_previous[entity_id] = previous
+
+    def note_retained(self) -> None:
+        retained = (
+            len(self.queue) + len(self.latest) + len(self.gaps) + len(self.carry_previous)
+        )
+        if retained > self.metrics.max_retained_entries:
+            self.metrics.max_retained_entries = retained
 
     def compact(self) -> None:
-        if self.tombstones > max(self.live, 1024):
+        if self.tombstones > MAX_TOMBSTONES:
             self.queue = deque(entry for entry in self.queue if entry.status == _QUEUED)
+            for priority, order in self.by_priority.items():
+                self.by_priority[priority] = deque(
+                    entry for entry in order if entry.status == _QUEUED
+                )
+            self.view_only = deque(entry for entry in self.view_only if entry.status == _QUEUED)
             self.tombstones = 0
+
+    def release(self) -> None:
+        """Empty every structure; the metrics stay readable."""
+        self.queue = deque()
+        self.by_priority = {priority: deque() for priority in EVICTION_ORDER}
+        self.view_only = deque()
+        self.latest = {}
+        self.carry_previous = {}
+        self.unprocessed_by_entity = {}
+        self.gaps = {}
+        self.live = 0
+        self.tombstones = 0
+        self.history_degraded_from = 0
+        self.history_degraded_until = 0
+        self.gaps_pruned_at = None
+
+    def release_drained(self) -> bool:
+        """After a full drain nothing earlier is needed any more (7.9.7).
+
+        Synchronous, called by the worker of this generation right after it
+        saw ``live == 0``: no event can arrive in between. Gaps and carried
+        previous states only describe changes before every future event (the
+        next worker builds a new snapshot), ``latest`` and the helper deques
+        only refer to finished entries.
+        """
+        if self.live or self.stopped:
+            return False
+        self.release()
+        self.metrics.cleanup_runs += 1
+        return True
+
+    def retention(self) -> dict[str, int]:
+        """What this generation retains right now (diagnostics, tests)."""
+        return {
+            "retained_entries": len(self.queue),
+            "retained_index": (
+                sum(len(order) for order in self.by_priority.values())
+                + len(self.view_only)
+            ),
+            "retained_latest": len(self.latest),
+            "retained_gaps": len(self.gaps),
+            "retained_carry": len(self.carry_previous),
+            "retained_tombstones": self.tombstones,
+            "retained_unprocessed": len(self.unprocessed_by_entity),
+            "history_degraded_active": int(self.history_degraded_until > 0),
+            "max_retained_entries": self.metrics.max_retained_entries,
+            "retained_limit": MAX_RETAINED_ENTRIES,
+        }
 
 
 class SituationRuntime:
@@ -306,6 +475,10 @@ class SituationRuntime:
             metrics.dropped_coalescible + metrics.dropped_lossless + metrics.dropped_critical
         )
 
+    def retention(self) -> dict[str, int]:
+        """What the current generation retains right now (7.9.7)."""
+        return self._gen.retention()
+
     def has_pending(self, entity_id: str) -> bool:
         """A state change of ``entity_id`` still waits for its evaluation."""
         return entity_id in self._gen.unprocessed_by_entity
@@ -346,16 +519,7 @@ class SituationRuntime:
                     set_probe(None)
                 self._runtime_data.effect_monitor.set_expired_handler(None)
             # Release the queue; the metrics stay readable.
-            generation.queue = deque()
-            generation.coalescible = deque()
-            generation.view_only = deque()
-            generation.lossless = deque()
-            generation.latest = {}
-            generation.carry_previous = {}
-            generation.unprocessed_by_entity = {}
-            generation.gaps = {}
-            generation.live = 0
-            generation.tombstones = 0
+            generation.release()
 
         return stop
 
@@ -387,6 +551,8 @@ class SituationRuntime:
         priority = self._interest.classify(entity_id, old_state, new_state)
         if priority is None:
             metrics.filtered_no_interest += 1
+            if self._interest.category_active:
+                metrics.filtered_by_category += 1
             return
         self._enqueue(gen, raw_event, entity_id, old_state, new_state, priority)
 
@@ -435,13 +601,13 @@ class SituationRuntime:
         gen.live += 1
         gen.latest[entity_id] = entry
         gen.unprocessed(entity_id, 1)
-        if priority is EventPriority.COALESCIBLE:
-            gen.coalescible.append(entry)
-        elif priority is EventPriority.LOSSLESS:
-            gen.lossless.append(entry)
+        order = gen.by_priority.get(priority)
+        if order is not None:
+            order.append(entry)
         metrics.queued += 1
         if gen.live > metrics.max_queue_depth:
             metrics.max_queue_depth = gen.live
+        gen.note_retained()
         if self._worker is None or self._worker.done():
             metrics.worker_starts += 1
             # Not eager: the bus callback stays cheap and never re-enters.
@@ -454,15 +620,21 @@ class SituationRuntime:
     def _make_room(self, gen: _Generation, priority: EventPriority) -> bool:
         """Evict one entry of lower rank for an incoming ``priority`` event.
 
-        History-only entries go first (no evaluation is lost), then
-        coalescible evaluations; a critical event may finally displace a
-        lossless one. Nothing displaces a critical event.
+        History-only entries go first (no evaluation is lost), then the
+        oldest evaluation of the lowest rank below the incoming one:
+        coalescible, category, routine and - for a critical event only, as
+        the last resort - protected (7.9.7). Nothing displaces a critical
+        event; nothing displaces an event of the same rank.
         """
         victim = _first_queued(gen.view_only)
-        if victim is None and priority is not EventPriority.COALESCIBLE:
-            victim = _first_queued(gen.coalescible, process=True)
-        if victim is None and priority is EventPriority.CRITICAL:
-            victim = _first_queued(gen.lossless)
+        if victim is None:
+            rank = PRIORITY_RANK[priority]
+            for lower in EVICTION_ORDER:
+                if PRIORITY_RANK[lower] >= rank:
+                    break
+                victim = _first_queued(gen.by_priority[lower], process=True)
+                if victim is not None:
+                    break
         if victim is None:
             return False
         self._evict(gen, victim)
@@ -473,28 +645,30 @@ class SituationRuntime:
         victim.status = _EVICTED
         gen.live -= 1
         gen.tombstones += 1
-        gen.record_gap(victim.entity_id, victim.seq, victim.old_state, victim.new_state)
+        if not gen.record_gap(victim.entity_id, victim.seq, victim.old_state, victim.new_state):
+            self._warn_degraded(gen)
+        if gen.latest.get(victim.entity_id) is victim:
+            del gen.latest[victim.entity_id]
+            if victim.process and victim.priority is EventPriority.COALESCIBLE:
+                gen.carry(victim.entity_id, victim.previous)
         if victim.process:
             gen.unprocessed(victim.entity_id, -1)
             self._count_drop(gen, victim.priority, victim.entity_id)
-            if (
-                victim.priority is EventPriority.COALESCIBLE
-                and gen.latest.get(victim.entity_id) is victim
-            ):
-                gen.carry_previous.setdefault(victim.entity_id, victim.previous)
         else:
             metrics.view_evictions += 1
-        victim.event = victim.old_state = victim.new_state = victim.previous = None
+        victim.release()
         gen.compact()
 
     def _reject(self, gen: _Generation, entry: _Entry) -> None:
-        if gen.live:
-            gen.record_gap(entry.entity_id, entry.seq, entry.old_state, entry.new_state)
+        if not gen.record_gap(entry.entity_id, entry.seq, entry.old_state, entry.new_state):
+            self._warn_degraded(gen)
         if entry.priority is EventPriority.COALESCIBLE:
             latest = gen.latest.get(entry.entity_id)
             if latest is None or latest.status != _QUEUED:
-                gen.carry_previous.setdefault(entry.entity_id, entry.previous)
+                gen.carry(entry.entity_id, entry.previous)
         self._count_drop(gen, entry.priority, entry.entity_id)
+        entry.release()
+        gen.note_retained()
 
     def _count_drop(self, gen: _Generation, priority: EventPriority, entity_id: str) -> None:
         metrics = gen.metrics
@@ -512,7 +686,26 @@ class SituationRuntime:
                     entity_id, gen.live, metrics.dropped_critical,
                 )
             return
-        if priority is EventPriority.LOSSLESS:
+        if priority is EventPriority.PROTECTED:
+            metrics.dropped_protected += 1
+            metrics.dropped_lossless += 1
+            if (
+                gen.last_protected_warning is None
+                or now - gen.last_protected_warning >= _DROP_WARNING_INTERVAL_SECONDS
+            ):
+                gen.last_protected_warning = now
+                _LOGGER.error(
+                    "HomeIntent dropped a watched state change of %s (expected effect, "
+                    "monitor goal or thermal cycle) for a safety-critical event; "
+                    "%s watched changes dropped so far",
+                    entity_id, metrics.dropped_protected,
+                )
+            return
+        if priority is EventPriority.ROUTINE:
+            metrics.dropped_routine += 1
+            metrics.dropped_lossless += 1
+        elif priority is EventPriority.CATEGORY:
+            metrics.dropped_category += 1
             metrics.dropped_lossless += 1
         else:
             metrics.dropped_coalescible += 1
@@ -523,9 +716,25 @@ class SituationRuntime:
             gen.last_drop_warning = now
             _LOGGER.warning(
                 "HomeIntent is behind on state changes; %s events skipped so far "
-                "(%s coalescible, %s lossless)",
-                metrics.dropped_coalescible + metrics.dropped_lossless,
-                metrics.dropped_coalescible, metrics.dropped_lossless,
+                "(%s coalescible, %s category, %s routine)",
+                metrics.dropped_coalescible + metrics.dropped_category
+                + metrics.dropped_routine,
+                metrics.dropped_coalescible, metrics.dropped_category,
+                metrics.dropped_routine,
+            )
+
+    def _warn_degraded(self, gen: _Generation) -> None:
+        now = time.monotonic()
+        if (
+            gen.last_degraded_warning is None
+            or now - gen.last_degraded_warning >= _DROP_WARNING_INTERVAL_SECONDS
+        ):
+            gen.last_degraded_warning = now
+            _LOGGER.warning(
+                "HomeIntent gave up the exact house history of %s skipped state "
+                "changes (more than %s entities); events queued before them are "
+                "evaluated without the context it can no longer reconstruct",
+                gen.metrics.history_degraded, MAX_GAPS,
             )
 
     # -- worker ------------------------------------------------------------
@@ -547,39 +756,60 @@ class SituationRuntime:
                 continue
             gen.snapshot_failures_in_row = 0
             gen.metrics.snapshot_builds += 1
+            # Events before a change whose history no longer fit the bound
+            # get a view of what is known exactly, in batches of their own
+            # (7.9.7); later events see the snapshot as before.
+            oldest = gen.oldest_live_seq()
+            partial = oldest is not None and oldest < gen.history_degraded_until
+            if not partial:
+                gen.history_degraded_from = gen.history_degraded_until = 0
             # Only now leave the queue: a failed build above lost nothing.
-            batch = gen.take(MAX_BATCH_EVENTS)
-            view = _HouseView.for_batch(entities, batch, gen)
+            batch = gen.take(
+                MAX_BATCH_EVENTS,
+                until_seq=gen.history_degraded_until - 1 if partial else None,
+            )
+            if partial:
+                gen.metrics.history_degraded_batches += 1
+            view = _HouseView.for_batch(entities, batch, gen, known_only=partial)
             for entry in batch:
                 if not self._owns(gen):
                     return
                 if entry.process:
                     current, by_id = view.advance(entry)
                     try:
-                        await self._async_process_state_changed(
-                            _evaluated_event(entry), current, by_id
-                        )
+                        if partial:
+                            await self._async_process_state_changed(
+                                _evaluated_event(entry), current, by_id, degraded=True,
+                            )
+                        else:
+                            await self._async_process_state_changed(
+                                _evaluated_event(entry), current, by_id
+                            )
                     except Exception:  # noqa: BLE001 - one event must not stop the worker
                         _LOGGER.exception("HomeIntent state change evaluation failed")
                     if not self._owns(gen):
                         return
                     gen.metrics.processed += 1
                     gen.unprocessed(entry.entity_id, -1)
-                entry.status = _DONE
+                gen.finish(entry)
                 # A burst never monopolizes the loop, yet the worker keeps
                 # pace with the events Home Assistant fires meanwhile.
                 if time.monotonic() - slice_started >= _YIELD_AFTER_SECONDS:
                     await asyncio.sleep(0)
                     slice_started = time.monotonic()
+        if self._owns(gen):
+            # Nothing queued and no await since the check: release the
+            # bookkeeping now, not only at unload (7.9.7).
+            gen.release_drained()
 
     async def _async_snapshot_failed(self, gen: _Generation) -> bool:
         """Back off after a failed snapshot build; ``False`` ends the worker.
 
         The batch never left the queue. Up to ``SNAPSHOT_MAX_ATTEMPTS``
         builds in a row are tried with a growing pause (never a hot loop);
-        then the head batch is evaluated without registry data so critical
-        and lossless events still reach their consumers, coalescible ones are
-        counted as dropped, and the next batch starts a new series.
+        then the head batch is evaluated without registry data so every
+        event but a coalescible one still reaches its consumers (coalescible
+        ones are counted as dropped), and the next batch starts a new series.
         """
         metrics = gen.metrics
         metrics.snapshot_failures += 1
@@ -642,7 +872,7 @@ class SituationRuntime:
                     return
                 metrics.processed += 1
                 gen.unprocessed(entry.entity_id, -1)
-            entry.status = _DONE
+            gen.finish(entry)
             await asyncio.sleep(0)
 
     async def async_handle_state_changed(self, raw_event: Any) -> None:
@@ -668,12 +898,15 @@ class SituationRuntime:
         *,
         degraded: bool = False,
     ) -> None:
-        """Evaluate one event; ``degraded``: the view has no registry data.
+        """Evaluate one event; ``degraded``: the view is incomplete.
 
         Inactive consumers are skipped before any per-event work (7.9.6):
         the thermal tracker without an active cycle, a disabled V12 context.
-        Without registry data (areas) the thermal tracker is skipped too - it
-        would read missing sensors as a removed measurement source.
+        A degraded view (no registry data after failed snapshots, or only the
+        exactly known entities after the history bound was hit, 7.9.7) skips
+        the thermal tracker - it would read missing sensors as a removed
+        measurement source - and reports presence as unknown instead of
+        "nobody home" from persons that are merely missing.
         """
         data = getattr(raw_event, "data", {})
         if not isinstance(data, dict):
@@ -758,8 +991,8 @@ class SituationRuntime:
             previous if isinstance(previous, str) else None,
             occurred_at=getattr(raw_event, "time_fired", None) or dt_util.utcnow(),
             person_ids=people,
-            occupied=bool(people),
-            operating_mode="home" if people else "away",
+            occupied=None if degraded else bool(people),
+            operating_mode="unknown" if degraded else "home" if people else "away",
         )
         if event.event_id in self._seen:
             return
@@ -1016,6 +1249,7 @@ class _HouseView:
         changes: Iterable[tuple[int, int, str, Any, Any]],
         *,
         apply_until: int | None = None,
+        uncertain_from: int | None = None,
     ) -> None:
         self._base = {item.entity_id: item for item in entities}
         self._by_id = _ViewDict(self._base)
@@ -1030,12 +1264,14 @@ class _HouseView:
                 earliest[entity_id] = (rewind_seq, old_state)
             if apply_until is None or apply_seq <= apply_until:
                 steps.append((apply_seq, entity_id, new_state))
-        for entity_id, (_seq, old_state) in earliest.items():
+        for entity_id, (seq, old_state) in earliest.items():
             base = self._base.get(entity_id)
             if base is None:
                 continue
-            if old_state is None:
-                # Created by the event: it did not exist before.
+            if old_state is None or (uncertain_from is not None and seq > uncertain_from):
+                # Created by the event: it did not exist before. Or its state
+                # before ``seq`` is not known exactly (degraded history): it
+                # appears with its own change.
                 self._by_id.pop(entity_id, None)
             else:
                 self._by_id[entity_id] = snapshot_at_state(base, old_state)
@@ -1046,13 +1282,21 @@ class _HouseView:
     @classmethod
     def for_batch(
         cls, entities: list[EntitySnapshot], batch: list[_Entry], gen: _Generation,
-        *, with_queue: bool = True,
+        *, with_queue: bool = True, known_only: bool = False,
     ) -> "_HouseView":
         """The view for ``batch`` against a snapshot taken right before it.
 
         Entries still queued fired after the batch; the snapshot already
         contains their states, so they are rewound as well. Gaps entirely
         before the batch are already part of the snapshot and are dropped.
+
+        ``known_only`` (history degraded, 7.9.7): changes after the batch
+        were given up without a gap, so any other entity may show a later
+        state. Only entities with a change in the batch, the queue or a gap
+        take part; the rest of the house is left out rather than shown from
+        the future. An entity whose earliest known change comes after the
+        first change given up without a gap is left out until that change:
+        its ``old_state`` may already contain a given-up later state.
         """
         first = batch[0].seq if batch else 0
         last = batch[-1].seq if batch else 0
@@ -1071,7 +1315,12 @@ class _HouseView:
                 (gap.first_seq, gap.last_seq, entity_id, gap.old_state, gap.new_state)
                 for entity_id, gap in gen.gaps.items()
             )
-        return cls(entities, changes, apply_until=last)
+        uncertain_from: int | None = None
+        if known_only:
+            known = {change[2] for change in changes}
+            entities = [item for item in entities if item.entity_id in known]
+            uncertain_from = gen.history_degraded_from
+        return cls(entities, changes, apply_until=last, uncertain_from=uncertain_from)
 
     def advance(self, entry: _Entry) -> tuple[list[EntitySnapshot], dict[str, EntitySnapshot]]:
         return self.advance_to(entry.seq)

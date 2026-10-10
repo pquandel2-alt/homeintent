@@ -101,6 +101,13 @@ CLASSES = {
     TEMP: "temperature", POWER: "power",
 }
 LOAD = 6000
+# 7.9.7: an agent event category asks only for the changes its rule can use,
+# so ``safety`` or ``device_unavailable`` no longer queue every selected
+# entity. The house-wide load these tests need comes from routine detection
+# with its ``routine_anomaly`` category, which still observes every selected
+# entity (plain number changes coalescible, everything else ``ROUTINE``).
+HOUSE_WIDE = "routine_anomaly"
+ROUTINE_ON = {CONF_ROUTINE_DETECTION_ENABLED: True}
 
 
 class _Bus:
@@ -322,26 +329,32 @@ def test_critical_classes_are_the_existing_safety_lists_and_nothing_else():
 
 
 def test_classification_of_house_wide_consumers(monkeypatch):
-    harness = _Harness(monkeypatch, [TEMP, DOOR, PERSON, LIGHT], categories="safety")
+    harness = _Harness(
+        monkeypatch, [TEMP, DOOR, PERSON, LIGHT], categories=HOUSE_WIDE, options=ROUTINE_ON,
+    )
     harness.runtime.async_start()
     classify = harness.runtime.interest.classify
     number = lambda value: State(TEMP, value, {"device_class": "temperature"})  # noqa: E731
+    # 7.9.7: routine statistics read every entity - the only house-wide
+    # consumer left; a plain number change is the one they may merge under
+    # load (7.9.6 kept it lossless; ``ROUTINE`` ranks above categories).
     assert classify(TEMP, number("20.1"), number("20.2")) is EventPriority.COALESCIBLE
-    assert classify(TEMP, number("20.1"), number("unavailable")) is EventPriority.LOSSLESS
-    assert classify(TEMP, None, number("20.1")) is EventPriority.LOSSLESS
-    assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is EventPriority.LOSSLESS
-    assert classify(PERSON, State(PERSON, "1"), State(PERSON, "2")) is EventPriority.LOSSLESS
+    assert classify(TEMP, number("20.1"), number("unavailable")) is EventPriority.ROUTINE
+    assert classify(TEMP, None, number("20.1")) is EventPriority.ROUTINE
+    assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is EventPriority.ROUTINE
+    assert classify(PERSON, State(PERSON, "1"), State(PERSON, "2")) is EventPriority.ROUTINE
     # A binary sensor with numeric labels is not a measurement.
-    assert classify(DOOR, State(DOOR, "1"), State(DOOR, "2")) is EventPriority.LOSSLESS
-    # Routine statistics observe every event: nothing is coalescible then.
-    harness.entry.options[CONF_ROUTINE_DETECTION_ENABLED] = True
-    assert classify(TEMP, number("20.1"), number("20.2")) is EventPriority.LOSSLESS
+    assert classify(DOOR, State(DOOR, "1"), State(DOOR, "2")) is EventPriority.ROUTINE
+    # Without routine detection the category alone is no consumer.
+    harness.entry.options[CONF_ROUTINE_DETECTION_ENABLED] = False
+    assert classify(TEMP, number("20.1"), number("20.2")) is None
+    assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is None
 
 
 def test_specific_consumers_make_their_entities_lossless(monkeypatch, tmp_path):
     store = _store(tmp_path)
     harness = _Harness(
-        monkeypatch, [TEMP, POWER, PERSON], categories="safety",
+        monkeypatch, [TEMP, POWER, PERSON], categories=HOUSE_WIDE, options=ROUTINE_ON,
         monitor_goals=store, monitor_runtime=_monitor(store),
     )
 
@@ -351,7 +364,7 @@ def test_specific_consumers_make_their_entities_lossless(monkeypatch, tmp_path):
         classify = harness.runtime.interest.classify
         assert classify(
             TEMP, State(TEMP, "20.1"), State(TEMP, "20.2")
-        ) is EventPriority.LOSSLESS
+        ) is EventPriority.PROTECTED
         assert classify(
             POWER, State(POWER, "100"), State(POWER, "101")
         ) is EventPriority.COALESCIBLE
@@ -367,8 +380,8 @@ def _safety_harness(monkeypatch: Any, **fields: Any) -> tuple[_Harness, SimpleNa
     agent = _agent()
     sensors = _load_sensors()
     harness = _Harness(
-        monkeypatch, [*sensors, SMOKE, MOISTURE], categories="safety",
-        proactive_agent=agent, **fields,
+        monkeypatch, [*sensors, SMOKE, MOISTURE], categories=f"safety,{HOUSE_WIDE}",
+        options=ROUTINE_ON, proactive_agent=agent, **fields,
     )
     for sensor in sensors:
         harness.house.seed(sensor, "20.0")
@@ -459,7 +472,8 @@ def test_critical_displaces_lossless_only_when_nothing_coalescible_is_left(
     monkeypatch, caplog
 ):
     monkeypatch.setattr(event_runtime, "MAX_PENDING_EVENTS", 4)
-    harness = _Harness(monkeypatch, [DOOR, SMOKE], categories="safety")
+    # 7.9.7: the door edges are category events of ``opening_while_away``.
+    harness = _Harness(monkeypatch, [DOOR, SMOKE], categories="safety,opening_while_away")
     harness.house.seed(DOOR, "off")
     harness.house.seed(SMOKE, "off")
 
@@ -480,6 +494,7 @@ def test_critical_displaces_lossless_only_when_nothing_coalescible_is_left(
     # then filled the queue and nothing may displace them: the rest is the
     # documented hard limit, counted and logged as safety relevant.
     assert metrics.dropped_lossless == 4
+    assert metrics.dropped_category == 4
     assert metrics.dropped_critical == 2
     safety = [record for record in caplog.records if record.getMessage().startswith("SAFETY:")]
     assert len(safety) == 1 and safety[0].levelno == logging.ERROR
@@ -515,7 +530,7 @@ def test_expected_effect_sees_its_intermediate_state_under_load(monkeypatch):
         effects.register(ServiceCallPlan("light", "turn_on", LIGHT, {}))
         assert harness.runtime.interest.classify(
             LIGHT, State(LIGHT, "off"), State(LIGHT, "on")
-        ) is EventPriority.LOSSLESS
+        ) is EventPriority.PROTECTED
         harness.house.set(LIGHT, "on")
         harness.house.set(LIGHT, "off")
         await _settle(harness.hass)
@@ -527,6 +542,7 @@ def test_expected_effect_sees_its_intermediate_state_under_load(monkeypatch):
     assert effects.pending == ()
     assert expired == []
     assert harness.metrics.dropped_lossless == 0
+    assert harness.metrics.dropped_protected == 0
     assert harness.metrics.dropped_critical == 0
 
 
@@ -627,6 +643,7 @@ def _monitor_harness(
     sensors = _load_sensors()
     harness = _Harness(
         monkeypatch, [*sensors, PERSON, TEMP], categories=categories,
+        options=ROUTINE_ON if HOUSE_WIDE in categories else None,
         monitor_goals=store, monitor_runtime=monitor,
     )
     for sensor in sensors:
@@ -642,7 +659,7 @@ def _monitor_harness(
     return harness, store, transitions, values
 
 
-@pytest.mark.parametrize("categories", ["safety", ""], ids=["house_wide", "monitor_only"])
+@pytest.mark.parametrize("categories", [HOUSE_WIDE, ""], ids=["house_wide", "monitor_only"])
 def test_person_leaving_and_returning_under_load(monkeypatch, tmp_path, categories):
     harness, store, transitions, _values = _monitor_harness(
         monkeypatch, tmp_path, [_person_goal("goal_anna", PERSON)], categories=categories,
@@ -670,7 +687,7 @@ def test_person_leaving_and_returning_under_load(monkeypatch, tmp_path, categori
 
 def test_value_monitor_gets_each_evaluable_value_in_order_under_load(monkeypatch, tmp_path):
     harness, store, _transitions, values = _monitor_harness(
-        monkeypatch, tmp_path, [_value_goal("goal_temp", TEMP)], categories="safety",
+        monkeypatch, tmp_path, [_value_goal("goal_temp", TEMP)], categories=HOUSE_WIDE,
     )
     reads = store.read_count
 
@@ -825,7 +842,8 @@ def test_persistent_snapshot_failure_evaluates_critical_without_registry(monkeyp
     monkeypatch.setattr(event_runtime, "SNAPSHOT_RETRY_BASE_SECONDS", 0.001)
     agent = _agent()
     harness = _Harness(
-        monkeypatch, [SMOKE, DOOR, TEMP], categories="safety", proactive_agent=agent,
+        monkeypatch, [SMOKE, DOOR, TEMP], categories=f"safety,{HOUSE_WIDE}",
+        options=ROUTINE_ON, proactive_agent=agent,
     )
     harness.house.seed(SMOKE, "off")
     harness.house.seed(DOOR, "off")
@@ -948,8 +966,9 @@ def test_enabled_proactive_context_is_a_consumer(monkeypatch, tmp_path):
     harness.runtime.async_start()
     classify = harness.runtime.interest.classify
     door = lambda value: State(DOOR, value, {"device_class": "door"})  # noqa: E731
-    assert classify(DOOR, door("off"), door("on")) is EventPriority.LOSSLESS
-    assert classify(POWER, State(POWER, "5"), State(POWER, "6")) is EventPriority.COALESCIBLE
+    assert classify(DOOR, door("off"), door("on")) is EventPriority.ROUTINE
+    # 7.9.7: what the V12 context calls irrelevant is not queued at all.
+    assert classify(POWER, State(POWER, "5"), State(POWER, "6")) is None
 
 
 # --------------------------------------------------------------------------
@@ -967,13 +986,13 @@ def test_interest_follows_effect_registration_fulfilment_and_timeout(monkeypatch
         assert classify(LIGHT, *on) is None
         effects.register(ServiceCallPlan("light", "turn_on", [LIGHT, "light.bad"], {}))
         assert effects.watched_entity_ids == {LIGHT, "light.bad"}
-        assert classify(LIGHT, *on) is EventPriority.LOSSLESS
+        assert classify(LIGHT, *on) is EventPriority.PROTECTED
         # A second effect for the same entity replaces the first.
         effects.register(ServiceCallPlan("light", "turn_off", LIGHT, {}))
         assert len([e for e in effects.pending if e.entity_id == LIGHT]) == 1
         effects.observe(LIGHT, "off")  # fulfilled
         assert classify(LIGHT, *on) is None
-        assert classify("light.bad", *on) is EventPriority.LOSSLESS
+        assert classify("light.bad", *on) is EventPriority.PROTECTED
         await asyncio.sleep(0.15)  # light.bad times out
         assert effects.watched_entity_ids == frozenset()
         assert classify("light.bad", *on) is None
@@ -1016,7 +1035,7 @@ def test_interest_follows_thermal_cycles(monkeypatch, tmp_path):
         for entity_id in (CLIMATE, TEMP, WINDOW):
             assert classify(
                 entity_id, State(entity_id, "1"), State(entity_id, "2")
-            ) is EventPriority.LOSSLESS
+            ) is EventPriority.PROTECTED
         assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is None
         reached = (entities[0], EntitySnapshot(
             TEMP, "Temperatur", "sensor", "22.0", area_id="wohnzimmer",
@@ -1044,28 +1063,28 @@ def test_interest_follows_monitor_goal_saves_and_deletes(monkeypatch, tmp_path):
     async def scenario() -> None:
         stop = harness.runtime.async_start()
         # Not loaded yet: every person and sensor counts (conservative).
-        assert classify(TEMP, *value) is EventPriority.LOSSLESS
+        assert classify(TEMP, *value) is EventPriority.PROTECTED
         await store.async_load()
         assert classify(TEMP, *value) is None
         assert classify(PERSON, *leave) is None
         await store.async_save(_value_goal("goal_temp", TEMP))
-        assert classify(TEMP, *value) is EventPriority.LOSSLESS
+        assert classify(TEMP, *value) is EventPriority.PROTECTED
         await store.async_save(_person_goal("goal_anna", PERSON))
-        assert classify(PERSON, *leave) is EventPriority.LOSSLESS
+        assert classify(PERSON, *leave) is EventPriority.PROTECTED
         assert classify("person.ben", *ben) is None
         await store.async_save(_nobody_goal("goal_nobody", ("person.ben",)))
-        assert classify("person.ben", *ben) is EventPriority.LOSSLESS
+        assert classify("person.ben", *ben) is EventPriority.PROTECTED
         await store.async_delete("goal_nobody")
         assert classify("person.ben", *ben) is None
         # A household goal follows the configured household: every person.
         await store.async_save(_nobody_goal("goal_household"))
         assert store.nobody_home_uses_household
-        assert classify("person.ben", *ben) is EventPriority.LOSSLESS
+        assert classify("person.ben", *ben) is EventPriority.PROTECTED
         # A disabled goal is not a consumer.
         await store.async_save(MonitorRecord(_value_goal("goal_temp", TEMP).goal, enabled=False))
         assert classify(TEMP, *value) is None
         await store.async_delete("goal_anna")
-        assert classify(PERSON, *leave) is EventPriority.LOSSLESS  # household goal
+        assert classify(PERSON, *leave) is EventPriority.PROTECTED  # household goal
         await store.async_delete("goal_household")
         assert classify(PERSON, *leave) is None
         stop()
@@ -1101,7 +1120,7 @@ def test_failed_monitor_write_leaves_cache_and_interest_unchanged(monkeypatch, t
 # --------------------------------------------------------------------------
 
 def test_adjacent_value_changes_merge_into_one_evaluation(monkeypatch):
-    harness = _Harness(monkeypatch, [POWER], categories="device_unavailable")
+    harness = _Harness(monkeypatch, [POWER], categories=HOUSE_WIDE, options=ROUTINE_ON)
     harness.house.seed(POWER, "100")
 
     async def scenario() -> None:
@@ -1122,7 +1141,9 @@ def test_adjacent_value_changes_merge_into_one_evaluation(monkeypatch):
 
 
 def test_interleaved_value_changes_merge_but_keep_the_exact_history(monkeypatch):
-    harness = _Harness(monkeypatch, [POWER, TEMP, DOOR], categories="device_unavailable")
+    harness = _Harness(
+        monkeypatch, [POWER, TEMP, DOOR], categories=HOUSE_WIDE, options=ROUTINE_ON,
+    )
     harness.house.seed(POWER, "100")
     harness.house.seed(TEMP, "20.0")
     harness.house.seed(DOOR, "off")
@@ -1139,7 +1160,7 @@ def test_interleaved_value_changes_merge_but_keep_the_exact_history(monkeypatch)
     async def scenario() -> None:
         stop = harness.runtime.async_start()
         harness.house.set(POWER, "101", step=1)
-        harness.house.set(DOOR, "on")  # lossless, between the two
+        harness.house.set(DOOR, "on")  # never merged, between the two
         harness.house.set(TEMP, "20.5")
         harness.house.set(POWER, "102", step=2)
         harness.house.set(TEMP, "21.0")
@@ -1166,7 +1187,8 @@ def test_safety_person_effect_and_monitor_edges_are_never_merged(monkeypatch, tm
     store = _store(tmp_path)
     effects = EffectMonitor()
     harness = _Harness(
-        monkeypatch, [SMOKE, PERSON, LIGHT, TEMP, DOOR], categories="device_unavailable",
+        monkeypatch, [SMOKE, PERSON, LIGHT, TEMP, DOOR], categories=HOUSE_WIDE,
+        options=ROUTINE_ON,
         effect_monitor=effects, monitor_goals=store, monitor_runtime=_monitor(store),
     )
     for entity_id, value in ((SMOKE, "off"), (PERSON, "home"), (LIGHT, "off"),
@@ -1197,7 +1219,9 @@ def test_safety_person_effect_and_monitor_edges_are_never_merged(monkeypatch, tm
 
 
 def test_a_merge_after_a_critical_event_does_not_rewrite_its_view(monkeypatch):
-    harness = _Harness(monkeypatch, [SMOKE, POWER], categories="safety")
+    harness = _Harness(
+        monkeypatch, [SMOKE, POWER], categories=f"safety,{HOUSE_WIDE}", options=ROUTINE_ON,
+    )
     harness.house.seed(SMOKE, "off")
     harness.house.seed(POWER, "100")
 
@@ -1220,14 +1244,16 @@ def test_a_merge_after_a_critical_event_does_not_rewrite_its_view(monkeypatch):
 def test_a_dropped_later_change_never_leaks_into_an_earlier_event(monkeypatch):
     monkeypatch.setattr(event_runtime, "MAX_PENDING_EVENTS", 3)
     sensors = [f"sensor.v_{index}" for index in range(4)]
-    harness = _Harness(monkeypatch, [DOOR, *sensors], categories="safety")
+    harness = _Harness(
+        monkeypatch, [DOOR, *sensors], categories=f"safety,{HOUSE_WIDE}", options=ROUTINE_ON,
+    )
     harness.house.seed(DOOR, "off")
     for sensor in sensors:
         harness.house.seed(sensor, "1")
 
     async def scenario() -> None:
         stop = harness.runtime.async_start()
-        harness.house.set(DOOR, "on")  # lossless, queued first
+        harness.house.set(DOOR, "on")  # never merged, queued first
         for sensor in sensors:  # two fit, two are dropped
             harness.house.set(sensor, "2")
         harness.house.set(DOOR, "off")  # evicts the oldest value change
@@ -1290,7 +1316,9 @@ def test_unload_during_a_burst_stops_everything_and_reload_starts_one_worker(mon
 # --------------------------------------------------------------------------
 
 def test_callback_does_no_snapshot_registry_or_file_work(monkeypatch, tmp_path):
-    harness = _Harness(monkeypatch, _load_sensors(), categories="safety")
+    harness = _Harness(
+        monkeypatch, _load_sensors(), categories=HOUSE_WIDE, options=ROUTINE_ON,
+    )
     for sensor in _load_sensors():
         harness.house.seed(sensor, "20.0")
 

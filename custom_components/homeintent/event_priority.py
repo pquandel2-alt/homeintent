@@ -1,32 +1,48 @@
-"""How much one selected ``state_changed`` event may be shed under load (7.9.6).
+"""How much one selected ``state_changed`` event may be shed under load.
 
-The EventRuntime ranks every event it queues:
+The EventRuntime ranks every event it queues (7.9.6, split in 7.9.7). The
+rank is the highest one any interested consumer asks for; under overload an
+incoming event may only displace queued events of a strictly lower rank:
 
 ``CRITICAL``
     A state change of a safety device HomeIntent already treats as an alarm:
     the ``SituationEvaluator`` (``situation.SAFETY_CLASSES``), the V12
     detector (``situation_detection.SAFETY_CLASSES``) and the event summary
     (``event_summary.ALARM_DEVICE_CLASSES``: also safety, tamper and problem
-    sensors). No new list - the union of those three. Never dropped because
-    of ordinary events; it displaces them when the queue is full.
+    sensors). No new list - the union of those three. Always kept, whether a
+    consumer is configured or not; never displaced by any other event.
 
-``LOSSLESS``
-    An event a consumer needs exactly, intermediate states included: an
-    entity with an expected effect, a monitor goal's sensor or person, an
-    active thermal cycle's entities, persons, door and window edges, every
-    event while routine detection is on, and every event that is not a plain
-    number-to-number change. Never merged; dropped only for a critical event
-    once nothing coalescible is left (a counted, logged loss).
+``PROTECTED``
+    An event a concrete consumer watches directly and needs exactly,
+    intermediate states included: the entity of a pending expected effect,
+    a monitor goal's sensor or person, the persons of a nobody-home goal,
+    the entities of an active thermal cycle. Never merged; displaced only by
+    a critical event once nothing of a lower rank is left (the last-resort
+    emergency bound, counted as ``dropped_protected``).
+
+``ROUTINE``
+    Broad but edge-dependent consumers: routine statistics (routine
+    detection with its ``routine_anomaly`` category) and events the enabled
+    V12 context calls relevant (``is_relevant_event``, habit triggers
+    included). Never merged.
+
+``CATEGORY``
+    An event needed only because a configured agent event category can
+    derive a situation from it, or reads it as house context (persons for
+    the presence rules, climates for ``window_heating``). See
+    ``event_interest`` for the per-category matrix. Never merged.
 
 ``COALESCIBLE``
-    A plain numeric value change (``21.3`` -> ``21.4``) of a measurement
-    ``sensor`` no consumer watches individually, while only house-wide
-    consumers listen: its own evaluation yields no situation
-    (``SituationEvaluator`` has no rule for a number-to-number change) and no
-    V12 detector rule reads it.
-    Consecutive changes of the same entity may be merged into one evaluation
-    (first ``old_state``, last ``new_state``); under overload it is the first
-    thing to go.
+    A plain numeric value change (``21.3`` -> ``21.4``) of a ``sensor`` that
+    only routine statistics read: ``SituationEvaluator`` has no rule for a
+    number-to-number change and no V12 detector rule reads it. Consecutive
+    changes of the same entity may be merged into one evaluation (first
+    ``old_state``, last ``new_state``); under overload it goes first.
+
+7.9.6 had one ``LOSSLESS`` rank for the three middle ranks: an expected
+effect could be dropped behind 4096 ordinary category events, and a critical
+event displaced the oldest lossless entry even if that was the expected
+effect. ``dropped_lossless`` remains as the sum of the three middle ranks.
 """
 
 from __future__ import annotations
@@ -42,15 +58,42 @@ from .situation_detection import SAFETY_CLASSES as DETECTOR_SAFETY_CLASSES
 
 class EventPriority(StrEnum):
     CRITICAL = "critical"
-    LOSSLESS = "lossless"
+    PROTECTED = "protected"
+    ROUTINE = "routine"
+    CATEGORY = "category"
     COALESCIBLE = "coalescible"
 
+
+# Higher is more important; an event displaces only strictly lower ranks.
+PRIORITY_RANK: dict[EventPriority, int] = {
+    EventPriority.COALESCIBLE: 0,
+    EventPriority.CATEGORY: 1,
+    EventPriority.ROUTINE: 2,
+    EventPriority.PROTECTED: 3,
+    EventPriority.CRITICAL: 4,
+}
+# The ranks that may be displaced, lowest first (critical never is).
+EVICTION_ORDER: tuple[EventPriority, ...] = (
+    EventPriority.COALESCIBLE,
+    EventPriority.CATEGORY,
+    EventPriority.ROUTINE,
+    EventPriority.PROTECTED,
+)
 
 CRITICAL_DEVICE_CLASSES = frozenset(
     {*SAFETY_CLASSES, *DETECTOR_SAFETY_CLASSES, *ALARM_DEVICE_CLASSES}
 )
 # The alarm states ``normalize_state_change`` maps to ``SAFETY_ALARM``.
 _ALARM_STATES = frozenset({"on", "detected", "alarm"})
+
+
+def higher(first: EventPriority | None, second: EventPriority | None) -> EventPriority | None:
+    """The more important of two ranks (``None`` = no interest)."""
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return first if PRIORITY_RANK[first] >= PRIORITY_RANK[second] else second
 
 
 def device_class_of(state: Any) -> str | None:
@@ -78,8 +121,8 @@ def is_critical_change(entity_id: str, old_state: Any, new_state: Any) -> bool:
     if entity_id.startswith("binary_sensor."):
         return True
     return (
-        _state_text(new_state) in _ALARM_STATES
-        or _state_text(old_state) in _ALARM_STATES
+        state_text(new_state) in _ALARM_STATES
+        or state_text(old_state) in _ALARM_STATES
     )
 
 
@@ -94,15 +137,20 @@ def is_plain_number(state: Any) -> bool:
         return False
 
 
-def _state_text(state: Any) -> str | None:
+def state_text(state: Any) -> str | None:
+    """The casefolded state string of a HA ``State`` (``None`` if absent)."""
     text = getattr(state, "state", None)
     return text.casefold() if isinstance(text, str) else None
 
 
 __all__ = (
     "CRITICAL_DEVICE_CLASSES",
+    "EVICTION_ORDER",
     "EventPriority",
+    "PRIORITY_RANK",
     "device_class_of",
+    "higher",
     "is_critical_change",
     "is_plain_number",
+    "state_text",
 )
