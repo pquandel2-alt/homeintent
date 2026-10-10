@@ -1,4 +1,4 @@
-"""How much one selected ``state_changed`` event may be shed under load (7.9.6).
+"""How much one selected ``state_changed`` event may be shed under load.
 
 The EventRuntime ranks every event it queues:
 
@@ -10,13 +10,15 @@ The EventRuntime ranks every event it queues:
     sensors). No new list - the union of those three. Never dropped because
     of ordinary events; it displaces them when the queue is full.
 
-``LOSSLESS``
-    An event a consumer needs exactly, intermediate states included: an
-    entity with an expected effect, a monitor goal's sensor or person, an
-    active thermal cycle's entities, persons, door and window edges, every
-    event while routine detection is on, and every event that is not a plain
-    number-to-number change. Never merged; dropped only for a critical event
-    once nothing coalescible is left (a counted, logged loss).
+``PROTECTED``
+    An event a concrete, currently registered consumer needs exactly: an
+    expected effect, monitor goal, watched person or active thermal cycle.
+    It displaces category and coalescible work. A critical event can displace
+    it only after every lower priority entry is gone.
+
+``CATEGORY``
+    An event that can feed one explicitly enabled proactive category. It is
+    kept in FIFO order, but never displaces protected or critical work.
 
 ``COALESCIBLE``
     A plain numeric value change (``21.3`` -> ``21.4``) of a measurement
@@ -42,8 +44,12 @@ from .situation_detection import SAFETY_CLASSES as DETECTOR_SAFETY_CLASSES
 
 class EventPriority(StrEnum):
     CRITICAL = "critical"
-    LOSSLESS = "lossless"
+    PROTECTED = "protected"
+    CATEGORY = "category"
     COALESCIBLE = "coalescible"
+    # Source compatibility for integrations/tests importing the 7.9.6 name.
+    # 7.9.7 calls the same broad, non-mergeable tier ``CATEGORY``.
+    LOSSLESS = "category"
 
 
 CRITICAL_DEVICE_CLASSES = frozenset(

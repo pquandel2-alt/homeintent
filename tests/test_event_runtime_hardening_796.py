@@ -236,6 +236,11 @@ def _agent() -> SimpleNamespace:
     return SimpleNamespace(async_signal=AsyncMock())
 
 
+def _legacy_house_consumer() -> SimpleNamespace:
+    """Conservative undeclared future consumer used by 7.9.6 load tests."""
+    return SimpleNamespace(enabled="legacy", async_observe_state=AsyncMock())
+
+
 def _signals(agent: SimpleNamespace) -> list[dict[str, Any]]:
     return [call.args[0] for call in agent.async_signal.await_args_list]
 
@@ -326,16 +331,15 @@ def test_classification_of_house_wide_consumers(monkeypatch):
     harness.runtime.async_start()
     classify = harness.runtime.interest.classify
     number = lambda value: State(TEMP, value, {"device_class": "temperature"})  # noqa: E731
-    assert classify(TEMP, number("20.1"), number("20.2")) is EventPriority.COALESCIBLE
-    assert classify(TEMP, number("20.1"), number("unavailable")) is EventPriority.LOSSLESS
-    assert classify(TEMP, None, number("20.1")) is EventPriority.LOSSLESS
-    assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is EventPriority.LOSSLESS
-    assert classify(PERSON, State(PERSON, "1"), State(PERSON, "2")) is EventPriority.LOSSLESS
-    # A binary sensor with numeric labels is not a measurement.
-    assert classify(DOOR, State(DOOR, "1"), State(DOOR, "2")) is EventPriority.LOSSLESS
-    # Routine statistics observe every event: nothing is coalescible then.
+    assert classify(TEMP, number("20.1"), number("20.2")) is None
+    assert classify(TEMP, number("20.1"), number("unavailable")) is None
+    assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is None
+    assert classify(PERSON, State(PERSON, "1"), State(PERSON, "2")) is None
+    harness.entry.options[CONF_AGENT_EVENT_CATEGORIES] = "device_unavailable"
+    assert classify(TEMP, number("20.1"), number("unavailable")) is EventPriority.CATEGORY
+    harness.entry.options[CONF_AGENT_EVENT_CATEGORIES] = "routine_anomaly"
     harness.entry.options[CONF_ROUTINE_DETECTION_ENABLED] = True
-    assert classify(TEMP, number("20.1"), number("20.2")) is EventPriority.LOSSLESS
+    assert classify(TEMP, number("20.1"), number("20.2")) is EventPriority.CATEGORY
 
 
 def test_specific_consumers_make_their_entities_lossless(monkeypatch, tmp_path):
@@ -351,10 +355,10 @@ def test_specific_consumers_make_their_entities_lossless(monkeypatch, tmp_path):
         classify = harness.runtime.interest.classify
         assert classify(
             TEMP, State(TEMP, "20.1"), State(TEMP, "20.2")
-        ) is EventPriority.LOSSLESS
+        ) is EventPriority.PROTECTED
         assert classify(
             POWER, State(POWER, "100"), State(POWER, "101")
-        ) is EventPriority.COALESCIBLE
+        ) is None
 
     asyncio.run(scenario())
 
@@ -365,6 +369,7 @@ def test_specific_consumers_make_their_entities_lossless(monkeypatch, tmp_path):
 
 def _safety_harness(monkeypatch: Any, **fields: Any) -> tuple[_Harness, SimpleNamespace]:
     agent = _agent()
+    fields.setdefault("proactive_context", _legacy_house_consumer())
     sensors = _load_sensors()
     harness = _Harness(
         monkeypatch, [*sensors, SMOKE, MOISTURE], categories="safety",
@@ -459,7 +464,7 @@ def test_critical_displaces_lossless_only_when_nothing_coalescible_is_left(
     monkeypatch, caplog
 ):
     monkeypatch.setattr(event_runtime, "MAX_PENDING_EVENTS", 4)
-    harness = _Harness(monkeypatch, [DOOR, SMOKE], categories="safety")
+    harness = _Harness(monkeypatch, [DOOR, SMOKE], categories="opening_while_away")
     harness.house.seed(DOOR, "off")
     harness.house.seed(SMOKE, "off")
 
@@ -476,10 +481,11 @@ def test_critical_displaces_lossless_only_when_nothing_coalescible_is_left(
 
     asyncio.run(scenario())
     metrics = harness.metrics
-    # The first critical event displaced a door edge; four critical events
-    # then filled the queue and nothing may displace them: the rest is the
-    # documented hard limit, counted and logged as safety relevant.
-    assert metrics.dropped_lossless == 4
+    # Only the two opening edges are category work (closing edges are not
+    # relevant to opening_while_away). Critical edges displace both before
+    # the queue becomes all-critical.
+    assert metrics.dropped_category == 2
+    assert metrics.dropped_lossless == 2
     assert metrics.dropped_critical == 2
     safety = [record for record in caplog.records if record.getMessage().startswith("SAFETY:")]
     assert len(safety) == 1 and safety[0].levelno == logging.ERROR
@@ -515,7 +521,7 @@ def test_expected_effect_sees_its_intermediate_state_under_load(monkeypatch):
         effects.register(ServiceCallPlan("light", "turn_on", LIGHT, {}))
         assert harness.runtime.interest.classify(
             LIGHT, State(LIGHT, "off"), State(LIGHT, "on")
-        ) is EventPriority.LOSSLESS
+        ) is EventPriority.PROTECTED
         harness.house.set(LIGHT, "on")
         harness.house.set(LIGHT, "off")
         await _settle(harness.hass)
@@ -628,6 +634,7 @@ def _monitor_harness(
     harness = _Harness(
         monkeypatch, [*sensors, PERSON, TEMP], categories=categories,
         monitor_goals=store, monitor_runtime=monitor,
+        **({"proactive_context": _legacy_house_consumer()} if categories else {}),
     )
     for sensor in sensors:
         harness.house.seed(sensor, "20.0")
@@ -728,13 +735,12 @@ def test_one_failed_snapshot_loses_nothing_and_duplicates_nothing(monkeypatch, c
 
     asyncio.run(scenario())
     assert [(entity, state) for entity, state, *_ in harness.evaluated] == [
-        (DOOR, "on"), (SMOKE, "on"), (DOOR, "off"), (DOOR, "on"), (SMOKE, "off"),
+        (DOOR, "on"), (SMOKE, "on"), (DOOR, "on"), (SMOKE, "off"),
     ]
     # Each event saw the house of its own moment, also after the retry.
     assert [view for *_, view in harness.evaluated] == [
         {DOOR: "on", SMOKE: "off"},
         {DOOR: "on", SMOKE: "on"},
-        {DOOR: "off", SMOKE: "on"},
         {DOOR: "on", SMOKE: "on"},
         {DOOR: "on", SMOKE: "off"},
     ]
@@ -743,8 +749,8 @@ def test_one_failed_snapshot_loses_nothing_and_duplicates_nothing(monkeypatch, c
     assert metrics.snapshot_retries >= 1
     assert metrics.worker_starts == 1
     assert len(harness.hass._tasks) == 1
-    assert metrics.processed == 5
-    assert len(attempts) == 1 + 3  # one failure, then three batches of <= 2
+    assert metrics.processed == 4
+    assert len(attempts) == 1 + 2  # one failure, then two batches of <= 2
     assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 1
 
 
@@ -788,14 +794,15 @@ def test_unload_during_snapshot_retries_ends_worker_and_old_worker_stays_out(mon
         failed = len(attempts)
         monkeypatch.setattr(event_runtime, "build_entity_snapshots", harness.build)
         restarted = harness.runtime.async_start()
-        harness.house.set(DOOR, "off")
+        harness.house.seed(DOOR, "off")
+        harness.house.set(DOOR, "on")
         await _settle(harness.hass)
         assert len(attempts) == failed  # the old worker never retried again
         restarted()
 
     asyncio.run(scenario())
     # Nothing from before the unload, the new event once, by one new worker.
-    assert [(entity, state) for entity, state, *_ in harness.evaluated] == [(DOOR, "off")]
+    assert [(entity, state) for entity, state, *_ in harness.evaluated] == [(DOOR, "on")]
     assert harness.metrics.worker_starts == 1
     assert harness.pending_tasks() == []
 
@@ -826,6 +833,7 @@ def test_persistent_snapshot_failure_evaluates_critical_without_registry(monkeyp
     agent = _agent()
     harness = _Harness(
         monkeypatch, [SMOKE, DOOR, TEMP], categories="safety", proactive_agent=agent,
+        proactive_context=_legacy_house_consumer(),
     )
     harness.house.seed(SMOKE, "off")
     harness.house.seed(DOOR, "off")
@@ -845,13 +853,14 @@ def test_persistent_snapshot_failure_evaluates_critical_without_registry(monkeyp
     metrics = harness.metrics
     assert len(attempts) == event_runtime.SNAPSHOT_MAX_ATTEMPTS
     assert metrics.snapshot_degraded_batches == 1
-    # Critical and lossless are evaluated (no registry data), the plain
-    # value change is counted as dropped - nothing vanishes silently.
+    # Only protected/critical work is evaluated without registry data;
+    # lower category and coalescible work is counted as dropped.
     assert [(entity, state) for entity, state, *_ in harness.evaluated] == [
-        (SMOKE, "on"), (DOOR, "on"),
+        (SMOKE, "on"),
     ]
     assert metrics.dropped_coalescible == 1
-    assert metrics.dropped_critical == metrics.dropped_lossless == 0
+    assert metrics.dropped_category == 1
+    assert metrics.dropped_critical == 0
     assert [payload["source_entity_id"] for payload in _signals(agent)] == [SMOKE]
     assert any(
         record.getMessage().startswith("SAFETY:") for record in caplog.records
@@ -925,15 +934,16 @@ def test_house_wide_option_change_is_picked_up_without_restart(monkeypatch):
             **harness.entry.options, CONF_AGENT_EVENT_CATEGORIES: "opening_while_away",
         }
         harness.house.set(DOOR, "off")
+        harness.house.set(DOOR, "on")
         harness.entry.options = {
             **harness.entry.options, CONF_AGENT_EVENT_CATEGORIES: "",
         }
-        harness.house.set(DOOR, "on")
+        harness.house.set(DOOR, "off")
         await _settle(harness.hass)
         stop()
 
     asyncio.run(scenario())
-    assert harness.evaluations_of(DOOR) == [("off", "on")]
+    assert harness.evaluations_of(DOOR) == [("on", "off")]
 
 
 def test_enabled_proactive_context_is_a_consumer(monkeypatch, tmp_path):
@@ -948,8 +958,8 @@ def test_enabled_proactive_context_is_a_consumer(monkeypatch, tmp_path):
     harness.runtime.async_start()
     classify = harness.runtime.interest.classify
     door = lambda value: State(DOOR, value, {"device_class": "door"})  # noqa: E731
-    assert classify(DOOR, door("off"), door("on")) is EventPriority.LOSSLESS
-    assert classify(POWER, State(POWER, "5"), State(POWER, "6")) is EventPriority.COALESCIBLE
+    assert classify(DOOR, door("off"), door("on")) is EventPriority.CATEGORY
+    assert classify(POWER, State(POWER, "5"), State(POWER, "6")) is None
 
 
 # --------------------------------------------------------------------------
@@ -967,13 +977,13 @@ def test_interest_follows_effect_registration_fulfilment_and_timeout(monkeypatch
         assert classify(LIGHT, *on) is None
         effects.register(ServiceCallPlan("light", "turn_on", [LIGHT, "light.bad"], {}))
         assert effects.watched_entity_ids == {LIGHT, "light.bad"}
-        assert classify(LIGHT, *on) is EventPriority.LOSSLESS
+        assert classify(LIGHT, *on) is EventPriority.PROTECTED
         # A second effect for the same entity replaces the first.
         effects.register(ServiceCallPlan("light", "turn_off", LIGHT, {}))
         assert len([e for e in effects.pending if e.entity_id == LIGHT]) == 1
         effects.observe(LIGHT, "off")  # fulfilled
         assert classify(LIGHT, *on) is None
-        assert classify("light.bad", *on) is EventPriority.LOSSLESS
+        assert classify("light.bad", *on) is EventPriority.PROTECTED
         await asyncio.sleep(0.15)  # light.bad times out
         assert effects.watched_entity_ids == frozenset()
         assert classify("light.bad", *on) is None
@@ -1016,7 +1026,7 @@ def test_interest_follows_thermal_cycles(monkeypatch, tmp_path):
         for entity_id in (CLIMATE, TEMP, WINDOW):
             assert classify(
                 entity_id, State(entity_id, "1"), State(entity_id, "2")
-            ) is EventPriority.LOSSLESS
+            ) is EventPriority.PROTECTED
         assert classify(DOOR, State(DOOR, "off"), State(DOOR, "on")) is None
         reached = (entities[0], EntitySnapshot(
             TEMP, "Temperatur", "sensor", "22.0", area_id="wohnzimmer",
@@ -1044,28 +1054,28 @@ def test_interest_follows_monitor_goal_saves_and_deletes(monkeypatch, tmp_path):
     async def scenario() -> None:
         stop = harness.runtime.async_start()
         # Not loaded yet: every person and sensor counts (conservative).
-        assert classify(TEMP, *value) is EventPriority.LOSSLESS
+        assert classify(TEMP, *value) is EventPriority.PROTECTED
         await store.async_load()
         assert classify(TEMP, *value) is None
         assert classify(PERSON, *leave) is None
         await store.async_save(_value_goal("goal_temp", TEMP))
-        assert classify(TEMP, *value) is EventPriority.LOSSLESS
+        assert classify(TEMP, *value) is EventPriority.PROTECTED
         await store.async_save(_person_goal("goal_anna", PERSON))
-        assert classify(PERSON, *leave) is EventPriority.LOSSLESS
+        assert classify(PERSON, *leave) is EventPriority.PROTECTED
         assert classify("person.ben", *ben) is None
         await store.async_save(_nobody_goal("goal_nobody", ("person.ben",)))
-        assert classify("person.ben", *ben) is EventPriority.LOSSLESS
+        assert classify("person.ben", *ben) is EventPriority.PROTECTED
         await store.async_delete("goal_nobody")
         assert classify("person.ben", *ben) is None
         # A household goal follows the configured household: every person.
         await store.async_save(_nobody_goal("goal_household"))
         assert store.nobody_home_uses_household
-        assert classify("person.ben", *ben) is EventPriority.LOSSLESS
+        assert classify("person.ben", *ben) is EventPriority.PROTECTED
         # A disabled goal is not a consumer.
         await store.async_save(MonitorRecord(_value_goal("goal_temp", TEMP).goal, enabled=False))
         assert classify(TEMP, *value) is None
         await store.async_delete("goal_anna")
-        assert classify(PERSON, *leave) is EventPriority.LOSSLESS  # household goal
+        assert classify(PERSON, *leave) is EventPriority.PROTECTED  # household goal
         await store.async_delete("goal_household")
         assert classify(PERSON, *leave) is None
         stop()
@@ -1101,7 +1111,10 @@ def test_failed_monitor_write_leaves_cache_and_interest_unchanged(monkeypatch, t
 # --------------------------------------------------------------------------
 
 def test_adjacent_value_changes_merge_into_one_evaluation(monkeypatch):
-    harness = _Harness(monkeypatch, [POWER], categories="device_unavailable")
+    harness = _Harness(
+        monkeypatch, [POWER], categories="device_unavailable",
+        proactive_context=_legacy_house_consumer(),
+    )
     harness.house.seed(POWER, "100")
 
     async def scenario() -> None:
@@ -1122,7 +1135,10 @@ def test_adjacent_value_changes_merge_into_one_evaluation(monkeypatch):
 
 
 def test_interleaved_value_changes_merge_but_keep_the_exact_history(monkeypatch):
-    harness = _Harness(monkeypatch, [POWER, TEMP, DOOR], categories="device_unavailable")
+    harness = _Harness(
+        monkeypatch, [POWER, TEMP, DOOR], categories="device_unavailable",
+        proactive_context=_legacy_house_consumer(),
+    )
     harness.house.seed(POWER, "100")
     harness.house.seed(TEMP, "20.0")
     harness.house.seed(DOOR, "off")
@@ -1166,7 +1182,8 @@ def test_safety_person_effect_and_monitor_edges_are_never_merged(monkeypatch, tm
     store = _store(tmp_path)
     effects = EffectMonitor()
     harness = _Harness(
-        monkeypatch, [SMOKE, PERSON, LIGHT, TEMP, DOOR], categories="device_unavailable",
+        monkeypatch, [SMOKE, PERSON, LIGHT, TEMP, DOOR], categories="routine_anomaly",
+        options={CONF_ROUTINE_DETECTION_ENABLED: True},
         effect_monitor=effects, monitor_goals=store, monitor_runtime=_monitor(store),
     )
     for entity_id, value in ((SMOKE, "off"), (PERSON, "home"), (LIGHT, "off"),
@@ -1175,6 +1192,7 @@ def test_safety_person_effect_and_monitor_edges_are_never_merged(monkeypatch, tm
 
     async def scenario() -> None:
         await store.async_save(_value_goal("goal_temp", TEMP))
+        await store.async_save(_person_goal("goal_person", PERSON))
         stop = harness.runtime.async_start()
         effects.register(ServiceCallPlan("light", "turn_on", LIGHT, {}))
         for entity_id, values in (
@@ -1197,7 +1215,10 @@ def test_safety_person_effect_and_monitor_edges_are_never_merged(monkeypatch, tm
 
 
 def test_a_merge_after_a_critical_event_does_not_rewrite_its_view(monkeypatch):
-    harness = _Harness(monkeypatch, [SMOKE, POWER], categories="safety")
+    harness = _Harness(
+        monkeypatch, [SMOKE, POWER], categories="safety",
+        proactive_context=_legacy_house_consumer(),
+    )
     harness.house.seed(SMOKE, "off")
     harness.house.seed(POWER, "100")
 
@@ -1220,7 +1241,10 @@ def test_a_merge_after_a_critical_event_does_not_rewrite_its_view(monkeypatch):
 def test_a_dropped_later_change_never_leaks_into_an_earlier_event(monkeypatch):
     monkeypatch.setattr(event_runtime, "MAX_PENDING_EVENTS", 3)
     sensors = [f"sensor.v_{index}" for index in range(4)]
-    harness = _Harness(monkeypatch, [DOOR, *sensors], categories="safety")
+    harness = _Harness(
+        monkeypatch, [DOOR, *sensors], categories="safety",
+        proactive_context=_legacy_house_consumer(),
+    )
     harness.house.seed(DOOR, "off")
     for sensor in sensors:
         harness.house.seed(sensor, "1")
@@ -1290,7 +1314,10 @@ def test_unload_during_a_burst_stops_everything_and_reload_starts_one_worker(mon
 # --------------------------------------------------------------------------
 
 def test_callback_does_no_snapshot_registry_or_file_work(monkeypatch, tmp_path):
-    harness = _Harness(monkeypatch, _load_sensors(), categories="safety")
+    harness = _Harness(
+        monkeypatch, _load_sensors(), categories="safety",
+        proactive_context=_legacy_house_consumer(),
+    )
     for sensor in _load_sensors():
         harness.house.seed(sensor, "20.0")
 

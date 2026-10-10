@@ -84,11 +84,16 @@ class _Bus:
 
 
 def _event(entity_id: str, old: str, new: str, offset: int = 0) -> Any:
+    attributes = {"device_class": "window"} if entity_id == WINDOW else {}
     return SimpleNamespace(
         data={
             "entity_id": entity_id,
-            "old_state": SimpleNamespace(state=old),
-            "new_state": SimpleNamespace(state=new),
+            "old_state": SimpleNamespace(
+                entity_id=entity_id, state=old, attributes=attributes
+            ),
+            "new_state": SimpleNamespace(
+                entity_id=entity_id, state=new, attributes=attributes
+            ),
         },
         time_fired=T0 + timedelta(seconds=offset),
         context=SimpleNamespace(id=f"ctx-{entity_id}-{offset}"),
@@ -233,7 +238,14 @@ def test_burst_of_selected_events_uses_one_worker_and_few_snapshots(monkeypatch)
 def test_events_are_processed_in_order_and_a_failure_does_not_stop_the_worker(monkeypatch):
     hass = _hass()
     # 7.9.6: a selected event is queued only for an active consumer.
-    runtime, _ = _runtime(hass, selected=[WINDOW, LIGHT], categories="opening_while_away")
+    runtime, _ = _runtime(
+        hass,
+        selected=[WINDOW, LIGHT],
+        categories="opening_while_away",
+        proactive_context=SimpleNamespace(
+            enabled="legacy", async_observe_state=AsyncMock()
+        ),
+    )
     monkeypatch.setattr(event_runtime, "build_entity_snapshots", lambda *_: [])
     seen: list[str] = []
 

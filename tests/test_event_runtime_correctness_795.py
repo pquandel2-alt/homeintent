@@ -452,8 +452,11 @@ def test_failing_snapshot_build_neither_ends_the_worker_nor_hides_it(monkeypatch
 
 def test_a_worker_surviving_its_cancellation_never_drains_a_new_queue(monkeypatch):
     hass, house, runtime = _setup(monkeypatch, [DOOR])
-    # 7.9.6: a selected event is queued only for an active consumer.
-    runtime._entry.options[CONF_AGENT_EVENT_CATEGORIES] = "opening_while_away"
+    # An undeclared future consumer is handled conservatively, without making
+    # a configured category house-wide.
+    runtime._runtime_data.proactive_context = SimpleNamespace(
+        enabled="legacy", async_observe_state=AsyncMock()
+    )
     house.set(DOOR, "off")
     processed: list[str] = []
 
@@ -539,7 +542,8 @@ def test_runtime_uses_the_set_filter_for_every_house_event(monkeypatch):
                 "old_state": None, "new_state": State("x", "1"),
             }))
         hass.bus.fire(SimpleNamespace(data={
-            "entity_id": "sensor.s_2999", "old_state": None, "new_state": State("x", "1"),
+            "entity_id": "sensor.s_2999", "old_state": State("x", "1"),
+            "new_state": State("x", "unavailable"),
         }))
         pending: Any = runtime._pending
         queued = 0 if pending is None else len(pending)
