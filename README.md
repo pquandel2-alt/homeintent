@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.6** (Bugfix: Sicherheitsereignisse gehen unter Last nicht mehr verloren, keine Ereignisarbeit ohne aktiven Verbraucher; Funktionsumfang wie 7.9.3)
+- Aktuelle Version: **7.9.7** (Bugfix: aktive Event-Verbraucher sind unter Last geschützt, präziser Interest-Filter und vollständig begrenzte Runtime-Retention; Funktionsumfang wie 7.9.3)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,40 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.7 neu?
+
+Reiner Stabilitäts- und Korrektheits-Bugfix der Ereignisverarbeitung, keine
+neuen Funktionen und keine Konfigurationsmigration:
+
+- **Aktive Verbraucher sind eine eigene Priorität:** ExpectedEffects,
+  Monitorziele, überwachte Personen und laufende Thermal-Zyklen sind jetzt
+  `PROTECTED`. Gewöhnliche Kategorieevents können sie bei voller Queue nicht
+  mehr verdrängen. Kritische Events verdrängen zuerst Coalescing- und
+  Kategoriearbeit.
+- **Präzise Kategorie-Interessen:** `safety`, Geräteausfall, Öffnung bei
+  Abwesenheit, Fenster/Heizung, Licht/Anwesenheit, Langläufer und Routinen
+  besitzen getrennte Domain-/Transition-Regeln. Ein negativer proaktiver
+  Relevanzfilter reiht nichts ein; `expected_effect_missing` erzeugt ohne
+  aktiven Effect kein hausweites Interesse.
+- **Retention wird nach jedem Drain vollständig freigegeben:** Queue,
+  `latest`, Gap-/Carry-Historie, Priority-Referenzen, Pending-Zähler,
+  Tombstones sowie Event-/State-Referenzen bleiben nicht bis zum Unload
+  liegen.
+- **Gesamtes transientes Bookkeeping ist begrenzt:** 4096 Live-Events, 4096
+  Entity-Historieneinträge je Hilfsmap und eine konservative Obergrenze von
+  37888 Referenz-Records. Bei extremer Überlast wechselt die Runtime in einen
+  gezählten, rate-limitiert gemeldeten sicheren Historienmodus, der keine
+  zukünftigen Zustände als Vergangenheit ausgibt.
+- **Neue Diagnose und Lasttests:** prioritätsspezifische Drop-Zähler,
+  Filter-/Retention-/Degradationsmetriken, No-Yield-Regressionen, zehn Bursts,
+  6000er-Drain, 50.000 eindeutige Events, Snapshot-Retry und Unload unter
+  Last. Niedrige Prioritäten können an der harten Grenze weiterhin bewusst
+  verworfen werden; das wird gezählt und nicht als „verlustfrei“ behauptet.
+- Snapshot-Retry, historische Zustandskorrektheit, ein einzelner Worker und
+  die Startup-Responsiveness aus 7.9.4–7.9.6 bleiben erhalten. Details,
+  Grenzen und reproduzierbare JSON-Messungen:
+  `docs/umsetzung-7.9.7.md` und `scripts/event_runtime_repro_797.py`.
 
 ## Was ist in Version 7.9.6 neu?
 
@@ -2463,6 +2497,21 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.7:
+
+```text
+Event-/Startup-/History-/Effect-Gates: 170 passed, RuntimeWarning und Unraisable-Warnings als Fehler
+Vollständige Stub-Suite (Python 3.12.3): 9764 passed, 12 skipped, 0 failed; RuntimeWarning und Unraisable-Warnings als Fehler
+EventRuntime-Reproduktion: 8/8 Szenarien; 0 dropped_critical, 0 dropped_protected, 0 RuntimeWarnings, 0 Retention/Pending nach Drain
+50.000 eindeutige Events: queue_peak 4096, max_retained_total 24576 (Grenze 37888), history_degraded 1, retained_total 0
+Korpus-Signaturen 7.9.7: 4106 Sätze; gegenüber 7.9.6 0 geänderte Signaturen, 2 neue Test-Docstrings (docs/perf/corpus-signatures-7.9.7-begruendung.md)
+Sprachverständnis: 463 passed; Shadow: 2131 equivalent, SAFETY_DRIFT 0; Arbiter: SAFETY_DRIFT 0 und RuntimeWarning-Gate 0 Findings
+Entwicklungs-Benchmarks 7.7/7.8: unsafe_execution_count 0, Safety-Fehlerklasse 0
+Safety-Invarianten im Nightly-Profil (300 Beispiele je Property): 40 passed, 0 Counterexamples
+Pyright vollständig und alle drei zusätzlichen Strict-Profile: 0 Fehler, 0 Warnungen; Pyflakes repositoryweit 0; compileall erfolgreich
+Echtes HA, Live-/Proactive-Testbett und CI: noch nicht lokal behauptet; sie benötigen Python 3.14 beziehungsweise einen sauberen CI-Runner
+```
+
 Geprüfter Release-Stand von Version 7.9.6:
 
 ```text
@@ -2599,7 +2648,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.6.json
+  --check docs/perf/corpus-signatures-7.9.7.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die

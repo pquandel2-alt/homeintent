@@ -1,4 +1,4 @@
-"""7.9.6 against a REAL Home Assistant: 6000 state changes without a yield.
+"""7.9.7 against a REAL Home Assistant: 6000 state changes without a yield.
 
 The 7.9.4 storm test hands the loop back every 250 sensors. Here all 6000
 ordinary sensor changes are set in one synchronous burst - the worker cannot
@@ -84,7 +84,7 @@ def _homeintent_workers() -> list[asyncio.Task[Any]]:
     ]
 
 
-async def test_six_thousand_changes_without_a_yield_keep_critical_and_lossless(
+async def test_six_thousand_changes_without_a_yield_keep_critical_and_protected(
     hass: HomeAssistant, monkeypatch: Any
 ) -> None:
     sensors = [f"sensor.last_{index}" for index in range(LOAD)]
@@ -95,8 +95,11 @@ async def test_six_thousand_changes_without_a_yield_keep_critical_and_lossless(
     hass.states.async_set(LIGHT, "off")
     options = dict(SETUP_OPTIONS)
     options["selected_entities"] = [*sensors, SMOKE, MOISTURE, LIGHT]
-    # A house-wide consumer: every selected change is of interest.
-    options["agent_event_categories"] = "safety"
+    # Routine statistics are the one deliberately broad category.  Both its
+    # category and feature flag must be on; ``safety`` no longer subscribes
+    # unrelated numeric sensors house-wide in 7.9.7.
+    options["agent_event_categories"] = "routine_anomaly"
+    options["routine_detection_enabled"] = True
     entry = await _setup(hass, options)
     data = entry.runtime_data
     runtime = data.situation_runtime
@@ -159,7 +162,8 @@ async def test_six_thousand_changes_without_a_yield_keep_critical_and_lossless(
     assert metrics["worker_starts"] <= 1
     assert metrics["received"] == LOAD + 4
     assert metrics["dropped_critical"] == 0
-    assert metrics["dropped_lossless"] == 0
+    assert metrics["dropped_protected"] == 0
+    assert metrics["dropped_category"] == LOAD + 4 - event_runtime.MAX_PENDING_EVENTS
     assert (SMOKE, "on") in evaluated and (MOISTURE, "on") in evaluated
     assert [item for item in evaluated if item[0] == LIGHT] == [(LIGHT, "on"), (LIGHT, "off")]
     assert data.effect_monitor.pending == ()  # observed, not expired

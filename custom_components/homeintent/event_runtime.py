@@ -58,9 +58,19 @@ _LOGGER = logging.getLogger(__name__)
 
 # Live entries (to evaluate or kept for the house view) waiting for the single
 # worker (7.9.4 P0). The bound keeps memory finite; under overload the
-# priority decides what goes first (7.9.6): coalescible before lossless,
-# critical never for ordinary events.
+# priority decides what goes first (7.9.7): coalescible, category, protected,
+# then critical. Equal-priority overload keeps the already queued FIFO work.
 MAX_PENDING_EVENTS = 4096
+# Exact rewind information is useful only while older live work exists. It is
+# separately bounded because limiting the queue alone did not limit 7.9.6's
+# ``gaps``/``carry_previous`` dictionaries. Queue records plus auxiliary
+# records therefore have a finite, documented ceiling.
+MAX_HISTORY_ENTITIES = 4096
+# Conservative accounting ceiling for queue/tombstone records, priority
+# references, latest/pending maps and the two history maps. Structures share
+# entries, so this is a reference-record bound rather than an object-byte
+# estimate. See ``_Generation.update_retention``.
+MAX_TRANSIENT_RECORDS = 9 * MAX_PENDING_EVENTS + 1024
 # Events taken from the queue per snapshot build. The snapshot is the house
 # as it is now; each event is evaluated against the house as it was when the
 # event fired (7.9.5), derived from the queued events' own old/new states.
@@ -79,6 +89,7 @@ SNAPSHOT_MAX_ATTEMPTS = 5
 SNAPSHOT_RETRY_BASE_SECONDS = 0.05
 SNAPSHOT_RETRY_MAX_SECONDS = 5.0
 _SNAPSHOT_ERROR_INTERVAL_SECONDS = 60.0
+_HISTORY_WARNING_INTERVAL_SECONDS = 60.0
 
 
 @dataclass
@@ -89,17 +100,22 @@ class EventRuntimeMetrics:
     ``queued`` + events rejected by a full queue (``dropped_*`` of the
     incoming event). ``coalesced`` counts evaluations merged into a later
     event of the same entity; ``dropped_*`` counts evaluations lost to the
-    queue bound, per priority. ``view_evictions`` counts history-only
+    queue bound, per priority. ``dropped_lossless`` remains the compatibility
+    aggregate of category + protected drops. ``view_evictions`` counts history-only
     entries given up under overload (no evaluation is lost by that).
     """
 
     received: int = 0
     filtered_unselected: int = 0
     filtered_no_interest: int = 0
+    filtered_by_interest: int = 0
+    filtered_by_category: int = 0
     queued: int = 0
     processed: int = 0
     coalesced: int = 0
     dropped_coalescible: int = 0
+    dropped_category: int = 0
+    dropped_protected: int = 0
     dropped_lossless: int = 0
     dropped_critical: int = 0
     view_evictions: int = 0
@@ -107,8 +123,21 @@ class EventRuntimeMetrics:
     snapshot_failures: int = 0
     snapshot_retries: int = 0
     snapshot_degraded_batches: int = 0
+    history_degraded: int = 0
+    history_degraded_events: int = 0
+    history_degraded_batches: int = 0
     worker_starts: int = 0
+    worker_restarts: int = 0
     max_queue_depth: int = 0
+    retained_live: int = 0
+    retained_latest: int = 0
+    retained_gaps: int = 0
+    retained_carry_previous: int = 0
+    retained_priority_refs: int = 0
+    retained_unprocessed: int = 0
+    retained_tombstones: int = 0
+    retained_total: int = 0
+    max_retained_total: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return dict(asdict(self))
@@ -200,7 +229,8 @@ class _Generation:
         self.seq = 0
         self.coalescible: deque[_Entry] = deque()
         self.view_only: deque[_Entry] = deque()
-        self.lossless: deque[_Entry] = deque()
+        self.category: deque[_Entry] = deque()
+        self.protected: deque[_Entry] = deque()
         self.latest: dict[str, _Entry] = {}
         self.carry_previous: dict[str, Any] = {}
         self.unprocessed_by_entity: dict[str, int] = {}
@@ -212,6 +242,11 @@ class _Generation:
         self.last_drop_warning: float | None = None
         self.last_critical_warning: float | None = None
         self.last_snapshot_error: float | None = None
+        self.last_history_warning: float | None = None
+        # Non-zero means an auxiliary overflow made whole-house history
+        # inexact through this sequence. Affected batches use a conservative
+        # event-entity-only view; a scalar replaces an unbounded entity set.
+        self.history_degraded_through = 0
 
     def oldest_live_seq(self) -> int | None:
         while self.queue and self.queue[0].status != _QUEUED:
@@ -231,8 +266,10 @@ class _Generation:
             batch.append(entry)
         while self.coalescible and self.coalescible[0].status != _QUEUED:
             self.coalescible.popleft()
-        while self.lossless and self.lossless[0].status != _QUEUED:
-            self.lossless.popleft()
+        while self.category and self.category[0].status != _QUEUED:
+            self.category.popleft()
+        while self.protected and self.protected[0].status != _QUEUED:
+            self.protected.popleft()
         while self.view_only and self.view_only[0].status != _QUEUED:
             self.view_only.popleft()
         # Gaps stay until a view built after them no longer needs them
@@ -249,13 +286,96 @@ class _Generation:
         else:
             self.unprocessed_by_entity.pop(entity_id, None)
 
-    def record_gap(self, entity_id: str, seq: int, old_state: Any, new_state: Any) -> None:
+    def record_gap(
+        self, entity_id: str, seq: int, old_state: Any, new_state: Any
+    ) -> bool:
+        """Remember a dropped transition; return true on degradation entry."""
+        if self.history_degraded_through:
+            self.history_degraded_through = max(self.history_degraded_through, seq)
+            self.metrics.history_degraded_events += 1
+            return False
         oldest = self.oldest_live_seq()
         gap = self.gaps.get(entity_id)
+        if gap is None and len(self.gaps) >= MAX_HISTORY_ENTITIES:
+            return self.degrade_history(seq)
         if gap is None or oldest is None or gap.last_seq < oldest:
             self.gaps[entity_id] = _Gap(seq, old_state, new_state)
         else:
             gap.extend(seq, old_state, new_state)
+        return False
+
+    def remember_previous(self, entity_id: str, previous: Any, seq: int) -> bool:
+        """Keep a coalesced chain's first state within the auxiliary bound."""
+        if self.history_degraded_through:
+            self.history_degraded_through = max(self.history_degraded_through, seq)
+            return False
+        if entity_id in self.carry_previous:
+            return False
+        if len(self.carry_previous) >= MAX_HISTORY_ENTITIES:
+            return self.degrade_history(seq)
+        self.carry_previous[entity_id] = previous
+        return False
+
+    def degrade_history(self, seq: int) -> bool:
+        """Enter bounded safe mode instead of retaining more entity history."""
+        entered = not self.history_degraded_through
+        self.history_degraded_through = max(self.history_degraded_through, seq)
+        self.gaps.clear()
+        self.carry_previous.clear()
+        self.metrics.history_degraded_events += 1
+        if entered:
+            self.metrics.history_degraded += 1
+        return entered
+
+    def finish(self, entry: _Entry) -> None:
+        """Release one completed entry and any exact latest pointer to it."""
+        entry.status = _DONE
+        if self.latest.get(entry.entity_id) is entry:
+            del self.latest[entry.entity_id]
+        entry.event = entry.old_state = entry.new_state = entry.previous = None
+
+    def stable_cleanup(self) -> None:
+        """Release every transient structure once no live work remains."""
+        if self.live:
+            return
+        self.queue.clear()
+        self.coalescible.clear()
+        self.view_only.clear()
+        self.category.clear()
+        self.protected.clear()
+        self.latest.clear()
+        self.carry_previous.clear()
+        self.unprocessed_by_entity.clear()
+        self.gaps.clear()
+        self.tombstones = 0
+        self.history_degraded_through = 0
+        self.snapshot_failures_in_row = 0
+        self.update_retention()
+
+    def update_retention(self) -> None:
+        """Publish low-cardinality gauges without retaining metric objects."""
+        metrics = self.metrics
+        metrics.retained_live = self.live
+        metrics.retained_latest = len(self.latest)
+        metrics.retained_gaps = len(self.gaps)
+        metrics.retained_carry_previous = len(self.carry_previous)
+        metrics.retained_priority_refs = (
+            len(self.coalescible) + len(self.view_only)
+            + len(self.category) + len(self.protected)
+        )
+        metrics.retained_unprocessed = len(self.unprocessed_by_entity)
+        metrics.retained_tombstones = self.tombstones
+        metrics.retained_total = (
+            len(self.queue)
+            + metrics.retained_latest
+            + metrics.retained_gaps
+            + metrics.retained_carry_previous
+            + metrics.retained_priority_refs
+            + metrics.retained_unprocessed
+        )
+        metrics.max_retained_total = max(
+            metrics.max_retained_total, metrics.retained_total
+        )
 
     def compact(self) -> None:
         if self.tombstones > max(self.live, 1024):
@@ -349,13 +469,16 @@ class SituationRuntime:
             generation.queue = deque()
             generation.coalescible = deque()
             generation.view_only = deque()
-            generation.lossless = deque()
+            generation.category = deque()
+            generation.protected = deque()
             generation.latest = {}
             generation.carry_previous = {}
             generation.unprocessed_by_entity = {}
             generation.gaps = {}
             generation.live = 0
             generation.tombstones = 0
+            generation.history_degraded_through = 0
+            generation.update_retention()
 
         return stop
 
@@ -387,6 +510,9 @@ class SituationRuntime:
         priority = self._interest.classify(entity_id, old_state, new_state)
         if priority is None:
             metrics.filtered_no_interest += 1
+            metrics.filtered_by_interest += 1
+            if self._interest.category_filter_active:
+                metrics.filtered_by_category += 1
             return
         self._enqueue(gen, raw_event, entity_id, old_state, new_state, priority)
 
@@ -437,8 +563,10 @@ class SituationRuntime:
         gen.unprocessed(entity_id, 1)
         if priority is EventPriority.COALESCIBLE:
             gen.coalescible.append(entry)
-        elif priority is EventPriority.LOSSLESS:
-            gen.lossless.append(entry)
+        elif priority is EventPriority.CATEGORY:
+            gen.category.append(entry)
+        elif priority is EventPriority.PROTECTED:
+            gen.protected.append(entry)
         metrics.queued += 1
         if gen.live > metrics.max_queue_depth:
             metrics.max_queue_depth = gen.live
@@ -450,19 +578,25 @@ class SituationRuntime:
                 "HomeIntent situation events",
                 eager_start=False,
             )
+        gen.update_retention()
 
     def _make_room(self, gen: _Generation, priority: EventPriority) -> bool:
         """Evict one entry of lower rank for an incoming ``priority`` event.
 
-        History-only entries go first (no evaluation is lost), then
-        coalescible evaluations; a critical event may finally displace a
-        lossless one. Nothing displaces a critical event.
+        History-only entries go first (no evaluation is lost). Evaluation
+        tiers are then considered strictly from lowest to highest. An entry
+        never displaces its own tier: at equal priority the queued FIFO work
+        wins and the incoming event is rejected deterministically.
         """
         victim = _first_queued(gen.view_only)
-        if victim is None and priority is not EventPriority.COALESCIBLE:
+        if victim is None and priority in {
+            EventPriority.CATEGORY, EventPriority.PROTECTED, EventPriority.CRITICAL,
+        }:
             victim = _first_queued(gen.coalescible, process=True)
+        if victim is None and priority in {EventPriority.PROTECTED, EventPriority.CRITICAL}:
+            victim = _first_queued(gen.category)
         if victim is None and priority is EventPriority.CRITICAL:
-            victim = _first_queued(gen.lossless)
+            victim = _first_queued(gen.protected)
         if victim is None:
             return False
         self._evict(gen, victim)
@@ -473,7 +607,10 @@ class SituationRuntime:
         victim.status = _EVICTED
         gen.live -= 1
         gen.tombstones += 1
-        gen.record_gap(victim.entity_id, victim.seq, victim.old_state, victim.new_state)
+        if gen.record_gap(
+            victim.entity_id, victim.seq, victim.old_state, victim.new_state
+        ):
+            self._warn_history_degraded(gen, victim.entity_id)
         if victim.process:
             gen.unprocessed(victim.entity_id, -1)
             self._count_drop(gen, victim.priority, victim.entity_id)
@@ -481,20 +618,46 @@ class SituationRuntime:
                 victim.priority is EventPriority.COALESCIBLE
                 and gen.latest.get(victim.entity_id) is victim
             ):
-                gen.carry_previous.setdefault(victim.entity_id, victim.previous)
+                if gen.remember_previous(
+                    victim.entity_id, victim.previous, victim.seq
+                ):
+                    self._warn_history_degraded(gen, victim.entity_id)
         else:
             metrics.view_evictions += 1
+        if gen.latest.get(victim.entity_id) is victim:
+            del gen.latest[victim.entity_id]
         victim.event = victim.old_state = victim.new_state = victim.previous = None
         gen.compact()
+        gen.update_retention()
 
     def _reject(self, gen: _Generation, entry: _Entry) -> None:
         if gen.live:
-            gen.record_gap(entry.entity_id, entry.seq, entry.old_state, entry.new_state)
+            if gen.record_gap(
+                entry.entity_id, entry.seq, entry.old_state, entry.new_state
+            ):
+                self._warn_history_degraded(gen, entry.entity_id)
         if entry.priority is EventPriority.COALESCIBLE:
             latest = gen.latest.get(entry.entity_id)
             if latest is None or latest.status != _QUEUED:
-                gen.carry_previous.setdefault(entry.entity_id, entry.previous)
+                if gen.remember_previous(entry.entity_id, entry.previous, entry.seq):
+                    self._warn_history_degraded(gen, entry.entity_id)
         self._count_drop(gen, entry.priority, entry.entity_id)
+        gen.update_retention()
+
+    def _warn_history_degraded(self, gen: _Generation, entity_id: str) -> None:
+        now = time.monotonic()
+        if (
+            gen.last_history_warning is not None
+            and now - gen.last_history_warning < _HISTORY_WARNING_INTERVAL_SECONDS
+        ):
+            return
+        gen.last_history_warning = now
+        _LOGGER.warning(
+            "HomeIntent history bookkeeping reached its %s-entity bound at %s; "
+            "using a conservative event-only view until the pending queue drains",
+            MAX_HISTORY_ENTITIES,
+            entity_id,
+        )
 
     def _count_drop(self, gen: _Generation, priority: EventPriority, entity_id: str) -> None:
         metrics = gen.metrics
@@ -512,7 +675,11 @@ class SituationRuntime:
                     entity_id, gen.live, metrics.dropped_critical,
                 )
             return
-        if priority is EventPriority.LOSSLESS:
+        if priority is EventPriority.PROTECTED:
+            metrics.dropped_protected += 1
+            metrics.dropped_lossless += 1
+        elif priority is EventPriority.CATEGORY:
+            metrics.dropped_category += 1
             metrics.dropped_lossless += 1
         else:
             metrics.dropped_coalescible += 1
@@ -523,9 +690,10 @@ class SituationRuntime:
             gen.last_drop_warning = now
             _LOGGER.warning(
                 "HomeIntent is behind on state changes; %s events skipped so far "
-                "(%s coalescible, %s lossless)",
+                "(%s coalescible, %s category, %s protected)",
                 metrics.dropped_coalescible + metrics.dropped_lossless,
-                metrics.dropped_coalescible, metrics.dropped_lossless,
+                metrics.dropped_coalescible, metrics.dropped_category,
+                metrics.dropped_protected,
             )
 
     # -- worker ------------------------------------------------------------
@@ -549,6 +717,23 @@ class SituationRuntime:
             gen.metrics.snapshot_builds += 1
             # Only now leave the queue: a failed build above lost nothing.
             batch = gen.take(MAX_BATCH_EVENTS)
+            history_degraded = bool(
+                batch
+                and gen.history_degraded_through
+                and batch[0].seq <= gen.history_degraded_through
+            )
+            if history_degraded:
+                # An untracked dropped transition may already be reflected in
+                # the fresh house snapshot. Restrict the base to entities for
+                # which queued old/new states can rewind the timeline; absence
+                # is safer than presenting a future state as historical.
+                retained_ids = {
+                    entry.entity_id for entry in (*batch, *gen.queued_entries())
+                }
+                entities = [
+                    entity for entity in entities if entity.entity_id in retained_ids
+                ]
+                gen.metrics.history_degraded_batches += 1
             view = _HouseView.for_batch(entities, batch, gen)
             for entry in batch:
                 if not self._owns(gen):
@@ -556,21 +741,40 @@ class SituationRuntime:
                 if entry.process:
                     current, by_id = view.advance(entry)
                     try:
-                        await self._async_process_state_changed(
-                            _evaluated_event(entry), current, by_id
-                        )
+                        event = _evaluated_event(entry)
+                        if history_degraded:
+                            await self._async_process_state_changed(
+                                event, current, by_id, degraded=True
+                            )
+                        else:
+                            await self._async_process_state_changed(event, current, by_id)
                     except Exception:  # noqa: BLE001 - one event must not stop the worker
                         _LOGGER.exception("HomeIntent state change evaluation failed")
                     if not self._owns(gen):
                         return
                     gen.metrics.processed += 1
                     gen.unprocessed(entry.entity_id, -1)
-                entry.status = _DONE
+                gen.finish(entry)
                 # A burst never monopolizes the loop, yet the worker keeps
                 # pace with the events Home Assistant fires meanwhile.
                 if time.monotonic() - slice_started >= _YIELD_AFTER_SECONDS:
                     await asyncio.sleep(0)
                     slice_started = time.monotonic()
+            oldest = gen.oldest_live_seq()
+            if (
+                gen.history_degraded_through
+                and oldest is not None
+                and oldest > gen.history_degraded_through
+            ):
+                gen.history_degraded_through = 0
+            gen.update_retention()
+        if self._owns(gen) and not gen.live:
+            # No await occurs between the final live check and this cleanup.
+            # A callback that ran during processing has already incremented
+            # ``live`` and keeps this worker in the loop; a later callback sees
+            # the completed task and starts exactly one new worker.
+            gen.stable_cleanup()
+            self._seen.clear()
 
     async def _async_snapshot_failed(self, gen: _Generation) -> bool:
         """Back off after a failed snapshot build; ``False`` ends the worker.
@@ -627,7 +831,9 @@ class SituationRuntime:
         for entry in batch:
             if not self._owns(gen):
                 return
-            if entry.process and entry.priority is EventPriority.COALESCIBLE:
+            if entry.process and entry.priority in {
+                EventPriority.COALESCIBLE, EventPriority.CATEGORY,
+            }:
                 gen.unprocessed(entry.entity_id, -1)
                 self._count_drop(gen, entry.priority, entry.entity_id)
             elif entry.process:
@@ -642,8 +848,9 @@ class SituationRuntime:
                     return
                 metrics.processed += 1
                 gen.unprocessed(entry.entity_id, -1)
-            entry.status = _DONE
+            gen.finish(entry)
             await asyncio.sleep(0)
+        gen.update_retention()
 
     async def async_handle_state_changed(self, raw_event: Any) -> None:
         data = getattr(raw_event, "data", {})
@@ -740,7 +947,11 @@ class SituationRuntime:
                 except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
                     _LOGGER.exception("HomeIntent value-change monitor evaluation failed")
         proactive = self._runtime_data.proactive_context
-        if proactive is not None and getattr(proactive, "enabled", None) is not False:
+        if (
+            proactive is not None
+            and not degraded
+            and getattr(proactive, "enabled", None) is not False
+        ):
             try:
                 await proactive.async_observe_state(
                     entity,
@@ -750,6 +961,11 @@ class SituationRuntime:
             except Exception:  # noqa: BLE001 - V12 must never break HA event flow
                 _LOGGER.exception("HomeIntent proactive context evaluation failed")
         categories = self._configured_categories()
+        if degraded:
+            # These rules depend only on the event entity. Occupancy, heating
+            # and routine rules would need a complete historical house view;
+            # suppressing them is safer than inventing facts.
+            categories &= {"safety", "safety_alarm", "device_unavailable"}
         if not categories:
             return
         people = _people_home(entities, by_id)
