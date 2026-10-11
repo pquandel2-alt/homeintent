@@ -1311,10 +1311,11 @@ S("n793-b6-house-report", L793, "B6: Haus-Bericht – Vorschau, Senden, Inhalt",
       all=["jeden sonntag um 18:00 uhr", "haus-bericht", "zum beispiel"]),
   say(YES, settle=2, any=["erstellt", "eingerichtet"]),
   service("haus_sim.clear_log"),
-  # Die Wochentags-Bedingung (Sonntag) blockt an anderen Tagen zu Recht;
-  # erst echt auslösen (keine Nachricht), dann ohne Bedingung (eine Nachricht).
+  # Bedingungen einmal echt ausführen. Ob heute Sonntag ist, darf die
+  # anschließende Action-/Push-Prüfung nicht von der CI-Uhrzeit abhängig
+  # machen; die erzeugte Sonntagsbedingung wird in tests/ exakt geprüft.
   trigger("Haus-Bericht", settle=4),
-  check(notify_count=0),
+  service("haus_sim.clear_log"),
   trigger("Haus-Bericht", settle=4, skip_condition=True),
   check(notify_count=1, notify_match="Haus-Bericht"),
   say("Was stand im Haus-Bericht?", no_calls=True, any=["batterie", "nicht erreichbar", "kwh"]))
