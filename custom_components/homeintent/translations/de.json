@@ -62,6 +62,7 @@
           "agent_quiet_start": "Ruhezeit beginnt (HH:MM)",
           "agent_quiet_end": "Ruhezeit endet (HH:MM)",
           "agent_event_categories": "Aktive Ereigniskategorien (kommagetrennt)",
+          "agent_long_running_minutes": "Langläufer-Schwelle in Minuten (0: deaktiviert)",
           "routine_detection_enabled": "Lokale Routine- und Anomalieerkennung aktivieren",
           "routine_min_observations": "Mindestzahl für statistische Muster",
           "anomaly_threshold_percent": "Anomalieschwelle in Prozent",

@@ -48,7 +48,9 @@ async def test_burst_evaluates_each_event_against_the_house_at_that_moment(
     seen: list[tuple[str, str, Any, str | None, str]] = []
     process = event_runtime.SituationRuntime._async_process_state_changed
 
-    async def _record(self: Any, raw_event: Any, entities: Any, by_id: Any) -> None:
+    async def _record(
+        self: Any, raw_event: Any, entities: Any, by_id: Any, **kwargs: Any
+    ) -> None:
         entity_id = raw_event.data["entity_id"]
         entity = by_id[entity_id]
         door = by_id.get(DOOR)
@@ -59,7 +61,7 @@ async def test_burst_evaluates_each_event_against_the_house_at_that_moment(
             entity.unit,
             door.state if door is not None else "missing",
         ))
-        await process(self, raw_event, entities, by_id)
+        await process(self, raw_event, entities, by_id, **kwargs)
 
     monkeypatch.setattr(
         event_runtime.SituationRuntime, "_async_process_state_changed", _record

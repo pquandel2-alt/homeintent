@@ -8,6 +8,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -16,6 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_AGENT_EVENT_CATEGORIES,
+    CONF_AGENT_LONG_RUNNING_MINUTES,
     CONF_ANOMALY_THRESHOLD_PERCENT,
     CONF_BANTER_LEVEL,
     CONF_PERSONA_STYLE,
@@ -24,7 +26,11 @@ from .const import (
 )
 from .agent_config_validation import parse_event_categories
 from .entities import EntitySnapshot
-from .event_interest import EventInterestIndex
+from .event_interest import (
+    EventFilterReason,
+    EventInterestIndex,
+    MAX_CONSUMER_WATCH_ENTITIES,
+)
 from .event_priority import EventPriority
 from .hass_entities import (
     SelectedEntityFilter,
@@ -67,10 +73,11 @@ MAX_PENDING_EVENTS = 4096
 # records therefore have a finite, documented ceiling.
 MAX_HISTORY_ENTITIES = 4096
 # Conservative accounting ceiling for queue/tombstone records, priority
-# references, latest/pending maps and the two history maps. Structures share
-# entries, so this is a reference-record bound rather than an object-byte
-# estimate. See ``_Generation.update_retention``.
-MAX_TRANSIENT_RECORDS = 9 * MAX_PENDING_EVENTS + 1024
+# references, latest/pending maps, the two history maps and the bounded set of
+# protected entities whose own history became unsafe. Structures share entries,
+# so this is a reference-record bound rather than an object-byte estimate. See
+# ``_Generation.update_retention``.
+MAX_TRANSIENT_RECORDS = 10 * MAX_PENDING_EVENTS + 1024
 # Events taken from the queue per snapshot build. The snapshot is the house
 # as it is now; each event is evaluated against the house as it was when the
 # event fired (7.9.5), derived from the queued events' own old/new states.
@@ -90,19 +97,37 @@ SNAPSHOT_RETRY_BASE_SECONDS = 0.05
 SNAPSHOT_RETRY_MAX_SECONDS = 5.0
 _SNAPSHOT_ERROR_INTERVAL_SECONDS = 60.0
 _HISTORY_WARNING_INTERVAL_SECONDS = 60.0
+_SUPPRESSION_WARNING_INTERVAL_SECONDS = 60.0
+
+
+class DegradationMode(StrEnum):
+    """Data quality of the historical view supplied to an evaluation."""
+
+    NORMAL = "normal"
+    HISTORY = "history_degraded"
+    REGISTRY = "registry_degraded"
 
 
 @dataclass
 class EventRuntimeMetrics:
-    """Counters of one runtime start (7.9.6); a restart starts from zero.
+    """Counters of one integration-runtime generation.
+
+    ``async_start()`` creates a fresh generation. An automatic worker
+    recovery stays in that generation and increments ``worker_restarts``.
 
     ``received`` = ``filtered_unselected`` + ``filtered_no_interest`` +
-    ``queued`` + events rejected by a full queue (``dropped_*`` of the
-    incoming event). ``coalesced`` counts evaluations merged into a later
+    ``queued`` + ``rejected_queue_full``. ``queued`` includes accepted
+    coalesced events. ``coalesced`` counts evaluations merged into a later
     event of the same entity; ``dropped_*`` counts evaluations lost to the
-    queue bound, per priority. ``dropped_lossless`` remains the compatibility
+    queue bound through rejection or eviction, per priority. ``evicted_queue``
+    distinguishes the latter. ``dropped_lossless`` remains the compatibility
     aggregate of category + protected drops. ``view_evictions`` counts history-only
     entries given up under overload (no evaluation is lost by that).
+    ``processed`` means that event-level runtime dispatch ended (including an
+    intentional consumer suppression); it does not claim delivery to any
+    downstream consumer.  Registry-discarded lower tiers are recorded only
+    in ``discarded_registry``. Consumer delivery and intentional suppression
+    have separate counters below.
     """
 
     received: int = 0
@@ -110,8 +135,15 @@ class EventRuntimeMetrics:
     filtered_no_interest: int = 0
     filtered_by_interest: int = 0
     filtered_by_category: int = 0
+    filtered_by_proactive: int = 0
+    filtered_no_consumer: int = 0
     queued: int = 0
+    rejected_queue_full: int = 0
+    evicted_queue: int = 0
+    dequeued: int = 0
     processed: int = 0
+    discarded_registry: int = 0
+    evaluation_failures: int = 0
     coalesced: int = 0
     dropped_coalescible: int = 0
     dropped_category: int = 0
@@ -123,9 +155,23 @@ class EventRuntimeMetrics:
     snapshot_failures: int = 0
     snapshot_retries: int = 0
     snapshot_degraded_batches: int = 0
+    registry_degraded_batches: int = 0
     history_degraded: int = 0
     history_degraded_events: int = 0
     history_degraded_batches: int = 0
+    consumer_delivered: int = 0
+    consumer_suppressed_history: int = 0
+    consumer_suppressed_registry: int = 0
+    delivered_effect: int = 0
+    delivered_monitor: int = 0
+    delivered_thermal: int = 0
+    delivered_proactive: int = 0
+    suppressed_protected: int = 0
+    suppressed_category: int = 0
+    suppressed_effect: int = 0
+    suppressed_monitor: int = 0
+    suppressed_thermal: int = 0
+    suppressed_proactive: int = 0
     worker_starts: int = 0
     worker_restarts: int = 0
     max_queue_depth: int = 0
@@ -135,6 +181,7 @@ class EventRuntimeMetrics:
     retained_carry_previous: int = 0
     retained_priority_refs: int = 0
     retained_unprocessed: int = 0
+    retained_unsafe_protected: int = 0
     retained_tombstones: int = 0
     retained_total: int = 0
     max_retained_total: int = 0
@@ -243,10 +290,16 @@ class _Generation:
         self.last_critical_warning: float | None = None
         self.last_snapshot_error: float | None = None
         self.last_history_warning: float | None = None
+        self.last_suppression_warning: float | None = None
         # Non-zero means an auxiliary overflow made whole-house history
         # inexact through this sequence. Affected batches use a conservative
         # event-entity-only view; a scalar replaces an unbounded entity set.
         self.history_degraded_through = 0
+        # A protected transition can only be lost to critical pressure.  Its
+        # entity remains unsafe until drain; ids are bounded by the history
+        # limit and then collapse to one conservative overflow flag.
+        self.unsafe_protected_entities: set[str] = set()
+        self.unsafe_all_protected = False
 
     def oldest_live_seq(self) -> int | None:
         while self.queue and self.queue[0].status != _QUEUED:
@@ -349,6 +402,8 @@ class _Generation:
         self.gaps.clear()
         self.tombstones = 0
         self.history_degraded_through = 0
+        self.unsafe_protected_entities.clear()
+        self.unsafe_all_protected = False
         self.snapshot_failures_in_row = 0
         self.update_retention()
 
@@ -364,6 +419,9 @@ class _Generation:
             + len(self.category) + len(self.protected)
         )
         metrics.retained_unprocessed = len(self.unprocessed_by_entity)
+        metrics.retained_unsafe_protected = (
+            len(self.unsafe_protected_entities) + int(self.unsafe_all_protected)
+        )
         metrics.retained_tombstones = self.tombstones
         metrics.retained_total = (
             len(self.queue)
@@ -372,6 +430,7 @@ class _Generation:
             + metrics.retained_carry_previous
             + metrics.retained_priority_refs
             + metrics.retained_unprocessed
+            + metrics.retained_unsafe_protected
         )
         metrics.max_retained_total = max(
             metrics.max_retained_total, metrics.retained_total
@@ -396,6 +455,7 @@ class SituationRuntime:
         self._decision_engine = ProactiveDecisionEngine()
         self._is_selected = SelectedEntityFilter(hass, entry)
         self._interest = EventInterestIndex(entry, runtime_data)
+        self._long_running_notified: dict[str, tuple[str, Any]] = {}
         self._gen = _Generation()
         self._gen.stopped = True
         self._worker: asyncio.Task[None] | None = None
@@ -441,6 +501,7 @@ class SituationRuntime:
         old.stopped = True
         self._gen = _Generation()
         self._stopped = False
+        self._long_running_notified.clear()
         self._interest.bind()
         bus = getattr(self._hass, "bus", None)
         listen = getattr(bus, "async_listen", None)
@@ -475,6 +536,8 @@ class SituationRuntime:
             generation.carry_previous = {}
             generation.unprocessed_by_entity = {}
             generation.gaps = {}
+            generation.unsafe_protected_entities = set()
+            generation.unsafe_all_protected = False
             generation.live = 0
             generation.tombstones = 0
             generation.history_degraded_through = 0
@@ -507,12 +570,18 @@ class SituationRuntime:
             metrics.filtered_unselected += 1
             return
         old_state = data.get("old_state")
-        priority = self._interest.classify(entity_id, old_state, new_state)
+        priority, filter_reason = self._interest.classify_with_reason(
+            entity_id, old_state, new_state
+        )
         if priority is None:
             metrics.filtered_no_interest += 1
             metrics.filtered_by_interest += 1
-            if self._interest.category_filter_active:
+            if filter_reason is EventFilterReason.CATEGORY:
                 metrics.filtered_by_category += 1
+            elif filter_reason is EventFilterReason.PROACTIVE:
+                metrics.filtered_by_proactive += 1
+            else:
+                metrics.filtered_no_consumer += 1
             return
         self._enqueue(gen, raw_event, entity_id, old_state, new_state, priority)
 
@@ -571,14 +640,53 @@ class SituationRuntime:
         if gen.live > metrics.max_queue_depth:
             metrics.max_queue_depth = gen.live
         if self._worker is None or self._worker.done():
-            metrics.worker_starts += 1
-            # Not eager: the bus callback stays cheap and never re-enters.
-            self._worker = self._hass.async_create_background_task(
-                self._async_drain(gen),
-                "HomeIntent situation events",
-                eager_start=False,
-            )
+            self._start_worker(gen)
         gen.update_retention()
+
+    def _start_worker(self, gen: _Generation, *, restart: bool = False) -> None:
+        """Start the sole worker; ``restart`` is only unexpected recovery."""
+        if not self._owns(gen):
+            return
+        gen.metrics.worker_starts += 1
+        if restart:
+            gen.metrics.worker_restarts += 1
+        # Not eager: the bus callback stays cheap and never re-enters.
+        worker = self._hass.async_create_background_task(
+            self._async_drain(gen),
+            "HomeIntent situation events",
+            eager_start=False,
+        )
+        self._worker = worker
+        worker.add_done_callback(lambda task: self._worker_finished(gen, task))
+
+    @callback
+    def _worker_finished(
+        self, gen: _Generation, task: asyncio.Task[None]
+    ) -> None:
+        """Retrieve failures and recover only when unfinished work remains."""
+        failure: BaseException | None = None
+        if not task.cancelled():
+            try:
+                failure = task.exception()
+            except asyncio.CancelledError:
+                failure = None
+        if self._worker is not task:
+            return
+        self._worker = None
+        if not self._owns(gen) or not gen.live:
+            return
+        if failure is not None:
+            _LOGGER.error(
+                "HomeIntent event worker stopped with %s pending events; restarting",
+                gen.live,
+                exc_info=(type(failure), failure, failure.__traceback__),
+            )
+        else:
+            _LOGGER.warning(
+                "HomeIntent event worker ended with %s pending events; restarting",
+                gen.live,
+            )
+        self._start_worker(gen, restart=True)
 
     def _make_room(self, gen: _Generation, priority: EventPriority) -> bool:
         """Evict one entry of lower rank for an incoming ``priority`` event.
@@ -604,6 +712,7 @@ class SituationRuntime:
 
     def _evict(self, gen: _Generation, victim: _Entry) -> None:
         metrics = gen.metrics
+        metrics.evicted_queue += 1
         victim.status = _EVICTED
         gen.live -= 1
         gen.tombstones += 1
@@ -631,6 +740,7 @@ class SituationRuntime:
         gen.update_retention()
 
     def _reject(self, gen: _Generation, entry: _Entry) -> None:
+        gen.metrics.rejected_queue_full += 1
         if gen.live:
             if gen.record_gap(
                 entry.entity_id, entry.seq, entry.old_state, entry.new_state
@@ -678,6 +788,10 @@ class SituationRuntime:
         if priority is EventPriority.PROTECTED:
             metrics.dropped_protected += 1
             metrics.dropped_lossless += 1
+            if len(gen.unsafe_protected_entities) < MAX_HISTORY_ENTITIES:
+                gen.unsafe_protected_entities.add(entity_id)
+            else:
+                gen.unsafe_all_protected = True
         elif priority is EventPriority.CATEGORY:
             metrics.dropped_category += 1
             metrics.dropped_lossless += 1
@@ -695,6 +809,46 @@ class SituationRuntime:
                 metrics.dropped_coalescible, metrics.dropped_category,
                 metrics.dropped_protected,
             )
+
+    def _suppress_consumer(
+        self,
+        gen: _Generation,
+        mode: DegradationMode,
+        consumer: str,
+        priority: EventPriority,
+    ) -> None:
+        """Count and rate-limit one intentional downstream suppression."""
+        metrics = gen.metrics
+        if mode is DegradationMode.HISTORY:
+            metrics.consumer_suppressed_history += 1
+        elif mode is DegradationMode.REGISTRY:
+            metrics.consumer_suppressed_registry += 1
+        if priority is EventPriority.PROTECTED:
+            metrics.suppressed_protected += 1
+        elif priority is EventPriority.CATEGORY:
+            metrics.suppressed_category += 1
+        if consumer == "thermal":
+            metrics.suppressed_thermal += 1
+        elif consumer == "proactive":
+            metrics.suppressed_proactive += 1
+        elif consumer == "monitor":
+            metrics.suppressed_monitor += 1
+        elif consumer == "effect":
+            metrics.suppressed_effect += 1
+        now = time.monotonic()
+        if (
+            gen.last_suppression_warning is not None
+            and now - gen.last_suppression_warning < _SUPPRESSION_WARNING_INTERVAL_SECONDS
+        ):
+            return
+        gen.last_suppression_warning = now
+        _LOGGER.warning(
+            "HomeIntent suppressed %s consumer delivery in %s mode "
+            "(priority=%s)",
+            consumer,
+            mode.value,
+            priority.value,
+        )
 
     # -- worker ------------------------------------------------------------
     def _owns(self, gen: _Generation) -> bool:
@@ -722,7 +876,15 @@ class SituationRuntime:
                 and gen.history_degraded_through
                 and batch[0].seq <= gen.history_degraded_through
             )
+            protected_view: _HouseView | None = None
             if history_degraded:
+                protected_entities = self._interest.protected_view_entities(entities)
+                if protected_entities is not None:
+                    protected_view = _HouseView.for_batch(
+                        protected_entities,
+                        batch,
+                        gen,
+                    )
                 # An untracked dropped transition may already be reflected in
                 # the fresh house snapshot. Restrict the base to entities for
                 # which queued old/new states can rewind the timeline; absence
@@ -739,16 +901,29 @@ class SituationRuntime:
                 if not self._owns(gen):
                     return
                 if entry.process:
+                    gen.metrics.dequeued += 1
                     current, by_id = view.advance(entry)
+                    protected_current: list[EntitySnapshot] | None = None
+                    protected_by_id: dict[str, EntitySnapshot] | None = None
+                    if protected_view is not None:
+                        protected_current, protected_by_id = protected_view.advance(entry)
                     try:
                         event = _evaluated_event(entry)
-                        if history_degraded:
-                            await self._async_process_state_changed(
-                                event, current, by_id, degraded=True
-                            )
-                        else:
-                            await self._async_process_state_changed(event, current, by_id)
+                        await self._async_process_state_changed(
+                            event,
+                            current,
+                            by_id,
+                            mode=(
+                                DegradationMode.HISTORY
+                                if history_degraded
+                                else DegradationMode.NORMAL
+                            ),
+                            protected_entities=protected_current,
+                            protected_by_id=protected_by_id,
+                            priority=entry.priority,
+                        )
                     except Exception:  # noqa: BLE001 - one event must not stop the worker
+                        gen.metrics.evaluation_failures += 1
                         _LOGGER.exception("HomeIntent state change evaluation failed")
                     if not self._owns(gen):
                         return
@@ -817,6 +992,7 @@ class SituationRuntime:
     async def _async_degraded_batch(self, gen: _Generation) -> None:
         metrics = gen.metrics
         metrics.snapshot_degraded_batches += 1
+        metrics.registry_degraded_batches += 1
         batch = gen.take(MAX_BATCH_EVENTS)
         critical = sum(
             1 for entry in batch
@@ -831,18 +1007,40 @@ class SituationRuntime:
         for entry in batch:
             if not self._owns(gen):
                 return
+            if entry.process:
+                metrics.dequeued += 1
             if entry.process and entry.priority in {
-                EventPriority.COALESCIBLE, EventPriority.CATEGORY,
+                EventPriority.COALESCIBLE,
+                EventPriority.CATEGORY,
             }:
+                metrics.discarded_registry += 1
+                proactive = self._runtime_data.proactive_context
+                if (
+                    proactive is not None
+                    and getattr(proactive, "enabled", None) is not False
+                ):
+                    self._suppress_consumer(
+                        gen, DegradationMode.REGISTRY, "proactive", entry.priority
+                    )
+                if self._interest.category_relevant(
+                    entry.entity_id, entry.old_state, entry.new_state
+                ):
+                    self._suppress_consumer(
+                        gen, DegradationMode.REGISTRY, "category", entry.priority
+                    )
                 gen.unprocessed(entry.entity_id, -1)
-                self._count_drop(gen, entry.priority, entry.entity_id)
             elif entry.process:
                 current, by_id = view.advance(entry)
                 try:
                     await self._async_process_state_changed(
-                        _evaluated_event(entry), current, by_id, degraded=True
+                        _evaluated_event(entry),
+                        current,
+                        by_id,
+                        mode=DegradationMode.REGISTRY,
+                        priority=entry.priority,
                     )
                 except Exception:  # noqa: BLE001 - one event must not stop the worker
+                    metrics.evaluation_failures += 1
                     _LOGGER.exception("HomeIntent state change evaluation failed")
                 if not self._owns(gen):
                     return
@@ -873,15 +1071,12 @@ class SituationRuntime:
         entities: list[EntitySnapshot],
         by_id: dict[str, EntitySnapshot],
         *,
-        degraded: bool = False,
+        mode: DegradationMode = DegradationMode.NORMAL,
+        protected_entities: list[EntitySnapshot] | None = None,
+        protected_by_id: dict[str, EntitySnapshot] | None = None,
+        priority: EventPriority = EventPriority.CATEGORY,
     ) -> None:
-        """Evaluate one event; ``degraded``: the view has no registry data.
-
-        Inactive consumers are skipped before any per-event work (7.9.6):
-        the thermal tracker without an active cycle, a disabled V12 context.
-        Without registry data (areas) the thermal tracker is skipped too - it
-        would read missing sensors as a removed measurement source.
-        """
+        """Evaluate one event with an explicit data-quality mode."""
         data = getattr(raw_event, "data", {})
         if not isinstance(data, dict):
             return
@@ -890,46 +1085,195 @@ class SituationRuntime:
         old_state = data.get("old_state")
         if not isinstance(entity_id, str) or new_state is None:
             return
-        thermal_tracker = self._runtime_data.thermal_tracker
-        if (
-            thermal_tracker is not None
-            and not degraded
-            and getattr(thermal_tracker, "has_active_cycle", True)
-        ):
-            try:
-                await thermal_tracker.async_observe_states(
-                    tuple(entities),
-                    occurred_at=getattr(raw_event, "time_fired", None) or dt_util.utcnow(),
-                )
-            except Exception:  # noqa: BLE001 - learning must not break HA event flow
-                _LOGGER.exception("HomeIntent thermal experience update failed")
         entity = by_id.get(entity_id)
         if entity is None:
             return
-        self._runtime_data.effect_monitor.observe(entity_id, entity.state)
+        gen = self._gen
+        metrics = gen.metrics
+        event_time = getattr(raw_event, "time_fired", None) or dt_util.utcnow()
+        consumer_entities = protected_entities if protected_entities is not None else entities
+        consumer_by_id = protected_by_id if protected_by_id is not None else by_id
+
+        thermal_tracker = self._runtime_data.thermal_tracker
+        thermal_ids = self._interest.thermal_entity_ids
+        thermal_event = (
+            thermal_tracker is not None
+            and getattr(thermal_tracker, "has_active_cycle", True)
+            and (thermal_ids is None or entity_id in thermal_ids)
+        )
+        if thermal_event and thermal_tracker is not None:
+            thermal_safe = (
+                mode is DegradationMode.NORMAL
+                or (
+                    mode is DegradationMode.HISTORY
+                    and thermal_ids is not None
+                    and protected_entities is not None
+                    and not gen.unsafe_all_protected
+                    and not (thermal_ids & gen.unsafe_protected_entities)
+                    and thermal_ids <= consumer_by_id.keys()
+                )
+            )
+            if thermal_safe:
+                metrics.consumer_delivered += 1
+                metrics.delivered_thermal += 1
+                try:
+                    await thermal_tracker.async_observe_states(
+                        tuple(consumer_entities), occurred_at=event_time
+                    )
+                except Exception:  # noqa: BLE001 - learning must not break HA event flow
+                    _LOGGER.exception("HomeIntent thermal experience update failed")
+            else:
+                self._suppress_consumer(gen, mode, "thermal", priority)
+
+        effects = self._runtime_data.effect_monitor
+        watched_effects = getattr(effects, "watched_entity_ids", frozenset())
+        effect_event = (
+            not isinstance(watched_effects, frozenset)
+            or entity_id in watched_effects
+        )
+        if effect_event:
+            # Effect fulfilment needs only the event entity and is safe in
+            # both degradation modes.
+            metrics.consumer_delivered += 1
+            metrics.delivered_effect += 1
+        effects.observe(entity_id, entity.state)
         previous = getattr(old_state, "state", None)
         monitor_runtime = self._runtime_data.monitor_runtime
+        monitor_store = (
+            getattr(monitor_runtime, "store", None)
+            if monitor_runtime is not None
+            else None
+        )
+        monitor_store_loaded = getattr(monitor_store, "loaded", None)
+        monitor_interest_undeclared = (
+            monitor_store is None
+            or not isinstance(monitor_store_loaded, bool)
+            or not monitor_store_loaded
+        )
+        watched_person_ids = getattr(
+            monitor_store, "watched_person_entity_ids", frozenset()
+        )
+        watched_nobody_ids = getattr(
+            monitor_store, "watched_nobody_home_person_ids", frozenset()
+        )
+        nobody_home_uses_household = bool(
+            getattr(monitor_store, "nobody_home_uses_household", False)
+        )
+        person_watch_sets_valid = isinstance(
+            watched_person_ids, frozenset
+        ) and isinstance(watched_nobody_ids, frozenset)
+        person_monitored = (
+            monitor_interest_undeclared
+            or not person_watch_sets_valid
+            or entity_id in watched_person_ids
+            or entity_id in watched_nobody_ids
+            or nobody_home_uses_household
+        )
         if (
             monitor_runtime is not None
             and entity.domain == "person"
+            and person_monitored
             and isinstance(previous, str)
             and previous != entity.state
         ):
-            try:
-                event_context = getattr(raw_event, "context", None)
-                context_id = getattr(event_context, "id", None)
-                await monitor_runtime.async_process_person_transition(
-                    entity.entity_id,
-                    previous,
-                    entity.state,
-                    occurred_at=getattr(raw_event, "time_fired", None) or dt_util.utcnow(),
-                    occurrence_id=context_id if isinstance(context_id, str) else None,
+            needs_house = bool(
+                getattr(
+                    monitor_store,
+                    "person_transition_needs_house_context",
+                    lambda _id: True,
+                )(entity.entity_id)
+            )
+            needs_snapshot = bool(
+                getattr(
+                    monitor_store,
+                    "person_transition_needs_snapshot",
+                    lambda _id: True,
+                )(entity.entity_id)
+            )
+            person_history_unsafe = False
+            person_context_incomplete = False
+            if mode is DegradationMode.HISTORY:
+                monitored_person_ids: set[str] = set()
+                person_watch_overflow = not person_watch_sets_valid
+                if person_watch_sets_valid:
+                    watched_total = len(watched_person_ids) + len(watched_nobody_ids)
+                    if watched_total > MAX_CONSUMER_WATCH_ENTITIES:
+                        person_watch_overflow = True
+                    else:
+                        monitored_person_ids.update(watched_person_ids)
+                        monitored_person_ids.update(watched_nobody_ids)
+                if nobody_home_uses_household and not person_watch_overflow:
+                    user_contexts = getattr(monitor_runtime, "user_contexts", None)
+                    household = getattr(user_contexts, "household", None)
+                    household_ids = getattr(household, "person_entity_ids", None)
+                    if isinstance(household_ids, tuple):
+                        if (
+                            len(monitored_person_ids) + len(household_ids)
+                            > MAX_CONSUMER_WATCH_ENTITIES
+                        ):
+                            person_watch_overflow = True
+                        else:
+                            monitored_person_ids.update(
+                                item for item in household_ids if isinstance(item, str)
+                            )
+                    elif protected_entities is not None:
+                        for item in consumer_entities:
+                            if item.domain != "person":
+                                continue
+                            monitored_person_ids.add(item.entity_id)
+                            if (
+                                len(monitored_person_ids)
+                                > MAX_CONSUMER_WATCH_ENTITIES
+                            ):
+                                person_watch_overflow = True
+                                break
+                    else:
+                        person_watch_overflow = True
+                person_history_unsafe = gen.unsafe_all_protected or bool(
+                    monitored_person_ids & gen.unsafe_protected_entities
                 )
-            except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
-                _LOGGER.exception("HomeIntent monitor goal evaluation failed")
+                person_context_incomplete = person_watch_overflow or not (
+                    monitored_person_ids <= consumer_by_id.keys()
+                )
+            monitor_safe = not (
+                (mode is DegradationMode.HISTORY and needs_house)
+                or (mode is DegradationMode.REGISTRY and needs_snapshot)
+                or (
+                    mode is DegradationMode.HISTORY
+                    and (person_history_unsafe or person_context_incomplete)
+                )
+                or (mode is DegradationMode.HISTORY and protected_entities is None)
+            )
+            if monitor_safe:
+                metrics.consumer_delivered += 1
+                metrics.delivered_monitor += 1
+                try:
+                    event_context = getattr(raw_event, "context", None)
+                    context_id = getattr(event_context, "id", None)
+                    await monitor_runtime.async_process_person_transition(
+                        entity.entity_id,
+                        previous,
+                        entity.state,
+                        occurred_at=event_time,
+                        occurrence_id=(
+                            context_id if isinstance(context_id, str) else None
+                        ),
+                        entities=tuple(consumer_entities),
+                    )
+                except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
+                    _LOGGER.exception("HomeIntent monitor goal evaluation failed")
+            else:
+                self._suppress_consumer(gen, mode, "monitor", priority)
         if (
             monitor_runtime is not None
             and entity.domain == "sensor"
+            and (
+                monitor_interest_undeclared
+                or entity_id
+                in getattr(
+                    monitor_store, "watched_value_entity_ids", frozenset()
+                )
+            )
             and isinstance(previous, str)
             and previous != entity.state
         ):
@@ -938,34 +1282,66 @@ class SituationRuntime:
             except ValueError:
                 value = None
             if value is not None:
-                try:
-                    # Changes by an amount (7.9 W3) are HomeIntent's own monitors.
-                    await monitor_runtime.async_process_value_change(
-                        entity.entity_id, value,
-                        occurred_at=getattr(raw_event, "time_fired", None) or dt_util.utcnow(),
-                    )
-                except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
-                    _LOGGER.exception("HomeIntent value-change monitor evaluation failed")
+                if mode is DegradationMode.HISTORY and (
+                    gen.unsafe_all_protected
+                    or entity_id in gen.unsafe_protected_entities
+                ):
+                    self._suppress_consumer(gen, mode, "monitor", priority)
+                else:
+                    metrics.consumer_delivered += 1
+                    metrics.delivered_monitor += 1
+                    try:
+                        # The rate decision uses Recorder history plus this
+                        # exact event value; registry metadata is optional.
+                        await monitor_runtime.async_process_value_change(
+                            entity.entity_id,
+                            value,
+                            occurred_at=event_time,
+                            entity=entity,
+                        )
+                    except Exception:  # noqa: BLE001 - monitor failure must not break HA event flow
+                        _LOGGER.exception("HomeIntent value-change monitor evaluation failed")
         proactive = self._runtime_data.proactive_context
         if (
             proactive is not None
-            and not degraded
             and getattr(proactive, "enabled", None) is not False
         ):
-            try:
-                await proactive.async_observe_state(
-                    entity,
-                    previous if isinstance(previous, str) else None,
-                    tuple(entities),
+            proactive_safe = (
+                mode is DegradationMode.NORMAL
+                or (
+                    not bool(getattr(proactive, "requires_complete_house_view", True))
+                    and (
+                        mode is not DegradationMode.REGISTRY
+                        or not bool(getattr(proactive, "requires_registry_data", True))
+                    )
                 )
-            except Exception:  # noqa: BLE001 - V12 must never break HA event flow
-                _LOGGER.exception("HomeIntent proactive context evaluation failed")
+            )
+            if proactive_safe:
+                metrics.consumer_delivered += 1
+                metrics.delivered_proactive += 1
+                try:
+                    await proactive.async_observe_state(
+                        entity,
+                        previous if isinstance(previous, str) else None,
+                        tuple(entities),
+                    )
+                except Exception:  # noqa: BLE001 - V12 must never break HA event flow
+                    _LOGGER.exception("HomeIntent proactive context evaluation failed")
+            else:
+                self._suppress_consumer(gen, mode, "proactive", priority)
         categories = self._configured_categories()
-        if degraded:
+        if mode is not DegradationMode.NORMAL:
             # These rules depend only on the event entity. Occupancy, heating
             # and routine rules would need a complete historical house view;
             # suppressing them is safer than inventing facts.
-            categories &= {"safety", "safety_alarm", "device_unavailable"}
+            safe_categories = categories & {
+                "safety", "safety_alarm", "device_unavailable", "long_running_state"
+            }
+            if categories - safe_categories and self._interest.category_relevant(
+                entity_id, old_state, new_state
+            ):
+                self._suppress_consumer(gen, mode, "category", priority)
+            categories = safe_categories
         if not categories:
             return
         people = _people_home(entities, by_id)
@@ -982,7 +1358,20 @@ class SituationRuntime:
         self._seen.add(event.event_id)
         if len(self._seen) > 4096:
             self._seen = {event.event_id}
-        situations = self._runtime_data.situation_evaluator.evaluate(event, entities)
+        raw_long_minutes = self._entry.options.get(CONF_AGENT_LONG_RUNNING_MINUTES, 0)
+        long_minutes = (
+            raw_long_minutes
+            if isinstance(raw_long_minutes, (int, float)) and raw_long_minutes > 0
+            else 0
+        )
+        long_state_seconds = (
+            {entity_id: float(long_minutes) * 60.0}
+            if "long_running_state" in categories and long_minutes
+            else None
+        )
+        situations = self._runtime_data.situation_evaluator.evaluate(
+            event, entities, long_state_seconds=long_state_seconds
+        )
         routine_assessment = None
         if bool(self._entry.options.get(CONF_ROUTINE_DETECTION_ENABLED, False)):
             stats = self._runtime_data.routine_statistics.setdefault(
@@ -1036,6 +1425,13 @@ class SituationRuntime:
                 "safety" in categories and situation.severity.value == "critical"
             ):
                 continue
+            if situation.category == "long_running_state":
+                token = (entity.state, entity.last_changed)
+                if self._long_running_notified.get(entity_id) == token:
+                    continue
+                self._long_running_notified[entity_id] = token
+                if len(self._long_running_notified) > 4096:
+                    self._long_running_notified = {entity_id: token}
             facts = situation.facts
             if routine_assessment is not None:
                 facts = (

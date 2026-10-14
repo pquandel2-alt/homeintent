@@ -463,7 +463,9 @@ def test_a_worker_surviving_its_cancellation_never_drains_a_new_queue(monkeypatc
     async def scenario() -> None:
         gate = asyncio.Event()
 
-        async def _process(raw_event: Any, entities: Any, by_id: Any) -> None:
+        async def _process(
+            raw_event: Any, entities: Any, by_id: Any, **_kwargs: Any
+        ) -> None:
             processed.append(raw_event.data["new_state"].state)
             if raw_event.data["new_state"].state == "hangs":
                 # A callee that swallows the cancellation (e.g. a shielded call).

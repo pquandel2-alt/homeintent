@@ -61,10 +61,12 @@ async def test_state_change_burst_creates_no_task_or_write_per_event(
     processed: list[str] = []
     process = getattr(event_runtime.SituationRuntime, "_async_process_state_changed", None)
 
-    async def _count_process(self: Any, raw_event: Any, *args: Any) -> None:
+    async def _count_process(
+        self: Any, raw_event: Any, *args: Any, **kwargs: Any
+    ) -> None:
         processed.append(raw_event.data["entity_id"])
         assert process is not None
-        await process(self, raw_event, *args)
+        await process(self, raw_event, *args, **kwargs)
 
     # raising=False: the same file runs against 7.9.3, which lacks the hook.
     monkeypatch.setattr(

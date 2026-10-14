@@ -18,6 +18,9 @@ deaktivierter Routineerkennung, deaktiviertem AUTO und leerer AUTO-Allowlist.
   `expected_effect_missing`. Leer
   bedeutet keine automatische State-Change-Ausgabe; unbekannte Werte werden
   abgelehnt.
+- `agent_long_running_minutes`: globale Schwelle für
+  `long_running_state` in ganzen Minuten (0 bis 10080). Standard `0`
+  deaktiviert die Regel; die Kategorie muss zusätzlich aktiviert sein.
 - `routine_detection_enabled`: klassische lokale Statistik.
 - `routine_min_observations`: Gate vor einer Musterbewertung.
 - `anomaly_threshold_percent`: seltenes Zeitfenster für eine Abweichung.

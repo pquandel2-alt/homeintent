@@ -748,6 +748,7 @@ def test_one_failed_snapshot_loses_nothing_and_duplicates_nothing(monkeypatch, c
     assert metrics.snapshot_failures == 1
     assert metrics.snapshot_retries >= 1
     assert metrics.worker_starts == 1
+    assert metrics.worker_restarts == 0
     assert len(harness.hass._tasks) == 1
     assert metrics.processed == 4
     assert len(attempts) == 1 + 2  # one failure, then two batches of <= 2
@@ -804,6 +805,7 @@ def test_unload_during_snapshot_retries_ends_worker_and_old_worker_stays_out(mon
     # Nothing from before the unload, the new event once, by one new worker.
     assert [(entity, state) for entity, state, *_ in harness.evaluated] == [(DOOR, "on")]
     assert harness.metrics.worker_starts == 1
+    assert harness.metrics.worker_restarts == 0
     assert harness.pending_tasks() == []
 
 
@@ -854,12 +856,15 @@ def test_persistent_snapshot_failure_evaluates_critical_without_registry(monkeyp
     assert len(attempts) == event_runtime.SNAPSHOT_MAX_ATTEMPTS
     assert metrics.snapshot_degraded_batches == 1
     # Only protected/critical work is evaluated without registry data;
-    # lower category and coalescible work is counted as dropped.
+    # lower category and coalescible work is explicitly registry-suppressed,
+    # not misreported as a queue-bound drop (7.9.8).
     assert [(entity, state) for entity, state, *_ in harness.evaluated] == [
         (SMOKE, "on"),
     ]
-    assert metrics.dropped_coalescible == 1
-    assert metrics.dropped_category == 1
+    assert metrics.dropped_coalescible == 0
+    assert metrics.dropped_category == 0
+    assert metrics.discarded_registry == 2
+    assert metrics.consumer_suppressed_registry >= 2
     assert metrics.dropped_critical == 0
     assert [payload["source_entity_id"] for payload in _signals(agent)] == [SMOKE]
     assert any(

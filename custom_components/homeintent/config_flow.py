@@ -73,6 +73,7 @@ from .const import (
     CONF_AGENT_AUTO_ENABLED,
     CONF_AGENT_AUTO_ENTITY_IDS,
     CONF_AGENT_EVENT_CATEGORIES,
+    CONF_AGENT_LONG_RUNNING_MINUTES,
     CONF_AGENT_QUIET_END,
     CONF_AGENT_QUIET_START,
     CONF_ANOMALY_THRESHOLD_PERCENT,
@@ -482,6 +483,10 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_AGENT_EVENT_CATEGORIES,
                         default=defaults.get(CONF_AGENT_EVENT_CATEGORIES, ""),
                     ): TextSelector(TextSelectorConfig()),
+                    vol.Optional(
+                        CONF_AGENT_LONG_RUNNING_MINUTES,
+                        default=defaults.get(CONF_AGENT_LONG_RUNNING_MINUTES, 0),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=10080)),
                     vol.Optional(
                         CONF_ROUTINE_DETECTION_ENABLED,
                         default=defaults.get(CONF_ROUTINE_DETECTION_ENABLED, False),

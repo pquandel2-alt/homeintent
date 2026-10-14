@@ -140,6 +140,12 @@ def build_config(options: Mapping[str, object]) -> ProactiveConfig:
 class ProactiveRuntime:
     """Owns the V12 engine for one config entry and adapts it to HA."""
 
+    # The detector derives occupancy, areas and cross-entity situations from
+    # the full selected snapshot.  EventRuntime uses these declarations to
+    # suppress it explicitly instead of handing it partial invented context.
+    requires_complete_house_view = True
+    requires_registry_data = True
+
     def __init__(
         self,
         hass: HomeAssistant,

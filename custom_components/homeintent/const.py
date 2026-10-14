@@ -82,6 +82,9 @@ CONF_BANTER_LEVEL = "banter_level"
 CONF_AGENT_QUIET_START = "agent_quiet_start"
 CONF_AGENT_QUIET_END = "agent_quiet_end"
 CONF_AGENT_EVENT_CATEGORIES = "agent_event_categories"
+# Global, opt-in threshold for the public ``long_running_state`` category.
+# Zero preserves old installations without creating surprise notifications.
+CONF_AGENT_LONG_RUNNING_MINUTES = "agent_long_running_minutes"
 CONF_ROUTINE_DETECTION_ENABLED = "routine_detection_enabled"
 CONF_ROUTINE_MIN_OBSERVATIONS = "routine_min_observations"
 CONF_ANOMALY_THRESHOLD_PERCENT = "anomaly_threshold_percent"

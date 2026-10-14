@@ -11,9 +11,12 @@ selectors, so the exact failure path is covered.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from http import HTTPStatus
 from typing import Any
 
+import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import EntitySelector
 from homeassistant.setup import async_setup_component
@@ -23,6 +26,7 @@ from custom_components.homeintent.const import (
     CONF_ALLOW_NON_ADMIN_AUTOMATIONS,
     CONF_ADMIN_ONLY_ENTITIES,
     CONF_AGENT_AUTO_ENTITY_IDS,
+    CONF_AGENT_LONG_RUNNING_MINUTES,
     CONF_AGENT_MEDIA_PLAYERS,
     CONF_AGENT_NOTIFY_TARGETS,
     CONF_AGENT_TTS_ENTITY,
@@ -98,6 +102,17 @@ SETUP_OPTIONS: dict[str, Any] = {
 }
 
 
+@pytest.fixture(autouse=True)
+async def unload_homeintent_entries(hass: HomeAssistant) -> AsyncIterator[None]:
+    """Finish option reloads and remove integration-owned timers."""
+    yield
+    await hass.async_block_till_done()
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is ConfigEntryState.LOADED:
+            assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
 async def _entry(hass: HomeAssistant, options: dict[str, Any] | None = None) -> MockConfigEntry:
     # Same base a real Home Assistant boot provides before any UI request.
     assert await async_setup_component(hass, "homeassistant", {})
@@ -109,6 +124,10 @@ async def _entry(hass: HomeAssistant, options: dict[str, Any] | None = None) -> 
         options=dict(SETUP_OPTIONS if options is None else options),
     )
     entry.add_to_hass(hass)
+    # A real entry is already set up before the user opens Configure.  Load
+    # its dependencies before ``hass_client`` freezes aiohttp's router.
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
     return entry
 
 
@@ -156,6 +175,7 @@ async def test_homeintent_options_flow_opens_on_ha_2026_9(hass: HomeAssistant, h
         CONF_SELECTED_ENTITIES, CONF_READ_ONLY_ENTITIES, CONF_ADMIN_ONLY_ENTITIES,
         CONF_CONTROL_USER_IDS, CONF_CONFIRMATION_LEVEL, CONF_AGENT_NOTIFY_TARGETS,
         CONF_AGENT_TTS_ENTITY, CONF_AGENT_MEDIA_PLAYERS, CONF_AGENT_AUTO_ENTITY_IDS,
+        CONF_AGENT_LONG_RUNNING_MINUTES,
         *LEARNING_CONTROLS, *V12_CONTROLS,
     ):
         assert key in fields, key
@@ -270,6 +290,21 @@ async def test_options_flow_can_save_proactive_enabled(hass: HomeAssistant, hass
     assert entry.options[CONF_EXPERIENCE_LEARNING_ENABLED] is False
 
 
+async def test_options_flow_can_save_long_running_threshold(
+    hass: HomeAssistant, hass_client
+) -> None:
+    entry = await _entry(hass)
+    client = await hass_client()
+    data = await _open_configure(hass, client, entry)
+    field = _fields(data)[CONF_AGENT_LONG_RUNNING_MINUTES]
+    assert _default(field) == 0
+
+    result = await _submit(client, data, {CONF_AGENT_LONG_RUNNING_MINUTES: 15})
+
+    assert result["type"] == "create_entry", result
+    assert entry.options[CONF_AGENT_LONG_RUNNING_MINUTES] == 15
+
+
 async def test_saving_options_keeps_the_entity_selection_dynamic(
     hass: HomeAssistant, hass_client
 ) -> None:
@@ -308,7 +343,6 @@ async def test_fixed_selection_hiding_exposed_entities_raises_a_repair_issue(
         hass.states.async_set(entity_id, "on")
         async_expose_entity(hass, "conversation", entity_id, True)
     entry = await _entry(hass, {**SETUP_OPTIONS, CONF_SELECTED_ENTITIES: ["light.kueche"]})
-    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     issue = ir.async_get(hass).async_get_issue(DOMAIN, "fixed_entity_selection")
