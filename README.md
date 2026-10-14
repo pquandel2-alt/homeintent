@@ -2,7 +2,7 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.7** (Bugfix: aktive Event-Verbraucher sind unter Last geschützt, präziser Interest-Filter und vollständig begrenzte Runtime-Retention; Funktionsumfang wie 7.9.3)
+- Aktuelle Version: **7.9.8** (Bugfix: korrekte geschützte Consumer-Zustellung bei History-/Registry-Degradation, explizite Suppression und funktionierender Long-running-state-Pfad; Funktionsumfang wie 7.9.3)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +41,34 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.8 neu?
+
+Reiner Stabilitäts- und Korrektheits-Bugfix der Ereignisverarbeitung:
+
+- **Getrennte Degradationszustände:** unvollständige Haus-Historie und
+  fehlende Registry-/Area-Snapshots werden nicht mehr durch dasselbe Boolean
+  vermischt.
+- **Geschützter Thermal-Kontext:** aktive Thermal-Zyklen erhalten im
+  History-Modus eine begrenzte, zeitlich rekonstruierte Sicht auf ihr
+  konkretes Watch-Set. Unsichere eigene Historie wird gezählt unterdrückt,
+  niemals geraten.
+- **Ehrliche Consumer-Diagnose:** Runtime-Verarbeitung, Zustellung,
+  History-/Registry-Unterdrückung und Queue-Drops besitzen getrennte Zähler.
+  ExpectedEffects und sichere Monitorpfade bleiben bei irrelevanter
+  History-Degradation funktionsfähig.
+- **Eindeutige Filter- und Worker-Metriken:** Kategorie-, Proactive- und
+  No-consumer-Filter sind disjunkt. `worker_restarts` misst ausschließlich
+  einen echten automatischen Ersatzworker bei unerwartetem Ende mit
+  ausstehender Arbeit.
+- **`long_running_state` end-to-end:** die konservative neue Options-Flow-
+  Einstellung `agent_long_running_minutes` ist standardmäßig `0`
+  (deaktiviert), verwendet den historischen `last_changed`-Zeitpunkt und
+  dedupliziert Attributupdates eines Zustandsintervalls.
+- Single Worker, begrenzte Queue/History/Watch-Sets, Snapshot-Retry und der
+  synchrone I/O-freie Eventcallback aus 7.9.7 bleiben erhalten. Details und
+  neun maschinenlesbare Reproduktionen:
+  `docs/umsetzung-7.9.8.md` und `scripts/event_runtime_repro_798.py`.
 
 ## Was ist in Version 7.9.7 neu?
 
@@ -2497,6 +2525,17 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.8:
+
+```text
+Neue 7.9.8 EventRuntime-Regressionen: 14 passed
+Event-/Startup-/History-/Effect-Gates einschließlich 7.9.8: 101 passed; RuntimeWarning und Unraisable-Warnings als Fehler
+EventRuntime-Reproduktion: 9/9 Szenarien; sichere Thermal-History zugestellt, unsichere Thermal-History gezählt unterdrückt; RuntimeWarning 0; Retention/Pending nach Drain 0
+Vollständige Stub-Suite (Python 3.12.3): 9778 passed, 12 skipped, 0 failed; RuntimeWarning und Unraisable-Warnings als Fehler
+Lokale echte-HA-Suite (Python 3.14.2 / HA 2026.9.2): 21 passed, 1 zeitabhängiger 6000er-Kategorie-Burst fehlgeschlagen; derselbe Test verliert auf unverändertem 7.9.7 im selben Host exakt dieselben 378 Kategorieevents. CI bleibt für diesen Durchsatz-Gate maßgeblich
+Korpus-Signaturen 7.9.8: 4107 Sätze; gegenüber 7.9.7 0 geänderte Signaturen und 1 neuer Test-Docstring (docs/perf/corpus-signatures-7.9.8-begruendung.md)
+```
+
 Geprüfter Release-Stand von Version 7.9.7:
 
 ```text
@@ -2648,7 +2687,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.7.json
+  --check docs/perf/corpus-signatures-7.9.8.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
