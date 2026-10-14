@@ -6,6 +6,7 @@ the top level and reported "keine Statistikdaten" for every question.
 from __future__ import annotations
 
 from datetime import timedelta
+import sys
 from typing import Any
 
 import pytest
@@ -17,6 +18,25 @@ from custom_components.homeintent.history_query import (
     async_execute_history_query,
     parse_history_query,
 )
+
+
+# Python 3.14 evaluates the lazily stored annotations when the upstream
+# pytest-HA fixture autospecs ``migration._find_schema_errors``.  HA imports
+# ``Recorder`` there only under TYPE_CHECKING, so expose HA's real class to
+# that module before fixture setup.  This does not replace the recorder or
+# the schema function under test.
+if sys.version_info >= (3, 14):
+    from homeassistant.components import recorder
+    from homeassistant.components.recorder import migration
+    from homeassistant.helpers import recorder as recorder_helper
+    from sqlalchemy.orm import Session
+
+    if not hasattr(migration, "Recorder"):
+        migration.Recorder = recorder.Recorder  # type: ignore[attr-defined]
+    if not hasattr(recorder_helper, "Recorder"):
+        recorder_helper.Recorder = recorder.Recorder  # type: ignore[attr-defined]
+    if not hasattr(recorder_helper, "Session"):
+        recorder_helper.Session = Session  # type: ignore[attr-defined]
 
 
 @pytest.fixture(autouse=True)

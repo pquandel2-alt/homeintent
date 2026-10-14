@@ -249,7 +249,9 @@ def test_events_are_processed_in_order_and_a_failure_does_not_stop_the_worker(mo
     monkeypatch.setattr(event_runtime, "build_entity_snapshots", lambda *_: [])
     seen: list[str] = []
 
-    async def _process(raw_event: Any, entities: Any, by_id: Any) -> None:
+    async def _process(
+        raw_event: Any, entities: Any, by_id: Any, **_kwargs: Any
+    ) -> None:
         seen.append(raw_event.data["new_state"].state)
         if raw_event.data["new_state"].state == "boom":
             raise RuntimeError("defekt")

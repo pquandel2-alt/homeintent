@@ -33,7 +33,8 @@ V12 runtime object by identity and are recomputed when either changes.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from enum import StrEnum
 from typing import Any, cast
 
 from .agent_config_validation import parse_event_categories
@@ -59,6 +60,19 @@ _LONG_RUNNING_DOMAINS = frozenset({
     "climate", "cover", "fan", "humidifier", "light", "media_player",
     "switch", "vacuum", "water_heater",
 })
+# A malformed or unexpectedly large provider must not turn the callback's
+# cached watch index into an unbounded retention structure.  Falling back to
+# conservative all-entity protection preserves correctness; the event queue
+# remains independently bounded.
+MAX_CONSUMER_WATCH_ENTITIES = 4096
+
+
+class EventFilterReason(StrEnum):
+    """One mutually exclusive reason why no runtime consumer accepted an event."""
+
+    NO_CONSUMER = "no_consumer"
+    CATEGORY = "category"
+    PROACTIVE = "proactive"
 
 
 class _InterestConfig:
@@ -160,6 +174,11 @@ class EventInterestIndex:
                 specific.update(store.watched_person_entity_ids)
                 specific.update(store.watched_nobody_home_person_ids)
                 all_persons = bool(store.nobody_home_uses_household)
+        if len(specific) > MAX_CONSUMER_WATCH_ENTITIES:
+            # Do not retain a partially useful set: treating every selected
+            # entity as concrete is conservative and remains queue-bounded.
+            everything = True
+            specific.clear()
         self._specific = frozenset(specific)
         self._all_persons = all_persons
         self._all_sensors = all_sensors
@@ -177,8 +196,61 @@ class EventInterestIndex:
 
     @property
     def category_filter_active(self) -> bool:
-        """Whether a negative result came through an active broad filter."""
-        return self._current_house_wide().active
+        """Whether configured categories (not V12 alone) filter events."""
+        house = self._current_house_wide()
+        return bool(house.categories) or house.routine
+
+    @property
+    def proactive_filter_active(self) -> bool:
+        house = self._current_house_wide()
+        return house.proactive or house.proactive_undeclared
+
+    def category_relevant(
+        self, entity_id: str, old_state: Any, new_state: Any
+    ) -> bool:
+        """Whether a configured category consumes this concrete event."""
+        house = self._current_house_wide()
+        return house.routine or _category_relevant(
+            house.categories, entity_id, old_state, new_state
+        )
+
+    @property
+    def thermal_entity_ids(self) -> frozenset[str] | None:
+        """Bounded thermal watch set, or ``None`` when a provider overflows."""
+        thermal = getattr(self._data, "thermal_tracker", None)
+        watched = getattr(thermal, "watched_entity_ids", None)
+        if not isinstance(watched, frozenset):
+            return None if thermal is not None else frozenset()
+        typed_watched = cast(frozenset[str], watched)
+        if len(typed_watched) > MAX_CONSUMER_WATCH_ENTITIES:
+            return None
+        return typed_watched
+
+    def protected_view_entities(self, entities: Iterable[Any]) -> list[Any] | None:
+        """Select a bounded snapshot view for all concrete consumers.
+
+        Household-following nobody-home goals intentionally protect every
+        selected person without caching an unbounded dynamic ID set.  The
+        worker resolves those already in-memory snapshot rows once per batch;
+        the event callback still performs only prefix/set checks.
+        """
+        if self._everything:
+            return None
+        selected: list[Any] = []
+        for entity in entities:
+            entity_id = getattr(entity, "entity_id", None)
+            if not isinstance(entity_id, str):
+                continue
+            if not (
+                entity_id in self._specific
+                or (self._all_persons and entity_id.startswith("person."))
+                or (self._all_sensors and entity_id.startswith("sensor."))
+            ):
+                continue
+            selected.append(entity)
+            if len(selected) > MAX_CONSUMER_WATCH_ENTITIES:
+                return None
+        return selected
 
     def classify(
         self, entity_id: str, old_state: Any, new_state: Any
@@ -188,26 +260,32 @@ class EventInterestIndex:
         Cheap and synchronous: attribute reads on the event's own ``State``
         objects and set lookups - no disk, no registry, no snapshot.
         """
+        return self.classify_with_reason(entity_id, old_state, new_state)[0]
+
+    def classify_with_reason(
+        self, entity_id: str, old_state: Any, new_state: Any
+    ) -> tuple[EventPriority | None, EventFilterReason | None]:
+        """Classify once and return a mutually exclusive negative reason."""
         if is_critical_change(entity_id, old_state, new_state):
-            return EventPriority.CRITICAL
+            return EventPriority.CRITICAL, None
         if (
             self._everything
             or entity_id in self._specific
             or (self._all_persons and entity_id.startswith("person."))
             or (self._all_sensors and entity_id.startswith("sensor."))
         ):
-            return EventPriority.PROTECTED
+            return EventPriority.PROTECTED, None
         house = self._current_house_wide()
         if not house.active:
-            return None
+            return None, EventFilterReason.NO_CONSUMER
         if house.routine:
-            return EventPriority.CATEGORY
+            return EventPriority.CATEGORY, None
         if house.proactive:
             proactive = self._data.proactive_context
             if proactive.is_relevant_event(entity_id, device_class_of(new_state)):
-                return EventPriority.CATEGORY
+                return EventPriority.CATEGORY, None
         if _category_relevant(house.categories, entity_id, old_state, new_state):
-            return EventPriority.CATEGORY
+            return EventPriority.CATEGORY, None
         if house.proactive_undeclared:
             if (
                 entity_id.startswith("sensor.")
@@ -215,9 +293,11 @@ class EventInterestIndex:
                 and is_plain_number(old_state)
                 and is_plain_number(new_state)
             ):
-                return EventPriority.COALESCIBLE
-            return EventPriority.CATEGORY
-        return None
+                return EventPriority.COALESCIBLE, None
+            return EventPriority.CATEGORY, None
+        if house.categories or house.routine:
+            return None, EventFilterReason.CATEGORY
+        return None, EventFilterReason.PROACTIVE
 
     # -- helpers ----------------------------------------------------------
     def _current_house_wide(self) -> _InterestConfig:
@@ -291,4 +371,8 @@ def _category_relevant(
     return False
 
 
-__all__ = ("EventInterestIndex",)
+__all__ = (
+    "EventFilterReason",
+    "EventInterestIndex",
+    "MAX_CONSUMER_WATCH_ENTITIES",
+)

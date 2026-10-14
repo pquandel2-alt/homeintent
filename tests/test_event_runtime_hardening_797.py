@@ -425,6 +425,7 @@ def test_ten_bursts_return_to_the_same_empty_baseline(monkeypatch):
             _assert_empty_generation(harness)
             assert effects.pending == ()
         assert harness.metrics.worker_starts == 10
+        assert harness.metrics.worker_restarts == 0
         stop()
         await effects.async_close()
 

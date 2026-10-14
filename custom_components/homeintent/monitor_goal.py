@@ -158,6 +158,30 @@ class MonitorGoalStore:
         """
         return self._interest.nobody_home_uses_household
 
+    def person_transition_needs_house_context(self, entity_id: str) -> bool:
+        """Whether a matching goal reads entities beyond watched persons."""
+        if self._records is None:
+            return True
+        return any(
+            record.goal.conditions
+            for record in self._records
+            if record.enabled and _person_trigger_covers(record.goal, entity_id)
+        )
+
+    def person_transition_needs_snapshot(self, entity_id: str) -> bool:
+        """Whether registry degradation lacks required unchanged entities."""
+        if self._records is None:
+            return True
+        return any(
+            record.goal.conditions
+            or (
+                record.goal.trigger is not None
+                and record.goal.trigger.kind == "nobody_home"
+            )
+            for record in self._records
+            if record.enabled and _person_trigger_covers(record.goal, entity_id)
+        )
+
     def add_change_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         """Call ``listener`` after the cache (and interest sets) changed."""
         self._listeners.append(listener)
@@ -354,6 +378,7 @@ class MonitorGoalRuntime:
         value: float,
         *,
         occurred_at: datetime | None = None,
+        entity: EntitySnapshot | None = None,
     ) -> tuple[GoalRun, ...]:
         """A watched sensor changed (7.9 W3): compare with its window."""
         if entity_id not in await self.store.async_watched_entities() or self.read_history is None:
@@ -378,9 +403,16 @@ class MonitorGoalRuntime:
                 continue
             lock = self._locks.setdefault(record.goal.goal_id, asyncio.Lock())
             async with lock:
-                entities = await self.refresh_entities()
+                entities = (
+                    (entity,) if entity is not None else tuple(await self.refresh_entities())
+                )
                 name = next(
-                    (item.friendly_name for item in entities if item.entity_id == entity_id), entity_id
+                    (
+                        item.friendly_name
+                        for item in entities
+                        if item.entity_id == entity_id
+                    ),
+                    entity_id,
                 )
                 detail = finding_message(rule, f"„{name}“", finding)
                 result = await self._async_notify(
@@ -458,6 +490,7 @@ class MonitorGoalRuntime:
         *,
         occurred_at: datetime | None = None,
         occurrence_id: str | None = None,
+        entities: tuple[EntitySnapshot, ...] | None = None,
     ) -> tuple[GoalRun, ...]:
         now = occurred_at or datetime.now(timezone.utc)
         if now.tzinfo is None:
@@ -474,13 +507,20 @@ class MonitorGoalRuntime:
                 continue
             lock = self._locks.setdefault(record.goal.goal_id, asyncio.Lock())
             async with lock:
-                result = await self._async_evaluate(record, occurrence, now)
+                result = await self._async_evaluate(
+                    record, occurrence, now, entities=entities
+                )
                 if result is not None:
                     results.append(result)
         return tuple(results)
 
     async def _async_evaluate(
-        self, record: MonitorRecord, occurrence: str, now: datetime
+        self,
+        record: MonitorRecord,
+        occurrence: str,
+        now: datetime,
+        *,
+        entities: tuple[EntitySnapshot, ...] | None = None,
     ) -> GoalRun | None:
         goal = record.goal
         dedupe_base = f"{goal.goal_id}:{occurrence}"
@@ -500,18 +540,22 @@ class MonitorGoalRuntime:
             idempotency_key=idempotency_key,
             now=now,
         )
-        entities = await self.refresh_entities()
+        current_entities = (
+            entities if entities is not None else tuple(await self.refresh_entities())
+        )
         if goal.trigger is not None and goal.trigger.kind == "nobody_home":
             household = (
                 goal.trigger.household_person_ids
                 or self.user_contexts.household.person_entity_ids
             )
             states = {
-                item.entity_id: item.state for item in entities if item.domain == "person"
+                item.entity_id: item.state
+                for item in current_entities
+                if item.domain == "person"
             }
             if not household or any(states.get(person) == "home" for person in household):
                 return None
-        matching, category = _evaluate_dynamic_condition(goal, entities)
+        matching, category = _evaluate_dynamic_condition(goal, current_entities)
         if not matching:
             completed = replace(
                 run, updated_at=now.isoformat(), status=GoalRunStatus.SUCCESS,
@@ -624,6 +668,18 @@ def _trigger_matches(
         household = trigger.household_person_ids or users.household.person_entity_ids
         return person_id in household and old_state == "home" and new_state != "home"
     return False
+
+
+def _person_trigger_covers(goal: GoalModel, entity_id: str) -> bool:
+    """Synchronous interest check over the cached monitor definition."""
+    trigger = goal.trigger
+    if trigger is None:
+        return False
+    if trigger.kind in {"person_leaves_zone", "person_arrives_zone"}:
+        return trigger.person_entity_id == entity_id
+    if trigger.kind != "nobody_home":
+        return False
+    return not trigger.household_person_ids or entity_id in trigger.household_person_ids
 
 
 def _evaluate_dynamic_condition(

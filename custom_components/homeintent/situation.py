@@ -231,7 +231,13 @@ class SituationEvaluator:
                 )
             )
         limit = (long_state_seconds or {}).get(event.entity_id)
-        if limit is not None and event.duration_seconds is not None and event.duration_seconds > limit:
+        if (
+            limit is not None
+            and event.quality is EventQuality.GOOD
+            and event.state.casefold() in ACTIVE_STATES
+            and event.duration_seconds is not None
+            and event.duration_seconds > limit
+        ):
             situations.append(
                 self._situation(
                     event,

@@ -62,6 +62,7 @@
           "agent_quiet_start": "Quiet hours start (HH:MM)",
           "agent_quiet_end": "Quiet hours end (HH:MM)",
           "agent_event_categories": "Enabled event categories (comma-separated)",
+          "agent_long_running_minutes": "Long-running state threshold in minutes (0: disabled)",
           "routine_detection_enabled": "Enable local routine and anomaly detection",
           "routine_min_observations": "Minimum observations for statistical patterns",
           "anomaly_threshold_percent": "Anomaly threshold in percent",
