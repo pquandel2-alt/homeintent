@@ -11,9 +11,12 @@ selectors, so the exact failure path is covered.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from http import HTTPStatus
 from typing import Any
 
+import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import EntitySelector
 from homeassistant.setup import async_setup_component
@@ -97,6 +100,17 @@ SETUP_OPTIONS: dict[str, Any] = {
     # 7.9.3 B5: new installations answer with the confirmation tone.
     "response_style": "tone",
 }
+
+
+@pytest.fixture(autouse=True)
+async def unload_homeintent_entries(hass: HomeAssistant) -> AsyncIterator[None]:
+    """Finish option reloads and remove integration-owned timers."""
+    yield
+    await hass.async_block_till_done()
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is ConfigEntryState.LOADED:
+            assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
 
 
 async def _entry(hass: HomeAssistant, options: dict[str, Any] | None = None) -> MockConfigEntry:
