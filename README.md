@@ -2,7 +2,9 @@
 
 **Lokale, schnelle und nachvollziehbare Sprachsteuerung für Home Assistant Assist – ohne LLM zur Laufzeit.**
 
-- Aktuelle Version: **7.9.8** (Bugfix: korrekte geschützte Consumer-Zustellung bei History-/Registry-Degradation, explizite Suppression und funktionierender Long-running-state-Pfad; Funktionsumfang wie 7.9.3)
+- Aktuelle Version: **7.9.9** (Stabilisierung von EventRuntime-Recovery,
+  Long-running-Terminierung und Zeitzonentests; keine Release-Freigabe, solange
+  die Pflicht-Gates des Draft-PRs nicht vollständig grün sind)
 - Sprache: **Deutsch**
 - Installation: **HACS Custom Repository**
 - Verarbeitung: **lokal in Home Assistant**
@@ -41,6 +43,27 @@ HomeIntent benötigt für die Sprachverarbeitung:
 Der gleiche Satz führt bei gleichem Home-Assistant-Zustand und gleichem
 Dialogkontext zum gleichen Ergebnis. Bei echter Mehrdeutigkeit fragt HomeIntent
 nach oder führt nichts aus.
+
+## Was ist in Version 7.9.9 neu?
+
+Reiner Stabilitäts- und Korrektheits-Bugfix; Sicherheits-, Berechtigungs-,
+Bestätigungs- und `NEVER_AUTO`-Regeln bleiben unverändert:
+
+- entnommene Event-Batches bleiben bis zur Finalisierung geleast und werden
+  bei einem Batchfehler geordnet, ohne Wiederholung bestätigter Events,
+  zurückgestellt;
+- ein einzelner Supervisor begrenzt Worker-Neustarts mit exponentiellem
+  Backoff, Circuit-Zustand, rate-limitierten Logs und Recovery-Metriken;
+- `long_running_state` erzeugt bei Schwelle `0` kein eigenes Eventinteresse,
+  verwendet konservative domainspezifische Aktivitätssignale und einen
+  gemeinsamen begrenzten Termin-Scheduler statt eines Tasks pro Entity;
+- HA-Zeitstempeltests verwenden eine explizite Home-Assistant-Zeitzone und
+  sind unabhängig von der Host-Zeitzone;
+- technische Providerdetails werden intern protokolliert, aber nicht in
+  Assist-Antworten oder gespeicherte benutzerseitige Fehlertexte übernommen.
+
+Details: [`docs/release-notes-7.9.9.md`](docs/release-notes-7.9.9.md) und
+[`docs/agent-configuration.md`](docs/agent-configuration.md).
 
 ## Was ist in Version 7.9.8 neu?
 
