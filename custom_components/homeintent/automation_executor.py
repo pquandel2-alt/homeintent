@@ -397,8 +397,11 @@ class AutomationExecutor:
                 # way.
                 try:
                     await self._hass.services.async_call("automation", "reload", {}, blocking=True, context=system_context_for_turn())
-                except Exception:  # noqa: BLE001 - see comment above
-                    pass
+                except Exception:  # noqa: BLE001 - rollback reload is a HA boundary
+                    _LOGGER.exception(
+                        "Automation reload after rollback failed for %s",
+                        automation_id,
+                    )
                 raise
             await self._async_complete_transaction()
 

@@ -121,6 +121,25 @@ def test_no_keeps_nothing(monkeypatch, tmp_path, now):
     assert house.automations() == [] and _store(tmp_path) == {}
 
 
+def test_vacation_setup_failure_never_speaks_provider_details(monkeypatch, tmp_path, now):
+    from homeintent.automation_executor import AutomationExecutor
+
+    secret = "/config/private/automations.yaml token=vacation-secret"
+
+    async def fail(*_args, **_kwargs):
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(AutomationExecutor, "async_create_automation", fail)
+    house = _house(monkeypatch, tmp_path)
+    house.say("Ich bin bis Sonntag weg.")
+    speech = house.say("Ja.").speech
+
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in speech
+    assert secret not in speech
+    assert "/config/" not in speech
+    assert house.automations() == []
+
+
 def test_without_end_date_asks(monkeypatch, tmp_path, now):
     house = _house(monkeypatch, tmp_path)
     assert house.say("Wir fahren in den Urlaub.").speech.startswith("Bis wann seid ihr weg?")
