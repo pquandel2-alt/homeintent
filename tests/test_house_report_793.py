@@ -123,6 +123,24 @@ def test_no_creates_nothing(monkeypatch, tmp_path, now):
     house = _house(monkeypatch, tmp_path)
     house.say("Schick mir jeden Sonntag um 18 Uhr einen Haus-Bericht.")
     assert house.say("Nein.").speech == "In Ordnung, ich richte nichts ein."
+
+
+def test_report_setup_failure_never_speaks_provider_details(monkeypatch, tmp_path, now):
+    from homeintent.automation_executor import AutomationExecutor
+
+    secret = "/config/private/automations.yaml token=report-secret"
+
+    async def fail(*_args, **_kwargs):
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(AutomationExecutor, "async_create_automation", fail)
+    house = _house(monkeypatch, tmp_path)
+    house.say("Schick mir jeden Sonntag um 18 Uhr einen Haus-Bericht.")
+    speech = house.say("Ja.").speech
+
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in speech
+    assert secret not in speech
+    assert "/config/" not in speech
     assert house.automations() == []
 
 
