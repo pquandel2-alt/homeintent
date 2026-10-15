@@ -84,8 +84,15 @@ def test_category_interest_matrix_accepts_only_its_inputs(
     monkeypatch, category, entity_id, old, new, device_class
 ):
     unrelated = "sensor.unrelated"
-    harness = _Harness(monkeypatch, [entity_id, unrelated], categories=category)
-    harness.runtime.async_start()
+    options = (
+        {"agent_long_running_minutes": 1}
+        if category == "long_running_state"
+        else None
+    )
+    harness = _Harness(
+        monkeypatch, [entity_id, unrelated], categories=category, options=options
+    )
+    harness.runtime.interest.refresh()
     attrs = {"device_class": device_class} if device_class else {}
     priority = harness.runtime.interest.classify(
         entity_id, State(entity_id, old, attrs), State(entity_id, new, attrs)
