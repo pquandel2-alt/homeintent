@@ -20,7 +20,9 @@ deaktivierter Routineerkennung, deaktiviertem AUTO und leerer AUTO-Allowlist.
   abgelehnt.
 - `agent_long_running_minutes`: globale Schwelle für
   `long_running_state` in ganzen Minuten (0 bis 10080). Standard `0`
-  deaktiviert die Regel; die Kategorie muss zusätzlich aktiviert sein.
+  deaktiviert die Regel vollständig; die Kategorie muss zusätzlich aktiviert
+  sein. Aktive Intervalle werden von einem gemeinsamen, auf 4096 Einträge
+  begrenzten Scheduler geprüft. Es entsteht kein Task pro Entity.
 - `routine_detection_enabled`: klassische lokale Statistik.
 - `routine_min_observations`: Gate vor einer Musterbewertung.
 - `anomaly_threshold_percent`: seltenes Zeitfenster für eine Abweichung.
@@ -51,3 +53,35 @@ entfernt und anschließend aus der neuen Konfiguration aufgebaut.
 Ruhezeiten müssen als gültiges `HH:MM` angegeben werden. Die globale
 Gedächtnisfrist setzt für neue Einträge ein Ablaufdatum und bereinigt beim
 Setup auch ältere, migrationsübernommene Einträge kontrolliert.
+
+## Langläufer-Signale
+
+`long_running_state` meldet nur einen nachweislich laufenden Vorgang. Ein
+konfigurierter Betriebsmodus allein genügt nicht. Derzeit gelten folgende
+konservativen Signale:
+
+| Domain | Als aktiv gewertet |
+| --- | --- |
+| `climate` | `hvac_action` ist `heating`, `cooling`, `drying`, `fan`, `preheating` oder `defrosting` |
+| `cover` | Zustand `opening` oder `closing` |
+| `fan`, `humidifier`, `light`, `switch` | Zustand `on` |
+| `media_player` | Zustand `playing` |
+| `vacuum` | Zustand `cleaning` oder `returning` |
+
+`unknown`, `unavailable` und inaktive Zustände werden nie gemeldet. Climate
+beginnt wegen des attributbasierten Signals erst ab der tatsächlich
+beobachteten `hvac_action`; ein alter `last_changed`-Zeitpunkt des bloßen
+HVAC-Modus wird nicht als Laufzeit ausgegeben. Für die übrigen, rein
+zustandsbasierten Signale kann die Runtime nach einem Neustart ein bereits
+aktives Intervall nur aus einem gültigen, zeitzonenbehafteten
+`last_changed` rekonstruieren.
+
+`water_heater` ist bewusst nicht unterstützt: Die standardisierten Modus-
+und `current_operation`-Werte belegen nicht zuverlässig, dass das Gerät in
+diesem Moment heizt. Bei fehlendem verlässlichem Aktivitätssignal unterbleibt
+eine Meldung, statt aus dem Modus zu raten.
+
+Aktivierung oder ein neues Aktivitätsintervall plant genau eine zentrale
+Schwellenprüfung; Deaktivierung und Options-Reload entfernen sie. Deshalb
+kann die Meldung auch ohne ein weiteres `state_changed` beim Überschreiten
+der Schwelle entstehen.
