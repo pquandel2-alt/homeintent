@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import time
 from pathlib import PurePath
-from typing import Iterable, cast
+from typing import Any, Iterable, cast
 
 
 EVENT_CATEGORIES = frozenset(
@@ -78,7 +78,10 @@ def parse_long_running_minutes(value: object) -> int:
     if isinstance(value, bool):
         raise ValueError("Langläufer-Schwelle muss eine ganze Zahl sein")
     try:
-        minutes = int(value)  # ``vol.Coerce(int)`` in the options flow.
+        # Stored HA options are an untyped persistence boundary.  ``int`` is
+        # intentionally the same coercion as the options flow; the exception
+        # below turns everything else into a stable validation error.
+        minutes = int(cast(Any, value))
     except (TypeError, ValueError) as err:
         raise ValueError("Langläufer-Schwelle muss eine ganze Zahl sein") from err
     if not 0 <= minutes <= MAX_LONG_RUNNING_MINUTES:
