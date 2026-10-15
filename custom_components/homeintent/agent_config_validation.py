@@ -21,6 +21,8 @@ EVENT_CATEGORIES = frozenset(
     }
 )
 
+MAX_LONG_RUNNING_MINUTES = 10080
+
 
 def validate_quiet_time(value: object) -> str:
     if not isinstance(value, str):
@@ -65,3 +67,20 @@ def parse_event_categories(value: object) -> frozenset[str]:
     if not categories <= EVENT_CATEGORIES:
         raise ValueError("Unbekannte Ereigniskategorie")
     return categories
+
+
+def parse_long_running_minutes(value: object) -> int:
+    """Normalize the stored option exactly like the options-flow integer field.
+
+    Runtime callers deliberately fail closed (disabled) when old or manually
+    edited storage contains a value the options flow would reject.
+    """
+    if isinstance(value, bool):
+        raise ValueError("Langläufer-Schwelle muss eine ganze Zahl sein")
+    try:
+        minutes = int(value)  # ``vol.Coerce(int)`` in the options flow.
+    except (TypeError, ValueError) as err:
+        raise ValueError("Langläufer-Schwelle muss eine ganze Zahl sein") from err
+    if not 0 <= minutes <= MAX_LONG_RUNNING_MINUTES:
+        raise ValueError("Langläufer-Schwelle liegt außerhalb des erlaubten Bereichs")
+    return minutes

@@ -37,9 +37,10 @@ from collections.abc import Callable, Iterable, Mapping
 from enum import StrEnum
 from typing import Any, cast
 
-from .agent_config_validation import parse_event_categories
+from .agent_config_validation import parse_event_categories, parse_long_running_minutes
 from .const import (
     CONF_AGENT_EVENT_CATEGORIES,
+    CONF_AGENT_LONG_RUNNING_MINUTES,
     CONF_ROUTINE_DETECTION_ENABLED,
 )
 from .event_priority import (
@@ -48,6 +49,7 @@ from .event_priority import (
     is_critical_change,
     is_plain_number,
 )
+from .long_running import LONG_RUNNING_DOMAINS
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,10 +58,6 @@ _LOGGER = logging.getLogger(__name__)
 _OPEN_DEVICE_CLASSES = frozenset({"door", "window", "garage_door", "opening"})
 _OPEN_STATES = frozenset({"on", "open", "opening"})
 _ACTIVE_STATES = frozenset({"on", "open", "opening", "heating", "cooling", "playing"})
-_LONG_RUNNING_DOMAINS = frozenset({
-    "climate", "cover", "fan", "humidifier", "light", "media_player",
-    "switch", "vacuum", "water_heater",
-})
 # A malformed or unexpectedly large provider must not turn the callback's
 # cached watch index into an unbounded retention structure.  Falling back to
 # conservative all-entity protection preserves correctness; the event queue
@@ -78,7 +76,14 @@ class EventFilterReason(StrEnum):
 class _InterestConfig:
     """Cached category and V12 flags derived from entry options/runtime."""
 
-    __slots__ = ("active", "categories", "routine", "proactive", "proactive_undeclared")
+    __slots__ = (
+        "active",
+        "categories",
+        "long_running_minutes",
+        "routine",
+        "proactive",
+        "proactive_undeclared",
+    )
 
     def __init__(self, options: Mapping[str, Any], proactive: Any) -> None:
         categories: frozenset[str]
@@ -86,6 +91,15 @@ class _InterestConfig:
             categories = parse_event_categories(options.get(CONF_AGENT_EVENT_CATEGORIES, ""))
         except ValueError:
             categories = frozenset()
+        try:
+            self.long_running_minutes = parse_long_running_minutes(
+                options.get(CONF_AGENT_LONG_RUNNING_MINUTES, 0)
+            )
+        except ValueError as err:
+            _LOGGER.warning("Invalid long-running-state threshold; disabling it: %s", err)
+            self.long_running_minutes = 0
+        if self.long_running_minutes == 0:
+            categories = categories - {"long_running_state"}
         enabled = getattr(proactive, "enabled", None) if proactive is not None else None
         self.categories = categories
         self.proactive_undeclared = proactive is not None and not isinstance(enabled, bool)
@@ -309,6 +323,7 @@ class EventInterestIndex:
         key = (
             id(options),
             options.get(CONF_AGENT_EVENT_CATEGORIES),
+            options.get(CONF_AGENT_LONG_RUNNING_MINUTES),
             options.get(CONF_ROUTINE_DETECTION_ENABLED),
             id(proactive),
             getattr(proactive, "enabled", None) if proactive is not None else None,
@@ -365,7 +380,7 @@ def _category_relevant(
         or domain == "person"
     ):
         return True
-    if "long_running_state" in categories and domain in _LONG_RUNNING_DOMAINS:
+    if "long_running_state" in categories and domain in LONG_RUNNING_DOMAINS:
         return True
     # ``safety``/``safety_alarm`` are handled by ``is_critical_change``.
     return False

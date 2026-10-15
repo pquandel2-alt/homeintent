@@ -132,6 +132,7 @@ from .customization import parse_custom_aliases
 from .house_graph import parse_relation_specs
 from .agent_config_validation import (
     parse_event_categories,
+    parse_long_running_minutes,
     validate_documents_directory,
     validate_mqtt_topic,
     validate_quiet_time,
@@ -486,7 +487,7 @@ class HomeIntentOptionsFlow(OptionsFlow):
                     vol.Optional(
                         CONF_AGENT_LONG_RUNNING_MINUTES,
                         default=defaults.get(CONF_AGENT_LONG_RUNNING_MINUTES, 0),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=10080)),
+                    ): parse_long_running_minutes,
                     vol.Optional(
                         CONF_ROUTINE_DETECTION_ENABLED,
                         default=defaults.get(CONF_ROUTINE_DETECTION_ENABLED, False),

@@ -151,6 +151,7 @@ class SituationEvaluator:
         night_start: time = time(22, 0),
         night_end: time = time(6, 0),
         long_state_seconds: Mapping[str, float] | None = None,
+        long_state_elapsed_seconds: Mapping[str, float] | None = None,
     ) -> tuple[Situation, ...]:
         if event.quality in {EventQuality.UNKNOWN, EventQuality.STALE}:
             return ()
@@ -231,12 +232,14 @@ class SituationEvaluator:
                 )
             )
         limit = (long_state_seconds or {}).get(event.entity_id)
+        elapsed = (long_state_elapsed_seconds or {}).get(
+            event.entity_id, event.duration_seconds
+        )
         if (
             limit is not None
             and event.quality is EventQuality.GOOD
-            and event.state.casefold() in ACTIVE_STATES
-            and event.duration_seconds is not None
-            and event.duration_seconds > limit
+            and elapsed is not None
+            and elapsed >= limit
         ):
             situations.append(
                 self._situation(
@@ -244,7 +247,7 @@ class SituationEvaluator:
                     "long_running_state",
                     SituationSeverity.NOTICE,
                     "Ein Gerätezustand dauert ungewöhnlich lange.",
-                    (f"beobachtet: {event.duration_seconds:.0f} s", f"Grenze: {limit:.0f} s"),
+                    (f"beobachtet: {elapsed:.0f} s", f"Grenze: {limit:.0f} s"),
                 )
             )
         return tuple(situations)
