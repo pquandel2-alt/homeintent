@@ -8,7 +8,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from types import SimpleNamespace
@@ -35,6 +35,13 @@ from .event_interest import (
     MAX_CONSUMER_WATCH_ENTITIES,
 )
 from .event_priority import EventPriority
+from .event_runtime_metrics import EventRuntimeMetrics
+from .event_runtime_queue import (
+    _EVICTED,
+    _QUEUED,
+    _Entry,
+    _Generation,
+)
 from .long_running import activity_marker, has_reliable_last_changed
 from .hass_entities import (
     SelectedEntityFilter,
@@ -122,167 +129,6 @@ class DegradationMode(StrEnum):
     REGISTRY = "registry_degraded"
 
 
-@dataclass
-class EventRuntimeMetrics:
-    """Counters of one integration-runtime generation.
-
-    ``async_start()`` creates a fresh generation. An automatic worker
-    recovery stays in that generation and increments ``worker_restarts``.
-
-    ``received`` = ``filtered_unselected`` + ``filtered_no_interest`` +
-    ``queued`` + ``rejected_queue_full``. ``queued`` includes accepted
-    coalesced events. ``coalesced`` counts evaluations merged into a later
-    event of the same entity; ``dropped_*`` counts evaluations lost to the
-    queue bound through rejection or eviction, per priority. ``evicted_queue``
-    distinguishes the latter. ``dropped_lossless`` remains the compatibility
-    aggregate of category + protected drops. ``view_evictions`` counts history-only
-    entries given up under overload (no evaluation is lost by that).
-    ``processed`` means that event-level runtime dispatch ended (including an
-    intentional consumer suppression); it does not claim delivery to any
-    downstream consumer.  Registry-discarded lower tiers are recorded only
-    in ``discarded_registry``. Consumer delivery and intentional suppression
-    have separate counters below.
-    """
-
-    received: int = 0
-    filtered_unselected: int = 0
-    filtered_no_interest: int = 0
-    filtered_by_interest: int = 0
-    filtered_by_category: int = 0
-    filtered_by_proactive: int = 0
-    filtered_no_consumer: int = 0
-    queued: int = 0
-    rejected_queue_full: int = 0
-    evicted_queue: int = 0
-    dequeued: int = 0
-    processed: int = 0
-    discarded_registry: int = 0
-    evaluation_failures: int = 0
-    coalesced: int = 0
-    dropped_coalescible: int = 0
-    dropped_category: int = 0
-    dropped_protected: int = 0
-    dropped_lossless: int = 0
-    dropped_critical: int = 0
-    view_evictions: int = 0
-    snapshot_builds: int = 0
-    snapshot_failures: int = 0
-    snapshot_retries: int = 0
-    snapshot_degraded_batches: int = 0
-    registry_degraded_batches: int = 0
-    history_degraded: int = 0
-    history_degraded_events: int = 0
-    history_degraded_batches: int = 0
-    consumer_delivered: int = 0
-    consumer_suppressed_history: int = 0
-    consumer_suppressed_registry: int = 0
-    delivered_effect: int = 0
-    delivered_monitor: int = 0
-    delivered_thermal: int = 0
-    delivered_proactive: int = 0
-    suppressed_protected: int = 0
-    suppressed_category: int = 0
-    suppressed_effect: int = 0
-    suppressed_monitor: int = 0
-    suppressed_thermal: int = 0
-    suppressed_proactive: int = 0
-    worker_starts: int = 0
-    worker_restarts: int = 0
-    worker_unexpected_exits: int = 0
-    worker_cancellations: int = 0
-    worker_backoffs: int = 0
-    worker_backoff_milliseconds: int = 0
-    worker_circuit_breaks: int = 0
-    worker_suspended: int = 0
-    worker_wakeups: int = 0
-    worker_recoveries: int = 0
-    batch_failures: int = 0
-    batch_retries: int = 0
-    batch_requeued_events: int = 0
-    long_running_scheduled: int = 0
-    long_running_rescheduled: int = 0
-    long_running_cancelled: int = 0
-    long_running_due: int = 0
-    long_running_enqueued: int = 0
-    long_running_capacity_rejected: int = 0
-    long_running_scheduler_failures: int = 0
-    retained_leased: int = 0
-    retained_long_running: int = 0
-    retained_long_running_heap: int = 0
-    max_queue_depth: int = 0
-    retained_live: int = 0
-    retained_latest: int = 0
-    retained_gaps: int = 0
-    retained_carry_previous: int = 0
-    retained_priority_refs: int = 0
-    retained_unprocessed: int = 0
-    retained_unsafe_protected: int = 0
-    retained_tombstones: int = 0
-    retained_total: int = 0
-    max_retained_total: int = 0
-
-    def as_dict(self) -> dict[str, int]:
-        return dict(asdict(self))
-
-
-_QUEUED = 0
-_LEASED = 1
-_EVICTED = 2
-_DONE = 3
-
-
-class _Entry:
-    """One accepted state change in global order.
-
-    ``process`` False: kept only so the house view stays exact - its
-    evaluation was merged into a later event of the same entity.
-    ``previous`` is the state the evaluation reports as the previous one
-    (the first ``old_state`` of merged events).
-    """
-
-    __slots__ = (
-        "seq", "event", "entity_id", "old_state", "new_state", "priority",
-        "previous", "process", "status",
-    )
-
-    def __init__(
-        self, seq: int, event: Any, entity_id: str, old_state: Any, new_state: Any,
-        priority: EventPriority,
-    ) -> None:
-        self.seq = seq
-        self.event = event
-        self.entity_id = entity_id
-        self.old_state = old_state
-        self.new_state = new_state
-        self.priority = priority
-        self.previous = old_state
-        self.process = True
-        self.status = _QUEUED
-
-
-class _Gap:
-    """State changes of one entity given up under overload (7.9.6).
-
-    The house view shows the entity at ``old_state`` before ``first_seq``
-    and at ``new_state`` from ``last_seq`` on - never a later state for an
-    earlier event; between the two it may show the older one.
-    """
-
-    __slots__ = ("first_seq", "old_state", "last_seq", "new_state")
-
-    def __init__(self, seq: int, old_state: Any, new_state: Any) -> None:
-        self.first_seq = seq
-        self.old_state = old_state
-        self.last_seq = seq
-        self.new_state = new_state
-
-    def extend(self, seq: int, old_state: Any, new_state: Any) -> None:
-        if seq < self.first_seq:
-            self.first_seq, self.old_state = seq, old_state
-        if seq > self.last_seq:
-            self.last_seq, self.new_state = seq, new_state
-
-
 class _MergedEvent:
     """The evaluation of merged events: first ``old_state``, last event."""
 
@@ -308,270 +154,6 @@ class _LongRunningInterval:
     fired: bool = False
 
 
-class _Generation:
-    """Queue, bookkeeping and metrics of one runtime start.
-
-    A worker belongs to exactly one generation; after a stop (and a restart
-    with a new generation) an old worker can neither drain nor count into
-    the new one (7.9.5/7.9.6).
-    """
-
-    def __init__(self) -> None:
-        self.queue: deque[_Entry] = deque()
-        self.leased: deque[_Entry] = deque()
-        self.live = 0
-        self.tombstones = 0
-        self.seq = 0
-        self.coalescible: deque[_Entry] = deque()
-        self.view_only: deque[_Entry] = deque()
-        self.category: deque[_Entry] = deque()
-        self.protected: deque[_Entry] = deque()
-        self.latest: dict[str, _Entry] = {}
-        self.carry_previous: dict[str, Any] = {}
-        self.unprocessed_by_entity: dict[str, int] = {}
-        self.gaps: dict[str, _Gap] = {}
-        self.metrics = EventRuntimeMetrics()
-        self.stopped = False
-        self.created_queue = False
-        self.snapshot_failures_in_row = 0
-        self.worker_failures_in_row = 0
-        self.worker_failure_signature: tuple[str, str] | None = None
-        self.rapid_worker_failures: deque[float] = deque()
-        self.worker_suspended = False
-        self.worker_wakeup = asyncio.Event()
-        self.suppressed_worker_logs = 0
-        self.last_drop_warning: float | None = None
-        self.last_critical_warning: float | None = None
-        self.last_snapshot_error: float | None = None
-        self.last_history_warning: float | None = None
-        self.last_suppression_warning: float | None = None
-        # Non-zero means an auxiliary overflow made whole-house history
-        # inexact through this sequence. Affected batches use a conservative
-        # event-entity-only view; a scalar replaces an unbounded entity set.
-        self.history_degraded_through = 0
-        # A protected transition can only be lost to critical pressure.  Its
-        # entity remains unsafe until drain; ids are bounded by the history
-        # limit and then collapse to one conservative overflow flag.
-        self.unsafe_protected_entities: set[str] = set()
-        self.unsafe_all_protected = False
-
-    def oldest_live_seq(self) -> int | None:
-        while self.queue and self.queue[0].status != _QUEUED:
-            self.queue.popleft()
-            self.tombstones -= 1
-        leased_seq = self.leased[0].seq if self.leased else None
-        queued_seq = self.queue[0].seq if self.queue else None
-        if leased_seq is None:
-            return queued_seq
-        if queued_seq is None:
-            return leased_seq
-        return min(leased_seq, queued_seq)
-
-    def lease(self, limit: int) -> list[_Entry]:
-        """Lease one FIFO batch without ceasing to account it as live work."""
-        if self.leased:
-            raise RuntimeError("event generation already has a leased batch")
-        batch: list[_Entry] = []
-        while self.queue and len(batch) < limit:
-            entry = self.queue.popleft()
-            if entry.status != _QUEUED:
-                self.tombstones -= 1
-                continue
-            entry.status = _LEASED
-            batch.append(entry)
-            self.leased.append(entry)
-        while self.coalescible and self.coalescible[0].status != _QUEUED:
-            self.coalescible.popleft()
-        while self.category and self.category[0].status != _QUEUED:
-            self.category.popleft()
-        while self.protected and self.protected[0].status != _QUEUED:
-            self.protected.popleft()
-        while self.view_only and self.view_only[0].status != _QUEUED:
-            self.view_only.popleft()
-        # Gaps stay until a view built after them no longer needs them
-        # (``_HouseView.for_batch``): this batch may still predate them.
-        return batch
-
-    def rollback_lease(self) -> int:
-        """Return every unfinished leased row to the FIFO head exactly once."""
-        if not self.leased:
-            return 0
-        restored = list(self.leased)
-        self.leased.clear()
-        for entry in restored:
-            if entry.status == _LEASED:
-                entry.status = _QUEUED
-        self.queue = deque((*restored, *self.queue))
-        self._rebuild_priority_refs()
-        self.update_retention()
-        return len(restored)
-
-    def _rebuild_priority_refs(self) -> None:
-        self.coalescible = deque()
-        self.view_only = deque()
-        self.category = deque()
-        self.protected = deque()
-        for entry in self.queue:
-            if entry.status != _QUEUED:
-                continue
-            if not entry.process:
-                self.view_only.append(entry)
-            elif entry.priority is EventPriority.COALESCIBLE:
-                self.coalescible.append(entry)
-            elif entry.priority is EventPriority.CATEGORY:
-                self.category.append(entry)
-            elif entry.priority is EventPriority.PROTECTED:
-                self.protected.append(entry)
-
-    def queued_entries(self) -> list[_Entry]:
-        return [entry for entry in self.queue if entry.status == _QUEUED]
-
-    def unprocessed(self, entity_id: str, delta: int) -> None:
-        count = self.unprocessed_by_entity.get(entity_id, 0) + delta
-        if count > 0:
-            self.unprocessed_by_entity[entity_id] = count
-        else:
-            self.unprocessed_by_entity.pop(entity_id, None)
-
-    def record_gap(
-        self, entity_id: str, seq: int, old_state: Any, new_state: Any
-    ) -> bool:
-        """Remember a dropped transition; return true on degradation entry."""
-        if self.history_degraded_through:
-            self.history_degraded_through = max(self.history_degraded_through, seq)
-            self.metrics.history_degraded_events += 1
-            return False
-        oldest = self.oldest_live_seq()
-        gap = self.gaps.get(entity_id)
-        if gap is None and len(self.gaps) >= MAX_HISTORY_ENTITIES:
-            return self.degrade_history(seq)
-        if gap is None or oldest is None or gap.last_seq < oldest:
-            self.gaps[entity_id] = _Gap(seq, old_state, new_state)
-        else:
-            gap.extend(seq, old_state, new_state)
-        return False
-
-    def remember_previous(self, entity_id: str, previous: Any, seq: int) -> bool:
-        """Keep a coalesced chain's first state within the auxiliary bound."""
-        if self.history_degraded_through:
-            self.history_degraded_through = max(self.history_degraded_through, seq)
-            return False
-        if entity_id in self.carry_previous:
-            return False
-        if len(self.carry_previous) >= MAX_HISTORY_ENTITIES:
-            return self.degrade_history(seq)
-        self.carry_previous[entity_id] = previous
-        return False
-
-    def degrade_history(self, seq: int) -> bool:
-        """Enter bounded safe mode instead of retaining more entity history."""
-        entered = not self.history_degraded_through
-        self.history_degraded_through = max(self.history_degraded_through, seq)
-        self.gaps.clear()
-        self.carry_previous.clear()
-        self.metrics.history_degraded_events += 1
-        if entered:
-            self.metrics.history_degraded += 1
-        return entered
-
-    def finish(self, entry: _Entry) -> None:
-        """Release one completed entry and any exact latest pointer to it."""
-        if not self.leased or self.leased[0] is not entry:
-            raise RuntimeError("event batch finalized outside lease order")
-        self.leased.popleft()
-        self.live -= 1
-        entry.status = _DONE
-        if self.latest.get(entry.entity_id) is entry:
-            del self.latest[entry.entity_id]
-        entry.event = entry.old_state = entry.new_state = entry.previous = None
-
-    def stable_cleanup(self) -> None:
-        """Release every transient structure once no live work remains."""
-        if self.live or self.leased:
-            return
-        self.queue.clear()
-        self.leased.clear()
-        self.coalescible.clear()
-        self.view_only.clear()
-        self.category.clear()
-        self.protected.clear()
-        self.latest.clear()
-        self.carry_previous.clear()
-        self.unprocessed_by_entity.clear()
-        self.gaps.clear()
-        self.tombstones = 0
-        self.history_degraded_through = 0
-        self.unsafe_protected_entities.clear()
-        self.unsafe_all_protected = False
-        self.snapshot_failures_in_row = 0
-        self.update_retention()
-
-    def discard_pending(self) -> None:
-        """Release queued and leased work when its generation is stopped."""
-        for entry in (*self.leased, *self.queue):
-            entry.status = _DONE
-            entry.event = entry.old_state = entry.new_state = entry.previous = None
-        self.queue.clear()
-        self.leased.clear()
-        self.coalescible.clear()
-        self.view_only.clear()
-        self.category.clear()
-        self.protected.clear()
-        self.latest.clear()
-        self.carry_previous.clear()
-        self.unprocessed_by_entity.clear()
-        self.gaps.clear()
-        self.unsafe_protected_entities.clear()
-        self.unsafe_all_protected = False
-        self.live = 0
-        self.tombstones = 0
-        self.history_degraded_through = 0
-        self.update_retention()
-
-    def update_retention(self) -> None:
-        """Publish low-cardinality gauges without retaining metric objects."""
-        metrics = self.metrics
-        metrics.retained_live = self.live
-        metrics.retained_leased = len(self.leased)
-        metrics.retained_latest = len(self.latest)
-        metrics.retained_gaps = len(self.gaps)
-        metrics.retained_carry_previous = len(self.carry_previous)
-        metrics.retained_priority_refs = (
-            len(self.coalescible) + len(self.view_only)
-            + len(self.category) + len(self.protected)
-        )
-        metrics.retained_unprocessed = len(self.unprocessed_by_entity)
-        metrics.retained_unsafe_protected = (
-            len(self.unsafe_protected_entities) + int(self.unsafe_all_protected)
-        )
-        metrics.retained_tombstones = self.tombstones
-        metrics.retained_total = (
-            len(self.queue)
-            + metrics.retained_leased
-            + metrics.retained_latest
-            + metrics.retained_gaps
-            + metrics.retained_carry_previous
-            + metrics.retained_priority_refs
-            + metrics.retained_unprocessed
-            + metrics.retained_unsafe_protected
-        )
-        metrics.max_retained_total = max(
-            metrics.max_retained_total, metrics.retained_total
-        )
-
-    def compact(self) -> None:
-        if self.tombstones > max(self.live, 1024):
-            self.queue = deque(entry for entry in self.queue if entry.status == _QUEUED)
-            self.tombstones = 0
-
-    def prune_gaps_before(self, first_seq: int) -> None:
-        """Commit history cleanup only after every batch view was built."""
-        for entity_id in [
-            key for key, gap in self.gaps.items() if gap.last_seq < first_seq
-        ]:
-            del self.gaps[entity_id]
-
-
 class SituationRuntime:
     """Normalizes selected HA events and emits bounded AgentEvents."""
 
@@ -591,7 +173,7 @@ class SituationRuntime:
         self._long_running_serial = 0
         self._long_running_timer: asyncio.TimerHandle | None = None
         self._long_running_init_task: asyncio.Task[None] | None = None
-        self._gen = _Generation()
+        self._gen = _Generation(MAX_HISTORY_ENTITIES)
         self._gen.stopped = True
         self._worker: asyncio.Task[None] | None = None
         self._stopped = True
@@ -640,7 +222,7 @@ class SituationRuntime:
             previous_worker.cancel()
         self._clear_long_running_scheduler()
         old.discard_pending()
-        self._gen = _Generation()
+        self._gen = _Generation(MAX_HISTORY_ENTITIES)
         self._stopped = False
         self._long_running_notified.clear()
         self._interest.bind()
