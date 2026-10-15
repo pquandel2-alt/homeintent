@@ -2548,6 +2548,18 @@ python -m pip install --requirement requirements-ha-test.txt
 python -m pytest -q tests_ha
 ```
 
+Geprüfter Release-Stand von Version 7.9.9 (Draft; keine Freigabe, solange die
+vollständigen Pflicht-Gates noch laufen):
+
+```text
+Neue Lease-/Supervisor-/Long-running-/Zeitzonen-Regressionen: 35 passed
+Historische Event-/Startup-/History-/Effect-Gates: 165 passed; RuntimeWarning und Unraisable-Warnings als Fehler
+EventRuntime-Reproduktion 7.9.8: 9/9 Szenarien; RuntimeWarning 0; Retention/Pending nach Drain 0; unfinished_tasks 0
+Zeitzonen-Gate: je 8 passed unter TZ=UTC und TZ=Europe/Berlin
+Sprachverständnis: 463 passed; Korpus-Signaturen 4107/4107 unverändert; Shadow SAFETY_DRIFT 0; dev_benchmark 462/503, unsafe_execution_count 0
+Vollständige Release-Freigabe: ausstehend, bis Python 3.12/3.13, tests_ha, Live-Testbett und Nightly tatsächlich grün sind
+```
+
 Geprüfter Release-Stand von Version 7.9.8:
 
 ```text
@@ -2710,7 +2722,7 @@ eine geänderte Signatur schlägt fehl:
 
 ```bash
 python scripts/corpus_shadow.py \
-  --check docs/perf/corpus-signatures-7.9.8.json
+  --check docs/perf/corpus-signatures-7.9.9.json
 ```
 
 Erweiterte direkte Geräteoperationen laufen inzwischen ebenfalls durch die
