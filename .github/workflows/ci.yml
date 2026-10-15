@@ -280,6 +280,9 @@ jobs:
       - name: Learning-Center Pyright-Strict-Scope absichern
         if: matrix.python-version == '3.12'
         run: python -m pyright --project pyrightconfig-learning-center-strict.json
+      - name: Breite Exception-Handler gegen Inventar prüfen
+        if: matrix.python-version == '3.12'
+        run: python scripts/exception_inventory.py --check
       - name: Statische Importprüfung
         run: python -m pyflakes custom_components tests tests_ha scripts
 
