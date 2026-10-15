@@ -8,7 +8,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from types import SimpleNamespace
@@ -35,6 +35,7 @@ from .event_interest import (
     MAX_CONSUMER_WATCH_ENTITIES,
 )
 from .event_priority import EventPriority
+from .event_runtime_metrics import EventRuntimeMetrics
 from .long_running import activity_marker, has_reliable_last_changed
 from .hass_entities import (
     SelectedEntityFilter,
@@ -123,109 +124,6 @@ class DegradationMode(StrEnum):
     NORMAL = "normal"
     HISTORY = "history_degraded"
     REGISTRY = "registry_degraded"
-
-
-@dataclass
-class EventRuntimeMetrics:
-    """Counters of one integration-runtime generation.
-
-    ``async_start()`` creates a fresh generation. An automatic worker
-    recovery stays in that generation and increments ``worker_restarts``.
-
-    ``received`` = ``filtered_unselected`` + ``filtered_no_interest`` +
-    ``queued`` + ``rejected_queue_full``. ``queued`` includes accepted
-    coalesced events. ``coalesced`` counts evaluations merged into a later
-    event of the same entity; ``dropped_*`` counts evaluations lost to the
-    queue bound through rejection or eviction, per priority. ``evicted_queue``
-    distinguishes the latter. ``dropped_lossless`` remains the compatibility
-    aggregate of category + protected drops. ``view_evictions`` counts history-only
-    entries given up under overload (no evaluation is lost by that).
-    ``processed`` means that event-level runtime dispatch ended (including an
-    intentional consumer suppression); it does not claim delivery to any
-    downstream consumer.  Registry-discarded lower tiers are recorded only
-    in ``discarded_registry``. Consumer delivery and intentional suppression
-    have separate counters below.
-    """
-
-    received: int = 0
-    filtered_unselected: int = 0
-    filtered_no_interest: int = 0
-    filtered_by_interest: int = 0
-    filtered_by_category: int = 0
-    filtered_by_proactive: int = 0
-    filtered_no_consumer: int = 0
-    queued: int = 0
-    rejected_queue_full: int = 0
-    evicted_queue: int = 0
-    dequeued: int = 0
-    processed: int = 0
-    discarded_registry: int = 0
-    evaluation_failures: int = 0
-    coalesced: int = 0
-    dropped_coalescible: int = 0
-    dropped_category: int = 0
-    dropped_protected: int = 0
-    dropped_lossless: int = 0
-    dropped_critical: int = 0
-    view_evictions: int = 0
-    snapshot_builds: int = 0
-    snapshot_failures: int = 0
-    snapshot_retries: int = 0
-    snapshot_degraded_batches: int = 0
-    registry_degraded_batches: int = 0
-    history_degraded: int = 0
-    history_degraded_events: int = 0
-    history_degraded_batches: int = 0
-    consumer_delivered: int = 0
-    consumer_suppressed_history: int = 0
-    consumer_suppressed_registry: int = 0
-    delivered_effect: int = 0
-    delivered_monitor: int = 0
-    delivered_thermal: int = 0
-    delivered_proactive: int = 0
-    suppressed_protected: int = 0
-    suppressed_category: int = 0
-    suppressed_effect: int = 0
-    suppressed_monitor: int = 0
-    suppressed_thermal: int = 0
-    suppressed_proactive: int = 0
-    worker_starts: int = 0
-    worker_restarts: int = 0
-    worker_unexpected_exits: int = 0
-    worker_cancellations: int = 0
-    worker_backoffs: int = 0
-    worker_backoff_milliseconds: int = 0
-    worker_circuit_breaks: int = 0
-    worker_suspended: int = 0
-    worker_wakeups: int = 0
-    worker_recoveries: int = 0
-    batch_failures: int = 0
-    batch_retries: int = 0
-    batch_requeued_events: int = 0
-    long_running_scheduled: int = 0
-    long_running_rescheduled: int = 0
-    long_running_cancelled: int = 0
-    long_running_due: int = 0
-    long_running_enqueued: int = 0
-    long_running_capacity_rejected: int = 0
-    long_running_scheduler_failures: int = 0
-    retained_leased: int = 0
-    retained_long_running: int = 0
-    retained_long_running_heap: int = 0
-    max_queue_depth: int = 0
-    retained_live: int = 0
-    retained_latest: int = 0
-    retained_gaps: int = 0
-    retained_carry_previous: int = 0
-    retained_priority_refs: int = 0
-    retained_unprocessed: int = 0
-    retained_unsafe_protected: int = 0
-    retained_tombstones: int = 0
-    retained_total: int = 0
-    max_retained_total: int = 0
-
-    def as_dict(self) -> dict[str, int]:
-        return dict(asdict(self))
 
 
 _QUEUED = 0
