@@ -31,10 +31,16 @@ import asyncio
 import sys
 import types
 from dataclasses import dataclass, field
+from datetime import timezone, tzinfo
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 from unittest.mock import DEFAULT, AsyncMock
+
+
+# A test Home Assistant has an explicit configured zone.  UTC is the
+# deterministic default; individual timezone tests monkeypatch this value.
+DEFAULT_TIME_ZONE: tzinfo = timezone.utc
 
 
 def _service_response(*_args: Any, **kwargs: Any) -> Any:
@@ -305,7 +311,7 @@ def install() -> None:
     # ``dt_util.utcnow()`` returns a timezone-aware UTC datetime, faithfully
     # mirrored here rather than a naive ``datetime.utcnow()``.
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     def _utcnow() -> datetime:
         return datetime.now(timezone.utc)
@@ -324,17 +330,13 @@ def install() -> None:
     # wall-clock time (not UTC) to compute "jetzt + Offset" for a relative-
     # time trigger's hour/minute/second - real HA's own ``dt_util.now()``
     # returns a timezone-aware datetime in HA's configured local timezone;
-    # this stub has no timezone configuration to read, so it mirrors
-    # ``_utcnow()``'s own "faithful but simplified" shape (aware, just using
-    # the system's local timezone instead of a configured one - tests that
-    # care about a specific timezone pass ``now`` explicitly to
-    # ``engine.match_relative_time_automation()`` directly rather than going
-    # through this stub).
+    # The stub's explicit configured timezone is host-independent, just like
+    # Home Assistant's configured zone.
     def _now() -> datetime:
-        return datetime.now().astimezone()
+        return datetime.now(DEFAULT_TIME_ZONE)
 
     util_dt.now = _now
-    util_dt.as_local = lambda value: value.astimezone()
+    util_dt.as_local = lambda value: value.astimezone(DEFAULT_TIME_ZONE)
 
     # --- homeassistant.helpers.device_registry ----------------------------
 
