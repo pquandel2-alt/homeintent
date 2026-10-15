@@ -222,7 +222,10 @@ class _HassLabels:
             self._entity_registry = entity_registry.async_get(hass)
             self._area_registry = area_registry.async_get(hass)
         except Exception:  # noqa: BLE001 - registries are optional for labels
-            pass
+            _LOGGER.debug(
+                "Home Assistant registries unavailable for Learning Center labels",
+                exc_info=True,
+            )
 
     def entity_name(self, entity_id: str) -> str | None:
         state = self._hass.states.get(entity_id)
