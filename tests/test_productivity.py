@@ -372,7 +372,8 @@ def test_productivity_service_failure_is_cleanly_reported(monkeypatch):
 
     result = _run(agent, "Füge Milch zur Einkaufsliste hinzu")
 
-    assert "todo down" in result.response.speech
+    assert "todo down" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
 
 
 @pytest.mark.parametrize(

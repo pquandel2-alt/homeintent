@@ -377,7 +377,8 @@ def test_multi_command_runtime_failure_stops_remaining_actions(monkeypatch):
         "multi-failure",
     )
 
-    assert "second failed" in result.response.speech
+    assert "second failed" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
     assert entity.hass.services.async_call.await_count == 2
 
 
@@ -961,7 +962,8 @@ def test_service_call_exception_produces_clean_failed_to_handle_response(monkeyp
     result = _run(entity, "Schalte das Flurlicht ein")
 
     assert result.response.error_code == intent.IntentResponseErrorCode.FAILED_TO_HANDLE
-    assert "boom" in result.response.speech
+    assert "boom" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
     assert "Service call homeassistant.turn_on" in caplog.text
 
 
@@ -1012,7 +1014,8 @@ def test_confirmed_service_failure_is_reported_without_success(monkeypatch):
 
     result = _run(entity, "ja", "confirm-failure")
 
-    assert "confirm boom" in result.response.speech
+    assert "confirm boom" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
     assert result.response.error_code == intent.IntentResponseErrorCode.FAILED_TO_HANDLE
 
 
@@ -1056,7 +1059,22 @@ def test_undo_service_failure_is_cleanly_reported(monkeypatch):
 
     result = _run(entity, "Mach das rückgängig", "undo-failure")
 
-    assert "undo boom" in result.response.speech
+    assert "undo boom" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
+
+
+def test_service_failure_never_speaks_paths_or_secrets(monkeypatch, caplog):
+    entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
+    leaked = "/config/secrets.yaml token=super-secret"
+    entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError(leaked))
+
+    result = _run(entity, "Schalte das Flurlicht ein", "secret-failure")
+
+    assert result.response.error_code == intent.IntentResponseErrorCode.FAILED_TO_HANDLE
+    assert "/config" not in result.response.speech
+    assert "super-secret" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
+    assert leaked in caplog.text
 
 
 def test_explanation_reports_empty_and_last_structured_command(monkeypatch):
@@ -1108,7 +1126,8 @@ def test_undo_service_failure_is_logged(monkeypatch, caplog):
 
     result = _run(entity, "Mach das rückgängig", conversation_id="undo-failure")
 
-    assert "undo unavailable" in result.response.speech
+    assert "undo unavailable" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
     assert "Undo service call failed" in caplog.text
 
 
@@ -1130,7 +1149,8 @@ def test_automation_management_failure_is_logged(monkeypatch, caplog):
         )
     )
 
-    assert "yaml unavailable" in result.response.speech
+    assert "yaml unavailable" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
     assert "Automation management failed" in caplog.text
 
 

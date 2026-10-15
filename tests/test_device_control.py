@@ -275,7 +275,8 @@ def test_confirmed_service_failure_is_logged(monkeypatch, tmp_path, caplog):
 
     confirmed = _run(entity, "Ja")
 
-    assert "lock unavailable" in confirmed.response.speech
+    assert "lock unavailable" not in confirmed.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in confirmed.response.speech
     assert "Confirmed service call lock.unlock" in caplog.text
 
 
@@ -285,7 +286,8 @@ def test_device_control_service_failure_is_logged(monkeypatch, tmp_path, caplog)
 
     result = _run(entity, "Starte Wiedergabe auf Wohnzimmer TV")
 
-    assert "player unavailable" in result.response.speech
+    assert "player unavailable" not in result.response.speech
+    assert "Home Assistant hat die Aktion nicht ausgeführt" in result.response.speech
     # Media playback is in the V7 authority cohort and now uses the shared
     # validated service-call executor rather than the legacy device router.
     assert "Service call media_player.media_play" in caplog.text
