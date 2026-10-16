@@ -92,8 +92,9 @@ Seitenleiste zeigt Wissen, Modelle, Berechtigungen und Autonomie transparent an.
   jeden Schreibpfad.
 - Nur `ServiceExecutor` und `AutomationExecutor` bilden Schreibgrenzen.
 - Proaktive Vorschläge vergeben keine Rechte und umgehen keine Bestätigung.
-- Technische Provider-, Pfad- und Geheimnisdetails bleiben im internen Log und
-  werden nicht in Assist-Antworten ausgegeben.
+- Technische Provider-, Pfad- und Geheimnisdetails werden nicht in
+  Assist-Antworten oder dauerhafte Fehlerzustände übernommen; sekundäre
+  Fehlerlogs werden nach Möglichkeit ebenfalls redigiert und rate-limitiert.
 
 Details: [Sicherheit und Datenschutz](docs/security-privacy.md).
 
@@ -142,20 +143,15 @@ Safety-, Berechtigungs-, Bestätigungs- und `NEVER_AUTO`-Regeln bleiben
 unverändert. Details stehen in den
 [Release Notes](docs/release-notes-7.9.9.md).
 
-Geprüfter Release-Stand von Version 7.9.9:
-
-- Python 3.12 und 3.13: jeweils 9.814 bestanden, 12 übersprungen
-- echtes Home-Assistant-Testbett: 220/220, vollständig inklusive Proaktiv 230/230
-- Nightly-Safety-Property-Suite: 40/40
-- Korpus-Signaturen: 4.107/4.107 unverändert
-- Shadow-Vergleich: `SAFETY_DRIFT = 0`
-- Dev-Benchmark: 462/503, `unsafe_execution_count = 0`
-- RuntimeWarning-/Unraisable-Gates: 0 Befunde
+Geprüfter Release-Stand von Version 7.9.9: Die verpflichtenden GitHub-Prüfungen
+für den exakten veröffentlichten Commit sind erfolgreich abgeschlossen.
 
 Die versionierte Korpusbaseline ist
 [`corpus-signatures-7.9.9.json`](docs/perf/corpus-signatures-7.9.9.json).
-Der Draft-PR prüft den Stand; dieses Repository führt durch die Dokumentation
-weder Merge noch Tag oder Veröffentlichung aus.
+Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
+in den [Release Notes](docs/release-notes-7.9.9.md), im
+[Versionsarchiv](docs/releases/README.md) und bei
+[GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 
 ## Weiterführende Dokumentation
 
