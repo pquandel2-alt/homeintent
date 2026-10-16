@@ -24,6 +24,49 @@ def test_frames_are_removed(text, rest):
     assert strip_pragmatic_frames(text, E).text == rest
 
 
+@pytest.mark.parametrize("text,rest", [
+    ("Dürfte ich dich bitten, den Badlüfter anzumachen?", "Mach den Badlüfter an"),
+    ("Duerfte ich dich bitten, die Markise einzufahren?", "Fahr die Markise ein"),
+    (
+        "Könntest du freundlicherweise die Markise einfahren?",
+        "Könntest du die Markise einfahren?",
+    ),
+])
+def test_formal_politeness_is_a_structural_frame(text, rest):
+    frames = strip_pragmatic_frames(text, E)
+    assert frames.text == rest
+    assert frames.politeness
+
+
+@pytest.mark.parametrize("direct,polite", [
+    ("Mach den Badlüfter an.", "Dürfte ich dich bitten, den Badlüfter anzumachen?"),
+    ("Fahr die Markise ein.", "Könntest du freundlicherweise die Markise einfahren?"),
+])
+def test_formal_politeness_preserves_the_direct_request(monkeypatch, direct, polite):
+    direct_turn = HouseConversation(monkeypatch).say(direct)
+    polite_turn = HouseConversation(monkeypatch).say(polite)
+    assert polite_turn.calls == direct_turn.calls
+    assert polite_turn.targets == direct_turn.targets
+
+
+@pytest.mark.parametrize("text", [
+    "Dürfte ich dich bitten, den Badlüfter nicht anzumachen?",
+    "Könntest du freundlicherweise die Markise nicht einfahren?",
+])
+def test_negation_inside_formal_politeness_never_executes(monkeypatch, text):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert turn.calls == []
+
+
+@pytest.mark.parametrize("text", [
+    "Dürfte ich dich bitten zu erklären, ob der Badlüfter an ist?",
+    "Könntest du freundlicherweise sagen, ob der Badlüfter an ist?",
+])
+def test_embedded_question_inside_formal_politeness_never_executes(monkeypatch, text):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert turn.calls == []
+
+
 @pytest.mark.parametrize("text", [
     "Wenn das Küchenfenster aufgeht, schalte den Badlüfter an",
     "Mach das Licht aus, das nicht",

@@ -55,6 +55,7 @@ _PRAISE = frozenset({
     "super", "klasse", "toll", "nett", "schoen", "lieb", "prima", "cool", "genial", "spitze",
     "grossartig", "praktisch", "hilfreich", "fein", "wunderbar", "top",
 })
+_POLITE_MODAL_ADVERBS = frozenset({"freundlicherweise"})
 _PLEASE_FRAMES = (
     # "wenn du so nett/lieb/freundlich wärst", "wenn's geht", "falls möglich"
     ("wenn", "du", "so", "*", "waerst"), ("wenn", "du", "so", "*", "bist"),
@@ -135,6 +136,20 @@ def _polite_shell(tokens: Sequence[LanguageToken], text: str) -> tuple[str, str]
             return ""
         return text[tokens[words[position]].start:].strip()
 
+    # A manner adverb directly after a second-person request modal softens
+    # the request but does not alter it.  Remove only that token: retaining
+    # the modal lets the ordinary command/question distinction continue to
+    # reject embedded information questions.
+    if (
+        len(keys) > 3
+        and keys[0] in {"kannst", "koenntest", "wuerdest"}
+        and keys[1] == "du"
+        and keys[2] in _POLITE_MODAL_ADVERBS
+    ):
+        adverb = tokens[words[2]]
+        rest = f"{text[:adverb.start].rstrip()} {text[adverb.end:].lstrip()}"
+        return rest, adverb.text
+
     # "Sei (bitte) so gut/lieb/nett und …", "Seid so lieb und …"
     if keys[0] in {"sei", "seid"} and "und" in keys[:7] and set(keys[1:keys.index("und")]) <= _KIND_ADJECTIVES:
         position = keys.index("und") + 1
@@ -159,7 +174,7 @@ def _polite_shell(tokens: Sequence[LanguageToken], text: str) -> tuple[str, str]
     shells = (
         ("haettest", "du"), ("haettet", "ihr"), ("wuerde", "es", "dir"), ("wuerde", "es", "euch"),
         ("waere", "es", "moeglich"), ("waere", "es", "nett"), ("macht", "es", "dir"),
-        ("wuerdest", "du", "bitte"),
+        ("wuerdest", "du", "bitte"), ("duerfte", "ich", "dich", "bitten"),
     )
     if comma is not None and any(_match_frame(head_keys, shell) for shell in shells):
         position = len(head_keys)
