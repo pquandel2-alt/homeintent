@@ -88,6 +88,43 @@ keine gemessenen Trace-Namen.
 4. Dialog/Ellipse: offene Slots und lokale Prädikate typisiert im Kontext fortschreiben, ohne unbekannte Ziele zu erraten.
 5. Frontend: wiederverwendbare Höflichkeits- und STT-Normalisierung nur vor der semantischen Analyse; Gegenbeispiele müssen Bedeutungsverschiebung verhindern.
 
+## Bestätigter Erwartungskonflikt
+
+Die drei Fälle der Gruppe `automation_recurrence` (Zeilen 112, 125 und 132)
+sind keine zulässigen Optimierungsziele für v7.9.9. Das Benchmark-Korpus
+erwartet unmittelbar einen Draft, während
+`tests/test_never_guess.py::test_typically_recurring_event_without_marker_asks`
+für dieselbe Struktur ausdrücklich die Rückfrage „Nur heute oder jeden Tag?“
+verlangt. `nlu/recurrence.py` dokumentiert diesen Vertrag ebenfalls. Eine
+Änderung zugunsten der Benchmark-Erwartung würde die bewusste NEVER_GUESS-
+Regel abschwächen. Die Korpuserwartung bleibt gemäß Auftrag unverändert; die
+drei Fehler bleiben transparent in den Kennzahlen enthalten.
+
+## Gemessene Änderung: formale Höflichkeitsframes
+
+Die gemeinsamen Hüllen „Dürfte ich dich bitten, …“ und ein direkt auf ein
+Anfragemodal folgendes „freundlicherweise“ werden tokenbasiert als
+Pragmatikframe abgetrennt. Es wurde kein semantisches Satz-Regex ergänzt.
+Direktform und höfliche Form werden auf identische Operationen und Ziele
+geprüft; Negation und eingebettete Informationsfragen bleiben schreibfrei.
+
+- Gesamt: 462/503 → 464/503
+- Dev: unverändert 360/390
+- Held-out: 102/113 → 104/113
+- Höflichkeit: 18/21 → 20/21
+- UNDERSTANDING: 24 → 22
+- Automation: unverändert 29/38
+- Mehrfach: unverändert 15/21
+- `unsafe_execution_count`: unverändert 0
+- `SAFETY`: unverändert 0
+- Regex-Inventar: unverändert 402 LEXICAL, 37 MORPHOLOGICAL,
+  149 STRUCTURAL, 171 SEMANTIC_SENTENCE_PATTERN
+- Shadow-Vergleich: 2.131 EQUIVALENT, `SAFETY_DRIFT = 0`
+- Korpus-Signaturen: 4.116 Sätze, 4.107 mit Baseline, 0 geänderte
+  Signaturen; die neun neuen Testformulierungen sind noch ohne Baseline.
+- Arbiter: 2.161 Sätze, 2.157 EQUIVALENT, 4 bekannte BEHAVIOR_CHANGE,
+  RuntimeWarning-Gate mit 0 Befunden.
+
 ## Unverhandelbare Gates
 
 - Korpuserwartungen werden nicht umgeschrieben.
