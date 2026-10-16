@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantische Version ohne v (zum Beispiel 7.9.10)
+        required: true
+        type: string
+      sha:
+        description: Vollständiger, bereits geprüfter main-Commit
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Exakten geprüften Commit veröffentlichen
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_SHA: ${{ inputs.sha }}
+    steps:
+      - name: Exakten Commit auschecken
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      - name: Release-Metadaten festlegen
+        run: |
+          echo "RELEASE_TITLE=HomeIntent v${RELEASE_VERSION}" >> "$GITHUB_ENV"
+          echo "RELEASE_NOTES=docs/release-notes-${RELEASE_VERSION}.md" >> "$GITHUB_ENV"
+      - name: Exakten SHA und alle Pflichtprüfungen validieren
+        run: >-
+          python3 scripts/release_gate.py
+          --repository "$GITHUB_REPOSITORY"
+          --sha "$RELEASE_SHA"
+          --version "$RELEASE_VERSION"
+          --title "$RELEASE_TITLE"
+          --notes "$RELEASE_NOTES"
+      - name: Unmittelbar erneut prüfen und Release erstellen
+        run: |
+          python3 scripts/release_gate.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$RELEASE_SHA" \
+            --version "$RELEASE_VERSION" \
+            --title "$RELEASE_TITLE" \
+            --notes "$RELEASE_NOTES"
+          gh release create "v${RELEASE_VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file "$RELEASE_NOTES"

@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    tags-ignore:
+      - "**"
   pull_request:
   workflow_dispatch:
 
@@ -60,7 +62,12 @@ jobs:
         run: >-
           python -W error::RuntimeWarning scripts/warning_gate.py
           scripts/event_runtime_repro_798.py
-      - name: Zeitzonentests sind unabhängig von der Runner-Zone
+      - name: Zeitzonentest zuerst und isoliert ausführen
+        if: matrix.python-version == '3.12'
+        run: |
+          TZ=UTC python -m pytest -q tests/test_timezone_799.py
+          TZ=Europe/Berlin python -m pytest -q tests/test_timezone_799.py
+      - name: Zeitzonentests mit Produktivitätsroute kombinieren
         if: matrix.python-version == '3.12'
         run: |
           TZ=UTC python -m pytest -q tests/test_timezone_799.py tests/test_productivity.py::test_washing_machine_completion_question_reaches_read_only_live_route
