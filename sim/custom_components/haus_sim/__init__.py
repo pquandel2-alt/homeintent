@@ -123,6 +123,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def _reset(call: ServiceCall) -> None:
         """Restore every simulated device to its initial state."""
+        # Remove scenario-created automations before publishing reset state
+        # changes.  Otherwise an automation from an earlier scenario can see
+        # (for example) the kitchen window return to ``on`` and append its
+        # action to a later scenario's freshly cleared call log.
+        if call.data.get("full"):
+            await _reset_household_state(hass)
         data["faults"].clear()
         for domain, key, name, _area, opts in HOUSE:
             ent = data["entities"].get(f"{domain}.{key}")
@@ -140,8 +146,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ent.tick()
         for key in LOG_KEYS:
             data[key].clear()
-        if call.data.get("full"):
-            await _reset_household_state(hass)
 
     hass.services.async_register(
         DOMAIN, "reset", _reset, schema=vol.Schema({vol.Optional("full", default=False): bool})

@@ -540,6 +540,15 @@ S("auto-state-trigger", "Automationen", "Wenn Küchenfenster geöffnet wird, Kü
   say(YES, settle=3),
   set_("binary_sensor.kuechenfenster", "on", settle=2),
   check(state={"light.kuechenlicht": "on"}))
+S("testbed-full-reset-isolation", "Testbett", "Vollständiger Reset entfernt Szenario-Automationen vor Zustandsänderungen",
+  set_("binary_sensor.kuechenfenster", "off"),
+  say("Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein.", no_calls=True),
+  say(YES, settle=3),
+  service("haus_sim.clear_log"),
+  service("haus_sim.reset", {"full": True}),
+  set_("binary_sensor.kuechenfenster", "off"),
+  set_("binary_sensor.kuechenfenster", "on", settle=2),
+  check(no_calls=True))
 S("auto-numeric", "Automationen", "Temperatur unter 18 Grad → Heizung Büro 21 Grad",
   say("Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein.", no_calls=True),
   say(YES, settle=3),
