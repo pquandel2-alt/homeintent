@@ -38,7 +38,7 @@ jobs:
           sim/fresh_ha.sh
       - name: Alle Szenarien ausführen
         working-directory: sim
-        run: ${RUNNER_TEMP}/havenv/bin/python runner.py --strict --out results/nightly.json
+        run: ${RUNNER_TEMP}/havenv/bin/python runner.py --strict --full-reset --out results/nightly.json
       - name: Home-Assistant-Log prüfen
         if: always()
         run: python sim/check_log.py
