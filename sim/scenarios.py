@@ -569,6 +569,12 @@ S("auto-colortemp", "Automationen", "Automation mit Farbtemperatur (kelvin-Feld)
   say("Jeden Tag um 21 Uhr stelle das Bürolicht auf warmweiß.", no_calls=True),
   say(YES, settle=3, none=["fehler"]))
 S("auto-manage", "Automationen", "Automationen verwalten",
+  # Dieses Szenario muss unabhängig von ``auto-sun`` ausführbar bleiben:
+  # vollständige Szenario-Resets entfernen absichtlich alle zuvor von
+  # HomeIntent angelegten Automationen.
+  say("Bei Sonnenuntergang schalte die Außenbeleuchtung ein.", no_calls=True, any=["jeden tag"]),
+  say("Jeden Tag.", no_calls=True, any=["erstellt werden"]),
+  say(YES, settle=3, any=["erstellt"]),
   say("Zeige nur HomeIntent-Automationen.", any=["automation"]),
   say("Wie viele HomeIntent-Automationen sind aktiv?", any=["aktiv"]),
   say("Welche Automation steuert die Außenbeleuchtung?", any=["sonnenuntergang", "außenbeleuchtung"]),
