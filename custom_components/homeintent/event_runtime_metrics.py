@@ -21,6 +21,10 @@ class EventRuntimeMetrics:
     intentional consumer suppression.  Delivery, suppression, registry
     discard and queue loss remain separate so diagnostics do not overstate
     successful downstream delivery.
+
+    ``retained_total`` intentionally preserves its historical queue/lease
+    meaning. ``retained_total_all`` additionally includes the central
+    long-running scheduler's interval and heap records.
     """
 
     received: int = 0
@@ -98,6 +102,7 @@ class EventRuntimeMetrics:
     retained_unsafe_protected: int = 0
     retained_tombstones: int = 0
     retained_total: int = 0
+    retained_total_all: int = 0
     max_retained_total: int = 0
 
     def as_dict(self) -> dict[str, int]:

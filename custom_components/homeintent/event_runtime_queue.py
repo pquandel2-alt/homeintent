@@ -305,6 +305,11 @@ class _Generation:
             + metrics.retained_unprocessed
             + metrics.retained_unsafe_protected
         )
+        metrics.retained_total_all = (
+            metrics.retained_total
+            + metrics.retained_long_running
+            + metrics.retained_long_running_heap
+        )
         metrics.max_retained_total = max(
             metrics.max_retained_total, metrics.retained_total
         )

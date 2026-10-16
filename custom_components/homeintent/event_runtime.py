@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import heapq
 import logging
 import time
 from collections import deque
 from collections.abc import Iterable
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import StrEnum
-from types import SimpleNamespace
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -20,14 +17,13 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_AGENT_EVENT_CATEGORIES,
-    CONF_AGENT_LONG_RUNNING_MINUTES,
     CONF_ANOMALY_THRESHOLD_PERCENT,
     CONF_BANTER_LEVEL,
     CONF_PERSONA_STYLE,
     CONF_ROUTINE_DETECTION_ENABLED,
     CONF_ROUTINE_MIN_OBSERVATIONS,
 )
-from .agent_config_validation import parse_event_categories, parse_long_running_minutes
+from .agent_config_validation import parse_event_categories
 from .entities import EntitySnapshot
 from .event_interest import (
     EventFilterReason,
@@ -42,7 +38,16 @@ from .event_runtime_queue import (
     _Entry,
     _Generation,
 )
-from .long_running import activity_marker, has_reliable_last_changed
+from .event_runtime_supervisor import (
+    EventWorkerSupervisor,
+    WorkerRetryConfig,
+    async_worker_backoff,
+)
+from .event_runtime_scheduler import (
+    LongRunningInterval as _LongRunningInterval,
+    LongRunningScheduler,
+)
+from .long_running import activity_marker
 from .hass_entities import (
     SelectedEntityFilter,
     build_entity_snapshots,
@@ -145,18 +150,6 @@ class _MergedEvent:
         self.origin = event
 
 
-@dataclass
-class _LongRunningInterval:
-    """One observed active interval represented in the central deadline heap."""
-
-    marker: str
-    started_at: datetime
-    due_at: datetime
-    serial: int
-    threshold_seconds: float
-    fired: bool = False
-
-
 class SituationRuntime:
     """Normalizes selected HA events and emits bounded AgentEvents."""
 
@@ -170,15 +163,46 @@ class SituationRuntime:
         self._decision_engine = ProactiveDecisionEngine()
         self._is_selected = SelectedEntityFilter(hass, entry)
         self._interest = EventInterestIndex(entry, runtime_data)
-        self._long_running_notified: dict[str, tuple[str, Any]] = {}
-        self._long_running: dict[str, _LongRunningInterval] = {}
-        self._long_running_heap: list[tuple[float, int, str]] = []
-        self._long_running_serial = 0
-        self._long_running_timer: asyncio.TimerHandle | None = None
-        self._long_running_init_task: asyncio.Task[None] | None = None
         self._gen = _Generation(MAX_HISTORY_ENTITIES)
         self._gen.stopped = True
         self._worker: asyncio.Task[None] | None = None
+        self._worker_supervisor = EventWorkerSupervisor(
+            owns=lambda generation: self._owns(generation),
+            drain=lambda generation: self._async_drain(generation),
+            backoff=lambda generation, delay, *, wakeable: self._async_worker_backoff(
+                generation, delay, wakeable=wakeable
+            ),
+            monotonic=lambda: time.monotonic(),
+            logger=_LOGGER,
+            config=WorkerRetryConfig(
+                base_seconds=WORKER_RETRY_BASE_SECONDS,
+                max_seconds=WORKER_RETRY_MAX_SECONDS,
+                circuit_failures=WORKER_CIRCUIT_FAILURES,
+                rapid_window_seconds=WORKER_RAPID_WINDOW_SECONDS,
+                max_rapid_restarts=WORKER_MAX_RAPID_RESTARTS,
+                status_log_interval_seconds=WORKER_STATUS_LOG_INTERVAL_SECONDS,
+            ),
+        )
+        self._long_running_scheduler = LongRunningScheduler(
+            hass=hass,
+            entry=entry,
+            owns=lambda generation: self._owns(generation),
+            is_selected=lambda entity_id: self._is_selected(entity_id),
+            enqueue=lambda event: self.async_enqueue_state_changed(event),
+            snapshot_from_state=lambda entity_id, state: snapshot_from_state(
+                entity_id, state
+            ),
+            utcnow=lambda: dt_util.utcnow(),
+            schedule_later=lambda delay, callback, *args: _schedule_later(
+                delay, callback, *args
+            ),
+            capacity=lambda: MAX_LONG_RUNNING_TIMERS,
+            logger=_LOGGER,
+        )
+        # Compatibility seams used by the existing load and lifecycle tests.
+        self._long_running_notified = self._long_running_scheduler.notified
+        self._long_running = self._long_running_scheduler.intervals
+        self._long_running_heap = self._long_running_scheduler.heap
         self._stopped = True
 
     # -- introspection (tests, diagnostics) --------------------------------
@@ -223,7 +247,7 @@ class SituationRuntime:
             gen.worker_circuit_open or gen.worker_failures_in_row
         ):
             return False
-        self._reset_worker_failure_state(gen)
+        self._worker_supervisor.reset(gen)
         gen.worker_wakeup.set()
         _LOGGER.info("HomeIntent event worker circuit was reset explicitly")
         return True
@@ -257,12 +281,7 @@ class SituationRuntime:
             # One worker does the real work; no task per event (7.9.4 P0).
             unlisten = listen("state_changed", self.async_enqueue_state_changed)
         generation = self._gen
-        if self._long_running_minutes() > 0 and self._long_running_enabled():
-            self._long_running_init_task = self._hass.async_create_background_task(
-                self._async_initialize_long_running(generation),
-                "HomeIntent long-running-state initialization",
-                eager_start=False,
-            )
+        self._long_running_scheduler.start(generation)
 
         def stop() -> None:
             unlisten()
@@ -285,47 +304,13 @@ class SituationRuntime:
 
     # -- central long-running-state scheduler -----------------------------
     def _long_running_minutes(self) -> int:
-        try:
-            return parse_long_running_minutes(
-                self._entry.options.get(CONF_AGENT_LONG_RUNNING_MINUTES, 0)
-            )
-        except ValueError as err:
-            _LOGGER.warning("Invalid long-running-state threshold; disabling it: %s", err)
-            return 0
+        return self._long_running_scheduler.minutes()
 
     def _long_running_enabled(self) -> bool:
-        try:
-            categories = parse_event_categories(
-                self._entry.options.get(CONF_AGENT_EVENT_CATEGORIES, "")
-            )
-        except ValueError:
-            return False
-        return "long_running_state" in categories
+        return self._long_running_scheduler.enabled()
 
     async def _async_initialize_long_running(self, gen: _Generation) -> None:
-        """Seed deadlines from HA state in bounded chunks, without registry I/O."""
-        try:
-            await asyncio.sleep(0)
-            states = self._hass.states.async_all()
-            now = _as_utc(dt_util.utcnow())
-            for index, state in enumerate(states):
-                if not self._owns(gen):
-                    return
-                entity_id = getattr(state, "entity_id", None)
-                if not isinstance(entity_id, str) or not self._is_selected(entity_id):
-                    continue
-                snapshot = snapshot_from_state(entity_id, state)
-                if snapshot is not None and activity_marker(snapshot) is not None:
-                    self._sync_long_running_interval(
-                        gen, snapshot, state, now, initial=True
-                    )
-                if index and index % 256 == 0:
-                    await asyncio.sleep(0)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 - heterogeneous HA state payload boundary
-            gen.metrics.long_running_scheduler_failures += 1
-            _LOGGER.exception("HomeIntent long-running-state initialization failed")
+        await self._long_running_scheduler.initialize(gen)
 
     def _sync_long_running_interval(
         self,
@@ -336,173 +321,12 @@ class SituationRuntime:
         *,
         initial: bool = False,
     ) -> _LongRunningInterval | None:
-        """Create, retain, reschedule or cancel one interval in the shared heap."""
-        entity_id = entity.entity_id
-        marker = activity_marker(entity)
-        existing = self._long_running.get(entity_id)
-        if marker is None or not self._long_running_enabled():
-            if existing is not None:
-                del self._long_running[entity_id]
-                gen.metrics.long_running_cancelled += 1
-                self._long_running_notified.pop(entity_id, None)
-                self._arm_long_running_timer(gen)
-            self._update_long_running_retention(gen)
-            return None
-        minutes = self._long_running_minutes()
-        if minutes <= 0:
-            if existing is not None:
-                del self._long_running[entity_id]
-                gen.metrics.long_running_cancelled += 1
-                self._long_running_notified.pop(entity_id, None)
-            self._arm_long_running_timer(gen)
-            self._update_long_running_retention(gen)
-            return None
-        threshold = float(minutes) * 60.0
-        event_time = _as_utc(occurred_at)
-        if (
-            existing is not None
-            and existing.marker == marker
-            and existing.threshold_seconds == threshold
-        ):
-            return existing
-        if existing is None and len(self._long_running) >= MAX_LONG_RUNNING_TIMERS:
-            gen.metrics.long_running_capacity_rejected += 1
-            return None
-        previous_marker = activity_marker(old_state)
-        if existing is not None and existing.marker == marker:
-            started_at = existing.started_at
-        elif initial or previous_marker == marker:
-            changed = entity.last_changed
-            if (
-                has_reliable_last_changed(entity)
-                and isinstance(changed, datetime)
-                and changed.tzinfo is not None
-                and _as_utc(changed) <= event_time
-            ):
-                started_at = _as_utc(changed)
-            else:
-                # Attribute-driven activity (notably climate.hvac_action) has
-                # no trustworthy HA interval timestamp. Observe it from now.
-                started_at = event_time
-        else:
-            started_at = event_time
-        self._long_running_serial += 1
-        item = _LongRunningInterval(
-            marker,
-            started_at,
-            started_at + timedelta(seconds=threshold),
-            self._long_running_serial,
-            threshold,
+        return self._long_running_scheduler.sync(
+            gen, entity, old_state, occurred_at, initial=initial
         )
-        self._long_running[entity_id] = item
-        if existing is None:
-            gen.metrics.long_running_scheduled += 1
-        else:
-            gen.metrics.long_running_rescheduled += 1
-            self._long_running_notified.pop(entity_id, None)
-        if len(self._long_running_heap) >= MAX_LONG_RUNNING_TIMERS:
-            self._compact_long_running_heap(exclude=entity_id)
-        heapq.heappush(
-            self._long_running_heap,
-            (item.due_at.timestamp(), item.serial, entity_id),
-        )
-        self._arm_long_running_timer(gen)
-        self._update_long_running_retention(gen)
-        return item
-
-    def _compact_long_running_heap(self, *, exclude: str | None = None) -> None:
-        self._long_running_heap = [
-            (item.due_at.timestamp(), item.serial, entity_id)
-            for entity_id, item in self._long_running.items()
-            if entity_id != exclude and not item.fired
-        ]
-        heapq.heapify(self._long_running_heap)
-
-    def _arm_long_running_timer(self, gen: _Generation) -> None:
-        timer, self._long_running_timer = self._long_running_timer, None
-        if timer is not None:
-            timer.cancel()
-        while self._long_running_heap:
-            _stamp, serial, entity_id = self._long_running_heap[0]
-            item = self._long_running.get(entity_id)
-            if item is not None and item.serial == serial and not item.fired:
-                break
-            heapq.heappop(self._long_running_heap)
-        if not self._owns(gen) or not self._long_running_heap:
-            return
-        delay = max(0.0, self._long_running_heap[0][0] - _as_utc(dt_util.utcnow()).timestamp())
-        self._long_running_timer = _schedule_later(
-            delay, self._long_running_timer_fired, gen
-        )
-
-    @callback
-    def _long_running_timer_fired(self, gen: _Generation) -> None:
-        self._long_running_timer = None
-        try:
-            self._long_running_timer_fired_impl(gen)
-        except Exception:  # noqa: BLE001 - HA state/timer callback isolation boundary
-            gen.metrics.long_running_scheduler_failures += 1
-            _LOGGER.exception("HomeIntent long-running-state deadline processing failed")
-            if self._owns(gen):
-                self._compact_long_running_heap()
-                self._arm_long_running_timer(gen)
-
-    def _long_running_timer_fired_impl(self, gen: _Generation) -> None:
-        if not self._owns(gen):
-            return
-        now = _as_utc(dt_util.utcnow())
-        minutes = self._long_running_minutes()
-        if minutes <= 0 or not self._long_running_enabled():
-            self._clear_long_running_scheduler()
-            return
-        expected_threshold = float(minutes) * 60.0
-        while self._long_running_heap and self._long_running_heap[0][0] <= now.timestamp():
-            _stamp, serial, entity_id = heapq.heappop(self._long_running_heap)
-            item = self._long_running.get(entity_id)
-            if item is None or item.serial != serial or item.fired:
-                continue
-            state = self._hass.states.get(entity_id)
-            snapshot = snapshot_from_state(entity_id, state) if state is not None else None
-            if snapshot is None or activity_marker(snapshot) != item.marker:
-                del self._long_running[entity_id]
-                gen.metrics.long_running_cancelled += 1
-                self._long_running_notified.pop(entity_id, None)
-                continue
-            if item.threshold_seconds != expected_threshold:
-                self._sync_long_running_interval(gen, snapshot, state, now)
-                continue
-            item.fired = True
-            gen.metrics.long_running_due += 1
-            queued_before = gen.metrics.queued
-            self.async_enqueue_state_changed(
-                SimpleNamespace(
-                    data={"entity_id": entity_id, "old_state": state, "new_state": state},
-                    time_fired=now,
-                    context=None,
-                )
-            )
-            if gen.metrics.queued > queued_before:
-                gen.metrics.long_running_enqueued += 1
-            else:
-                gen.metrics.long_running_capacity_rejected += 1
-        self._arm_long_running_timer(gen)
-        self._update_long_running_retention(gen)
 
     def _clear_long_running_scheduler(self) -> None:
-        timer, self._long_running_timer = self._long_running_timer, None
-        if timer is not None:
-            timer.cancel()
-        init_task, self._long_running_init_task = self._long_running_init_task, None
-        if init_task is not None and not init_task.done():
-            init_task.cancel()
-        self._long_running.clear()
-        self._long_running_heap.clear()
-        self._long_running_notified.clear()
-        self._update_long_running_retention(self._gen)
-
-    def _update_long_running_retention(self, gen: _Generation) -> None:
-        gen.metrics.retained_long_running = len(self._long_running)
-        gen.metrics.retained_long_running_heap = len(self._long_running_heap)
+        self._long_running_scheduler.clear(self._gen)
 
     # -- event-bus callback ------------------------------------------------
     @callback
@@ -638,139 +462,14 @@ class SituationRuntime:
             self._start_worker(gen)
 
     async def _async_supervise_worker(self, gen: _Generation) -> None:
-        """Run drain attempts with bounded backoff and an identical-failure circuit."""
-        attempts = 0
-        while self._owns(gen) and gen.live:
-            attempts += 1
-            metrics = gen.metrics
-            metrics.worker_starts += 1
-            if attempts > 1:
-                metrics.worker_restarts += 1
-            try:
-                await self._async_drain(gen)
-                if self._owns(gen) and gen.live:
-                    raise RuntimeError("event worker ended with pending work")
-            except asyncio.CancelledError:
-                metrics.worker_cancellations += 1
-                if self._owns(gen):
-                    gen.rollback_lease()
-                raise
-            except Exception as failure:  # noqa: BLE001 - supervisor isolation boundary
-                if not self._owns(gen):
-                    return
-                restored = gen.rollback_lease()
-                if restored:
-                    metrics.batch_failures += 1
-                    metrics.batch_retries += 1
-                    metrics.batch_requeued_events += restored
-                metrics.worker_unexpected_exits += 1
-                gen.worker_failures_in_row += 1
-                if gen.worker_failure_signature is None:
-                    gen.worker_failure_signature = type(failure).__name__
-                    _LOGGER.error(
-                        "HomeIntent event worker failed with %s pending events",
-                        gen.live,
-                        exc_info=(type(failure), failure, failure.__traceback__),
-                    )
-                else:
-                    gen.suppressed_worker_logs += 1
-                now = time.monotonic()
-                gen.rapid_worker_failures.append(now)
-                while (
-                    gen.rapid_worker_failures
-                    and now - gen.rapid_worker_failures[0] > WORKER_RAPID_WINDOW_SECONDS
-                ):
-                    gen.rapid_worker_failures.popleft()
-                circuit = (
-                    gen.worker_failures_in_row >= WORKER_CIRCUIT_FAILURES
-                    or len(gen.rapid_worker_failures) >= WORKER_MAX_RAPID_RESTARTS
-                )
-                exponent = min(gen.worker_failures_in_row - 1, 30)
-                delay = min(
-                    WORKER_RETRY_MAX_SECONDS,
-                    WORKER_RETRY_BASE_SECONDS * (2 ** exponent),
-                )
-                if circuit:
-                    if not gen.worker_circuit_open:
-                        metrics.worker_circuit_breaks += 1
-                        _LOGGER.error(
-                            "HomeIntent event worker suspended after %s repeated failures; "
-                            "%s similar failure log(s) suppressed",
-                            gen.worker_failures_in_row,
-                            gen.suppressed_worker_logs,
-                        )
-                        gen.worker_circuit_open = True
-                        gen.last_worker_status_log = now
-                    elif (
-                        gen.last_worker_status_log is None
-                        or now - gen.last_worker_status_log
-                        >= WORKER_STATUS_LOG_INTERVAL_SECONDS
-                    ):
-                        gen.last_worker_status_log = now
-                        _LOGGER.warning(
-                            "HomeIntent event worker remains suspended with %s pending "
-                            "events; %s failure log(s) suppressed",
-                            gen.live,
-                            gen.suppressed_worker_logs,
-                        )
-                    gen.worker_suspended = True
-                    metrics.worker_suspended = 1
-                    delay = WORKER_RETRY_MAX_SECONDS
-                    gen.worker_next_retry_at = now + delay
-                    # Clear before yielding so an explicit reset cannot be
-                    # lost between the state transition and the wait.
-                    gen.worker_wakeup.clear()
-                else:
-                    gen.worker_next_retry_at = None
-                metrics.worker_backoffs += 1
-                metrics.worker_backoff_milliseconds += round(delay * 1000)
-                try:
-                    await self._async_worker_backoff(gen, delay, wakeable=circuit)
-                except asyncio.CancelledError:
-                    metrics.worker_cancellations += 1
-                    raise
-                continue
-            failures = gen.worker_failures_in_row
-            was_open = gen.worker_circuit_open
-            suppressed = gen.suppressed_worker_logs
-            if failures:
-                metrics.worker_recoveries += 1
-                if was_open:
-                    _LOGGER.info(
-                        "HomeIntent event worker recovered after %s failures; "
-                        "%s failure log(s) were suppressed",
-                        failures,
-                        suppressed,
-                    )
-            self._reset_worker_failure_state(gen)
-        gen.update_retention()
-
-    @staticmethod
-    def _reset_worker_failure_state(gen: _Generation) -> None:
-        """Close one failure cycle without touching queued or leased work."""
-        gen.worker_failures_in_row = 0
-        gen.worker_failure_signature = None
-        gen.rapid_worker_failures.clear()
-        gen.suppressed_worker_logs = 0
-        gen.worker_circuit_open = False
-        gen.worker_next_retry_at = None
-        gen.worker_suspended = False
-        gen.last_worker_status_log = None
-        gen.metrics.worker_suspended = 0
+        """Delegate retry and circuit state to the single-task supervisor."""
+        await self._worker_supervisor.run(gen)
 
     async def _async_worker_backoff(
         self, gen: _Generation, delay: float, *, wakeable: bool
     ) -> None:
-        """Wait without blocking callbacks; only a health reset wakes a circuit."""
-        if not wakeable:
-            await asyncio.sleep(delay)
-            return
-        try:
-            await asyncio.wait_for(gen.worker_wakeup.wait(), timeout=delay)
-        except TimeoutError:
-            pass
-        else:
-            gen.metrics.worker_wakeups += 1
+        """Preserved test seam for injected retry clocks."""
+        await async_worker_backoff(gen, delay, wakeable=wakeable)
 
     def _make_room(self, gen: _Generation, priority: EventPriority) -> bool:
         """Evict one entry of lower rank for an incoming ``priority`` event.
@@ -1544,11 +1243,10 @@ class SituationRuntime:
                     long_interval.marker,
                     long_interval.serial,
                 ) if long_interval is not None else (entity.state, entity.last_changed)
-                if self._long_running_notified.get(entity_id) == token:
+                if not self._long_running_scheduler.remember_notification(
+                    entity_id, token
+                ):
                     continue
-                self._long_running_notified[entity_id] = token
-                if len(self._long_running_notified) > 4096:
-                    self._long_running_notified = {entity_id: token}
             facts = situation.facts
             if routine_assessment is not None:
                 facts = (
