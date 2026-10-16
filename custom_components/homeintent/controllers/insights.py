@@ -45,6 +45,7 @@ from ..automation_ownership import HOUSEHOLD_OWNER
 from ..dialog_manager import DialogPriority, DialogTaskKind
 from ..execution_trace import actor_hash
 from ..execution_context import user_facing_error
+from ..error_logging import log_rate_limited_boundary_failure
 from ..habit_suggestions import (
     MIN_DAYS,
     WINDOW_DAYS,
@@ -578,7 +579,9 @@ class InsightsController:
                 config, owner_user_id=owner
             )
         except Exception as err:  # noqa: BLE001 - nothing half-created stays
-            _LOGGER.exception("HomeIntent report automation setup failed")
+            log_rate_limited_boundary_failure(
+                _LOGGER, "HomeIntent report automation setup", err
+            )
             store.records.pop(report_id, None)
             return self._result(
                 user_input,
@@ -750,12 +753,15 @@ class InsightsController:
             for automation_id in created:
                 try:
                     await executor.async_delete_automation(automation_id)
-                except Exception:  # noqa: BLE001 - best-effort multi-object rollback
-                    _LOGGER.exception(
-                        "Could not roll back vacation automation %s",
-                        automation_id,
+                except Exception as rollback_err:  # noqa: BLE001 - best-effort rollback
+                    log_rate_limited_boundary_failure(
+                        _LOGGER,
+                        "HomeIntent vacation automation rollback",
+                        rollback_err,
                     )
-            _LOGGER.exception("HomeIntent vacation automation setup failed")
+            log_rate_limited_boundary_failure(
+                _LOGGER, "HomeIntent vacation automation setup", err
+            )
             return self._result(
                 user_input,
                 response,

@@ -36,7 +36,7 @@ from .service_call import ServiceCallPlan
 from .effect_graph import build_plan_effects
 from .plan_origin import PlanOrigin
 from .service_executor import async_execute_service_plan
-from .execution_context import call_context
+from .execution_context import call_context, user_facing_error
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -437,12 +437,15 @@ class ProactiveAgentRuntime:
                     context=call_context(),
                 )
             except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Agent automation recheck failed (%s)", type(err).__name__
+                )
                 await self._store.async_save(
                     replace(
                         current,
                         state=AgentEventState.SNOOZED,
                         updated_at=dt_util.utcnow().isoformat(),
-                        last_error=str(err),
+                        last_error=user_facing_error(err),
                     )
                 )
             return

@@ -36,6 +36,7 @@ from ..effect_graph import build_plan_effects
 from ..engine import CommandPlan, MatchResult, NluEngine
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..execution_context import call_context
+from ..error_logging import log_rate_limited_boundary_failure
 from ..execution_policy import evaluate_service_plan, PolicyOutcome
 from ..goal_intent import interpret_goal
 from ..goal_model import (
@@ -879,17 +880,26 @@ class GoalController:
                                     await self._automation_store().async_delete_automation(
                                         created_id
                                     )
-                                except Exception:  # noqa: BLE001 - best-effort multi-object rollback
-                                    _LOGGER.exception(
-                                        "Could not roll back thermal checkpoint %s",
-                                        created_id,
+                                except Exception as rollback_err:  # noqa: BLE001 - best-effort rollback
+                                    log_rate_limited_boundary_failure(
+                                        _LOGGER,
+                                        "HomeIntent thermal checkpoint rollback",
+                                        rollback_err,
                                     )
                             if advice is not None and self._runtime.thermal_checkpoints is not None:
                                 for checkpoint_record, _checkpoint_at in checkpoint_records:
                                     await self._runtime.thermal_checkpoints.async_delete(
                                         checkpoint_record.checkpoint_id
                                     )
-                            return _ScheduledOutcome(False, str(err))
+                            log_rate_limited_boundary_failure(
+                                _LOGGER,
+                                "HomeIntent scheduled goal setup",
+                                err,
+                            )
+                            return _ScheduledOutcome(
+                                False,
+                                "Der terminierte Schritt konnte nicht eingerichtet werden.",
+                            )
                         return _ScheduledOutcome(True)
 
                     execution_run_id = f"run_{uuid.uuid4().hex}"

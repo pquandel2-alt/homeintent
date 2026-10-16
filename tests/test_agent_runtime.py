@@ -775,3 +775,25 @@ def test_snooze_uses_durable_helper_and_rechecks_original_conditions(tmp_path):
         {"entity_id": "automation.door-rule", "skip_condition": False},
         blocking=True,
     )
+
+
+def test_recheck_provider_details_are_not_persisted_or_notified(tmp_path, caplog):
+    secret = "/config/secrets.yaml token=super-secret api_key=123456"
+    hass, runtime = _runtime(tmp_path)
+
+    async def scenario():
+        created = await runtime.async_signal({"rule_id": "door-rule", "message": "Offen"})
+        assert created is not None
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(data={"action": f"HOMEINTENT_SNOOZE_{created.event_id}"})
+        )
+        hass.services.async_call.reset_mock()
+        hass.services.async_call.side_effect = RuntimeError(secret)
+        await runtime.async_recheck(created.event_id)
+        return (await runtime._store.async_load_all())[created.event_id]
+
+    stored = asyncio.run(scenario())
+    assert stored.state is AgentEventState.SNOOZED
+    assert stored.last_error == TECHNICAL_FAILURE_TEXT
+    assert secret not in repr(stored)
+    assert secret not in caplog.text

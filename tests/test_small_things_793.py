@@ -101,7 +101,8 @@ def test_without_recorder_one_line_per_cause(monkeypatch, caplog):
     assert len(warnings) == 2, [record.getMessage() for record in warnings]  # one per cause (kind of read)
     for record in warnings:
         assert record.exc_info is None and "\n" not in record.getMessage()
-        assert "Recorder ist deaktiviert" in record.getMessage()
+        assert "RuntimeError" in record.getMessage()
+        assert "Recorder ist deaktiviert" not in record.getMessage()
     assert all(record.exc_info is None for record in caplog.records)
 
 

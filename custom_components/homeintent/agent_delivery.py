@@ -79,15 +79,21 @@ class AgentDelivery:
                 await self._async_push(event, options)
                 delivered.append(AGENT_CHANNEL_PUSH)
             except Exception as err:  # noqa: BLE001 - HA services fail heterogeneously
-                _LOGGER.warning("Agent push delivery failed: %s", err)
-                errors.append(f"push: {err}")
+                # Delivery results are persisted by AgentRuntime and may later
+                # be shown in feedback notifications.  Provider messages can
+                # contain paths, tokens or payload fragments, so retain only a
+                # stable diagnostic class here (and in the log).
+                error_kind = type(err).__name__
+                _LOGGER.warning("Agent push delivery failed (%s)", error_kind)
+                errors.append(f"push:{error_kind}")
         if AGENT_CHANNEL_TTS in channels and not _quiet_tts(event, options):
             try:
                 await self._async_tts(event, options)
                 delivered.append(AGENT_CHANNEL_TTS)
             except Exception as err:  # noqa: BLE001
-                _LOGGER.warning("Agent TTS delivery failed: %s", err)
-                errors.append(f"tts: {err}")
+                error_kind = type(err).__name__
+                _LOGGER.warning("Agent TTS delivery failed (%s)", error_kind)
+                errors.append(f"tts:{error_kind}")
         return DeliveryResult(tuple(delivered), tuple(errors))
 
     async def _async_push(
@@ -282,7 +288,7 @@ class AgentDelivery:
                     )
                     delivered.append(item.target_id)
         except Exception as err:  # noqa: BLE001 - HA services fail heterogeneously
-            _LOGGER.warning("Push delivery failed: %s", err)
+            _LOGGER.warning("Push delivery failed (%s)", type(err).__name__)
             return NotificationDeliveryResult(
                 NotificationDeliveryStatus.FAILED,
                 tuple(delivered),
