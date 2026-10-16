@@ -1,18 +1,24 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "historical_baseline": {
     "commit": "eb07317a789e5014cc71cd90d944c21f79d27a03",
-    "count": 116
+    "exception_count": 116,
+    "base_exception_count": 2
   },
-  "approved_maximum": 118,
+  "approved_exception_maximum": 119,
+  "approved_base_exception_maximum": 2,
   "approved_additions": [
     {
-      "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_initialize_long_running::1",
+      "id": "custom_components/homeintent/event_runtime_scheduler.py::LongRunningScheduler.initialize::1",
       "reason": "Asynchrone Initialisierung über heterogene HA-State-Payloads."
     },
     {
-      "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._long_running_timer_fired::1",
+      "id": "custom_components/homeintent/event_runtime_scheduler.py::LongRunningScheduler._timer_fired::1",
       "reason": "Synchroner HA-Timer-Callback muss Schedulerfehler isolieren."
+    },
+    {
+      "id": "custom_components/homeintent/event_runtime_supervisor.py::EventWorkerSupervisor.run::1",
+      "reason": "Worker-Boundary übersetzt normale Laufzeitfehler in den Circuit-Zustand."
     }
   ],
   "handlers": [
@@ -21,6 +27,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 110,
       "scope": "async_setup_entry",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "6dac741a74850652"
@@ -30,6 +37,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 424,
       "scope": "async_setup_entry",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "f6feeacb960cf2e2"
@@ -39,6 +47,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 814,
       "scope": "async_unload_entry",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "4afc12248ad80765"
@@ -48,6 +57,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 963,
       "scope": "_async_delete_automation_after_action",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "5e6c368523a12e86"
@@ -57,6 +67,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 991,
       "scope": "_async_record_automation_run_after_action",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "d6284263557970f7"
@@ -66,6 +77,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 1016,
       "scope": "_async_enable_automation_after_action",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "90ea247254597af1"
@@ -75,6 +87,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 1032,
       "scope": "_async_cleanup_expired_scheduled_automations",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "62b4452cb2c5bb33"
@@ -84,6 +97,7 @@
       "path": "custom_components/homeintent/__init__.py",
       "line": 1047,
       "scope": "_async_reconcile_and_cleanup_automations",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "6732f1054683922e"
@@ -93,6 +107,7 @@
       "path": "custom_components/homeintent/adapters.py",
       "line": 432,
       "scope": "StructuredAdapterRuntime._async_subscribe_mqtt",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "f15cb2633563e685"
@@ -102,42 +117,47 @@
       "path": "custom_components/homeintent/agent_delivery.py",
       "line": 81,
       "scope": "AgentDelivery.async_deliver",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
-      "body_digest": "a8063b626a9eed05"
+      "body_digest": "809ae03ae2254a57"
     },
     {
       "id": "custom_components/homeintent/agent_delivery.py::AgentDelivery.async_deliver::2",
       "path": "custom_components/homeintent/agent_delivery.py",
-      "line": 88,
+      "line": 93,
       "scope": "AgentDelivery.async_deliver",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
-      "body_digest": "138fc46060834714"
+      "body_digest": "b2820d16bd2fa41c"
     },
     {
       "id": "custom_components/homeintent/agent_delivery.py::AgentDelivery.async_send_notification::1",
       "path": "custom_components/homeintent/agent_delivery.py",
-      "line": 284,
+      "line": 290,
       "scope": "AgentDelivery.async_send_notification",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
-      "body_digest": "225a6a6e817e7aa7"
+      "body_digest": "8b4b8ade813d142b"
     },
     {
       "id": "custom_components/homeintent/agent_runtime.py::ProactiveAgentRuntime.async_recheck::1",
       "path": "custom_components/homeintent/agent_runtime.py",
       "line": 439,
       "scope": "ProactiveAgentRuntime.async_recheck",
-      "classification": "NARROWABLE",
-      "reason": "Keine dauerhaft heterogene Boundary belegt; nach zusätzlicher Charakterisierung auf konkrete Ausnahmearten verengen.",
-      "body_digest": "6d14ddc1212b1793"
+      "caught": "Exception",
+      "classification": "FALLBACK",
+      "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
+      "body_digest": "53a7ca664daaf1a7"
     },
     {
       "id": "custom_components/homeintent/agent_runtime.py::ProactiveAgentRuntime._async_notification_actor::1",
       "path": "custom_components/homeintent/agent_runtime.py",
-      "line": 518,
+      "line": 521,
       "scope": "ProactiveAgentRuntime._async_notification_actor",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "f5792deca14e0e7a"
@@ -145,8 +165,9 @@
     {
       "id": "custom_components/homeintent/agent_runtime.py::ProactiveAgentRuntime._automation_entity_id::1",
       "path": "custom_components/homeintent/agent_runtime.py",
-      "line": 648,
+      "line": 651,
       "scope": "ProactiveAgentRuntime._automation_entity_id",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -154,8 +175,9 @@
     {
       "id": "custom_components/homeintent/agent_runtime.py::ProactiveAgentRuntime._configured_notification_device_ids::1",
       "path": "custom_components/homeintent/agent_runtime.py",
-      "line": 667,
+      "line": 670,
       "scope": "ProactiveAgentRuntime._configured_notification_device_ids",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c959fede8d2f687f"
@@ -163,8 +185,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._async_begin_transaction::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 207,
+      "line": 208,
       "scope": "AutomationExecutor._async_begin_transaction",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "f27ca3babe2a047e"
@@ -172,8 +195,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._async_begin_transaction::2",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 237,
+      "line": 238,
       "scope": "AutomationExecutor._async_begin_transaction",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "5091c6130cad447e"
@@ -181,8 +205,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_create_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 372,
+      "line": 373,
       "scope": "AutomationExecutor.async_create_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "5091c6130cad447e"
@@ -190,26 +215,29 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_create_automation::2",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 390,
+      "line": 391,
       "scope": "AutomationExecutor.async_create_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "c39eae09c8249ba1"
+      "body_digest": "df72f1663f803186"
     },
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_create_automation::3",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 400,
+      "line": 401,
       "scope": "AutomationExecutor.async_create_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "90af59e240a895a8"
+      "body_digest": "0321ffc5c5410540"
     },
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_pause_automation_until::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 493,
+      "line": 495,
       "scope": "AutomationExecutor.async_pause_automation_until",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "675e4b910d79c00d"
@@ -217,8 +245,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_delete_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 559,
+      "line": 561,
       "scope": "AutomationExecutor.async_delete_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "5091c6130cad447e"
@@ -226,8 +255,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_delete_automation::2",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 564,
+      "line": 566,
       "scope": "AutomationExecutor.async_delete_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -235,8 +265,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._remove_entity_registry_entry::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 586,
+      "line": 588,
       "scope": "AutomationExecutor._remove_entity_registry_entry",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "b37522d273d76d53"
@@ -244,8 +275,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._async_set_initial_state::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 656,
+      "line": 658,
       "scope": "AutomationExecutor._async_set_initial_state",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "5091c6130cad447e"
@@ -253,8 +285,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_reschedule_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 812,
+      "line": 814,
       "scope": "AutomationExecutor.async_reschedule_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -262,8 +295,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_set_owner::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 885,
+      "line": 887,
       "scope": "AutomationExecutor.async_set_owner",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -271,8 +305,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_set_max_runs::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 954,
+      "line": 956,
       "scope": "AutomationExecutor.async_set_max_runs",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -280,8 +315,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_replace_automation_actions::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1016,
+      "line": 1018,
       "scope": "AutomationExecutor.async_replace_automation_actions",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -289,8 +325,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_edit_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1076,
+      "line": 1078,
       "scope": "AutomationExecutor.async_edit_automation",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -298,8 +335,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_replace_automation_section::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1136,
+      "line": 1138,
       "scope": "AutomationExecutor.async_replace_automation_section",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -307,8 +345,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_cleanup_expired_scheduled_automations::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1200,
+      "line": 1202,
       "scope": "AutomationExecutor.async_cleanup_expired_scheduled_automations",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "5091c6130cad447e"
@@ -316,8 +355,9 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_rollback_last_change::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1307,
+      "line": 1309,
       "scope": "AutomationExecutor.async_rollback_last_change",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
       "body_digest": "2f9aafef6a65918e"
@@ -327,6 +367,7 @@
       "path": "custom_components/homeintent/automation_history.py",
       "line": 20,
       "scope": "_write_atomic",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -336,15 +377,27 @@
       "path": "custom_components/homeintent/automation_ownership.py",
       "line": 129,
       "scope": "household_voice",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "b7cdae0b33a8d009"
+    },
+    {
+      "id": "custom_components/homeintent/bindings.py::BindingStore._write::1",
+      "path": "custom_components/homeintent/bindings.py",
+      "line": 227,
+      "scope": "BindingStore._write",
+      "caught": "BaseException",
+      "classification": "RETHROW",
+      "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
+      "body_digest": "686c35e4679bcabf"
     },
     {
       "id": "custom_components/homeintent/config_flow.py::HomeIntentOptionsFlow._async_schema::1",
       "path": "custom_components/homeintent/config_flow.py",
       "line": 260,
       "scope": "HomeIntentOptionsFlow._async_schema",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "8c7c5b2bc2b7e6e3"
@@ -354,6 +407,7 @@
       "path": "custom_components/homeintent/controllers/automation_management.py",
       "line": 607,
       "scope": "AutomationManagementController.async_handle_management_confirmation",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "81a4a477b8811346"
@@ -363,6 +417,7 @@
       "path": "custom_components/homeintent/controllers/automation_management.py",
       "line": 656,
       "scope": "AutomationManagementController.async_handle_deletion_confirmation_reply",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "4cec3b5b0844c5d0"
@@ -372,6 +427,7 @@
       "path": "custom_components/homeintent/controllers/automation_management.py",
       "line": 693,
       "scope": "AutomationManagementController.async_handle_toggle_result",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "1a2621cd33cba989"
@@ -381,6 +437,7 @@
       "path": "custom_components/homeintent/controllers/automation_management.py",
       "line": 1020,
       "scope": "AutomationManagementController.async_handle_structure_edit_turn",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "4592daa586b003ab"
@@ -390,6 +447,7 @@
       "path": "custom_components/homeintent/controllers/automation_management.py",
       "line": 1101,
       "scope": "AutomationManagementController.async_handle_action_edit_turn",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "4592daa586b003ab"
@@ -399,6 +457,7 @@
       "path": "custom_components/homeintent/controllers/automations.py",
       "line": 750,
       "scope": "AutomationController._async_handle_automation_confirmation_reply",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "76f04d4e33995213"
@@ -408,6 +467,7 @@
       "path": "custom_components/homeintent/controllers/devices.py",
       "line": 1087,
       "scope": "DeviceController.async_handle_undo_request",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "68499590013dc969"
@@ -415,26 +475,29 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::1",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 876,
+      "line": 877,
       "scope": "GoalController.async_handle_goal_turn.schedule",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "2cdbc3f9e444c567"
+      "body_digest": "c9079b03a1749593"
     },
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::2",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 882,
+      "line": 883,
       "scope": "GoalController.async_handle_goal_turn.schedule",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "747bc431908fbeca"
+      "body_digest": "10f8eba822d4497f"
     },
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_report_background_plan::1",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 1366,
+      "line": 1376,
       "scope": "GoalController.async_report_background_plan",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "b762b4a9d8f409cd"
@@ -442,8 +505,9 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_report_background_plan::2",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 1396,
+      "line": 1406,
       "scope": "GoalController.async_report_background_plan",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "2e5dc269c4169846"
@@ -451,35 +515,39 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_report_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 580,
+      "line": 581,
       "scope": "InsightsController._async_report_answer",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
-      "body_digest": "ce150989ad3e036b"
+      "body_digest": "6043ab74fb7fd460"
     },
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 749,
+      "line": 752,
       "scope": "InsightsController._async_vacation_answer",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "209e731b89574a06"
+      "body_digest": "a1b8a0e76a490dfb"
     },
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::2",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 753,
+      "line": 756,
       "scope": "InsightsController._async_vacation_answer",
+      "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "956b33070607534a"
+      "body_digest": "a20cc69ac6ce8e4a"
     },
     {
       "id": "custom_components/homeintent/controllers/productivity.py::ProductivityController._async_handle_native_timer_request::1",
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 205,
       "scope": "ProductivityController._async_handle_native_timer_request",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "67cdc6868560f46b"
@@ -489,6 +557,7 @@
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 471,
       "scope": "ProductivityController._async_execute_productivity",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "8748e9d44a5302c9"
@@ -498,6 +567,7 @@
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 664,
       "scope": "ProductivityController.async_execute_todo",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6d78c5b9bae2c433"
@@ -507,6 +577,7 @@
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 838,
       "scope": "ProductivityController.async_handle_calendar_event_turn",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "ffa88ce04cc9a7f8"
@@ -516,6 +587,7 @@
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 946,
       "scope": "ProductivityController.async_handle_calendar_management",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "5743e9566a49682e"
@@ -525,6 +597,7 @@
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 1003,
       "scope": "ProductivityController.async_handle_calendar_management",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "20e2778e743cee6b"
@@ -534,6 +607,7 @@
       "path": "custom_components/homeintent/controllers/productivity.py",
       "line": 1285,
       "scope": "ProductivityController.async_handle_calendar_mutation_confirmation",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "607d4d5d9467705d"
@@ -543,6 +617,7 @@
       "path": "custom_components/homeintent/controllers/queries.py",
       "line": 74,
       "scope": "QueryController.async_explain_cause",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "aeaf25eca273a2e4"
@@ -552,6 +627,7 @@
       "path": "custom_components/homeintent/effect_graph.py",
       "line": 913,
       "scope": "HassEffectSources._state",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -561,6 +637,7 @@
       "path": "custom_components/homeintent/effect_graph.py",
       "line": 924,
       "scope": "HassEffectSources._component_entity",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -570,6 +647,7 @@
       "path": "custom_components/homeintent/effect_graph.py",
       "line": 986,
       "scope": "HassEffectSources.resolve_target",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -579,6 +657,7 @@
       "path": "custom_components/homeintent/effect_graph.py",
       "line": 995,
       "scope": "HassEffectSources.resolve_registry_id",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -588,6 +667,7 @@
       "path": "custom_components/homeintent/effect_graph.py",
       "line": 1020,
       "scope": "HassEffectSources.followups",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "01a5747da929e0b2"
@@ -597,6 +677,7 @@
       "path": "custom_components/homeintent/effect_graph.py",
       "line": 1052,
       "scope": "HassEffectSources.name",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -606,6 +687,7 @@
       "path": "custom_components/homeintent/effect_monitor.py",
       "line": 103,
       "scope": "EffectMonitor.register",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "8aaec647e80352fa"
@@ -615,6 +697,7 @@
       "path": "custom_components/homeintent/effect_monitor.py",
       "line": 218,
       "scope": "EffectMonitor._update_watched",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "d07d93c2dc86ea9a"
@@ -624,33 +707,17 @@
       "path": "custom_components/homeintent/energy_query.py",
       "line": 297,
       "scope": "async_energy_dashboard_price",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
     },
     {
-      "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_initialize_long_running::1",
-      "path": "custom_components/homeintent/event_runtime.py",
-      "line": 305,
-      "scope": "SituationRuntime._async_initialize_long_running",
-      "classification": "BOUNDARY_REQUIRED",
-      "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
-      "body_digest": "881850200c491291"
-    },
-    {
-      "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._long_running_timer_fired::1",
-      "path": "custom_components/homeintent/event_runtime.py",
-      "line": 422,
-      "scope": "SituationRuntime._long_running_timer_fired",
-      "classification": "BOUNDARY_REQUIRED",
-      "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
-      "body_digest": "e0c19aac831b8457"
-    },
-    {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_drain::1",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 896,
+      "line": 648,
       "scope": "SituationRuntime._async_drain",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "ce4e4884a76404eb"
@@ -658,8 +725,9 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_drain::2",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 958,
+      "line": 710,
       "scope": "SituationRuntime._async_drain",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "4c47be908d5c1df4"
@@ -667,8 +735,9 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_degraded_batch::1",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 1088,
+      "line": 840,
       "scope": "SituationRuntime._async_degraded_batch",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "73b4a7c6462bbdc1"
@@ -676,8 +745,9 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_process_state_changed::1",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 1176,
+      "line": 928,
       "scope": "SituationRuntime._async_process_state_changed",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "4fbf9240500d861f"
@@ -685,8 +755,9 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_process_state_changed::2",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 1316,
+      "line": 1068,
       "scope": "SituationRuntime._async_process_state_changed",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "3b41d686c843df95"
@@ -694,8 +765,9 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_process_state_changed::3",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 1355,
+      "line": 1107,
       "scope": "SituationRuntime._async_process_state_changed",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "7fda3478153bd48b"
@@ -703,8 +775,9 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime._async_process_state_changed::4",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 1381,
+      "line": 1133,
       "scope": "SituationRuntime._async_process_state_changed",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "b39571efe58d5882"
@@ -712,17 +785,59 @@
     {
       "id": "custom_components/homeintent/event_runtime.py::SituationRuntime.async_handle_expected_effect_expired::1",
       "path": "custom_components/homeintent/event_runtime.py",
-      "line": 1556,
+      "line": 1307,
       "scope": "SituationRuntime.async_handle_expected_effect_expired",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "566f706fd706fd2b"
+    },
+    {
+      "id": "custom_components/homeintent/event_runtime_scheduler.py::LongRunningScheduler.initialize::1",
+      "path": "custom_components/homeintent/event_runtime_scheduler.py",
+      "line": 106,
+      "scope": "LongRunningScheduler.initialize",
+      "caught": "Exception",
+      "classification": "BOUNDARY_REQUIRED",
+      "reason": "Heterogene Home-Assistant-State-Boundary; drei begrenzte Initialisierungsversuche, Metrik und protokollierter Abbruch.",
+      "body_digest": "c3a562ef0ea69a96"
+    },
+    {
+      "id": "custom_components/homeintent/event_runtime_scheduler.py::LongRunningScheduler._timer_fired::1",
+      "path": "custom_components/homeintent/event_runtime_scheduler.py",
+      "line": 246,
+      "scope": "LongRunningScheduler._timer_fired",
+      "caught": "Exception",
+      "classification": "BOUNDARY_REQUIRED",
+      "reason": "Synchroner Home-Assistant-Timer-Callback; Fehler wird gemessen und der nächste gültige Termin deterministisch neu geplant.",
+      "body_digest": "ed6852886240eb4c"
+    },
+    {
+      "id": "custom_components/homeintent/event_runtime_supervisor.py::EventWorkerSupervisor.run::1",
+      "path": "custom_components/homeintent/event_runtime_supervisor.py",
+      "line": 63,
+      "scope": "EventWorkerSupervisor.run",
+      "caught": "Exception",
+      "classification": "BOUNDARY_REQUIRED",
+      "reason": "Worker-Supervisor-Boundary; normale Laufzeitfehler werden in begrenzte Retry-/Circuit-Zustände übersetzt, Prozesssteuerungsausnahmen nicht.",
+      "body_digest": "7562ad77f0576466"
+    },
+    {
+      "id": "custom_components/homeintent/execution_trace.py::write_trace_file::1",
+      "path": "custom_components/homeintent/execution_trace.py",
+      "line": 600,
+      "scope": "write_trace_file",
+      "caught": "BaseException",
+      "classification": "RETHROW",
+      "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
+      "body_digest": "686c35e4679bcabf"
     },
     {
       "id": "custom_components/homeintent/experience_store.py::ExperienceStore._write::1",
       "path": "custom_components/homeintent/experience_store.py",
       "line": 126,
       "scope": "ExperienceStore._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -732,6 +847,7 @@
       "path": "custom_components/homeintent/goal_run.py",
       "line": 282,
       "scope": "GoalRunStore._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -739,8 +855,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::async_execute_history_query::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 366,
+      "line": 369,
       "scope": "async_execute_history_query",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "8f145babcff8a65a"
@@ -748,8 +865,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::_async_execute_comparative_history_query::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 397,
+      "line": 400,
       "scope": "_async_execute_comparative_history_query",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "1a43875323740459"
@@ -757,8 +875,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::_recorder_job::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 532,
+      "line": 535,
       "scope": "_recorder_job",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "00cefcbaaf3cd471"
@@ -766,8 +885,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::_async_execute_state_history_query::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 554,
+      "line": 557,
       "scope": "_async_execute_state_history_query",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "1295908cc35d7852"
@@ -775,8 +895,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::async_read_numeric_samples::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 593,
+      "line": 596,
       "scope": "async_read_numeric_samples",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "e5993174daef5032"
@@ -784,8 +905,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::async_read_state_rows::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 636,
+      "line": 639,
       "scope": "async_read_state_rows",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "243bfc3067415492"
@@ -793,8 +915,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::async_get_transition_evidence::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 682,
+      "line": 685,
       "scope": "async_get_transition_evidence",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "28f50768711eb743"
@@ -802,8 +925,9 @@
     {
       "id": "custom_components/homeintent/history_query.py::async_read_forecast::1",
       "path": "custom_components/homeintent/history_query.py",
-      "line": 722,
+      "line": 725,
       "scope": "async_read_forecast",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "37ecd297c57c1386"
@@ -813,6 +937,7 @@
       "path": "custom_components/homeintent/learning_center_ws.py",
       "line": 224,
       "scope": "_HassLabels.__init__",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "29e40ee70a1a070d"
@@ -822,6 +947,7 @@
       "path": "custom_components/homeintent/learning_center_ws.py",
       "line": 277,
       "scope": "_users",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "162b3e6f59527dad"
@@ -831,6 +957,7 @@
       "path": "custom_components/homeintent/learning_center_ws.py",
       "line": 769,
       "scope": "_exposed_snapshots",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "ab441b493f68997c"
@@ -840,6 +967,7 @@
       "path": "custom_components/homeintent/model_registry.py",
       "line": 435,
       "scope": "ModelRegistry._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -849,6 +977,7 @@
       "path": "custom_components/homeintent/monitor_goal.py",
       "line": 240,
       "scope": "MonitorGoalStore._replace_cache",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "1c7daa961fc7d1f9"
@@ -858,6 +987,7 @@
       "path": "custom_components/homeintent/monitor_goal.py",
       "line": 299,
       "scope": "MonitorGoalStore._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -867,6 +997,7 @@
       "path": "custom_components/homeintent/native_timer.py",
       "line": 173,
       "scope": "NativeTimerRuntime.async_load_journal",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "237d26e50ddeb05f"
@@ -876,6 +1007,7 @@
       "path": "custom_components/homeintent/native_timer.py",
       "line": 198,
       "scope": "NativeTimerRuntime._async_save_journal",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "57828d3024df4c6e"
@@ -885,6 +1017,7 @@
       "path": "custom_components/homeintent/native_timer.py",
       "line": 278,
       "scope": "NativeTimerRuntime._handle_timer_event",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "103a7dc75519735d"
@@ -894,6 +1027,7 @@
       "path": "custom_components/homeintent/native_timer.py",
       "line": 286,
       "scope": "NativeTimerRuntime._async_announce",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "d8955770fab9530f"
@@ -903,6 +1037,7 @@
       "path": "custom_components/homeintent/native_timer.py",
       "line": 322,
       "scope": "NativeTimerRuntime._async_play_chime",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "5401f8afbc8c76b8"
@@ -912,6 +1047,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 224,
       "scope": "ProactiveRuntime.async_start",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "578080a4b95d67e4"
@@ -921,6 +1057,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 343,
       "scope": "ProactiveRuntime._companion_device",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "c3fde88d2b8da1fb"
@@ -930,6 +1067,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 481,
       "scope": "ProactiveRuntime.satellites",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "834489e8cbab9875"
@@ -939,6 +1077,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 512,
       "scope": "ProactiveRuntime.async_is_admin",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "b7cdae0b33a8d009"
@@ -948,6 +1087,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 533,
       "scope": "ProactiveRuntime.async_deliver",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "6d5e315a04dda336"
@@ -957,6 +1097,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 550,
       "scope": "ProactiveRuntime.async_deliver",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "875e6d4fa0e2c906"
@@ -966,6 +1107,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 600,
       "scope": "ProactiveRuntime.async_deliver",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "86242981239f6efc"
@@ -975,6 +1117,7 @@
       "path": "custom_components/homeintent/proactive_runtime.py",
       "line": 621,
       "scope": "ProactiveRuntime._async_push_feedback",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "583b85bece13a4b0"
@@ -984,6 +1127,7 @@
       "path": "custom_components/homeintent/proactive_store.py",
       "line": 303,
       "scope": "GenerationalJsonFile._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -993,6 +1137,7 @@
       "path": "custom_components/homeintent/profiles.py",
       "line": 159,
       "scope": "ProfileStore._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -1002,6 +1147,7 @@
       "path": "custom_components/homeintent/report_runtime.py",
       "line": 199,
       "scope": "async_monitor_findings",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "ab441b493f68997c"
@@ -1011,6 +1157,7 @@
       "path": "custom_components/homeintent/response_style.py",
       "line": 178,
       "scope": "_device_entities",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "ab441b493f68997c"
@@ -1020,6 +1167,7 @@
       "path": "custom_components/homeintent/response_style.py",
       "line": 243,
       "scope": "async_play_tone",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "f7963fec11733014"
@@ -1029,6 +1177,7 @@
       "path": "custom_components/homeintent/response_style.py",
       "line": 254,
       "scope": "async_play_tone",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "d8b1846d1ca6accb"
@@ -1038,6 +1187,7 @@
       "path": "custom_components/homeintent/service_executor.py",
       "line": 235,
       "scope": "_async_execute_service_plan",
+      "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
       "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
       "body_digest": "990950b5e721b06f"
@@ -1047,6 +1197,7 @@
       "path": "custom_components/homeintent/shadow_runtime.py",
       "line": 75,
       "scope": "ShadowRuntime.observe",
+      "caught": "Exception",
       "classification": "FALLBACK",
       "reason": "Dokumentierter Best-Effort-/Unavailable-Fallback ohne Schreibfreigabe.",
       "body_digest": "36b04e843f67a3f3"
@@ -1056,6 +1207,7 @@
       "path": "custom_components/homeintent/thermal_deadline.py",
       "line": 285,
       "scope": "PendingThermalCheckpointStore._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -1065,6 +1217,7 @@
       "path": "custom_components/homeintent/thermal_tracker.py",
       "line": 442,
       "scope": "ThermalExperienceTracker._write_document",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
@@ -1074,6 +1227,7 @@
       "path": "custom_components/homeintent/user_context.py",
       "line": 275,
       "scope": "UserContextStore._write",
+      "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
       "body_digest": "6724d248fca381f9"
