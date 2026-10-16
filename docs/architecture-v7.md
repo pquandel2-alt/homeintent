@@ -2,6 +2,10 @@
 
 Stand: 5. September 2026
 
+Die gemessenen, schrittweisen Extraktionsgrenzen für den v7.9.9-Stand sind
+in [`architecture-7.9.9-extraction-boundaries.md`](architecture-7.9.9-extraction-boundaries.md)
+dokumentiert.
+
 ## Produktgrenze
 
 HomeIntent V7 versteht Bedeutung innerhalb der unterstützten Smart-Home-
