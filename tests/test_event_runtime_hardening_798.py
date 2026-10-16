@@ -693,6 +693,8 @@ def test_event_evaluation_exception_is_counted_without_worker_restart(monkeypatc
 
 
 def test_long_running_state_end_to_end_threshold_and_deduplication(monkeypatch):
+    clock = [T0]
+    monkeypatch.setattr(event_runtime.dt_util, "utcnow", lambda: clock[0])
     agent = _agent()
     harness = _Harness(
         monkeypatch,
@@ -721,10 +723,12 @@ def test_long_running_state_end_to_end_threshold_and_deduplication(monkeypatch):
     async def scenario() -> None:
         stop = harness.runtime.async_start()
         harness.house.offset = 30 * 60 * 1000
+        clock[0] = T0 + timedelta(minutes=30)
         fire_attribute_update("below")
         await _settle(harness.hass)
         assert agent.async_signal.await_count == 0
         harness.house.offset = 61 * 60 * 1000
+        clock[0] = T0 + timedelta(minutes=61)
         fire_attribute_update("above")
         await _settle(harness.hass)
         fire_attribute_update("another attribute")

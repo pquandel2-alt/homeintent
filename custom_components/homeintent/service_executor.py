@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Mapping, Sequence
 
 from homeassistant.core import Context, HomeAssistant
@@ -12,7 +13,13 @@ from .audit_log import AuditTrail
 from .entities import STATELESS_ACTION_DOMAINS, EntitySnapshot
 from .effect_graph import build_plan_effects
 from .effect_monitor import EffectMonitor
-from .execution_context import UNAUTHORIZED_TEXT, current_turn, is_unauthorized, new_execution_context
+from .execution_context import (
+    TECHNICAL_FAILURE_TEXT,
+    UNAUTHORIZED_TEXT,
+    current_turn,
+    is_unauthorized,
+    new_execution_context,
+)
 from .execution_trace import record_execution
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
 from .plan_origin import PlanOrigin
@@ -20,6 +27,9 @@ from .risk import RiskLevel
 from .service_call import ServiceCallPlan
 from .effect_wait import PendingEffect, expectations_for, judge_now
 from .turn_outcome import TurnOutcomeKind, defer_outcome, report_outcome
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -225,7 +235,13 @@ async def _async_execute_service_plan(
     except Exception as err:  # noqa: BLE001 - HA service failures are heterogeneous
         if is_unauthorized(err):
             return ExecutionResult(False, decision, UNAUTHORIZED_TEXT, execution)
-        return ExecutionResult(False, decision, str(err), execution)
+        _LOGGER.exception(
+            "HomeIntent service call %s.%s failed for %s",
+            plan.domain,
+            plan.service,
+            plan.entity_id,
+        )
+        return ExecutionResult(False, decision, TECHNICAL_FAILURE_TEXT, execution)
     from homeassistant.util import dt as dt_util
 
     now = dt_util.now()

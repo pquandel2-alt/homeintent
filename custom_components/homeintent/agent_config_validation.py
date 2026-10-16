@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import time
 from pathlib import PurePath
-from typing import Iterable, cast
+from typing import Any, Iterable, cast
 
 
 EVENT_CATEGORIES = frozenset(
@@ -20,6 +20,8 @@ EVENT_CATEGORIES = frozenset(
         "expected_effect_missing",
     }
 )
+
+MAX_LONG_RUNNING_MINUTES = 10080
 
 
 def validate_quiet_time(value: object) -> str:
@@ -65,3 +67,23 @@ def parse_event_categories(value: object) -> frozenset[str]:
     if not categories <= EVENT_CATEGORIES:
         raise ValueError("Unbekannte Ereigniskategorie")
     return categories
+
+
+def parse_long_running_minutes(value: object) -> int:
+    """Normalize the stored option exactly like the options-flow integer field.
+
+    Runtime callers deliberately fail closed (disabled) when old or manually
+    edited storage contains a value the options flow would reject.
+    """
+    if isinstance(value, bool):
+        raise ValueError("Langläufer-Schwelle muss eine ganze Zahl sein")
+    try:
+        # Stored HA options are an untyped persistence boundary.  ``int`` is
+        # intentionally the same coercion as the options flow; the exception
+        # below turns everything else into a stable validation error.
+        minutes = int(cast(Any, value))
+    except (TypeError, ValueError) as err:
+        raise ValueError("Langläufer-Schwelle muss eine ganze Zahl sein") from err
+    if not 0 <= minutes <= MAX_LONG_RUNNING_MINUTES:
+        raise ValueError("Langläufer-Schwelle liegt außerhalb des erlaubten Bereichs")
+    return minutes

@@ -30,6 +30,7 @@ from homeintent.const import (  # noqa: E402
 )
 from homeintent.runtime_data import HomeIntentRuntimeData  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
+from homeintent.execution_context import TECHNICAL_FAILURE_TEXT  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
 from homeassistant.core import HomeAssistant, State  # noqa: E402
 from homeassistant.helpers import entity_registry as er  # noqa: E402
@@ -558,7 +559,8 @@ def test_service_failure_is_recorded_as_failed_and_reported(monkeypatch, tmp_pat
 
     stored = asyncio.run(scenario())
     assert stored.state is AgentEventState.FAILED
-    assert stored.last_error == "service unavailable"
+    assert stored.last_error == TECHNICAL_FAILURE_TEXT
+    assert "service unavailable" not in stored.last_error
     assert hass.services.async_call.await_count == 2
 
 

@@ -70,6 +70,7 @@ def system_context_for_turn() -> Context:
 
 
 UNAUTHORIZED_TEXT = "Home Assistant erlaubt diesem Benutzer diese Aktion nicht."
+TECHNICAL_FAILURE_TEXT = "Home Assistant hat die Aktion nicht ausgeführt."
 
 
 def is_unauthorized(err: BaseException) -> bool:
@@ -77,13 +78,12 @@ def is_unauthorized(err: BaseException) -> bool:
 
 
 def user_facing_error(err: BaseException) -> str:
-    """A Home Assistant failure as it may be spoken: never raw ``Unauthorized``."""
+    """A Home Assistant failure safe for speech, without provider internals."""
     if is_unauthorized(err):
         return UNAUTHORIZED_TEXT
     if type(err).__name__ == "ServiceNotFound":
         return "Home Assistant kennt den dafür nötigen Dienst nicht."
-    text = str(err).strip()
-    return text or "Home Assistant hat die Aktion abgelehnt."
+    return TECHNICAL_FAILURE_TEXT
 
 
 def execution_id(context: Any) -> str | None:
