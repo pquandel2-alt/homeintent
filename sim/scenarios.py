@@ -540,6 +540,15 @@ S("auto-state-trigger", "Automationen", "Wenn Küchenfenster geöffnet wird, Kü
   say(YES, settle=3),
   set_("binary_sensor.kuechenfenster", "on", settle=2),
   check(state={"light.kuechenlicht": "on"}))
+S("testbed-full-reset-isolation", "Testbett", "Vollständiger Reset entfernt Szenario-Automationen vor Zustandsänderungen",
+  set_("binary_sensor.kuechenfenster", "off"),
+  say("Wenn das Küchenfenster geöffnet wird, schalte das Küchenlicht ein.", no_calls=True),
+  say(YES, settle=3),
+  service("haus_sim.clear_log"),
+  service("haus_sim.reset", {"full": True}),
+  set_("binary_sensor.kuechenfenster", "off"),
+  set_("binary_sensor.kuechenfenster", "on", settle=2),
+  check(no_calls=True))
 S("auto-numeric", "Automationen", "Temperatur unter 18 Grad → Heizung Büro 21 Grad",
   say("Wenn die Temperatur im Keller unter 12 Grad fällt, schalte das Kellerlicht ein.", no_calls=True),
   say(YES, settle=3),
@@ -560,6 +569,12 @@ S("auto-colortemp", "Automationen", "Automation mit Farbtemperatur (kelvin-Feld)
   say("Jeden Tag um 21 Uhr stelle das Bürolicht auf warmweiß.", no_calls=True),
   say(YES, settle=3, none=["fehler"]))
 S("auto-manage", "Automationen", "Automationen verwalten",
+  # Dieses Szenario muss unabhängig von ``auto-sun`` ausführbar bleiben:
+  # vollständige Szenario-Resets entfernen absichtlich alle zuvor von
+  # HomeIntent angelegten Automationen.
+  say("Bei Sonnenuntergang schalte die Außenbeleuchtung ein.", no_calls=True, any=["jeden tag"]),
+  say("Jeden Tag.", no_calls=True, any=["erstellt werden"]),
+  say(YES, settle=3, any=["erstellt"]),
   say("Zeige nur HomeIntent-Automationen.", any=["automation"]),
   say("Wie viele HomeIntent-Automationen sind aktiv?", any=["aktiv"]),
   say("Welche Automation steuert die Außenbeleuchtung?", any=["sonnenuntergang", "außenbeleuchtung"]),

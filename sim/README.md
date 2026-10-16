@@ -32,7 +32,7 @@ uv venv --python 3.14 ../havenv && uv pip install --python ../havenv/bin/python 
 
 HASS=../havenv/bin/hass ./run_ha.sh        # HA starten/neu starten (Port 8123)
 ../havenv/bin/python bootstrap.py          # Onboarding, Benutzer, Integrationen, Freigaben, Statistik
-../havenv/bin/python runner.py             # alle Szenarien -> results/run.json
+../havenv/bin/python runner.py --full-reset # alle Szenarien hermetisch -> results/run.json
 ../havenv/bin/python runner.py --category Kalender -v
 ../havenv/bin/python say.py "Schalte das Küchenlicht ein." "Und jetzt wieder aus."
 ../havenv/bin/python dump.py results/run.json dev-light   # Transkripte
@@ -67,3 +67,7 @@ Seit 7.9.3:
 `./fresh_ha.sh` erledigt den sauberen Neustart samt `bootstrap.py` in einem
 Schritt (für Vergleichsläufe immer frisch starten: Listen, Bindungen und
 Verlauf eines früheren Laufs verfälschen sonst einzelne Szenarien).
+Für vollständige Katalogläufe entfernt `--full-reset` außerdem zwischen den
+Szenarien dynamisch angelegte Automationen, Listen- und Timerzustände. Die CI
+verwendet diesen Modus, damit kein Szenario asynchrone Wirkungen in ein späteres
+Szenario übertragen kann.

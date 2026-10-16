@@ -335,7 +335,7 @@ jobs:
           sim/fresh_ha.sh
       - name: Szenarien ausführen
         working-directory: sim
-        run: ${RUNNER_TEMP}/havenv/bin/python runner.py --strict --exclude-category Proaktiv --out results/ci.json
+        run: ${RUNNER_TEMP}/havenv/bin/python runner.py --strict --full-reset --exclude-category Proaktiv --out results/ci.json
       - name: Home-Assistant-Log prüfen
         if: always()
         run: python sim/check_log.py
