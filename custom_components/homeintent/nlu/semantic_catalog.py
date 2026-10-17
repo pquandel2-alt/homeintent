@@ -240,7 +240,7 @@ CANONICAL_SPELLING_FORMS = frozenset({
 # operation/value words, not sentence templates.  Keeping them here prevents
 # the entity resolver and compiler from growing independent action lists.
 SEMANTIC_RESOLUTION_WORDS = frozenset({
-    "mache", "machen", "mach", "schalte", "schalten", "stelle", "stellen",
+    "mache", "machen", "mach", "haue", "hauen", "hau", "schalte", "schalten", "stelle", "stellen",
     "setze", "setzen", "fahre", "fahren", "fahr", "gefahren", "öffne",
     "öffnen", "schließe", "schließen", "drehe", "drehen", "lass", "lassen",
     "hoch", "runter", "herunter", "halb", "halbe", "halber", "halben",

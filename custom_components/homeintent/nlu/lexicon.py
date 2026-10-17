@@ -516,6 +516,7 @@ _ACTION_TEMPORAL_UNIT_SLOT_LIST = TextSlotList.from_tuples(
 _DAY_PART_HOUR_SLOT_LIST = TextSlotList.from_tuples(
     [
         ("morgens", "7"), ("früh", "7"), ("heute früh", "7"), ("morgen früh", "7"),
+        ("mitternacht", "0"), ("um mitternacht", "0"),
         ("vormittags", "10"),
         ("mittags", "12"),
         ("nachmittags", "15"),
