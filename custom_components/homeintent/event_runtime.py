@@ -109,6 +109,9 @@ WORKER_RETRY_MAX_SECONDS = 5.0
 WORKER_CIRCUIT_FAILURES = 5
 WORKER_RAPID_WINDOW_SECONDS = 60.0
 WORKER_MAX_RAPID_RESTARTS = 5
+# Once the circuit is open, repeated failures are summarized at this cadence
+# instead of producing one traceback for every accepted state change.
+WORKER_STATUS_LOG_INTERVAL_SECONDS = 60.0
 # One heap and one timer for every selected long-running entity; never one
 # task per entity.  Stale heap rows are compacted before this hard ceiling.
 MAX_LONG_RUNNING_TIMERS = 4096
@@ -335,11 +338,16 @@ class _Generation:
         self.created_queue = False
         self.snapshot_failures_in_row = 0
         self.worker_failures_in_row = 0
-        self.worker_failure_signature: tuple[str, str] | None = None
+        self.worker_failure_signature: str | None = None
         self.rapid_worker_failures: deque[float] = deque()
+        self.worker_circuit_open = False
+        self.worker_next_retry_at: float | None = None
         self.worker_suspended = False
+        # This event is a control signal, not a queue notification. Only a
+        # deliberate health reset or lifecycle stop may wake an open circuit.
         self.worker_wakeup = asyncio.Event()
         self.suppressed_worker_logs = 0
+        self.last_worker_status_log: float | None = None
         self.last_drop_warning: float | None = None
         self.last_critical_warning: float | None = None
         self.last_snapshot_error: float | None = None
@@ -624,6 +632,24 @@ class SituationRuntime:
     def has_pending(self, entity_id: str) -> bool:
         """A state change of ``entity_id`` still waits for its evaluation."""
         return entity_id in self._gen.unprocessed_by_entity
+
+    @callback
+    def reset_worker_circuit(self) -> bool:
+        """Reset a failed worker cycle and wake its supervised retry.
+
+        Normal events intentionally never call this method. It is a narrow
+        health/reload seam for operators and tests; a full integration reload
+        also resets the state by creating a new generation.
+        """
+        gen = self._gen
+        if not self._owns(gen) or not (
+            gen.worker_circuit_open or gen.worker_failures_in_row
+        ):
+            return False
+        self._reset_worker_failure_state(gen)
+        gen.worker_wakeup.set()
+        _LOGGER.info("HomeIntent event worker circuit was reset explicitly")
+        return True
 
     # -- lifecycle ---------------------------------------------------------
     def async_start(self) -> Any:
@@ -963,8 +989,6 @@ class SituationRuntime:
             latest.new_state = new_state
             metrics.queued += 1
             metrics.coalesced += 1
-            if gen.worker_suspended:
-                gen.worker_wakeup.set()
             return
         entry = _Entry(seq, raw_event, entity_id, old_state, new_state, priority)
         if gen.live >= MAX_PENDING_EVENTS and not self._make_room(gen, priority):
@@ -999,9 +1023,6 @@ class SituationRuntime:
             metrics.max_queue_depth = gen.live
         if self._worker is None or self._worker.done():
             self._start_worker(gen)
-        elif gen.worker_suspended:
-            # A genuinely new accepted event is a meaningful circuit wake-up.
-            gen.worker_wakeup.set()
         gen.update_retention()
 
     def _start_worker(self, gen: _Generation) -> None:
@@ -1022,14 +1043,20 @@ class SituationRuntime:
         self, gen: _Generation, task: asyncio.Task[None]
     ) -> None:
         """Retrieve terminal state and close the enqueue/finalization race."""
+        failure: BaseException | None = None
         if not task.cancelled():
             try:
-                task.exception()
+                failure = task.exception()
             except asyncio.CancelledError:
                 pass
         if self._worker is not task:
             return
         self._worker = None
+        # Interpreter/process-control exceptions must never enter normal
+        # recovery. Retrieving the exception above prevents an unhandled-task
+        # warning; leaving the queued work untouched keeps the failure visible.
+        if failure is not None and not isinstance(failure, Exception):
+            return
         if self._owns(gen) and gen.live:
             self._start_worker(gen)
 
@@ -1051,7 +1078,7 @@ class SituationRuntime:
                 if self._owns(gen):
                     gen.rollback_lease()
                 raise
-            except BaseException as failure:  # noqa: BLE001 - supervisor isolation boundary
+            except Exception as failure:  # noqa: BLE001 - supervisor isolation boundary
                 if not self._owns(gen):
                     return
                 restored = gen.rollback_lease()
@@ -1060,19 +1087,16 @@ class SituationRuntime:
                     metrics.batch_retries += 1
                     metrics.batch_requeued_events += restored
                 metrics.worker_unexpected_exits += 1
-                signature = (type(failure).__name__, str(failure))
-                if signature == gen.worker_failure_signature:
-                    gen.worker_failures_in_row += 1
-                    gen.suppressed_worker_logs += 1
-                else:
-                    gen.worker_failure_signature = signature
-                    gen.worker_failures_in_row = 1
-                    gen.suppressed_worker_logs = 0
+                gen.worker_failures_in_row += 1
+                if gen.worker_failure_signature is None:
+                    gen.worker_failure_signature = type(failure).__name__
                     _LOGGER.error(
                         "HomeIntent event worker failed with %s pending events",
                         gen.live,
                         exc_info=(type(failure), failure, failure.__traceback__),
                     )
+                else:
+                    gen.suppressed_worker_logs += 1
                 now = time.monotonic()
                 gen.rapid_worker_failures.append(now)
                 while (
@@ -1090,7 +1114,7 @@ class SituationRuntime:
                     WORKER_RETRY_BASE_SECONDS * (2 ** exponent),
                 )
                 if circuit:
-                    if not gen.worker_suspended:
+                    if not gen.worker_circuit_open:
                         metrics.worker_circuit_breaks += 1
                         _LOGGER.error(
                             "HomeIntent event worker suspended after %s repeated failures; "
@@ -1098,9 +1122,29 @@ class SituationRuntime:
                             gen.worker_failures_in_row,
                             gen.suppressed_worker_logs,
                         )
+                        gen.worker_circuit_open = True
+                        gen.last_worker_status_log = now
+                    elif (
+                        gen.last_worker_status_log is None
+                        or now - gen.last_worker_status_log
+                        >= WORKER_STATUS_LOG_INTERVAL_SECONDS
+                    ):
+                        gen.last_worker_status_log = now
+                        _LOGGER.warning(
+                            "HomeIntent event worker remains suspended with %s pending "
+                            "events; %s failure log(s) suppressed",
+                            gen.live,
+                            gen.suppressed_worker_logs,
+                        )
                     gen.worker_suspended = True
                     metrics.worker_suspended = 1
                     delay = WORKER_RETRY_MAX_SECONDS
+                    gen.worker_next_retry_at = now + delay
+                    # Clear before yielding so an explicit reset cannot be
+                    # lost between the state transition and the wait.
+                    gen.worker_wakeup.clear()
+                else:
+                    gen.worker_next_retry_at = None
                 metrics.worker_backoffs += 1
                 metrics.worker_backoff_milliseconds += round(delay * 1000)
                 try:
@@ -1109,33 +1153,47 @@ class SituationRuntime:
                     metrics.worker_cancellations += 1
                     raise
                 continue
-            if gen.worker_failures_in_row:
+            failures = gen.worker_failures_in_row
+            was_open = gen.worker_circuit_open
+            suppressed = gen.suppressed_worker_logs
+            if failures:
                 metrics.worker_recoveries += 1
-            gen.worker_failures_in_row = 0
-            gen.worker_failure_signature = None
-            gen.rapid_worker_failures.clear()
-            gen.suppressed_worker_logs = 0
-            gen.worker_suspended = False
-            metrics.worker_suspended = 0
+                if was_open:
+                    _LOGGER.info(
+                        "HomeIntent event worker recovered after %s failures; "
+                        "%s failure log(s) were suppressed",
+                        failures,
+                        suppressed,
+                    )
+            self._reset_worker_failure_state(gen)
         gen.update_retention()
+
+    @staticmethod
+    def _reset_worker_failure_state(gen: _Generation) -> None:
+        """Close one failure cycle without touching queued or leased work."""
+        gen.worker_failures_in_row = 0
+        gen.worker_failure_signature = None
+        gen.rapid_worker_failures.clear()
+        gen.suppressed_worker_logs = 0
+        gen.worker_circuit_open = False
+        gen.worker_next_retry_at = None
+        gen.worker_suspended = False
+        gen.last_worker_status_log = None
+        gen.metrics.worker_suspended = 0
 
     async def _async_worker_backoff(
         self, gen: _Generation, delay: float, *, wakeable: bool
     ) -> None:
-        """Wait without blocking the bus callback; a new event may close a circuit."""
+        """Wait without blocking callbacks; only a health reset wakes a circuit."""
         if not wakeable:
             await asyncio.sleep(delay)
             return
-        gen.worker_wakeup.clear()
         try:
             await asyncio.wait_for(gen.worker_wakeup.wait(), timeout=delay)
         except TimeoutError:
             pass
         else:
             gen.metrics.worker_wakeups += 1
-        finally:
-            gen.worker_suspended = False
-            gen.metrics.worker_suspended = 0
 
     def _make_room(self, gen: _Generation, priority: EventPriority) -> bool:
         """Evict one entry of lower rank for an incoming ``priority`` event.

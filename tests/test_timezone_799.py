@@ -8,6 +8,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import _ha_stub
+
+_ha_stub.install()
+
 from homeassistant.util import dt as dt_util
 from homeintent.household_query import _format_datetime
 
@@ -45,4 +48,3 @@ def test_berlin_dst_transition_is_rendered_by_instant(monkeypatch, instant, expe
     now = datetime(2026, 10, 15, 12, tzinfo=berlin)
 
     assert expected in (_format_datetime(instant, now) or "")
-
