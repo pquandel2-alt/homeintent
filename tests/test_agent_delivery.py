@@ -51,6 +51,21 @@ def test_quiet_hours_suppress_comfort_tts_but_never_critical_tts():
     hass.services.async_call.assert_awaited_once()
 
 
+def test_provider_exception_details_never_leave_delivery_boundary(caplog):
+    secret = "/config/secrets.yaml token=super-secret api_key=123456"
+    hass = HomeAssistant()
+    hass.services.async_call.side_effect = RuntimeError(secret)
+    result = asyncio.run(
+        AgentDelivery(hass).async_deliver(
+            _event(critical=False), {"agent_delivery_channels": ["push"]}
+        )
+    )
+
+    assert result.errors == ("push:RuntimeError",)
+    assert secret not in repr(result)
+    assert secret not in caplog.text
+
+
 def test_typed_push_uses_exact_bound_mobile_app_service_without_broadcast():
     hass = HomeAssistant()
     hass.services.async_register("notify", "mobile_app_iphone", lambda _call: None)

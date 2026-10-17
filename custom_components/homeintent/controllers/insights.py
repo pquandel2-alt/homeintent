@@ -44,6 +44,8 @@ from ..history_query import async_read_forecast, async_read_state_rows
 from ..automation_ownership import HOUSEHOLD_OWNER
 from ..dialog_manager import DialogPriority, DialogTaskKind
 from ..execution_trace import actor_hash
+from ..execution_context import user_facing_error
+from ..error_logging import log_rate_limited_boundary_failure
 from ..habit_suggestions import (
     MIN_DAYS,
     WINDOW_DAYS,
@@ -577,8 +579,15 @@ class InsightsController:
                 config, owner_user_id=owner
             )
         except Exception as err:  # noqa: BLE001 - nothing half-created stays
+            log_rate_limited_boundary_failure(
+                _LOGGER, "HomeIntent report automation setup", err
+            )
             store.records.pop(report_id, None)
-            return self._result(user_input, response, f"Der Bericht konnte nicht eingerichtet werden: {err}")
+            return self._result(
+                user_input,
+                response,
+                f"Der Bericht konnte nicht eingerichtet werden: {user_facing_error(err)}",
+            )
         store.records[report_id].automation_id = automation_id
         await self.hass.async_add_executor_job(store.save)
         report_outcome(TurnOutcomeKind.EXECUTED)
@@ -744,9 +753,20 @@ class InsightsController:
             for automation_id in created:
                 try:
                     await executor.async_delete_automation(automation_id)
-                except Exception:  # noqa: BLE001
-                    pass
-            return self._result(user_input, response, f"Der Urlaubsmodus konnte nicht eingerichtet werden: {err}")
+                except Exception as rollback_err:  # noqa: BLE001 - best-effort rollback
+                    log_rate_limited_boundary_failure(
+                        _LOGGER,
+                        "HomeIntent vacation automation rollback",
+                        rollback_err,
+                    )
+            log_rate_limited_boundary_failure(
+                _LOGGER, "HomeIntent vacation automation setup", err
+            )
+            return self._result(
+                user_input,
+                response,
+                f"Der Urlaubsmodus konnte nicht eingerichtet werden: {user_facing_error(err)}",
+            )
         if plan.helper is not None:
             await self._switch_helper(user_input, entities, plan.helper, "turn_on")
         await self.hass.async_add_executor_job(store.save, VacationRecord(

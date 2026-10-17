@@ -118,10 +118,14 @@ class V10ProposalRunner:
                 is_admin=is_admin,
                 user_id=user_id,
             )
-        except PermissionError as err:
-            return ProactiveExecutionResult(ProactiveExecutionStatus.BLOCKED, None, None, str(err))
-        except ValueError as err:
-            return ProactiveExecutionResult(ProactiveExecutionStatus.STALE, None, None, str(err))
+        except PermissionError:
+            return ProactiveExecutionResult(
+                ProactiveExecutionStatus.BLOCKED, None, None, "policy_denied"
+            )
+        except ValueError:
+            return ProactiveExecutionResult(
+                ProactiveExecutionStatus.STALE, None, None, "plan_stale"
+            )
         if not any(step.kind is StepKind.ACTION for step in plan.steps):
             # Desired state already holds: a no-op is not a device action.
             return ProactiveExecutionResult(

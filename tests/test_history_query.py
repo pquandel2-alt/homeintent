@@ -186,7 +186,8 @@ def test_recorder_unavailable_degrades_cleanly(caplog):
 
     hass = type("Hass", (), {"services": Services()})()
     assert "nicht verfügbar" in asyncio.run(async_execute_history_query(hass, query))
-    assert "Recorder statistics query failed: recorder disabled" in caplog.text
+    assert "Recorder statistics query failed: RuntimeError" in caplog.text
+    assert "recorder disabled" not in caplog.text
 
 
 def test_comparative_recorder_failure_is_logged(caplog):
@@ -201,7 +202,8 @@ def test_comparative_recorder_failure_is_logged(caplog):
 
     hass = type("Hass", (), {"services": Services()})()
     assert "nicht verfügbar" in asyncio.run(async_execute_history_query(hass, query))
-    assert "Recorder comparison query failed: comparison unavailable" in caplog.text
+    assert "Recorder comparison query failed: RuntimeError" in caplog.text
+    assert "comparison unavailable" not in caplog.text
 
 
 def test_state_history_failure_is_logged(caplog):
