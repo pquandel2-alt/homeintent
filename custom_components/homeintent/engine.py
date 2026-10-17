@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 
 from hassil import Intents
 
@@ -771,17 +771,37 @@ def _names_its_target(
     document: LanguageDocument, entity_id: str, entities: list[EntitySnapshot]
 ) -> bool:
     """Whether the utterance names this device (name or alias), not a kind."""
-    entity = next((item for item in entities if item.entity_id == entity_id), None)
-    if entity is None:
-        return True
+    return _names_its_targets(document, (entity_id,), entities)
+
+
+def _names_its_targets(
+    document: LanguageDocument,
+    entity_ids: Collection[str],
+    entities: list[EntitySnapshot],
+) -> bool:
+    """Whether every requested device is named, with one registry scan."""
+    requested = frozenset(entity_ids)
+    by_id = {
+        entity.entity_id: entity
+        for entity in entities
+        if entity.entity_id in requested
+    }
     spoken = " " + " ".join(token.canonical for token in document.tokens if token.is_word) + " "
-    names = (entity.friendly_name, *entity.aliases)
-    return any(
-        f" {normalize_for_compare(name)} " in spoken
-        or normalize_for_compare(name).replace(" ", "") in spoken.replace(" ", "")
-        for name in names
-        if name
-    )
+    compact_spoken = spoken.replace(" ", "")
+    for entity_id in requested:
+        entity = by_id.get(entity_id)
+        if entity is None:
+            continue
+        names = (entity.friendly_name, *entity.aliases)
+        if not any(
+            f" {normalized} " in spoken
+            or normalized.replace(" ", "") in compact_spoken
+            for name in names
+            if name
+            for normalized in (normalize_for_compare(name),)
+        ):
+            return False
+    return True
 
 
 _REST_IGNORED = frozenset({
@@ -1421,10 +1441,7 @@ class NluEngine:
                 and compiled.executable
                 and compiled_targets
                 and not legacy_has_plan
-                and all(
-                    _names_its_target(document, entity_id, entities)
-                    for entity_id in compiled_targets
-                )
+                and _names_its_targets(document, compiled_targets, entities)
             )
             if (
                 compiled.message is not None
