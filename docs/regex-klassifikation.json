@@ -936,7 +936,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/automation_trigger_parser.py::_AUTOMATION_TRIGGER_RE::28bf3bceb1",
+   "id": "custom_components/homeintent/automation_trigger_parser.py::_AUTOMATION_TRIGGER_RE::fbfd3d2298",
    "datei": "custom_components/homeintent/automation_trigger_parser.py",
    "bereich": "_AUTOMATION_TRIGGER_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
