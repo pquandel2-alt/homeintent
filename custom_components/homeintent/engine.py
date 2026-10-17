@@ -1376,6 +1376,9 @@ class NluEngine:
             legacy_commands = (
                 legacy.commands if isinstance(legacy, CommandPlan) else (legacy,)
             )
+            legacy_has_plan = any(
+                command.plan is not None for command in legacy_commands
+            )
             legacy_targets = {
                 entity_id
                 for command in legacy_commands
@@ -1413,6 +1416,16 @@ class NluEngine:
                 and not compiled_targets & legacy_targets
             )
             too_broad = too_broad or disagrees
+            exact_coordinated_targets = bool(
+                coordinated
+                and compiled.executable
+                and compiled_targets
+                and not legacy_has_plan
+                and all(
+                    _names_its_target(document, entity_id, entities)
+                    for entity_id in compiled_targets
+                )
+            )
             if (
                 compiled.message is not None
                 and compiled.clauses > 1
@@ -1422,7 +1435,10 @@ class NluEngine:
                 # refuse instead of executing a subset (finding S3).  The
                 # honest sentence is spoken via understanding_feedback().
                 return _REFUSED
-            if not (compiled.executable and (drops_clause or too_broad)):
+            if not (
+                compiled.executable
+                and (drops_clause or too_broad or exact_coordinated_targets)
+            ):
                 return None
         if compiled.message is not None:
             # Honest non-results are spoken through understanding_feedback();

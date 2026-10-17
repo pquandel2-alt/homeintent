@@ -184,6 +184,11 @@ def read_clauses(
             return ()
         spoken_step = relative_amount(normalized)
         ignore = frozenset(operation_words | FILLER_WORDS | frozenset(DEGREE_WORDS))
+        if len(ranges) > 1 and words_here and words_here[0] == "erst":
+            # Ordering marker only in a proven multi-clause sequence.  In a
+            # single clause ("die Meldung erst unter 15 Prozent") it scopes
+            # the threshold and must remain semantic content.
+            ignore |= {"erst"}
         if spoken_step is not None:
             ignore |= {"um"}
         descriptions, residue = describe_with_residue(

@@ -95,6 +95,10 @@ COMMAND_MARKER_EXPRESSIONS: tuple[str, ...] = (
     # Verb class "einschalten" (7.6.0): colloquial members.
     r"(?:an)?wirf", r"(?:an)?werf(?:e|en|t)?", r"(?:an)?knips(?:e|en|t)?",
     r"(?:an)?schmeiß(?:e|en|t)?", r"(?:an)?schmeiss(?:e|en|t)?",
+    # Colloquial support verb ("hau die Rollläden runter").  It contributes
+    # only command modality; the separable direction still supplies the
+    # typed operation, so "hau" alone can never select a service.
+    r"hau(?:e|en|st|t)?",
 )
 
 
