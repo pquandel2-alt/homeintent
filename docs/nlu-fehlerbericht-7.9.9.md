@@ -100,7 +100,7 @@ verlangt. `nlu/recurrence.py` dokumentiert diesen Vertrag ebenfalls. Eine
 Regel abschwächen. Die Korpuserwartung bleibt gemäß Auftrag unverändert; die
 drei Fehler bleiben transparent in den Kennzahlen enthalten.
 
-## Gemessene Änderung: formale Höflichkeitsframes
+## Gemessene strukturelle Änderungen
 
 Die gemeinsamen Hüllen „Dürfte ich dich bitten, …“ und ein direkt auf ein
 Anfragemodal folgendes „freundlicherweise“ werden tokenbasiert als
@@ -108,13 +108,24 @@ Pragmatikframe abgetrennt. Es wurde kein semantisches Satz-Regex ergänzt.
 Direktform und höfliche Form werden auf identische Operationen und Ziele
 geprüft; Negation und eingebettete Informationsfragen bleiben schreibfrei.
 
-- Gesamt: 462/503 → 464/503
-- Dev: unverändert 360/390
-- Held-out: 102/113 → 104/113
+Zusätzlich wird „Mitternacht“ als lexikalischer Wert des vorhandenen
+Zeit-Trigger-Slots auf `00:00` abgebildet. Das umgangssprachliche „hau“ trägt
+nur Befehlsmodalität bei; erst eine separat erkannte Richtung wie „runter“
+liefert eine typisierte Operation. Bei „erst …, dann …“ darf die
+kompositionale Koordination einen älteren Clarification-Kandidaten nur
+überstimmen, wenn jedes Ziel im aktuellen Registry-Snapshot wörtlich benannt
+und eindeutig geerdet ist. Generische oder negierte Varianten bleiben
+schreibfrei.
+
+- Gesamt: 462/503 → 467/503
+- Dev: 360/390 → 362/390
+- Held-out: 102/113 → 105/113
 - Höflichkeit: 18/21 → 20/21
-- UNDERSTANDING: 24 → 22
-- Automation: unverändert 29/38
-- Mehrfach: unverändert 15/21
+- Umgangssprache: 23/24 → 24/24
+- UNDERSTANDING: 24 → 20
+- AMBIGUITY: 6 → 5
+- Automation: 29/38 → 30/38
+- Mehrfach: 15/21 → 16/21
 - `unsafe_execution_count`: unverändert 0
 - `SAFETY`: unverändert 0
 - Regex-Inventar: unverändert 402 LEXICAL, 37 MORPHOLOGICAL,
