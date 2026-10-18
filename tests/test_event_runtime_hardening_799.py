@@ -20,6 +20,7 @@ from test_event_runtime_hardening_796 import (
 
 from homeassistant.core import State
 from homeintent import event_runtime
+from homeintent import event_runtime_scheduler
 from homeintent.const import (
     CONF_AGENT_LONG_RUNNING_MINUTES,
     CONF_ROUTINE_DETECTION_ENABLED,
@@ -373,7 +374,7 @@ class _Timer:
         self.callback(*self.args)
 
 
-def test_long_running_scheduler_has_a_hard_capacity(monkeypatch):
+def test_long_running_scheduler_has_a_hard_capacity(monkeypatch, caplog):
     monkeypatch.setattr(event_runtime, "MAX_LONG_RUNNING_TIMERS", 2)
     timers: list[_Timer] = []
 
@@ -384,7 +385,12 @@ def test_long_running_scheduler_has_a_hard_capacity(monkeypatch):
 
     monkeypatch.setattr(event_runtime, "_schedule_later", schedule)
     monkeypatch.setattr(event_runtime.dt_util, "utcnow", lambda: T0)
-    ids = ["switch.capacity_1", "switch.capacity_2", "switch.capacity_3"]
+    ids = [
+        "switch.capacity_1",
+        "switch.capacity_2",
+        "switch.capacity_3",
+        "switch.capacity_4",
+    ]
     harness = _Harness(
         monkeypatch,
         ids,
@@ -401,10 +407,44 @@ def test_long_running_scheduler_has_a_hard_capacity(monkeypatch):
         await asyncio.sleep(0)
         assert len(harness.runtime._long_running) == 2
         assert len(harness.runtime._long_running_heap) <= 2
-        assert harness.metrics.long_running_capacity_rejected == 1
+        assert harness.metrics.long_running_capacity_rejected == 2
         stop()
 
     asyncio.run(scenario())
+    warnings = [
+        record for record in caplog.records
+        if "scheduler reached its 2-entity capacity" in record.getMessage()
+    ]
+    assert len(warnings) == 1
+
+
+def test_long_running_initialization_retries_transient_state_failure(monkeypatch):
+    harness = _Harness(
+        monkeypatch,
+        ["switch.initialization"],
+        categories="long_running_state",
+        options={CONF_AGENT_LONG_RUNNING_MINUTES: 1},
+    )
+    gen = harness.runtime._gen
+    gen.stopped = False
+    calls = 0
+
+    def async_all():
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise RuntimeError("transient state registry failure")
+        return []
+
+    async def no_wait(_delay):
+        return None
+
+    monkeypatch.setattr(harness.hass.states, "async_all", async_all)
+    monkeypatch.setattr(event_runtime_scheduler.asyncio, "sleep", no_wait)
+
+    asyncio.run(harness.runtime._async_initialize_long_running(gen))
+    assert calls == 3
+    assert harness.metrics.long_running_scheduler_failures == 2
 
 
 def test_long_running_threshold_fires_without_another_state_change(monkeypatch):
@@ -435,6 +475,8 @@ def test_long_running_threshold_fires_without_another_state_change(monkeypatch):
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         active = next(timer for timer in reversed(timers) if not timer.cancelled)
+        assert harness.metrics.retained_total == 0
+        assert harness.metrics.retained_total_all == 2
         now[0] = T0 + timedelta(minutes=1)
         active.fire()
         await _settle(harness.hass)
@@ -446,6 +488,7 @@ def test_long_running_threshold_fires_without_another_state_change(monkeypatch):
     assert harness.metrics.long_running_enqueued == 1
     assert harness.metrics.retained_long_running == 0
     assert harness.metrics.retained_long_running_heap == 0
+    assert harness.metrics.retained_total_all == 0
 
 
 def test_long_running_cancel_reschedule_restart_and_unload(monkeypatch):
