@@ -24,6 +24,106 @@ def test_frames_are_removed(text, rest):
     assert strip_pragmatic_frames(text, E).text == rest
 
 
+@pytest.mark.parametrize("text,rest", [
+    ("Dürfte ich dich bitten, den Badlüfter anzumachen?", "Mach den Badlüfter an"),
+    ("Duerfte ich dich bitten, die Markise einzufahren?", "Fahr die Markise ein"),
+    (
+        "Könntest du freundlicherweise die Markise einfahren?",
+        "Könntest du die Markise einfahren?",
+    ),
+])
+def test_formal_politeness_is_a_structural_frame(text, rest):
+    frames = strip_pragmatic_frames(text, E)
+    assert frames.text == rest
+    assert frames.politeness
+
+
+@pytest.mark.parametrize("direct,polite", [
+    ("Mach den Badlüfter an.", "Dürfte ich dich bitten, den Badlüfter anzumachen?"),
+    ("Fahr die Markise ein.", "Könntest du freundlicherweise die Markise einfahren?"),
+])
+def test_formal_politeness_preserves_the_direct_request(monkeypatch, direct, polite):
+    direct_turn = HouseConversation(monkeypatch).say(direct)
+    polite_turn = HouseConversation(monkeypatch).say(polite)
+    assert polite_turn.calls == direct_turn.calls
+    assert polite_turn.targets == direct_turn.targets
+
+
+@pytest.mark.parametrize("text", [
+    "Dürfte ich dich bitten, den Badlüfter nicht anzumachen?",
+    "Könntest du freundlicherweise die Markise nicht einfahren?",
+])
+def test_negation_inside_formal_politeness_never_executes(monkeypatch, text):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert turn.calls == []
+
+
+@pytest.mark.parametrize("text", [
+    "Dürfte ich dich bitten zu erklären, ob der Badlüfter an ist?",
+    "Könntest du freundlicherweise sagen, ob der Badlüfter an ist?",
+])
+def test_embedded_question_inside_formal_politeness_never_executes(monkeypatch, text):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert turn.calls == []
+
+
+@pytest.mark.parametrize("text", [
+    "Um Mitternacht schalte alle Lichter aus",
+    "Um Mitternacht mach die Lichter im Wohnzimmer aus",
+])
+def test_midnight_is_a_compositional_time_trigger(monkeypatch, text):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert turn.calls == []
+    assert "Automation erkannt" in turn.speech
+    assert "00:00" in turn.speech
+
+
+@pytest.mark.parametrize("text", [
+    "Nicht um Mitternacht schalte alle Lichter aus",
+    "Erkläre, was um Mitternacht mit den Lichtern passiert",
+])
+def test_midnight_does_not_turn_negation_or_questions_into_automations(monkeypatch, text):
+    turn = HouseConversation(monkeypatch).say(text)
+    assert turn.calls == []
+    assert "Automation erkannt" not in turn.speech
+
+
+def test_colloquial_support_verb_uses_the_structural_direction(monkeypatch):
+    direct = HouseConversation(monkeypatch).say("Fahr die Rollläden im Wohnzimmer runter")
+    colloquial = HouseConversation(monkeypatch).say("Hau mal die Rollläden im Wohnzimmer runter")
+    assert colloquial.calls == direct.calls
+    assert colloquial.targets == direct.targets
+
+
+@pytest.mark.parametrize("text", [
+    "Hau nicht die Rollläden im Wohnzimmer runter",
+    "Hau auf den Rollladen im Wohnzimmer",
+])
+def test_colloquial_support_verb_without_safe_direction_never_executes(monkeypatch, text):
+    assert HouseConversation(monkeypatch).say(text).calls == []
+
+
+def test_ordering_adverbs_preserve_two_independently_grounded_targets(monkeypatch):
+    turn = HouseConversation(monkeypatch).say(
+        "Erst das Flurlicht an, dann das Küchenlicht"
+    )
+    assert turn.targets == {"light.flurlicht", "light.kuechenlicht"}
+
+
+def test_ordering_adverb_does_not_erase_a_condition(monkeypatch):
+    turn = HouseConversation(monkeypatch).say(
+        "Erst wenn das Bürofenster offen ist, schalte das Bürolicht aus"
+    )
+    assert turn.calls == []
+
+
+def test_ordering_never_uses_a_generic_ambiguous_target(monkeypatch):
+    turn = HouseConversation(monkeypatch).say(
+        "Erst das Licht an, dann das Küchenlicht"
+    )
+    assert turn.calls == []
+
+
 @pytest.mark.parametrize("text", [
     "Wenn das Küchenfenster aufgeht, schalte den Badlüfter an",
     "Mach das Licht aus, das nicht",

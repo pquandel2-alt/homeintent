@@ -80,7 +80,9 @@ import re  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
 _AUTOMATION_TRIGGER_RE = re.compile(
-    r"\b(wenn|sobald|falls|bei sonnenaufgang|bei sonnenuntergang|^um \d)\b", re.IGNORECASE
+    r"\b(wenn|sobald|falls|bei sonnenaufgang|bei sonnenuntergang|"
+    r"^um (?:\d|mitternacht))\b",
+    re.IGNORECASE,
 )
 
 
