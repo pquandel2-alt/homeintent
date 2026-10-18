@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.9.9**
+- Aktuelle Version: **7.9.10**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -134,22 +134,22 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-## Version 7.9.9
+## Version 7.9.10
 
-7.9.9 stabilisiert die EventRuntime mit transaktionalen Batch-Leases, begrenztem
-Worker-Backoff/Circuit-Breaker, einer zentralen Langläufer-Terminverwaltung,
-domänenspezifischer Aktivitätserkennung und hermetischen Zeitzonentests.
-Safety-, Berechtigungs-, Bestätigungs- und `NEVER_AUTO`-Regeln bleiben
-unverändert. Details stehen in den
-[Release Notes](docs/release-notes-7.9.9.md).
+7.9.10 härtet Circuit-Retry-Fristen, Ausnahmegrenzen und die strukturelle
+deutsche Sprachverarbeitung. Queue, Metriken, Supervisor und Scheduler sind
+klarer getrennt; sensible technische Fehlerdetails bleiben von Antworten und
+persistierten Zuständen abgeschirmt. Safety-, Berechtigungs-, Bestätigungs-
+und `NEVER_AUTO`-Regeln bleiben unverändert. Details stehen in den
+[Release Notes](docs/release-notes-7.9.10.md).
 
-Geprüfter Release-Stand von Version 7.9.9: Die verpflichtenden GitHub-Prüfungen
+Geprüfter Release-Stand von Version 7.9.10: Die verpflichtenden GitHub-Prüfungen
 für den exakten veröffentlichten Commit sind erfolgreich abgeschlossen.
 
 Die versionierte Korpusbaseline ist
-[`corpus-signatures-7.9.9.json`](docs/perf/corpus-signatures-7.9.9.json).
+[`corpus-signatures-7.9.10.json`](docs/perf/corpus-signatures-7.9.10.json).
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.9.9.md), im
+in den [Release Notes](docs/release-notes-7.9.10.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 
