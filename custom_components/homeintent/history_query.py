@@ -33,8 +33,11 @@ def warn_recorder(what: str, err: BaseException | str, hass: object = None) -> N
     Assistant instance)."""
     import time
 
-    detail = err if isinstance(err, str) else str(err)
-    cause = err if isinstance(err, str) else f"{type(err).__name__}: {err}"
+    # Recorder/provider exceptions can embed SQL parameters, paths or tokens.
+    # Literal status strings below are controlled by HomeIntent; unexpected
+    # exceptions are grouped and logged by type only.
+    detail = err if isinstance(err, str) else type(err).__name__
+    cause = detail
     key = (id(hass), what, cause[:200])
     now = time.monotonic()
     last = _RECORDER_WARNED.get(key)

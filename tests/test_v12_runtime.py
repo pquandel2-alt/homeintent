@@ -232,9 +232,11 @@ def test_voice_and_push_delivery_payloads(tmp_path, monkeypatch, scheduled):
         assert receipt.push_bindings[0].user_id == "philipp"
         assert "entity_id" not in payload["data"]
         # Provider failure is reported, not raised.
-        hass.services.async_call = ServiceMock(side_effect=RuntimeError("down"))
+        secret = "/config/secrets.yaml token=super-secret api_key=123456"
+        hass.services.async_call = ServiceMock(side_effect=RuntimeError(secret))
         failed = await runtime.async_deliver(push)
         assert failed.delivered == () and failed.errors == ("push:RuntimeError",)
+        assert secret not in repr(failed)
         house = OutgoingMessage(
             CommunicationDecision(CommunicationChannel.VOICE, (CommunicationChannel.VOICE,), "philipp",
                                   None, (), False, False, ()),

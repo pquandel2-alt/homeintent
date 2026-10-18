@@ -79,6 +79,7 @@ from .automation_transaction import (
 )
 from .storage_migration import resolve_storage_path
 from .execution_context import system_context_for_turn
+from .error_logging import log_rate_limited_boundary_failure
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -397,8 +398,12 @@ class AutomationExecutor:
                 # way.
                 try:
                     await self._hass.services.async_call("automation", "reload", {}, blocking=True, context=system_context_for_turn())
-                except Exception:  # noqa: BLE001 - see comment above
-                    pass
+                except Exception as rollback_err:  # noqa: BLE001 - rollback reload is a HA boundary
+                    log_rate_limited_boundary_failure(
+                        _LOGGER,
+                        "HomeIntent automation reload after rollback",
+                        rollback_err,
+                    )
                 raise
             await self._async_complete_transaction()
 
