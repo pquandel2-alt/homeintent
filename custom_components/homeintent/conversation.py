@@ -15,10 +15,8 @@ default conversation agent does it.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
-import uuid
 from functools import partial
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Sequence
@@ -50,6 +48,7 @@ from .conversation_location import (
     materialize_local_reference,
     resolve_conversation_area,
 )
+from .conversation_scope import scope_conversation_input
 from .const import CONF_HOUSE_RELATIONS, DOMAIN
 from .dialog_manager import DialogPriority, DialogTaskKind
 from .engine import (
@@ -311,38 +310,6 @@ def _with_session_conversation_id(
     return replace(user_input, conversation_id=session_id)
 
 
-def _scope_conversation_id(
-    user_input: conversation.ConversationInput,
-) -> tuple[conversation.ConversationInput, str | None]:
-    """Use a private dialog key bound to the user or voice endpoint.
-
-    Home Assistant conversation ids are supplied by clients and are not an
-    identity boundary.  Two users or satellites may therefore present the
-    same id.  The scoped key is used only inside HomeIntent; the public id is
-    restored on the result returned to Home Assistant.
-
-    Turns without any session id receive a one-turn nonce.  They can still be
-    understood as complete commands, but can never inherit or establish a
-    reusable dialog context under a shared ``None`` key.
-    """
-    public_id = user_input.conversation_id
-    user_id = conversation_user_id(user_input)
-    satellite_id = getattr(user_input, "satellite_id", None)
-    device_id = getattr(user_input, "device_id", None)
-    if user_id:
-        principal_kind, principal_id = "user", user_id
-    elif isinstance(satellite_id, str) and satellite_id:
-        principal_kind, principal_id = "satellite", satellite_id
-    elif isinstance(device_id, str) and device_id:
-        principal_kind, principal_id = "device", device_id
-    else:
-        principal_kind, principal_id = "anonymous", ""
-    session_id = public_id if public_id else f"unbound:{uuid.uuid4().hex}"
-    material = "\0".join((principal_kind, principal_id, session_id)).encode()
-    scoped_id = "homeintent:" + hashlib.sha256(material).hexdigest()
-    return replace(user_input, conversation_id=scoped_id), public_id
-
-
 def _dialog_manager_kind(
     kind: PendingDialogKind,
 ) -> tuple[DialogTaskKind, DialogPriority]:
@@ -591,7 +558,7 @@ class NluConversationEntity(
         satellite microphones open after a plain "Mach das Licht an".
         """
         user_input = _with_session_conversation_id(user_input, chat_log)
-        user_input, public_conversation_id = _scope_conversation_id(user_input)
+        user_input, public_conversation_id = scope_conversation_input(user_input)
         proactive = self._runtime_data.proactive_context
         if proactive is not None:
             # An authenticated turn on a mapped satellite is short-lived room
@@ -1096,6 +1063,26 @@ class NluConversationEntity(
             # "Warum ist der Saugroboter angegangen?": answered only from HA's
             # context chain and the execution trace (7.3.2).
             cause_question = interpret_cause_question(language_document, entities)
+            if cause_question is not None and cause_question.clarification is not None:
+                response.response_type = intent.IntentResponseType.QUERY_ANSWER
+                response.async_set_speech(cause_question.clarification)
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
+            if (
+                cause_question is not None
+                and cause_question.entity is not None
+                and cause_question.omitted_homeintent_action
+            ):
+                response.response_type = intent.IntentResponseType.QUERY_ANSWER
+                response.async_set_speech(
+                    f"Für {cause_question.entity.friendly_name} habe ich keinen lokalen Nachweis "
+                    "eines fehlgeschlagenen Befehls. Ohne einen solchen Nachweis kann ich keinen "
+                    "Grund behaupten."
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=user_input.conversation_id
+                )
             cause = (
                 await self._queries.async_explain_cause(cause_question.entity)
                 if cause_question is not None and cause_question.entity is not None
