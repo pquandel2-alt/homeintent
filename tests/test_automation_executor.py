@@ -70,6 +70,19 @@ def _patch_metadata_write():
     return patch.object(automation_metadata_store, "write_utf8_file_atomic")
 
 
+def _trust_homeintent(executor, *automation_ids: str) -> None:
+    executor._metadata_store.async_load_all = AsyncMock(
+        return_value={
+            automation_id: {
+                "automation_id": automation_id,
+                "created_by": "homeintent",
+                "version": 1,
+            }
+            for automation_id in automation_ids
+        }
+    )
+
+
 @pytest.fixture(autouse=True)
 def _patch_transaction_journal_write(monkeypatch):
     """Ordinary executor unit tests keep all journal I/O in memory."""
@@ -280,15 +293,23 @@ def test_cleanup_removes_expired_scheduled_once_but_keeps_future_and_ordinary():
         executor = AutomationExecutor(hass)
         executor._metadata_store.async_load_all = AsyncMock(
             return_value={
-                "expired": {
-                    "once": True,
+                    "expired": {
+                        "automation_id": "expired",
+                        "created_by": "homeintent",
+                        "once": True,
                     "scheduled_for": "2026-08-21T11:59:00+00:00",
                 },
-                "future": {
-                    "once": True,
+                    "future": {
+                        "automation_id": "future",
+                        "created_by": "homeintent",
+                        "once": True,
                     "scheduled_for": "2026-08-21T12:01:00+00:00",
                 },
-                "ordinary": {"once": False},
+                    "ordinary": {
+                        "automation_id": "ordinary",
+                        "created_by": "homeintent",
+                        "once": False,
+                    },
             }
         )
         executor._metadata_store.async_delete = AsyncMock()
@@ -400,6 +421,7 @@ def test_delete_automation_removes_the_matching_entry_and_keeps_the_rest():
         _patch_metadata_write(),
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         asyncio.run(executor.async_delete_automation("abc123"))
 
     written_automations = dump_mock.call_args.args[0]
@@ -416,6 +438,7 @@ def test_delete_automation_calls_automation_reload_with_no_arguments():
         _patch_metadata_write(),
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         asyncio.run(executor.async_delete_automation("abc123"))
 
     hass.services.async_call.assert_awaited_once_with("automation", "reload", {}, blocking=True)
@@ -451,6 +474,7 @@ def test_delete_automation_removes_the_metadata_entry():
         ) as delete_mock,
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         asyncio.run(executor.async_delete_automation("abc123"))
 
     delete_mock.assert_awaited_once_with("abc123")
@@ -474,6 +498,7 @@ def test_a_delete_reload_failure_rolls_back_the_automations_yaml_write():
         ) as delete_mock,
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         with pytest.raises(RuntimeError, match="reload failed"):
             asyncio.run(executor.async_delete_automation("abc123"))
 
@@ -505,6 +530,7 @@ def test_disable_automation_sets_initial_state_false_and_keeps_the_rest():
         patch.object(automation_executor, "write_utf8_file_atomic") as write_mock,
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         asyncio.run(executor.async_disable_automation("abc123"))
 
     written_automations = dump_mock.call_args.args[0]
@@ -524,6 +550,7 @@ def test_enable_automation_sets_initial_state_true_explicitly():
         patch.object(automation_executor, "write_utf8_file_atomic"),
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         asyncio.run(executor.async_enable_automation("abc123"))
 
     written_automations = dump_mock.call_args.args[0]
@@ -538,6 +565,7 @@ def test_disable_automation_calls_automation_reload_with_no_arguments():
         patch.object(automation_executor, "write_utf8_file_atomic"),
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         asyncio.run(executor.async_disable_automation("abc123"))
 
     hass.services.async_call.assert_awaited_once_with("automation", "reload", {}, blocking=True)
@@ -572,6 +600,7 @@ def test_a_disable_reload_failure_rolls_back_the_automations_yaml_write():
         patch.object(automation_executor, "write_utf8_file_atomic"),
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         with pytest.raises(RuntimeError, match="reload failed"):
             asyncio.run(executor.async_disable_automation("abc123"))
 
@@ -594,6 +623,7 @@ def test_an_enable_reload_failure_rolls_back_the_automations_yaml_write():
         patch.object(automation_executor, "write_utf8_file_atomic"),
     ):
         executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
         with pytest.raises(RuntimeError, match="reload failed"):
             asyncio.run(executor.async_enable_automation("abc123"))
 
@@ -838,6 +868,8 @@ def test_delete_automation_removes_its_entity_registry_entry():
         patch.object(automation_executor, "write_utf8_file_atomic"),
         _patch_metadata_write(),
     ):
-        asyncio.run(AutomationExecutor(hass).async_delete_automation("abc123"))
+        executor = AutomationExecutor(hass)
+        _trust_homeintent(executor, "abc123")
+        asyncio.run(executor.async_delete_automation("abc123"))
 
     assert entity_id not in registry.entries

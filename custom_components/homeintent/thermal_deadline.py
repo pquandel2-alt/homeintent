@@ -381,7 +381,7 @@ async def async_process_thermal_checkpoint(
         )
         scheduled = await _checkpoint_run(goal_runs, checkpoint)
         if scheduled is not None:
-            tracker.associate_goal_run(scheduled)
+            await tracker.async_associate_goal_run(scheduled)
             await goal_runs.async_append(replace(
                 scheduled,
                 updated_at=now.isoformat(),

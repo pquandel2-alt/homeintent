@@ -236,7 +236,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.runtime_data.effect_monitor.set_action_observer(_observe_accepted_action)
     async def _queue_learning(run: GoalRun) -> None:
-        thermal_tracker.associate_goal_run(run)
+        await thermal_tracker.async_associate_goal_run(run)
         task = hass.async_create_task(
             learning_manager.async_observe_goal_run(run),
             name=f"HomeIntent learn GoalRun {run.run_id}",
@@ -487,11 +487,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_ENABLE_AUTOMATION):
 
         async def _handle_enable_automation(call: ServiceCall) -> None:
-            automation_id = _automation_id_from_call(call)
-            if automation_id is None:
+            resume = _pause_resume_from_call(call)
+            if resume is None:
                 return
+            automation_id, helper_id, pause_id = resume
             hass.async_create_task(
-                _async_enable_automation_after_action(hass, automation_id),
+                _async_enable_automation_after_action(
+                    hass, automation_id, helper_id, pause_id
+                ),
                 name=f"HomeIntent resume automation {automation_id}",
             )
 
@@ -819,6 +822,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if entry.runtime_data.remove_proactive_listener is not None:
             entry.runtime_data.remove_proactive_listener()
             entry.runtime_data.remove_proactive_listener = None
+        entry.runtime_data.effect_monitor.set_action_observer(None)
+        if entry.runtime_data.thermal_tracker is not None:
+            await entry.runtime_data.thermal_tracker.async_close()
         for task in tuple(entry.runtime_data.learning_tasks):
             task.cancel()
         if entry.runtime_data.learning_tasks:
@@ -945,9 +951,29 @@ def _automation_id_from_call(call: ServiceCall) -> str | None:
     """Return a validated automation id from the custom service call."""
     automation_id = call.data.get("automation_id")
     if not isinstance(automation_id, str) or not automation_id:
-        _LOGGER.warning("homeintent.delete_automation called without a valid automation_id: %r", automation_id)
+        _LOGGER.warning(
+            "homeintent.delete_automation rejected a call without a valid automation_id"
+        )
         return None
     return automation_id
+
+
+def _pause_resume_from_call(
+    call: ServiceCall,
+) -> tuple[str, str, str] | None:
+    values = tuple(
+        call.data.get(key) for key in ("automation_id", "helper_id", "pause_id")
+    )
+    if not all(isinstance(value, str) and value for value in values):
+        _LOGGER.warning(
+            "homeintent.enable_automation rejected a call without complete pause proof"
+        )
+        return None
+    automation_id, helper_id, pause_id = values
+    assert isinstance(automation_id, str)
+    assert isinstance(helper_id, str)
+    assert isinstance(pause_id, str)
+    return automation_id, helper_id, pause_id
 
 
 async def _async_delete_automation_after_action(
@@ -960,7 +986,14 @@ async def _async_delete_automation_after_action(
         try:
             await _async_delete_automation_by_id(hass, automation_id)
             return
-        except Exception:  # noqa: BLE001 - HA reload/file failures are heterogeneous
+        except Exception as err:  # noqa: BLE001 - distinguish fail-closed provenance
+            from .automation_executor import AutomationProvenanceError
+
+            if isinstance(err, AutomationProvenanceError):
+                _LOGGER.warning(
+                    "homeintent.delete_automation rejected an automation without valid HomeIntent provenance"
+                )
+                return
             if attempt == len(delays):
                 _LOGGER.exception(
                     "Self-delete of automation %s failed after %d attempts",
@@ -1005,16 +1038,20 @@ async def _async_record_automation_run_after_action(
 
 
 async def _async_enable_automation_after_action(
-    hass: HomeAssistant, automation_id: str
+    hass: HomeAssistant, automation_id: str, helper_id: str, pause_id: str
 ) -> None:
     """Enable after the calling automation action has returned."""
     await asyncio.sleep(SELF_DELETE_GRACE_SECONDS)
     try:
         from .automation_executor import AutomationExecutor
 
-        await AutomationExecutor(hass).async_enable_automation(automation_id)
+        await AutomationExecutor(hass).async_resume_paused_automation(
+            automation_id, helper_id=helper_id, pause_id=pause_id
+        )
     except Exception:  # noqa: BLE001
-        _LOGGER.exception("Resuming automation %s failed", automation_id)
+        _LOGGER.exception(
+            "homeintent.enable_automation rejected or failed a pause-resume request"
+        )
 
 
 async def _async_cleanup_expired_scheduled_automations(
@@ -1069,12 +1106,12 @@ async def _async_delete_automation_by_id(
     # ``homeintent.*`` (which always runs this package's ``__init__.py`` first)
     # without the real ``homeassistant`` package installed, exactly as
     # before this wave.
-    from .automation_executor import AutomationExecutor
+    from .automation_executor import AutomationExecutor, AutomationNotFoundError
 
     executor = AutomationExecutor(hass)
     try:
         await executor.async_delete_automation(automation_id)
-    except ValueError:
+    except AutomationNotFoundError:
         _LOGGER.debug("homeintent.delete_automation: automation %s already gone", automation_id)
 
 

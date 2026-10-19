@@ -596,7 +596,7 @@ def test_active_thermal_cycle_survives_restart_without_action(tmp_path):
         run_id="run-warm", status=GoalRunStatus.RUNNING,
         steps=(StepExecutionRecord("s", "CLIMATE_SET_TEMPERATURE", ("climate.living",), (), True),),
     )
-    tracker.associate_goal_run(run)
+    asyncio.run(tracker.async_associate_goal_run(run))
     runs = GoalRunStore(tmp_path / "runs.json")
     asyncio.run(runs.async_append(run))
     persisted = path.read_text(encoding="utf-8")

@@ -1035,7 +1035,7 @@ def test_thermal_tracker_requires_unique_binding_and_records_goalrun_cycle(tmp_p
             "s", "CLIMATE_SET_TEMPERATURE", ("climate.living",), (), True,
         ),), (), GoalRunStatus.SUCCESS,
     )
-    tracker.associate_goal_run(run)
+    asyncio.run(tracker.async_associate_goal_run(run))
     reached = replace(sensor, state="21.0")
     asyncio.run(tracker.async_observe_states(
         (climate, reached), occurred_at=NOW + timedelta(minutes=45)

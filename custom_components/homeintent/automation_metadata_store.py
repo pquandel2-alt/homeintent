@@ -30,6 +30,7 @@ here.
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -76,6 +77,15 @@ class AutomationMetadata:
     # Entries written before 7.9.1 have no owner (key absent -> None): they
     # stay untouched and only an administrator may manage them.
     owner_user_id: str | None = None
+    # Durable proof for a temporary pause helper. These fields are populated
+    # only on the one-shot helper automation, never inferred from its alias or
+    # action text. Older helpers do not have this proof and are intentionally
+    # not eligible for automatic resume.
+    pause_id: str | None = None
+    pause_target_automation_id: str | None = None
+    pause_resume_at: str | None = None
+    pause_status: str | None = None
+    pause_consumed_at: str | None = None
 
 
 class AutomationMetadataStore:
@@ -115,6 +125,13 @@ class AutomationMetadataStore:
         path = self._path()
         return await self._hass.async_add_executor_job(self._read, path)
 
+    async def async_snapshot(self) -> tuple[dict[str, Any], str]:
+        """Read entries and the exact byte digest from one stable state."""
+        path = self._path()
+        return await self._hass.async_add_executor_job(
+            self._read_snapshot, path
+        )
+
     async def async_delete(self, automation_id: str) -> None:
         """Removes ``automation_id``'s entry if present - a no-op otherwise
         (rollback calling this for an id whose metadata write never
@@ -142,6 +159,15 @@ class AutomationMetadataStore:
         path = self._path()
         await self._hass.async_add_executor_job(self._write, path, entries)
 
+    async def async_replace_all_if_unchanged(
+        self, entries: dict[str, Any], expected_digest: str
+    ) -> None:
+        """Restore a snapshot only if no newer sidecar bytes exist."""
+        path = self._path()
+        await self._hass.async_add_executor_job(
+            self._replace_all_if_unchanged, path, entries, expected_digest
+        )
+
     @staticmethod
     def _read(path: str) -> dict[str, Any]:
         try:
@@ -149,11 +175,46 @@ class AutomationMetadataStore:
                 content = json.load(handle)
         except FileNotFoundError:
             return {}
-        return content if content else {}
+        if content is None:
+            return {}
+        if not isinstance(content, dict):
+            raise ValueError("Die HomeIntent-Automationsmetadaten sind beschädigt")
+        return content
+
+    @classmethod
+    def _read_snapshot(cls, path: str) -> tuple[dict[str, Any], str]:
+        for _attempt in range(3):
+            before = cls._file_digest(path)
+            entries = cls._read(path)
+            after = cls._file_digest(path)
+            if before == after:
+                return entries, after
+        raise ValueError(
+            "Die HomeIntent-Automationsmetadaten wurden während des Lesens geändert"
+        )
 
     @staticmethod
     def _write(path: str, entries: dict[str, Any]) -> None:
         write_utf8_file_atomic(path, json.dumps(entries, ensure_ascii=False, indent=2))
+
+    @classmethod
+    def _replace_all_if_unchanged(
+        cls, path: str, entries: dict[str, Any], expected_digest: str
+    ) -> None:
+        if cls._file_digest(path) != expected_digest:
+            raise ValueError(
+                "Die HomeIntent-Automationsmetadaten wurden inzwischen geändert"
+            )
+        cls._write(path, entries)
+
+    @staticmethod
+    def _file_digest(path: str) -> str:
+        try:
+            with open(path, "rb") as handle:
+                content = handle.read()
+        except FileNotFoundError:
+            return "missing"
+        return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 def utcnow_isoformat() -> str:
