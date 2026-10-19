@@ -24,6 +24,7 @@ from _automation_world import AMBIGUOUS_WORLD, IPHONE, JULIA_PHONE, JULIA_USER, 
 from _notify_sink import NotifySink
 from homeintent.const import CONF_AGENT_NOTIFY_TARGETS
 from homeintent.conversation import NluConversationEntity
+from homeintent.conversation_scope import conversation_scope_key
 from homeintent.entities import EntitySnapshot
 from homeintent.nlu.action_model import ActionGroup, ActionModel, ActionType, NotificationRecipientKind
 from homeintent.nlu.automation_model import AutomationModel, NumericComparator, TriggerModel, TriggerType
@@ -316,7 +317,9 @@ class _Runner:
         return path.exists() and path.read_text(encoding="utf-8").strip() not in {"", "[]"}
 
     def pending_model(self, conversation_id: str) -> AutomationModel | None:
-        context = self.entity._context_store.get(conversation_id)
+        context = self.entity._context_store.get(
+            conversation_scope_key(conversation_id, user_id=USER)
+        )
         if context is None or context.pending_automation_confirmation is None:
             return None
         return context.pending_automation_confirmation.model
@@ -356,7 +359,9 @@ def run_cases(cases: list[Case]) -> list[CaseResult]:
             later = len(runner.sink.notify_calls) + len([c for c in runner.sink.other_calls if c[:2] != ('automation', 'reload')]) - calls_before
             if later or runner.automations_written():
                 results[-1] = CaseResult(case, "unsafe", speech, None, "action after stray Ja")
-        runner.entity._context_store.clear(conversation_id)
+        runner.entity._context_store.clear(
+            conversation_scope_key(conversation_id, user_id=USER)
+        )
         (runner.tmp / "automations.yaml").unlink(missing_ok=True)
     return results
 

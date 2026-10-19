@@ -39,6 +39,7 @@ from homeintent.automation_management import (  # noqa: E402
     AutomationManagementRequest,
 )
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.conversation_scope import conversation_scope_key  # noqa: E402
 from homeintent.bindings import BindingKind  # noqa: E402
 from homeintent.dialog_manager import DialogTaskKind  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
@@ -127,6 +128,10 @@ def _make_entity(monkeypatch, entities: list[EntitySnapshot]) -> NluConversation
 def _run(entity: NluConversationEntity, text: str, conversation_id: str = "conv-1"):
     user_input = ConversationInput(text=text, conversation_id=conversation_id)
     return asyncio.run(entity._async_handle_message(user_input, chat_log=None))
+
+
+def _key(conversation_id: str) -> str:
+    return conversation_scope_key(conversation_id)
 
 
 def test_live_outdoor_sensor_wins_over_multiple_weather_entities(monkeypatch):
@@ -355,7 +360,7 @@ def test_multi_command_executes_all_validated_actions_and_stores_atomic_undo(
 
     assert result.response.error_code is None
     assert entity.hass.services.async_call.await_count == 2
-    pending = entity._context_store.get("multi-success")
+    pending = entity._context_store.get(_key("multi-success"))
     assert pending is not None
     assert pending.pending_undo is not None
     assert len(pending.pending_undo.plans) == 2
@@ -844,7 +849,7 @@ def test_trigger_and_action_can_be_spoken_in_two_turns(monkeypatch):
     assert question.response.speech == "Was soll dann passieren?"
     assert "Fenster im Bereich Küche" in preview.response.speech
     assert "Licht im Bereich Küche" in preview.response.speech
-    context = entity._context_store.get("conv-1")
+    context = entity._context_store.get(_key("conv-1"))
     assert context.pending_automation_confirmation is not None
 
 
@@ -969,7 +974,7 @@ def test_service_call_exception_produces_clean_failed_to_handle_response(monkeyp
 
 def _store_confirmation(entity, conversation_id: str) -> None:
     entity._context_store.set(
-        conversation_id,
+        _key(conversation_id),
         ConversationContext(
             last_command=None,
             last_entities=(),
@@ -1194,19 +1199,19 @@ def test_alias_confirmation_payload_is_owned_by_central_dialog_manager(monkeypat
     question = _run(
         entity, "Nenne Flurlicht künftig Orientierungslicht", "native-alias"
     )
-    task = entity._runtime_data.dialog_manager.active("native-alias")
+    task = entity._runtime_data.dialog_manager.active(_key("native-alias"))
 
     assert "Soll ich" in question.response.speech
     assert task is not None and task.kind is DialogTaskKind.ALIAS_CONFIRMATION
     assert task.payload is not None
-    assert entity._context_store.get("native-alias") is None
+    assert entity._context_store.get(_key("native-alias")) is None
 
     explanation = _run(entity, "Warum fragst du?", "native-alias")
     result = _run(entity, "Ja", "native-alias")
 
     assert "ausdrücklich bestätigt" in explanation.response.speech
     assert "Gespeichert" in result.response.speech
-    assert entity._runtime_data.dialog_manager.active("native-alias") is None
+    assert entity._runtime_data.dialog_manager.active(_key("native-alias")) is None
     # 7.4.1: learned aliases live in the one bindings store, not in options.
     updater.assert_not_called()
     aliases = entity._runtime_data.bindings.all(BindingKind.ALIAS)
@@ -1227,7 +1232,7 @@ def test_complete_command_replaces_native_alias_confirmation(monkeypatch):
     result = _run(entity, "Schalte das Flurlicht ein", "replace-alias")
 
     assert result.response.error_code is None
-    assert entity._runtime_data.dialog_manager.active("replace-alias") is None
+    assert entity._runtime_data.dialog_manager.active(_key("replace-alias")) is None
     updater.assert_not_called()
     entity.hass.services.async_call.assert_awaited_once()
 
@@ -1240,5 +1245,5 @@ def test_declining_the_missing_action_discards_the_draft(monkeypatch):
 
     assert declined.response.speech == "In Ordnung. Ich lege keine Automation an."
     assert declined.continue_conversation is False
-    assert entity._context_store.get("conv-1") is None
+    assert entity._context_store.get(_key("conv-1")) is None
     entity.hass.services.async_call.assert_not_awaited()

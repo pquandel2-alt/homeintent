@@ -14,6 +14,7 @@ _ha_stub.install()
 import homeintent.conversation as ha_conversation  # noqa: E402
 from homeintent.automation_wizard import parse_lifetime, starts_automation_wizard  # noqa: E402
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.conversation_scope import conversation_scope_key  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeassistant.components.conversation import ConversationInput  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
@@ -70,7 +71,7 @@ def test_complete_automation_can_be_composed_over_multiple_turns(monkeypatch):
     assert "Was soll dann passieren" in condition.response.speech
     assert "dauerhaft" in action.response.speech
     assert "Automation erkannt" in preview.response.speech
-    pending = agent._context_store.get("wizard")
+    pending = agent._context_store.get(conversation_scope_key("wizard"))
     assert pending.pending_automation_confirmation is not None
     model = pending.pending_automation_confirmation.model
     assert len(model.triggers) == len(model.conditions) == len(model.actions) == 1
@@ -81,7 +82,7 @@ def test_wizard_can_be_cancelled_without_service_call(monkeypatch):
     _run(agent, "Erstelle eine Automation", "cancel")
     result = _run(agent, "Abbrechen", "cancel")
     assert "verworfen" in result.response.speech
-    assert agent._context_store.get("cancel") is None
+    assert agent._context_store.get(conversation_scope_key("cancel")) is None
     agent.hass.services.async_call.assert_not_awaited()
 
 
@@ -144,8 +145,10 @@ def test_universal_cancel_ends_the_wizard(monkeypatch):
     _run(agent, "Wenn das Küchenfenster geöffnet wird")
     answer = _run(agent, "Vergiss es.")
     assert "verworfen" in answer.response.speech
-    assert agent._context_store.get("wizard") is None or (
-        agent._context_store.get("wizard").pending_automation_wizard is None
+    assert agent._context_store.get(conversation_scope_key("wizard")) is None or (
+        agent._context_store.get(
+            conversation_scope_key("wizard")
+        ).pending_automation_wizard is None
     )
 
 
@@ -155,8 +158,9 @@ def test_complete_command_ends_an_open_comfort_conflict_question(monkeypatch):
 
     agent = _agent(monkeypatch)
     manager = agent._runtime_data.dialog_manager
+    scoped_id = conversation_scope_key("wizard")
     manager.create(
-        "wizard", "comfort-household-conflict", DialogTaskKind.CONFLICT_RESOLUTION,
+        scoped_id, "comfort-household-conflict", DialogTaskKind.CONFLICT_RESOLUTION,
         DialogPriority.CONFIRMATION, slots={"area_id": "kueche", "present_user_ids": ("a", "b")},
     )
 
@@ -164,4 +168,4 @@ def test_complete_command_ends_an_open_comfort_conflict_question(monkeypatch):
 
     assert "Temperaturwert" not in answer.response.speech
     agent.hass.services.async_call.assert_awaited()
-    assert manager.active("wizard") is None
+    assert manager.active(scoped_id) is None

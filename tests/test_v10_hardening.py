@@ -24,6 +24,7 @@ from homeintent.agent_event import AgentEvent, AgentEventState, AgentMode
 from homeintent.agent_runtime import ProactiveAgentRuntime
 from homeintent.automation_executor import AutomationExecutor
 from homeintent.conversation import NluConversationEntity
+from homeintent.conversation_scope import conversation_scope_key
 from homeintent.dialog_manager import DialogTaskKind
 from homeintent.entities import EntitySnapshot
 from homeintent.execution_coordinator import ConflictOutcome, ExecutionCoordinator
@@ -218,7 +219,9 @@ def test_historical_conversation_uses_yesterday_and_clarifies_multiple(
     assert "zwei" in broad.response.speech
     assert "Filmabend" in broad.response.speech
     assert "Schlafengehen" in broad.response.speech
-    active = entity._runtime_data.dialog_manager.active("history-many")
+    active = entity._runtime_data.dialog_manager.active(
+        conversation_scope_key("history-many", user_id="owner")
+    )
     assert active is not None and active.kind is DialogTaskKind.GOAL_RUN_CLARIFICATION
 
     selected = asyncio.run(turn("Warum hat gestern der Filmabend nicht funktioniert?", "history-one"))
@@ -290,14 +293,18 @@ def test_temperature_goal_semantic_followup_keeps_goal_and_builds_scheduled_plan
 
     question = asyncio.run(turn("Sorge dafür, dass es morgen um 7 Uhr im Wohnzimmer 21 Grad hat."))
     assert "Soll die Heizung" in question.response.speech
-    task = entity._runtime_data.dialog_manager.active("temperature-goal")
+    task = entity._runtime_data.dialog_manager.active(
+        conversation_scope_key("temperature-goal", user_id="owner")
+    )
     assert task is not None and task.kind is DialogTaskKind.GOAL_SEMANTIC_CLARIFICATION
     assert task.payload.goal.scope.area_id == "wohnzimmer"
     assert task.payload.goal.desired_states[0].value == 21
 
     preview = asyncio.run(turn("Ersteres."))
     assert "Planvorschau" in preview.response.speech
-    plan_task = entity._runtime_data.dialog_manager.active("temperature-goal")
+    plan_task = entity._runtime_data.dialog_manager.active(
+        conversation_scope_key("temperature-goal", user_id="owner")
+    )
     assert plan_task is not None and plan_task.kind is DialogTaskKind.PLAN_CONFIRMATION
     plan = plan_task.slots["plan"]
     scheduled = next(step for step in plan.steps if step.kind is StepKind.ACTION)
@@ -335,7 +342,9 @@ def test_temperature_achieve_by_deadline_without_model_is_safe(monkeypatch):
     asyncio.run(turn("Sorge dafür, dass es morgen um 7 Uhr im Wohnzimmer 21 Grad hat."))
     answer = asyncio.run(turn("Zweiteres."))
     assert "thermisches Modell" in answer.response.speech
-    assert entity._runtime_data.dialog_manager.active("temperature-deadline") is None
+    assert entity._runtime_data.dialog_manager.active(
+        conversation_scope_key("temperature-deadline", user_id="owner")
+    ) is None
     entity.hass.services.async_call.assert_not_awaited()
 
 

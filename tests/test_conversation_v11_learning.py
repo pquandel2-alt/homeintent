@@ -16,6 +16,7 @@ _ha_stub.install()
 
 import homeintent.conversation as ha_conversation  # noqa: E402
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.conversation_scope import conversation_scope_key  # noqa: E402
 from homeintent.conversation_location import AreaSnapshot  # noqa: E402
 from homeintent.automation_executor import AutomationExecutor  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
@@ -165,14 +166,18 @@ def test_multi_user_preference_conflict_live_path_clarifies_and_shared_profile(
     )
     philipp_only = _turn(agent, "Mach es hier gemütlicher.", "philipp-comfort")
     assert "Planvorschau" in philipp_only.response.speech
-    philipp_plan = agent._runtime_data.dialog_manager.active("philipp-comfort").slots["plan"]
+    philipp_plan = agent._runtime_data.dialog_manager.active(
+        conversation_scope_key("philipp-comfort", user_id="philipp")
+    ).slots["plan"]
     assert philipp_plan.steps[-1].action.data["temperature"] == 21
     people[:] = [
         replace(people[0], state="not_home"), replace(people[1], state="home")
     ]
     julia_only = _turn(agent, "Mach es hier gemütlicher.", "julia-comfort")
     assert "Planvorschau" in julia_only.response.speech
-    julia_plan = agent._runtime_data.dialog_manager.active("julia-comfort").slots["plan"]
+    julia_plan = agent._runtime_data.dialog_manager.active(
+        conversation_scope_key("julia-comfort", user_id="philipp")
+    ).slots["plan"]
     assert julia_plan.steps[-1].action.data["temperature"] == 23
     people[:] = [replace(people[0], state="home"), people[1]]
     conflict = _turn(agent, "Mach es hier gemütlicher.", "multi-comfort")
@@ -340,7 +345,9 @@ def test_thermal_deadline_creates_start_intermediate_and_final_one_shots(
         "thermal-deadline",
     )
     assert "Planvorschau" in preview.response.speech
-    active = agent._runtime_data.dialog_manager.active("thermal-deadline")
+    active = agent._runtime_data.dialog_manager.active(
+        conversation_scope_key("thermal-deadline", user_id="philipp")
+    )
     assert active is not None
     plan = active.slots["plan"]
     assert plan.adaptive_advice is not None
