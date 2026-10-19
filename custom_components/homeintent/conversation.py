@@ -15,8 +15,10 @@ default conversation agent does it.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import uuid
 from functools import partial
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Sequence
@@ -309,6 +311,38 @@ def _with_session_conversation_id(
     return replace(user_input, conversation_id=session_id)
 
 
+def _scope_conversation_id(
+    user_input: conversation.ConversationInput,
+) -> tuple[conversation.ConversationInput, str | None]:
+    """Use a private dialog key bound to the user or voice endpoint.
+
+    Home Assistant conversation ids are supplied by clients and are not an
+    identity boundary.  Two users or satellites may therefore present the
+    same id.  The scoped key is used only inside HomeIntent; the public id is
+    restored on the result returned to Home Assistant.
+
+    Turns without any session id receive a one-turn nonce.  They can still be
+    understood as complete commands, but can never inherit or establish a
+    reusable dialog context under a shared ``None`` key.
+    """
+    public_id = user_input.conversation_id
+    user_id = conversation_user_id(user_input)
+    satellite_id = getattr(user_input, "satellite_id", None)
+    device_id = getattr(user_input, "device_id", None)
+    if user_id:
+        principal_kind, principal_id = "user", user_id
+    elif isinstance(satellite_id, str) and satellite_id:
+        principal_kind, principal_id = "satellite", satellite_id
+    elif isinstance(device_id, str) and device_id:
+        principal_kind, principal_id = "device", device_id
+    else:
+        principal_kind, principal_id = "anonymous", ""
+    session_id = public_id if public_id else f"unbound:{uuid.uuid4().hex}"
+    material = "\0".join((principal_kind, principal_id, session_id)).encode()
+    scoped_id = "homeintent:" + hashlib.sha256(material).hexdigest()
+    return replace(user_input, conversation_id=scoped_id), public_id
+
+
 def _dialog_manager_kind(
     kind: PendingDialogKind,
 ) -> tuple[DialogTaskKind, DialogPriority]:
@@ -557,6 +591,7 @@ class NluConversationEntity(
         satellite microphones open after a plain "Mach das Licht an".
         """
         user_input = _with_session_conversation_id(user_input, chat_log)
+        user_input, public_conversation_id = _scope_conversation_id(user_input)
         proactive = self._runtime_data.proactive_context
         if proactive is not None:
             # An authenticated turn on a mapped satellite is short-lived room
@@ -593,7 +628,7 @@ class NluConversationEntity(
         awaiting_answer = self._apply_continue_conversation(user_input, result) or bool(suffix)
         # Speech or confirmation tone: decided here, once, from typed facts.
         apply_response_style(self.hass, self.entry.options, user_input, result, outcomes, awaiting_answer)
-        return result
+        return replace(result, conversation_id=public_conversation_id)
 
     def _apply_continue_conversation(
         self,
@@ -2496,5 +2531,3 @@ class NluConversationEntity(
         self._audit_trail.record(
             dt_util.now(), getattr(context, "user_id", None), plan
         )
-
-
