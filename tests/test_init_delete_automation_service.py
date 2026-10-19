@@ -17,6 +17,7 @@ in isolation by ``tests/test_automation_executor.py``).
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -68,6 +69,22 @@ def _automations_yaml(tmp_path: Path) -> list[dict]:
 def _write_automations_yaml(tmp_path: Path, automations: list[dict]) -> None:
     with open(tmp_path / "automations.yaml", "w", encoding="utf-8") as handle:
         pyyaml.safe_dump(automations, handle)
+
+
+def _write_metadata(tmp_path: Path, *automation_ids: str) -> None:
+    (tmp_path / "homeintent_automation_metadata.json").write_text(
+        json.dumps(
+            {
+                automation_id: {
+                    "automation_id": automation_id,
+                    "created_by": "homeintent",
+                    "version": 1,
+                }
+                for automation_id in automation_ids
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 async def _call_service_and_wait(hass, handler, call) -> None:
@@ -271,6 +288,7 @@ def test_calling_the_service_deletes_the_matching_automation(monkeypatch, tmp_pa
             {"id": "delete-me", "alias": "Wird gelöscht", "triggers": [], "actions": []},
         ],
     )
+    _write_metadata(tmp_path, "delete-me")
 
     handler = hass.services._handlers[(DOMAIN, "delete_automation")]
     monkeypatch.setattr(homeintent_init, "SELF_DELETE_GRACE_SECONDS", 0)
@@ -279,6 +297,46 @@ def test_calling_the_service_deletes_the_matching_automation(monkeypatch, tmp_pa
     remaining = _automations_yaml(tmp_path)
     assert [a["id"] for a in remaining] == ["keep-me"]
     hass.services.async_call.assert_awaited_once_with("automation", "reload", {}, blocking=True)
+
+
+def test_delete_and_legacy_service_both_refuse_manual_automation(
+    monkeypatch, tmp_path, caplog
+):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    manual = {"id": "manual", "alias": "Im UI erstellt", "actions": []}
+    _write_automations_yaml(tmp_path, [manual])
+    monkeypatch.setattr(homeintent_init, "SELF_DELETE_GRACE_SECONDS", 0)
+    monkeypatch.setattr(homeintent_init, "SELF_DELETE_RETRY_SECONDS", ())
+
+    async def scenario() -> None:
+        for domain in (DOMAIN, "ha_nlu"):
+            handler = hass.services._handlers[(domain, "delete_automation")]
+            before = len(hass._tasks)
+            await handler(ServiceCall({"automation_id": "manual"}))
+            await asyncio.gather(*hass._tasks[before:])
+
+    asyncio.run(scenario())
+
+    assert _automations_yaml(tmp_path) == [manual]
+    hass.services.async_call.assert_not_awaited()
+    assert "without valid HomeIntent provenance" in caplog.text
+
+
+def test_enable_service_rejects_calls_without_complete_pause_proof(tmp_path, caplog):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    target = {"id": "manual", "initial_state": False}
+    _write_automations_yaml(tmp_path, [target])
+    handler = hass.services._handlers[(DOMAIN, "enable_automation")]
+
+    asyncio.run(handler(ServiceCall({"automation_id": "manual"})))
+
+    assert _automations_yaml(tmp_path) == [target]
+    hass.services.async_call.assert_not_awaited()
+    assert "without complete pause proof" in caplog.text
 
 
 def test_calling_the_service_for_an_already_gone_automation_id_does_not_raise(monkeypatch, tmp_path):

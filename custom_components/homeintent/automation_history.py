@@ -54,6 +54,9 @@ class AutomationHistoryStore:
         created_at: str,
         automations: list[dict[str, Any]],
         metadata: dict[str, Any] | None = None,
+        post_write_digest: str | None = None,
+        post_metadata_digest: str | None = None,
+        owner_user_id: str | None = None,
     ) -> None:
         entries = self.read()
         entries.append(
@@ -63,11 +66,37 @@ class AutomationHistoryStore:
                 "created_at": created_at,
                 "automations": automations,
                 "metadata": metadata or {},
+                "post_write_digest": post_write_digest,
+                "post_metadata_digest": post_metadata_digest,
+                "owner_user_id": owner_user_id,
             }
         )
         _write_atomic(
             self._path,
-            json.dumps(entries[-self._limit :], ensure_ascii=False, indent=2, default=str),
+            json.dumps(
+                entries[-self._limit :],
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            ),
+        )
+
+    def finalize(
+        self, created_at: str, *, post_metadata_digest: str
+    ) -> None:
+        """Complete the newest prepared entry after all side effects commit."""
+        entries = self.read()
+        if not entries or entries[-1].get("created_at") != created_at:
+            raise RuntimeError("Der Automationsverlauf hat sich unerwartet geändert")
+        entries[-1]["post_metadata_digest"] = post_metadata_digest
+        _write_atomic(
+            self._path,
+            json.dumps(
+                entries[-self._limit :],
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            ),
         )
 
     def pop(self) -> dict[str, Any] | None:

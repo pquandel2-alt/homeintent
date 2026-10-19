@@ -24,6 +24,7 @@ from ..automation_action_edit import (
 )
 from ..automation_executor import AutomationExecutor
 from ..automation_ownership import async_management_refusal
+from ..security_control import conversation_user_id, user_is_admin
 from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..automation_management import (
     AutomationManagementKind,
@@ -566,7 +567,13 @@ class AutomationManagementController:
                     if not removed else f"{len(removed)} abgelaufene HomeIntent-Aufträge wurden gelöscht."
                 )
             elif request.kind is AutomationManagementKind.ROLLBACK:
-                operation = await self._automation_store().async_rollback_last_change()
+                operation = await self._automation_store().async_rollback_last_change(
+                    requesting_user_id=conversation_user_id(user_input),
+                    is_admin=await user_is_admin(
+                        self._hass_of() if self._hass_of is not None else None,
+                        user_input,
+                    ),
+                )
                 response.async_set_speech(
                     f"Die letzte HomeIntent-Änderung ({operation}) wurde rückgängig gemacht."
                 )

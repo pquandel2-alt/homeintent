@@ -54,7 +54,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Mapping
 
@@ -70,6 +70,7 @@ from .automation_history import (
     LEGACY_AUTOMATION_HISTORY_FILENAME,
 )
 from .automation_summary import AutomationSummary, CREATED_BY_HOMEINTENT
+from .automation_ownership import may_manage
 from .automation_transaction import (
     AutomationTransaction,
     AutomationTransactionJournal,
@@ -89,10 +90,44 @@ HOMEINTENT_CATEGORY_NAME = "HomeIntent"
 AUTOMATION_LOCK_DATA_KEY = "homeintent_automation_write_lock"
 
 
+class AutomationNotFoundError(ValueError):
+    """The requested YAML automation no longer exists."""
+
+
+class AutomationProvenanceError(ValueError):
+    """The sidecar cannot prove that HomeIntent owns an automation."""
+
+
 @dataclass(frozen=True)
 class _AutomationFileSnapshot:
     automations: list[dict[str, Any]]
     digest: str
+
+
+def _require_homeintent_metadata(
+    metadata: Mapping[str, Any], automation_id: str
+) -> dict[str, Any]:
+    """Return one unambiguous HomeIntent sidecar entry or fail closed.
+
+    The sidecar key is authoritative. If an embedded id is present it must
+    agree with that key; accepting contradictory data would turn a damaged
+    metadata file into lifecycle authority for the wrong automation.
+    """
+    entry = metadata.get(automation_id)
+    if not isinstance(entry, dict):
+        raise AutomationProvenanceError(
+            "Die Automation besitzt keine gültigen HomeIntent-Metadaten"
+        )
+    if entry.get("created_by") != CREATED_BY_HOMEINTENT:
+        raise AutomationProvenanceError(
+            "Die Automation wurde nicht nachweisbar von HomeIntent erstellt"
+        )
+    embedded_id = entry.get("automation_id")
+    if embedded_id is not None and embedded_id != automation_id:
+        raise AutomationProvenanceError(
+            "Die HomeIntent-Metadaten widersprechen der Automations-ID"
+        )
+    return entry
 
 
 def _collect_entity_ids(value: Any) -> set[str]:
@@ -170,6 +205,7 @@ class AutomationExecutor:
         snapshot: _AutomationFileSnapshot,
         updated: list[dict[str, Any]],
         record_history: bool = True,
+        history_owner_user_id: str | None = None,
     ) -> AutomationTransaction:
         existing = await self._hass.async_add_executor_job(self._journal.read)
         if existing is not None:
@@ -181,7 +217,7 @@ class AutomationExecutor:
         )
         created_at = utcnow_isoformat()
         metadata_snapshot = (
-            await self._metadata_store.async_load_all()
+            (await self._metadata_store.async_snapshot())[0]
             if record_history and self._history.available
             else None
         )
@@ -233,6 +269,14 @@ class AutomationExecutor:
                         created_at=created_at,
                         automations=snapshot.automations,
                         metadata=metadata_snapshot,
+                        post_write_digest=after_digest,
+                        owner_user_id=(
+                            history_owner_user_id
+                            if history_owner_user_id is not None
+                            else self._history_owner(
+                                metadata_snapshot, automation_id
+                            )
+                        ),
                     )
                 )
             except Exception:
@@ -258,8 +302,39 @@ class AutomationExecutor:
                 self._history.pop_if_created_at, transaction.created_at
             )
 
-    async def _async_complete_transaction(self) -> None:
+    async def _async_complete_transaction(
+        self, transaction: AutomationTransaction
+    ) -> None:
+        if transaction.operation != "rollback" and self._history.available:
+            try:
+                _metadata, metadata_digest = (
+                    await self._metadata_store.async_snapshot()
+                )
+                await self._hass.async_add_executor_job(
+                    partial(
+                        self._history.finalize,
+                        transaction.created_at,
+                        post_metadata_digest=metadata_digest,
+                    )
+                )
+            except (OSError, RuntimeError, TypeError, ValueError) as err:
+                # History/JSON/filesystem failures must never make a committed
+                # mutation available to an unsafe later rollback.
+                log_rate_limited_boundary_failure(
+                    _LOGGER, "HomeIntent automation history finalization", err
+                )
+                await self._hass.async_add_executor_job(
+                    self._history.pop_if_created_at, transaction.created_at
+                )
         await self._hass.async_add_executor_job(self._journal.clear)
+
+    @staticmethod
+    def _history_owner(
+        metadata: Mapping[str, Any], automation_id: str
+    ) -> str | None:
+        entry = metadata.get(automation_id)
+        owner = entry.get("owner_user_id") if isinstance(entry, dict) else None
+        return owner if isinstance(owner, str) and owner else None
 
     def _assign_homeintent_category(self, automation_id: str) -> None:
         """Create/reuse the automation-scoped HomeIntent category and assign
@@ -324,6 +399,10 @@ class AutomationExecutor:
         once: bool = False,
         max_runs: int | None = None,
         owner_user_id: str | None = None,
+        pause_id: str | None = None,
+        pause_target_automation_id: str | None = None,
+        pause_resume_at: str | None = None,
+        pause_status: str | None = None,
     ) -> str:
         """Appends ``config`` (a ``GenerationResult.config`` dict, no ``id``
         key yet - see ``ha_automation_generator.py``'s ``GenerationResult``
@@ -366,6 +445,7 @@ class AutomationExecutor:
                 path=path,
                 snapshot=snapshot,
                 updated=automations,
+                history_owner_user_id=owner_user_id,
             )
 
             try:
@@ -386,6 +466,10 @@ class AutomationExecutor:
                     once=once,
                     max_runs=max_runs,
                     owner_user_id=owner_user_id,
+                    pause_id=pause_id,
+                    pause_target_automation_id=pause_target_automation_id,
+                    pause_resume_at=pause_resume_at,
+                    pause_status=pause_status,
                 )
                 await self._metadata_store.async_save(metadata)
             except Exception:
@@ -405,7 +489,7 @@ class AutomationExecutor:
                         rollback_err,
                     )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
 
         return automation_id
 
@@ -421,9 +505,9 @@ class AutomationExecutor:
         )
         if source is None:
             raise ValueError(f"Automation {automation_id} does not exist")
-        metadata = (await self._metadata_store.async_load_all()).get(automation_id)
-        if not metadata or metadata.get("created_by") != CREATED_BY_HOMEINTENT:
-            raise ValueError("Only HomeIntent automations can be duplicated")
+        metadata = _require_homeintent_metadata(
+            await self._metadata_store.async_load_all(), automation_id
+        )
         new_id = uuid.uuid4().hex
         config = copy.deepcopy(source)
         config.pop("id", None)
@@ -460,8 +544,14 @@ class AutomationExecutor:
         self, automation_id: str, resume_at: datetime
     ) -> str:
         """Persistently disable an automation and schedule a durable resume."""
+        metadata = _require_homeintent_metadata(
+            await self._metadata_store.async_load_all(), automation_id
+        )
+        owner = metadata.get("owner_user_id")
+        owner_user_id = owner if isinstance(owner, str) else None
         await self.async_disable_automation(automation_id)
         helper_id = uuid.uuid4().hex
+        pause_id = uuid.uuid4().hex
         config = {
             "alias": f"HomeIntent: Automation {automation_id} fortsetzen",
             "description": "Von HomeIntent verwalteter einmaliger Fortsetzungsauftrag",
@@ -479,7 +569,11 @@ class AutomationExecutor:
             "actions": [
                 {
                     "action": "homeintent.enable_automation",
-                    "data": {"automation_id": automation_id},
+                    "data": {
+                        "automation_id": automation_id,
+                        "helper_id": helper_id,
+                        "pause_id": pause_id,
+                    },
                 },
                 {
                     "action": "homeintent.delete_automation",
@@ -490,7 +584,15 @@ class AutomationExecutor:
         }
         try:
             await self.async_create_automation(
-                config, helper_id, scheduled_for=resume_at, once=True
+                config,
+                helper_id,
+                scheduled_for=resume_at,
+                once=True,
+                owner_user_id=owner_user_id,
+                pause_id=pause_id,
+                pause_target_automation_id=automation_id,
+                pause_resume_at=resume_at.isoformat(),
+                pause_status="open",
             )
         except Exception:
             # Do not leave the requested automation disabled when creating
@@ -546,7 +648,15 @@ class AutomationExecutor:
             original_automations = snapshot.automations
             remaining = [a for a in original_automations if a.get("id") != automation_id]
             if len(remaining) == len(original_automations):
-                raise ValueError(f"No automation with id {automation_id!r} found")
+                raise AutomationNotFoundError(
+                    f"No automation with id {automation_id!r} found"
+                )
+            metadata = await self._metadata_store.async_load_all()
+            entry = _require_homeintent_metadata(metadata, automation_id)
+            if entry.get("pause_id") and entry.get("pause_status") == "open":
+                raise ValueError(
+                    "Ein offener HomeIntent-Pausenhelper darf erst nach erfolgreichem Fortsetzen gelöscht werden"
+                )
 
             transaction = await self._async_begin_transaction(
                 operation="delete",
@@ -569,7 +679,7 @@ class AutomationExecutor:
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
         self._remove_entity_registry_entry(automation_id)
 
     def _remove_entity_registry_entry(self, automation_id: str) -> None:
@@ -643,8 +753,9 @@ class AutomationExecutor:
                     automation = {**automation, "initial_state": enabled}
                 updated.append(automation)
             if not found:
-                raise ValueError(f"No automation with id {automation_id!r} found")
-
+                raise AutomationNotFoundError(
+                    f"No automation with id {automation_id!r} found"
+                )
             transaction = await self._async_begin_transaction(
                 operation="enable" if enabled else "disable",
                 automation_id=automation_id,
@@ -658,7 +769,96 @@ class AutomationExecutor:
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
+
+    async def async_resume_paused_automation(
+        self, automation_id: str, *, helper_id: str, pause_id: str
+    ) -> None:
+        """Resume only the target proven by one durable, open pause helper."""
+        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        async with self._lock:
+            metadata = await self._metadata_store.async_load_all()
+            target = _require_homeintent_metadata(metadata, automation_id)
+            try:
+                helper = _require_homeintent_metadata(metadata, helper_id)
+            except AutomationProvenanceError as err:
+                raise ValueError(
+                    "Für diese Automation existiert kein passender offener HomeIntent-Pausenauftrag"
+                ) from err
+            if (
+                not pause_id
+                or helper.get("pause_id") != pause_id
+                or helper.get("pause_target_automation_id") != automation_id
+                or helper.get("pause_status") != "open"
+                or not isinstance(helper.get("pause_resume_at"), str)
+                or helper.get("once") is not True
+            ):
+                raise ValueError(
+                    "Für diese Automation existiert kein passender offener HomeIntent-Pausenauftrag"
+                )
+            try:
+                resume_at = datetime.fromisoformat(str(helper["pause_resume_at"]))
+            except (TypeError, ValueError) as err:
+                raise ValueError(
+                    "Der HomeIntent-Pausenauftrag enthält keinen gültigen Fortsetzungszeitpunkt"
+                ) from err
+            if resume_at.utcoffset() is None:
+                raise ValueError(
+                    "Der HomeIntent-Pausenauftrag enthält keinen eindeutigen Fortsetzungszeitpunkt"
+                )
+            if datetime.now(timezone.utc) < resume_at.astimezone(timezone.utc):
+                raise ValueError(
+                    "Der HomeIntent-Pausenauftrag ist noch nicht zur Fortsetzung fällig"
+                )
+
+            snapshot = await self._async_read_snapshot(path)
+            target_found = False
+            helper_found = False
+            updated: list[dict[str, Any]] = []
+            for automation in snapshot.automations:
+                current_id = automation.get("id")
+                if current_id == automation_id:
+                    target_found = True
+                    automation = {**automation, "initial_state": True}
+                elif current_id == helper_id:
+                    helper_found = True
+                updated.append(automation)
+            if not target_found or not helper_found:
+                raise AutomationNotFoundError(
+                    "Der nachgewiesene HomeIntent-Pausenauftrag ist nicht mehr vollständig"
+                )
+
+            transaction = await self._async_begin_transaction(
+                operation="resume_pause",
+                automation_id=automation_id,
+                path=path,
+                snapshot=snapshot,
+                updated=updated,
+                history_owner_user_id=(
+                    target.get("owner_user_id")
+                    if isinstance(target.get("owner_user_id"), str)
+                    else None
+                ),
+            )
+            try:
+                await self._hass.services.async_call(
+                    "automation", "reload", {}, blocking=True,
+                    context=system_context_for_turn(),
+                )
+                await self._metadata_store.async_update(
+                    helper_id,
+                    pause_status="consumed",
+                    pause_consumed_at=utcnow_isoformat(),
+                    version=int(helper.get("version", 1)) + 1,
+                )
+            except Exception:
+                await self._async_rollback_transaction(path, transaction)
+                await self._hass.services.async_call(
+                    "automation", "reload", {}, blocking=True,
+                    context=system_context_for_turn(),
+                )
+                raise
+            await self._async_complete_transaction(transaction)
 
     async def async_list_automations(self) -> tuple[AutomationSummary, ...]:
         """V5.29 (Automation Query): a read-only survey of every automation
@@ -746,8 +946,8 @@ class AutomationExecutor:
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or not entry.get("once") or not entry.get("scheduled_for"):
+            entry = _require_homeintent_metadata(metadata, automation_id)
+            if not entry.get("once") or not entry.get("scheduled_for"):
                 raise ValueError("Die Automation ist kein geplanter HomeIntent-Einmalauftrag")
             snapshot = await self._async_read_snapshot(path)
             updated_automations: list[dict[str, Any]] = []
@@ -817,15 +1017,15 @@ class AutomationExecutor:
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
 
     async def async_record_automation_run(self, automation_id: str) -> bool:
         """Increment a bounded automation and delete it at its configured limit."""
         delete_now = False
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or not isinstance(entry.get("max_runs"), int):
+            entry = _require_homeintent_metadata(metadata, automation_id)
+            if not isinstance(entry.get("max_runs"), int):
                 raise ValueError(f"No bounded HomeIntent automation {automation_id!r}")
             max_runs = int(entry["max_runs"])
             next_count = int(entry.get("run_count", 0)) + 1
@@ -852,9 +1052,7 @@ class AutomationExecutor:
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
-                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            entry = _require_homeintent_metadata(metadata, automation_id)
             if notify_entity_ids:
                 snapshot = await self._async_read_snapshot(path)
 
@@ -890,7 +1088,7 @@ class AutomationExecutor:
                         "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                     )
                     raise
-                await self._async_complete_transaction()
+                await self._async_complete_transaction(transaction)
                 return
             await self._metadata_store.async_update(
                 automation_id, owner_user_id=owner_user_id, version=int(entry.get("version", 1)) + 1,
@@ -903,9 +1101,7 @@ class AutomationExecutor:
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
-                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            entry = _require_homeintent_metadata(metadata, automation_id)
             if entry.get("once"):
                 raise ValueError("Ein Einmalauftrag kann nicht mehrfach ausgeführt werden")
             snapshot = await self._async_read_snapshot(path)
@@ -959,7 +1155,7 @@ class AutomationExecutor:
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
 
     async def async_replace_automation_actions(
         self,
@@ -973,9 +1169,7 @@ class AutomationExecutor:
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
-                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            entry = _require_homeintent_metadata(metadata, automation_id)
             snapshot = await self._async_read_snapshot(path)
             updated: list[dict[str, Any]] = []
             found = False
@@ -1021,7 +1215,7 @@ class AutomationExecutor:
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
 
     async def async_get_automation_config(self, automation_id: str) -> dict[str, Any] | None:
         """The stored configuration of one HomeIntent automation (read only)."""
@@ -1048,9 +1242,7 @@ class AutomationExecutor:
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
-                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            entry = _require_homeintent_metadata(metadata, automation_id)
             snapshot = await self._async_read_snapshot(path)
             updated: list[dict[str, Any]] = []
             found = False
@@ -1081,7 +1273,7 @@ class AutomationExecutor:
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
 
     async def async_replace_automation_section(
         self,
@@ -1098,9 +1290,7 @@ class AutomationExecutor:
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
-            entry = metadata.get(automation_id)
-            if not entry or entry.get("created_by") != CREATED_BY_HOMEINTENT:
-                raise ValueError("Die Automation wurde nicht von HomeIntent erstellt")
+            entry = _require_homeintent_metadata(metadata, automation_id)
             if entry.get("once"):
                 raise ValueError(
                     "Auslöser und Bedingungen einmaliger Aufträge können nicht nachträglich geändert werden"
@@ -1141,7 +1331,7 @@ class AutomationExecutor:
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
 
     async def async_cleanup_expired_scheduled_automations(
         self, now: datetime
@@ -1159,7 +1349,10 @@ class AutomationExecutor:
             original_automations = snapshot.automations
             metadata = await self._metadata_store.async_load_all()
             expired_ids: set[str] = set()
-            for automation_id, entry in metadata.items():
+            for automation_id in metadata:
+                entry = _require_homeintent_metadata(metadata, automation_id)
+                if entry.get("pause_id") and entry.get("pause_status") == "open":
+                    continue
                 if not entry.get("once") or not (raw_target := entry.get("scheduled_for")):
                     continue
                 try:
@@ -1205,7 +1398,7 @@ class AutomationExecutor:
             for automation_id in expired_ids:
                 await self._metadata_store.async_delete(automation_id)
             if present_ids:
-                await self._async_complete_transaction()
+                await self._async_complete_transaction(transaction)
             return tuple(sorted(expired_ids))
 
     async def async_recover_incomplete_transaction(self) -> bool:
@@ -1253,8 +1446,10 @@ class AutomationExecutor:
             metadata = await self._metadata_store.async_load_all()
             orphan_ids = sorted(set(metadata) - yaml_ids)
             for automation_id in orphan_ids:
+                _require_homeintent_metadata(metadata, automation_id)
                 await self._metadata_store.async_delete(automation_id)
             for automation_id in sorted(set(metadata) & yaml_ids):
+                _require_homeintent_metadata(metadata, automation_id)
                 self._assign_homeintent_category(automation_id)
                 entry = metadata[automation_id]
                 changes: dict[str, Any] = {}
@@ -1279,17 +1474,47 @@ class AutomationExecutor:
                     )
             return tuple(orphan_ids)
 
-    async def async_rollback_last_change(self) -> str:
-        """Restore the previous YAML snapshot and reload Home Assistant."""
+    async def async_rollback_last_change(
+        self, *, requesting_user_id: str | None, is_admin: bool
+    ) -> str:
+        """Restore one guarded snapshot for its owner or an administrator."""
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             history = await self._hass.async_add_executor_job(self._history.peek)
             if history is None:
                 raise ValueError("Es gibt keine frühere HomeIntent-Änderung")
+            post_write_digest = history.get("post_write_digest")
+            post_metadata_digest = history.get("post_metadata_digest")
+            if not isinstance(post_write_digest, str) or not isinstance(
+                post_metadata_digest, str
+            ):
+                raise ValueError(
+                    "Dieser ältere Verlaufseintrag besitzt keine sicheren Zustandsprüfsummen"
+                )
+            owner = history.get("owner_user_id")
+            owner_user_id = owner if isinstance(owner, str) and owner else None
+            if not may_manage(owner_user_id, requesting_user_id, is_admin):
+                raise PermissionError(
+                    "Rückgängig ist nur für den Eigentümer der Automation oder einen Administrator erlaubt"
+                )
             previous = history.get("automations")
             if not isinstance(previous, list):
                 raise ValueError("Der letzte Verlaufseintrag ist beschädigt")
             snapshot = await self._async_read_snapshot(path)
+            if snapshot.digest != post_write_digest:
+                raise ValueError(
+                    "Die Automationen wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
+                )
+            _current_metadata, current_metadata_digest = (
+                await self._metadata_store.async_snapshot()
+            )
+            if current_metadata_digest != post_metadata_digest:
+                raise ValueError(
+                    "Die HomeIntent-Metadaten wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
+                )
+            previous_metadata = history.get("metadata")
+            if not isinstance(previous_metadata, dict):
+                raise ValueError("Die Metadaten im Verlaufseintrag sind beschädigt")
             transaction = await self._async_begin_transaction(
                 operation="rollback",
                 automation_id=str(history.get("automation_id") or "unknown"),
@@ -1302,17 +1527,16 @@ class AutomationExecutor:
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
-                previous_metadata = history.get("metadata", {})
-                if not isinstance(previous_metadata, dict):
-                    raise ValueError("Die Metadaten im Verlaufseintrag sind beschädigt")
-                await self._metadata_store.async_replace_all(previous_metadata)
+                await self._metadata_store.async_replace_all_if_unchanged(
+                    previous_metadata, current_metadata_digest
+                )
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
                 raise
-            await self._async_complete_transaction()
+            await self._async_complete_transaction(transaction)
             await self._hass.async_add_executor_job(self._history.pop)
             return str(history.get("operation") or "Änderung")
 

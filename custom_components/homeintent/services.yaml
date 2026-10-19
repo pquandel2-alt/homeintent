@@ -1,9 +1,8 @@
 delete_automation:
   name: Delete automation
   description: >-
-    Internal service: deletes a HomeIntent-generated automation by id. Used by
-    self-deleting ("einmalig"/"nur einmal") generated automations as their
-    own last action step - not meant to be called directly.
+    Deletes only an automation whose sidecar metadata proves that HomeIntent
+    created it. Calls for manual, foreign, or damaged entries are rejected.
   fields:
     automation_id:
       name: Automation ID
@@ -33,10 +32,23 @@ record_automation_run:
 
 enable_automation:
   name: Automation fortsetzen
-  description: Interner Dienst für einen bestätigten, zeitlich begrenzten Pausenauftrag.
+  description: >-
+    Fortsetzen ausschließlich mit dem Ziel, Helper und der eindeutigen Pausen-ID
+    eines offenen, von HomeIntent gespeicherten Pausenauftrags. Die drei Werte
+    werden gegen dauerhafte Sidecar-Metadaten geprüft.
   fields:
     automation_id:
       name: Automation-ID
+      required: true
+      selector:
+        text:
+    helper_id:
+      name: Resume-Helper-ID
+      required: true
+      selector:
+        text:
+    pause_id:
+      name: Pausen-ID
       required: true
       selector:
         text:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -21,6 +22,9 @@ from .nlu.primitives import SemanticProperty
 from .nlu.unit_reasoning import normalize_measurement
 from .service_call import ServiceCallPlan
 from .thermal_model import ThermalBinding, ThermalObservation
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,10 @@ class ThermalExperienceTracker:
         self._write_lock = threading.Lock()
         self._generation = 0
         self._written_generation = 0
+        self._pending_write: tuple[int, dict[str, object]] | None = None
+        self._persist_task: asyncio.Task[None] | None = None
+        self._persist_error: tuple[int, BaseException] | None = None
+        self._closed = False
         # Window sensors in each active cycle's area, taken from the snapshot
         # the cycle started (or was restored) with (7.9.6 interest).
         self._area_windows: dict[str, frozenset[str]] = {}
@@ -195,9 +203,9 @@ class ThermalExperienceTracker:
         )
         self._remember_windows(plan.entity_id, climate.area_id, entities)
         self._update_watched()
-        self._persist()
+        self._request_persist()
 
-    def associate_goal_run(self, run: GoalRun) -> None:
+    async def async_associate_goal_run(self, run: GoalRun) -> None:
         """Attach authoritative GoalRun provenance to a just-started cycle."""
         targets = {
             target
@@ -205,14 +213,21 @@ class ThermalExperienceTracker:
             if step.operator_id == "CLIMATE_SET_TEMPERATURE"
             for target in step.selected_targets
         }
+        changed = False
         for target in targets:
             cycle = self._active.get(target)
-            if cycle is not None:
+            if cycle is not None and (
+                cycle.goal_id != run.goal_id
+                or cycle.run_id != run.run_id
+                or cycle.user_id != run.user_id
+            ):
                 self._active[target] = replace(
                     cycle, goal_id=run.goal_id, run_id=run.run_id,
                     user_id=run.user_id,
                 )
-        self._persist()
+                changed = True
+        if changed:
+            await self._async_persist()
 
     async def async_observe_states(
         self,
@@ -356,7 +371,11 @@ class ThermalExperienceTracker:
         *, now: datetime,
     ) -> int:
         """Restore compatible observation state without executing any action."""
-        if self._state_path is None or now.tzinfo is None:
+        if (
+            self._state_path is None
+            or now.tzinfo is None
+            or self._manager.policy.learning_mode is LearningMode.OFF
+        ):
             return 0
         by_id = {item.entity_id: item for item in entities}
         runs = {item.run_id: item for item in await goal_runs.async_list()}
@@ -420,11 +439,82 @@ class ThermalExperienceTracker:
             self._write_document(document)
             self._written_generation = generation
 
-    def _persist(self) -> None:
-        self._write_generation(*self._next_document())
+    def _request_persist(self) -> int | None:
+        """Queue the latest immutable document without touching the filesystem."""
+        if self._state_path is None or self._closed:
+            return None
+        generation, document = self._next_document()
+        self._pending_write = (generation, document)
+        self._persist_error = None
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # Some pure unit callers construct state outside a running loop.
+            # Keep the newest document pending; the next awaited persistence
+            # or ``async_close`` flushes it without blocking this call.
+            return generation
+        self._ensure_persist_task()
+        return generation
+
+    def _ensure_persist_task(self) -> asyncio.Task[None] | None:
+        if self._pending_write is None:
+            return self._persist_task
+        if self._persist_task is None or self._persist_task.done():
+            self._persist_task = asyncio.create_task(
+                self._persist_worker(), name="HomeIntent thermal persistence"
+            )
+        return self._persist_task
+
+    async def _persist_worker(self) -> None:
+        try:
+            while self._pending_write is not None:
+                generation, document = self._pending_write
+                self._pending_write = None
+                try:
+                    await asyncio.to_thread(
+                        self._write_generation, generation, document
+                    )
+                except (OSError, TypeError, ValueError) as err:
+                    # Atomic file/serialization boundary; keep newest retryable.
+                    if (
+                        self._pending_write is None
+                        or self._pending_write[0] < generation
+                    ):
+                        self._pending_write = (generation, document)
+                    self._persist_error = (generation, err)
+                    _LOGGER.exception(
+                        "HomeIntent thermal persistence failed for generation %d",
+                        generation,
+                    )
+                    return
+        finally:
+            self._persist_task = None
 
     async def _async_persist(self) -> None:
-        await asyncio.to_thread(self._write_generation, *self._next_document())
+        target = self._request_persist()
+        if target is None:
+            return
+        task = self._ensure_persist_task()
+        if task is not None:
+            await task
+        if self._written_generation < target:
+            error = self._persist_error
+            if error is not None and error[0] <= target:
+                raise RuntimeError("Thermal-Zustand konnte nicht gespeichert werden") from error[1]
+            raise RuntimeError("Thermal-Zustand wurde nicht vollständig gespeichert")
+
+    async def async_close(self) -> None:
+        """Flush the newest generation and leave no persistence task behind."""
+        task = self._ensure_persist_task()
+        if task is not None:
+            await task
+        # One bounded retry protects final changes from a transient failure.
+        if self._pending_write is not None:
+            self._persist_error = None
+            task = self._ensure_persist_task()
+            if task is not None:
+                await task
+        self._closed = True
 
     def _write_document(self, document: dict[str, object]) -> None:
         if self._state_path is None:

@@ -23,7 +23,7 @@ INVENTORY_PATH = ROOT / "docs" / "except-exception-inventory.json"
 HISTORICAL_COMMIT = "eb07317a789e5014cc71cd90d944c21f79d27a03"
 HISTORICAL_EXCEPTION_COUNT = 116
 HISTORICAL_BASE_EXCEPTION_COUNT = 2
-APPROVED_EXCEPTION_MAXIMUM = 119
+APPROVED_EXCEPTION_MAXIMUM = 120
 APPROVED_BASE_EXCEPTION_MAXIMUM = 2
 APPROVED_ADDITION_IDS = frozenset(
     {
@@ -38,6 +38,10 @@ APPROVED_ADDITION_IDS = frozenset(
         (
             "custom_components/homeintent/event_runtime_supervisor.py::"
             "EventWorkerSupervisor.run::1"
+        ),
+        (
+            "custom_components/homeintent/automation_executor.py::"
+            "AutomationExecutor.async_resume_paused_automation::1"
         ),
     }
 )
@@ -275,9 +279,47 @@ def inventory_document(handlers: list[BroadHandler]) -> dict[str, object]:
                 ),
                 "reason": "Worker-Boundary übersetzt normale Laufzeitfehler in den Circuit-Zustand.",
             },
+            {
+                "id": (
+                    "custom_components/homeintent/automation_executor.py::"
+                    "AutomationExecutor.async_resume_paused_automation::1"
+                ),
+                "reason": (
+                    "Transaktionaler Home-Assistant-Service- und Dateirand; "
+                    "jeder Fehler stellt YAML und Laufzeitzustand wieder her."
+                ),
+            },
         ],
         "handlers": rows,
     }
+
+
+def refreshed_inventory_document(
+    previous: dict[str, object], handlers: list[BroadHandler]
+) -> dict[str, object]:
+    """Refresh structural facts while preserving reviewed classifications."""
+    document = inventory_document(handlers)
+    previous_rows = previous.get("handlers")
+    reviewed = {
+        row.get("id"): row
+        for row in previous_rows
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    } if isinstance(previous_rows, list) else {}
+    rows = document.get("handlers")
+    if not isinstance(rows, list):
+        return document
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        old = reviewed.get(row.get("id"))
+        if not isinstance(old, dict):
+            continue
+        if old.get("classification") in CLASSIFICATIONS:
+            row["classification"] = old["classification"]
+        reason = old.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            row["reason"] = reason
+    return document
 
 
 def _errors(document: dict[str, object], actual: list[BroadHandler]) -> Iterator[str]:
@@ -364,11 +406,27 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--write-bootstrap", action="store_true")
+    parser.add_argument("--refresh", action="store_true")
     args = parser.parse_args()
     handlers = scan_handlers()
     if args.write_bootstrap:
         INVENTORY_PATH.write_text(
             json.dumps(inventory_document(handlers), ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+    elif args.refresh:
+        previous = (
+            json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+            if INVENTORY_PATH.exists()
+            else {}
+        )
+        INVENTORY_PATH.write_text(
+            json.dumps(
+                refreshed_inventory_document(previous, handlers),
+                ensure_ascii=False,
+                indent=2,
+            )
             + "\n",
             encoding="utf-8",
         )
