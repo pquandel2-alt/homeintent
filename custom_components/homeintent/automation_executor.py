@@ -756,9 +756,6 @@ class AutomationExecutor:
                 raise AutomationNotFoundError(
                     f"No automation with id {automation_id!r} found"
                 )
-            metadata = await self._metadata_store.async_load_all()
-            _require_homeintent_metadata(metadata, automation_id)
-
             transaction = await self._async_begin_transaction(
                 operation="enable" if enabled else "disable",
                 automation_id=automation_id,

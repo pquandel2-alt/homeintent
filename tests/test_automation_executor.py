@@ -557,6 +557,23 @@ def test_enable_automation_sets_initial_state_true_explicitly():
     assert written_automations == [{**EXISTING_AUTOMATION, "initial_state": True}]
 
 
+def test_normal_management_can_enable_a_manual_automation_without_sidecar():
+    """The public resume service is locked down, not admin management."""
+    hass = _make_hass()
+    disabled = {**EXISTING_AUTOMATION, "initial_state": False}
+    with (
+        patch.object(automation_executor.yaml_util, "load_yaml", return_value=[disabled]),
+        patch.object(automation_executor.yaml_util, "dump", return_value="dumped-yaml") as dump_mock,
+        patch.object(automation_executor, "write_utf8_file_atomic"),
+    ):
+        executor = AutomationExecutor(hass)
+        asyncio.run(executor.async_enable_automation("abc123"))
+
+    assert dump_mock.call_args.args[0] == [
+        {**EXISTING_AUTOMATION, "initial_state": True}
+    ]
+
+
 def test_disable_automation_calls_automation_reload_with_no_arguments():
     hass = _make_hass()
     with (
