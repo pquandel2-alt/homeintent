@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import pytest
 
 from _testhaus import PUSH_OPTIONS, HouseConversation
+from homeintent.conversation_scope import conversation_scope_key
 
 GATE = "cover.garagentor"
 
@@ -86,7 +87,9 @@ def test_the_open_request_expires(monkeypatch, tmp_path):
     house = _house(monkeypatch, tmp_path)
     house.say("Überwache das Garagentor.")
     manager = house.entity._runtime_data.dialog_manager
-    tasks = manager._tasks[house.conversation_id]
+    tasks = manager._tasks[
+        conversation_scope_key(house.conversation_id, user_id=house.user)
+    ]
     for task_id, task in list(tasks.items()):
         tasks[task_id] = replace(task, expires_at=datetime(2000, 1, 1, tzinfo=timezone.utc))
     house.say("Wenn es offen ist.")
