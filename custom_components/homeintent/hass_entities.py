@@ -239,6 +239,8 @@ def build_entity_snapshots(
                 ))),
                 area_aliases=area_aliases,
                 floor_aliases=_floor_aliases(hass, floor_id),
+                integration=(getattr(registry_entry, "platform", None) if registry_entry else None),
+                config_entry_id=(getattr(registry_entry, "config_entry_id", None) if registry_entry else None),
                 **_state_fields(domain, state),
             )
         )

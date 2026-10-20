@@ -37,6 +37,7 @@ from ..house_report import (
 )
 from ..const import CONF_SHARE_HOUSEHOLD_LOCATION
 from ..media import claims_other_target, now_playing, parse_media_request, resolve_media
+from ..music_assistant import PendingMusicAssistant, async_resolve_music_assistant
 from ..presence_query import HABIT_DAYS, PersonState, answer_presence, arrivals, parse_presence_query
 from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
 from ..execution_trace import TRACE_DATA_KEY
@@ -321,6 +322,10 @@ class InsightsController:
             self._rest[user_input.conversation_id or ""] = tuple(rest[5:])
             return self._answer(user_input, response, render_rest(rest, dt_util.now().date()))
         task = self._runtime.dialog_manager.active(user_input.conversation_id)
+        if task is not None and task.kind is DialogTaskKind.MEDIA_SELECTION:
+            handled = await self._async_media_selection(user_input, response, task, entities)
+            if handled is not None:
+                return handled
         if task is not None and task.kind is DialogTaskKind.VACATION_CONFIRMATION:
             handled = await self._async_vacation_answer(user_input, response, task, entities)
             if handled is not None:
@@ -428,12 +433,34 @@ class InsightsController:
     ) -> conversation.ConversationResult | None:
         request = parse_media_request(user_input.text)
         if request is None or self.devices is None or (
-            request.op != "query" and claims_other_target(user_input.text, entities)
+            request.op != "query" and claims_other_target(user_input.text, entities, request)
         ):
             return None
         if request.op == "query":
             return self._answer(user_input, response, now_playing(request, entities, self._area_id))
-        resolved = resolve_media(request, entities, satellite_area_id=self._area_id)
+        resolved = await async_resolve_music_assistant(
+            self.hass, request, entities, satellite_area_id=self._area_id,
+            context=getattr(user_input, "context", None),
+        )
+        if resolved is None:
+            resolved = resolve_media(request, entities, satellite_area_id=self._area_id)
+        return await self._async_finish_media(user_input, response, resolved, entities)
+
+    async def _async_finish_media(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        resolved: Any, entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        pending = getattr(resolved, "pending", None)
+        if isinstance(pending, PendingMusicAssistant):
+            self._runtime.dialog_manager.create(
+                user_input.conversation_id,
+                "music-assistant-selection",
+                DialogTaskKind.MEDIA_SELECTION,
+                DialogPriority.SELECTION,
+                reason="Music Assistant benötigt eine eindeutige Medien- oder Playerauswahl.",
+                requested_by_user_id=conversation_user_id(user_input),
+                payload=pending,
+            )
         if resolved.plan is None:
             if resolved.question:
                 return self._result(user_input, response, resolved.spoken)
@@ -444,6 +471,44 @@ class InsightsController:
         return await self.devices.async_handle_match_result(
             user_input, response, MatchResult(plan=resolved.plan, response_text=resolved.spoken), entities
         )
+
+    async def _async_media_selection(
+        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
+        task: Any, entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        pending = getattr(task, "payload", None)
+        if not isinstance(pending, PendingMusicAssistant):
+            return None
+        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
+            return self._result(user_input, response, "Diese Rückfrage gehört zu einem anderen Benutzer.")
+        chosen: EntitySnapshot | None = None
+        request = pending.request
+        if pending.stage == "player":
+            candidates = [entity for entity in entities if entity.entity_id in pending.player_ids]
+            matches = [entity for entity in candidates if _media_selection_matches(user_input.text, entity)]
+            if len(matches) == 1:
+                chosen = matches[0]
+        elif pending.stage == "media_type" and pending.player_id is not None:
+            media_type = _selected_media_type(user_input.text, pending.media_types)
+            if media_type is not None:
+                request = replace(request, media_type=media_type)
+                chosen = next((entity for entity in entities if entity.entity_id == pending.player_id), None)
+        if chosen is None:
+            return self._result(
+                user_input,
+                response,
+                "Die Auswahl ist noch nicht eindeutig; ich habe nichts gestartet. Bitte nenne den Player oder Medientyp.",
+            )
+        self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+        resolved = await async_resolve_music_assistant(
+            self.hass, request, [chosen], satellite_area_id=chosen.area_id,
+            context=getattr(user_input, "context", None),
+        )
+        if resolved is None:
+            return self._answer(
+                user_input, response, "Music Assistant ist nicht mehr verfügbar; ich habe nichts gestartet."
+            )
+        return await self._async_finish_media(user_input, response, resolved, entities)
 
     # --- 7.9.3 B2 where is someone ----------------------------------------------
 
@@ -975,6 +1040,30 @@ _SCHEDULE_WORDS = frozenset({
 
 def _words_of(text: str) -> list[str]:
     return "".join(char if char.isalnum() else " " for char in normalize_for_compare(text)).split()
+
+
+_MEDIA_TYPE_SELECTIONS = {
+    "artist": frozenset({"kuenstler", "kuenstlerin", "interpret", "interpretin"}),
+    "album": frozenset({"album"}),
+    "playlist": frozenset({"playlist", "wiedergabeliste"}),
+    "track": frozenset({"titel", "lied", "song", "track", "stueck"}),
+    "radio": frozenset({"radio", "sender", "radiosender", "station"}),
+}
+
+
+def _selected_media_type(text: str, allowed: tuple[str, ...]) -> str | None:
+    words = set(_words_of(text))
+    matches = [kind for kind in allowed if words & _MEDIA_TYPE_SELECTIONS.get(kind, frozenset())]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _media_selection_matches(text: str, entity: EntitySnapshot) -> bool:
+    words = set(_words_of(text))
+    names = (entity.friendly_name, *entity.aliases)
+    if any(set(_words_of(name)) <= words for name in names if name):
+        return True
+    place_names = (entity.area_name or "", *entity.area_aliases)
+    return any(set(_words_of(name)) <= words for name in place_names if name)
 
 
 def _notifies(text: str) -> bool:

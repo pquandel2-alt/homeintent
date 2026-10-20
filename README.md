@@ -106,6 +106,10 @@ weil zur Laufzeit kein LLM/ML-Modell beteiligt ist. Externe Wirkung entsteht
 nur durch vom Benutzer konfigurierte Home-Assistant-Dienste, etwa Kalender-
 oder Push-Integrationen; deren eigene Datenschutzregeln gelten weiterhin.
 
+Die optionale [Music-Assistant-Unterstützung](docs/music-assistant.md) nutzt
+ausschließlich registrierte Home-Assistant-Aktionen. Direkte Medien-URLs
+öffnet HomeIntent nicht.
+
 ## Bekannte Grenzen
 
 - Die produktive NLU ist deutsch und kein universeller Freitext-Chatbot.
@@ -159,6 +163,7 @@ in den [Release Notes](docs/release-notes-7.9.11.md), im
 
 - [Ausführliches Benutzer- und Entwicklerhandbuch](docs/handbuch.md)
 - [Agent-Konfiguration](docs/agent-configuration.md)
+- [Music Assistant und gespeicherte Radiosender](docs/music-assistant.md)
 - [Sicherheits- und Datenschutzmodell](docs/security-privacy.md)
 - [Proaktiver Agent](docs/proactive-agent.md)
 - [Architektur V13](docs/architecture-v13.md) und [Jarvis Core](docs/jarvis-core.md)

@@ -78,8 +78,13 @@ def registries(monkeypatch):
     )
 
 
-def _entity_entry(*, device_id: str | None = None, area_id: str | None = None) -> SimpleNamespace:
-    return SimpleNamespace(device_id=device_id, area_id=area_id)
+def _entity_entry(
+    *, device_id: str | None = None, area_id: str | None = None,
+    platform: str | None = None, config_entry_id: str | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        device_id=device_id, area_id=area_id, platform=platform, config_entry_id=config_entry_id,
+    )
 
 
 def _device_entry(
@@ -171,6 +176,24 @@ def test_build_world_model_end_to_end(registries):
     assert device is not None
     assert device.device_id == "device_1"
     assert world_model.entities_for_device("device_1") == world_model.entities
+
+
+def test_entity_snapshot_carries_registry_integration_provenance(registries):
+    registries.entities["media_player.box"] = _entity_entry(
+        platform="music_assistant", config_entry_id="mass-entry"
+    )
+    hass = _FakeHass(states={
+        "media_player.box": hass_entities.State(
+            "media_player.box", "idle", {"friendly_name": "Box"}
+        ),
+    })
+
+    snapshot = hass_entities.build_entity_snapshots(
+        hass, _FakeEntry(selected_entities=["media_player.box"])
+    )[0]
+
+    assert snapshot.integration == "music_assistant"
+    assert snapshot.config_entry_id == "mass-entry"
 
 
 def test_live_cover_feature_mask_reaches_group_percentage_command(registries, engine):

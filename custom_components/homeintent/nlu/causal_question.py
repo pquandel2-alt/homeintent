@@ -42,6 +42,26 @@ class CauseQuestion:
     omitted_homeintent_action: bool = False
 
 
+def evidence_free_answer(question: CauseQuestion | None) -> str | None:
+    """Answer only what the interpreted wording itself proves.
+
+    An omitted action ("warum hast du nicht ...") is not present in the
+    change trace by definition.  Never invent a cause merely because a
+    target was grounded successfully.
+    """
+    if question is None:
+        return None
+    if question.clarification is not None:
+        return question.clarification
+    if question.entity is not None and question.omitted_homeintent_action:
+        return (
+            f"Für {question.entity.friendly_name} habe ich keinen lokalen Nachweis "
+            "eines fehlgeschlagenen Befehls. Ohne einen solchen Nachweis kann ich keinen "
+            "Grund behaupten."
+        )
+    return None
+
+
 def interpret_cause_question(
     document: LanguageDocument, entities: Sequence[EntitySnapshot]
 ) -> CauseQuestion | None:

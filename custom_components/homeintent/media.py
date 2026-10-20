@@ -27,16 +27,19 @@ from .service_call import ServiceCallPlan
 
 __all__ = (
     "MediaRequest",
+    "MediaPlayerResolution",
     "claims_other_target",
     "MediaResolution",
     "now_playing",
     "parse_media_request",
     "resolve_media",
+    "resolve_media_player",
 )
 
 _PLAY_VERBS = frozenset({"spiel", "spiele", "spielen", "abspielen", "starte", "start", "leg", "lege", "mach", "mache"})
 _MUSIC_WORDS = frozenset({"musik", "radio", "lied", "lieder", "song", "songs", "playlist", "sender", "titel"})
-_PAUSE_WORDS = frozenset({"pause", "pausiere", "pausieren", "anhalten", "halt", "stopp", "stop", "stoppe"})
+_PAUSE_WORDS = frozenset({"pause", "pausiere", "pausieren", "anhalten", "halt"})
+_STOP_WORDS = frozenset({"stopp", "stop", "stoppe", "stoppen", "beende"})
 _RESUME_WORDS = frozenset({"weiter", "fortsetzen", "fortfahren", "weiterspielen", "weitermachen"})
 _NEXT_WORDS = frozenset({"naechstes", "naechster", "naechsten", "naechste", "ueberspringe", "ueberspring", "skip"})
 _PREVIOUS_WORDS = frozenset({"vorheriges", "vorheriger", "vorherigen", "vorherige", "letztes", "letzten"})
@@ -54,6 +57,22 @@ class MediaRequest:
     source_words: tuple[str, ...] = ()  # "Bayern 3" for play
     volume: int | None = None  # percent for "volume"
     text: str = ""
+    media_type: str | None = None
+    library_only: bool = False
+    enqueue: str = "replace"
+
+
+_TYPE_MARKERS = {
+    "artist": frozenset({"kuenstler", "kuenstlerin", "interpret", "interpretin"}),
+    "album": frozenset({"album", "alben"}),
+    "playlist": frozenset({"playlist", "playliste", "wiedergabeliste"}),
+    "track": frozenset({"titel", "song", "track", "stueck", "lied"}),
+    "radio": frozenset({"sender", "radiosender", "radiostation", "station"}),
+}
+_LIBRARY_MARKERS = frozenset({
+    "mein", "meine", "meinen", "meiner", "gespeichert", "gespeicherte", "gespeicherten",
+    "favorit", "favoriten", "favorisierte", "favorisierten",
+})
 
 
 def _words(text: str) -> list[str]:
@@ -64,7 +83,8 @@ def _words(text: str) -> list[str]:
 def _short(words: list[str], allowed: frozenset[str], extra: frozenset[str] = frozenset()) -> bool:
     """A short command made only of these words, music words, room phrases and fillers."""
     fillers = frozenset({"bitte", "mal", "die", "den", "das", "der", "im", "in", "auf", "am", "dem", "noch", "etwas",
-                         "ein", "bisschen", "jetzt", "doch", "musik", "radio", "wieder", "es", "wiedergabe"})
+                         "ein", "bisschen", "jetzt", "doch", "musik", "radio", "wieder", "es", "wiedergabe",
+                         "dort", "da", "hier", "ton"})
     if len(words) > 7 or not set(words) & allowed:
         return False
     # Before a room phrase ("… im Wohnzimmer") only command words and fillers.
@@ -98,6 +118,16 @@ def parse_media_request(text: str) -> MediaRequest | None:
         if len(numbers) == 1 and 0 <= numbers[0] <= 100:
             return MediaRequest("volume", volume=numbers[0], text=text)
         return None
+    # A bare "Stopp" remains the universal conversation cancellation.  An
+    # explicitly named playback is the standard media_player.media_stop.
+    if words[0] in _STOP_WORDS and present & {"musik", "radio", "wiedergabe", "lied", "titel"}:
+        return MediaRequest("stop", text=text)
+    if present & {"stumm", "stummschalten"} and present & {"musik", "radio", "ton", "wiedergabe"}:
+        return MediaRequest("mute", text=text)
+    if words[0] in {"mach", "mache", "schalte", "schalt"} and "ton" in present and (
+        "an" in present or "laut" in present
+    ):
+        return MediaRequest("unmute", text=text)
     # A bare "Stopp"/"Halt" stays the universal cancel; "Pause" pauses.
     if words[0] in _PAUSE_WORDS and len(words) <= 5 and (
         words == ["pause"] or words[0] in {"pausiere", "pausieren"}
@@ -120,19 +150,32 @@ def parse_media_request(text: str) -> MediaRequest | None:
         "im", "in", "am", "auf", "spielen"
     }):
         return MediaRequest("resume", text=text)
+    if words[0] in {"spiel", "spiele"} and present & _RESUME_WORDS and _short(
+        words, _RESUME_WORDS, frozenset({"spiel", "spiele"})
+    ):
+        return MediaRequest("resume", text=text)
     if words[0] in {"spiel", "spiele", "spielen", "leg", "lege"} or (
         words[0] == "starte" and present & {"musik", "radio"}
     ) or (
         words[0] in {"mach", "mache"} and present & {"musik"} and "an" in present
     ):
-        rest = [word for word in words[1:] if word not in {"bitte", "mal", "doch", "etwas", "auf", "an", "ab", "ein"}]
+        rest = [word for word in words[1:] if word not in {"bitte", "mal", "doch", "etwas", "an", "ab", "ein"}]
         cut = next((index for index, word in enumerate(rest) if word in {"im", "in", "am", "auf", "ueber"}), len(rest))
-        named = tuple(word for word in rest[:cut] if word not in {"die", "den", "das", "der", "mir", "uns"})
+        candidate = rest[:cut]
+        marked_types = [kind for kind, markers in _TYPE_MARKERS.items() if set(candidate) & markers]
+        media_type = marked_types[0] if len(marked_types) == 1 else None
+        marker_words = _TYPE_MARKERS[media_type] if media_type is not None else frozenset()
+        library_only = bool(set(candidate) & _LIBRARY_MARKERS)
+        named = tuple(word for word in candidate if word not in {
+            "die", "den", "das", "der", "mir", "uns", *_LIBRARY_MARKERS, *marker_words,
+        })
         if not named:
-            return None
+            return MediaRequest("play", text=text) if present & {"musik", "radio"} else None
         if set(named) <= _MUSIC_WORDS | {"etwas", "was", "ein", "bisschen"}:
             return MediaRequest("play", text=text)
-        return MediaRequest("play", named, text=text)
+        return MediaRequest(
+            "play", named, text=text, media_type=media_type, library_only=library_only
+        )
     return None
 
 
@@ -141,6 +184,14 @@ class MediaResolution:
     plan: ServiceCallPlan | None
     spoken: str  # the success text, or the honest answer / question
     question: bool = False
+
+
+@dataclass(frozen=True)
+class MediaPlayerResolution:
+    player: EntitySnapshot | None
+    spoken: str = ""
+    question: bool = False
+    candidates: tuple[EntitySnapshot, ...] = ()
 
 
 def _players(entities: Sequence[EntitySnapshot]) -> list[EntitySnapshot]:
@@ -186,16 +237,21 @@ def _listed(names: Sequence[str]) -> str:
     return quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " oder " + quoted[-1]
 
 
-def resolve_media(
+def resolve_media_player(
     request: MediaRequest,
     entities: Sequence[EntitySnapshot],
     *,
     satellite_area_id: str | None,
-) -> MediaResolution:
-    """The plan for one media command, or the honest answer/question."""
+    match_source_lists: bool = True,
+) -> MediaPlayerResolution:
+    """Resolve exactly one exposed player without guessing.
+
+    Music Assistant reuses this target grounding but deliberately disables
+    ``source_list`` matching: a library item is not a player input source.
+    """
     players = _players(entities)
     if not players:
-        return MediaResolution(None, "Ich finde kein Mediengerät.")
+        return MediaPlayerResolution(None, "Ich finde kein Mediengerät.")
     named = _named_players(request.text, players)
     room_named, in_room = _room_players(request.text, players)
     if named:
@@ -203,34 +259,60 @@ def resolve_media(
     elif room_named:
         candidates = in_room
         if not candidates:
-            return MediaResolution(None, "In diesem Raum finde ich kein Mediengerät.")
+            return MediaPlayerResolution(None, "In diesem Raum finde ich kein Mediengerät.")
     else:
         candidates = []
-        if request.op == "play" and request.source_words:
-            # "Spiel Bayern 3": the players whose source list has it.
+        if match_source_lists and request.op == "play" and request.source_words:
             candidates = [p for p in players if _match_source(request.source_words, _sources(p)) is not None]
         if not candidates and satellite_area_id is not None:
             candidates = [player for player in players if player.area_id == satellite_area_id]
         if not candidates and request.op == "resume":
-            # "Weiter" after "Pause": the paused player continues.
             candidates = [player for player in players if player.state == "paused"]
         if not candidates:
             candidates = [player for player in players if player.state == "playing"]
-            if not candidates and request.op in {"pause", "next", "previous", "louder", "quieter", "off", "volume"}:
-                return MediaResolution(None, "Gerade spielt nichts.")
+            if not candidates and request.op in {
+                "pause", "stop", "mute", "unmute", "next", "previous", "louder", "quieter", "off", "volume"
+            }:
+                return MediaPlayerResolution(None, "Gerade spielt nichts.")
     if len(candidates) > 1:
         playing = [player for player in candidates if player.state == "playing"]
         if len(playing) == 1 and request.op != "play":
             candidates = playing
     if len(candidates) != 1:
         options = candidates or players
-        return MediaResolution(
-            None, f"Welches Gerät meinst du: {_listed([player.friendly_name for player in options])}?", question=True
+        return MediaPlayerResolution(
+            None,
+            f"Welches Gerät meinst du: {_listed([player.friendly_name for player in options])}?",
+            question=True,
+            candidates=tuple(options),
         )
-    player = candidates[0]
+    return MediaPlayerResolution(candidates[0])
+
+
+def resolve_media(
+    request: MediaRequest,
+    entities: Sequence[EntitySnapshot],
+    *,
+    satellite_area_id: str | None,
+) -> MediaResolution:
+    """The plan for one media command, or the honest answer/question."""
+    target = resolve_media_player(
+        request, entities, satellite_area_id=satellite_area_id, match_source_lists=True
+    )
+    if target.player is None:
+        return MediaResolution(None, target.spoken, target.question)
+    player = target.player
     name = player.friendly_name
     if request.op == "pause":
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_pause", player.entity_id), f"{name} pausiert.")
+    if request.op == "stop":
+        return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_stop", player.entity_id), f"{name} gestoppt.")
+    if request.op in {"mute", "unmute"}:
+        muted = request.op == "mute"
+        return MediaResolution(
+            ServiceCallPlan(_MEDIA_DOMAIN, "volume_mute", player.entity_id, {"is_volume_muted": muted}),
+            f"{name} ist {'stumm' if muted else 'nicht mehr stumm'}.",
+        )
     if request.op == "off":
         # "Musik aus" switches the player off, like every "aus" command
         # before 7.9.3 (dev benchmark 7.7, line 235); "Pause" pauses.
@@ -330,7 +412,9 @@ _OTHER_TARGET_WORDS = frozenset({
 })
 
 
-def claims_other_target(text: str, entities: Sequence[EntitySnapshot]) -> bool:
+def claims_other_target(
+    text: str, entities: Sequence[EntitySnapshot], request: MediaRequest | None = None
+) -> bool:
     """The sentence is for the established paths: it names a media player
     itself (except next/previous track, which only HomeIntent's media
     reading knows), another device, a timer/script/monitoring, or refers
@@ -350,6 +434,8 @@ def claims_other_target(text: str, entities: Sequence[EntitySnapshot]) -> bool:
             if folded and f" {folded} " in key:
                 if entity.domain != _MEDIA_DOMAIN:
                     return True
+                if request is not None and request.op == "play" and request.source_words:
+                    continue
                 if not (present & (_NEXT_WORDS | _PREVIOUS_WORDS)):
                     return True
     return False
