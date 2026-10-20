@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from homeassistant.components import conversation
+if TYPE_CHECKING:
+    from homeassistant.components import conversation
 
 from .security_control import conversation_user_id
 
