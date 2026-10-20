@@ -66,7 +66,7 @@ def test_preference_is_only_persisted_after_bound_confirmation(monkeypatch, tmp_
 
     assert "dauerhaft" in first.response.speech
     assert before == () and after_wrong_user == ()
-    assert "anderen Benutzer" in wrong_user.response.speech
+    assert "keine Frage offen" in wrong_user.response.speech
     assert confirmed.response.speech.startswith("Gespeichert")
     assert len(stored) == 1 and stored[0].kind is MemoryKind.PREFERENCE
     assert stored[0].content["entity_id"] == "light.floor"
@@ -224,8 +224,12 @@ def test_comfort_request_uses_confirmed_profile_before_action(monkeypatch, tmp_p
     entity.hass.services.async_call.assert_not_awaited()
 
     wrong_user = asyncio.run(turn("Ja", "guest"))
-    assert "anderen Benutzer" in wrong_user.response.speech
+    assert "keine Frage offen" in wrong_user.response.speech
     entity.hass.services.async_call.assert_not_awaited()
+
+    confirmed = asyncio.run(turn("Ja"))
+    assert "führe den Plan" in confirmed.response.speech
+    entity.hass.services.async_call.assert_awaited()
 
 def test_comfort_request_without_unique_preference_never_acts(monkeypatch, tmp_path):
     entity = NluConversationEntity(ConfigEntry())
