@@ -683,7 +683,14 @@ def compile_clauses(
                         getattr(document, "source_text"), area,
                     )
                     if stepped is None:
-                        return None
+                        measured = "Position" if domain == "cover" else "Lautstärke"
+                        return OntologyCommand(
+                            message=(
+                                f"Die aktuelle {measured} ist nicht verfügbar. "
+                                "Ich habe deshalb nichts ausgeführt."
+                            ),
+                            clauses=len(clauses),
+                        )
                     results.extend(stepped)
                 else:
                     results.append(_build_result(
