@@ -211,10 +211,14 @@ async def async_resolve_music_assistant(
     if request.media_type is not None:
         data["media_type"] = request.media_type
     try:
-        call_options: dict[str, object] = {"blocking": True, "return_response": True}
-        if context is not None:
-            call_options["context"] = context
-        response = await hass.services.async_call(DOMAIN, SEARCH, data, **call_options)
+        response = await hass.services.async_call(
+            DOMAIN,
+            SEARCH,
+            data,
+            blocking=True,
+            return_response=True,
+            context=context,
+        )
     except Exception:  # noqa: BLE001 - HA integration errors are heterogeneous
         _LOGGER.exception("HomeIntent Music Assistant library search failed")
         return MusicAssistantResolution(

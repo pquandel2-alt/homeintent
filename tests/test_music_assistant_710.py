@@ -191,7 +191,9 @@ def test_exact_saved_radio_becomes_typed_plan_not_a_direct_url():
             "limit": 10, "library_only": True,
         },
     )
-    assert call.kwargs == {"blocking": True, "return_response": True}
+    assert call.kwargs == {
+        "blocking": True, "return_response": True, "context": None,
+    }
 
 
 def test_queue_mode_reaches_typed_plan_and_service_data():
