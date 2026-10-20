@@ -347,6 +347,10 @@ class ConversationContext:
     last_floor: FloorSnapshot | None = None
     last_property: SemanticProperty | None = None
     last_value: float | None = None
+    # The device value observed immediately before the last successful
+    # setpoint plan. It is short-lived and principal-scoped with this whole
+    # context; it is never reconstructed from a spoken value.
+    previous_value: float | None = None
     last_state: SemanticState | None = None
     pending_reference: str | None = None
     # V5 Teil 7/10 (V5.23, "Dry Run") - a spoken automation awaiting its

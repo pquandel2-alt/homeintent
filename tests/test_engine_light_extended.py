@@ -61,6 +61,26 @@ def test_degree_words_control_relative_brightness_step(engine):
     assert large.frame.degree.name == "LARGE"
 
 
+def test_relative_room_response_describes_every_selected_light(engine):
+    lights = [
+        EntitySnapshot(
+            "light.stehlampe", "Stehlampe", "light", "on",
+            area_id="living", area_name="Wohnzimmer",
+            capabilities=frozenset({"TURN_ON", "TURN_OFF", "BRIGHTNESS"}),
+        ),
+        EntitySnapshot(
+            "light.decke", "Deckenlicht", "light", "on",
+            area_id="living", area_name="Wohnzimmer",
+            capabilities=frozenset({"TURN_ON", "TURN_OFF", "BRIGHTNESS"}),
+        ),
+    ]
+
+    result = engine.match("Mach bitte im Wohnzimmer das Licht etwas heller.", lights)
+
+    assert set(result.plan.entity_id) == {"light.stehlampe", "light.decke"}
+    assert result.response_text == "2 Lichter um 5 Prozent heller gestellt."
+
+
 def test_set_color(engine):
     result = engine.match("mach die Vollfarblampe rot", ENTITIES)
     assert result.plan.domain == "light"

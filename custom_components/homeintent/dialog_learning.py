@@ -280,6 +280,7 @@ _FUNCTION_WORDS = {
     "den", "die", "das", "der", "dem", "des", "ein", "eine", "einen", "mein", "meine", "meinen",
     "bitte", "mal", "an", "aus", "ein", "auf", "zu", "hoch", "runter", "im", "in", "am", "und",
     "jetzt", "doch", "kurz", "wieder", "ganz", "prozent", "grad",
+    "wert", "einstellung", "temperatur", "vorher", "zuvor",
 }
 
 

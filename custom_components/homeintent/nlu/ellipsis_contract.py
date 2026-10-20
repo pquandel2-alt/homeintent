@@ -44,6 +44,7 @@ _NEUTRAL_REST = frozenset({
     "dann", "und", "aus", "an", "ein", "so", "genauso", "ebenso", "ebenfalls", "danke", "okay",
     "gerne", "halt", "einfach", "ruhig", "mehr", "weniger", "etwas", "bisschen", "ganz",
     "komplett", "zurueck", "oder", "aber", "dafuer", "bei", "fuer", "mit", "von", "zu",
+    "wert", "einstellung", "temperatur", "vorher", "zuvor",
 })
 
 
