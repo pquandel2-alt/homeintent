@@ -37,6 +37,12 @@ Bibliothekstreffer werden derzeit nicht dauerhaft gecacht. Dadurch können ein
 Neustart oder in Music Assistant entfernte Sender nicht aus einem veralteten
 HomeIntent-Cache wiederhergestellt werden.
 
+Explizite Queue-Angaben werden als geschlossene Planwerte behandelt:
+„als Nächstes“ verwendet `next`, „zur Warteschlange hinzu“ verwendet `add`,
+und „Warteschlange ersetzen“ verwendet `replace`. Ohne Queue-Angabe bleibt
+`replace` der sichere Standard. Andere Werte werden vor Bibliothekssuche und
+Wiedergabe abgelehnt.
+
 ## Sicherheit und Grenzen
 
 - Direkte `http`, `https`, `ftp`, `file`- oder `data`-URLs werden abgelehnt.

@@ -14,7 +14,10 @@ _ha_stub.install()
 
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.media import MediaRequest, parse_media_request, resolve_media  # noqa: E402
-from homeintent.music_assistant import async_resolve_music_assistant  # noqa: E402
+from homeintent.music_assistant import (  # noqa: E402
+    MusicAssistantPlan,
+    async_resolve_music_assistant,
+)
 
 
 def _player(
@@ -78,6 +81,37 @@ def test_parser_composes_media_type_and_name(text, media_type, name, library_onl
         name,
         library_only,
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "queue_mode"),
+    [
+        ("Spiel als Nächstes den Titel One im Wohnzimmer.", "next"),
+        ("Spiel den Titel One zur Warteschlange hinzu.", "add"),
+        ("Spiel den Titel One und ersetze die Warteschlange.", "replace"),
+    ],
+)
+def test_parser_composes_closed_queue_modes(text, queue_mode):
+    request = parse_media_request(text)
+
+    assert request is not None
+    assert request.source_words == ("one",)
+    assert request.media_type == "track"
+    assert request.enqueue == queue_mode
+
+
+def test_typed_music_plan_rejects_unknown_queue_mode():
+    with pytest.raises(ValueError, match="queue"):
+        MusicAssistantPlan(
+            operation="play",
+            media_type="track",
+            query="One",
+            media_id="library://track/1",
+            target_player="media_player.wohnzimmer",
+            queue_mode="unsafe",
+            resolution_source="test",
+            unique=True,
+        )
 
 
 @pytest.mark.parametrize(
@@ -158,6 +192,35 @@ def test_exact_saved_radio_becomes_typed_plan_not_a_direct_url():
         },
     )
     assert call.kwargs == {"blocking": True, "return_response": True}
+
+
+def test_queue_mode_reaches_typed_plan_and_service_data():
+    hass = _hass({"tracks": [{"name": "One", "uri": "library://track/1"}]})
+    request = MediaRequest(
+        "play", ("one",), text="Spiel als Nächstes den Titel One.",
+        media_type="track", enqueue="next",
+    )
+
+    result = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert result is not None and result.plan is not None and result.media_plan is not None
+    assert result.media_plan.queue_mode == "next"
+    assert result.plan.data["enqueue"] == "next"
+
+
+def test_unknown_queue_mode_fails_before_search():
+    hass = _hass({"tracks": [{"name": "One", "uri": "library://track/1"}]})
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("one",), media_type="track", enqueue="unsafe"),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert "nichts gestartet" in result.spoken
+    hass.services.async_call.assert_not_awaited()
 
 
 def test_similar_radio_is_not_selected():

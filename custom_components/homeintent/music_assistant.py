@@ -16,7 +16,7 @@ from typing import Mapping, Sequence
 from homeassistant.core import Context, HomeAssistant
 
 from .entities import EntitySnapshot, normalize_for_compare
-from .media import MediaRequest, _as_said, resolve_media_player
+from .media import QUEUE_MODES, MediaRequest, _as_said, resolve_media_player
 from .service_call import ServiceCallPlan
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +64,10 @@ class MusicAssistantPlan:
     queue_mode: str
     resolution_source: str
     unique: bool
+
+    def __post_init__(self) -> None:
+        if self.queue_mode not in QUEUE_MODES:
+            raise ValueError("unknown Music Assistant queue mode")
 
     def service_call(self) -> ServiceCallPlan:
         return ServiceCallPlan(
@@ -157,6 +161,10 @@ async def async_resolve_music_assistant(
     """
     if request.op != "play" or not request.source_words:
         return None
+    if request.enqueue not in QUEUE_MODES:
+        return MusicAssistantResolution(
+            None, "Diesen Warteschlangenmodus unterstütze ich nicht; ich habe nichts gestartet."
+        )
     if re.search(r"(?:https?|ftp|file)://|data:", request.text, re.IGNORECASE):
         return MusicAssistantResolution(
             None, "Direkte Medien-URLs führe ich nicht aus; ich habe nichts gestartet."

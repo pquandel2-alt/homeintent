@@ -26,6 +26,7 @@ from .entities import EntitySnapshot, normalize_for_compare
 from .service_call import ServiceCallPlan
 
 __all__ = (
+    "QUEUE_MODES",
     "MediaRequest",
     "MediaPlayerResolution",
     "claims_other_target",
@@ -49,6 +50,7 @@ _QUIETER = frozenset({"leiser"})
 _VOLUME_WORDS = frozenset({"lautstaerke", "volume"})
 _QUERY_WORDS = frozenset({"laeuft", "spielt", "singt", "hoere", "hoeren", "kommt"})
 _MEDIA_DOMAIN = "media_player"
+QUEUE_MODES = frozenset({"replace", "next", "add"})
 
 
 @dataclass(frozen=True)
@@ -92,9 +94,39 @@ def _short(words: list[str], allowed: frozenset[str], extra: frozenset[str] = fr
     return all(word in allowed | extra | fillers | _MUSIC_WORDS for word in words[:cut])
 
 
+def _queue_directive(words: list[str]) -> tuple[list[str], str]:
+    """Remove one explicit queue modifier and return its closed value.
+
+    Queue language only applies to an explicit play command.  The remaining
+    words continue through the ordinary type/name/player composition, so a
+    queue modifier can never become part of a library search term.
+    """
+    if not words or words[0] not in _PLAY_VERBS:
+        return words, "replace"
+    for index in range(len(words) - 1):
+        if words[index:index + 2] == ["als", "naechstes"]:
+            return [*words[:index], *words[index + 2:]], "next"
+    queue_words = {"warteschlange", "queue"}
+    if set(words) & queue_words and "hinzu" in words:
+        removed = queue_words | {"hinzu", "zur"}
+        cleaned = [word for word in words if word not in removed]
+        if cleaned[-1:] == ["und"]:
+            cleaned.pop()
+        return cleaned, "add"
+    if set(words) & queue_words and any(word.startswith("ersetz") for word in words):
+        removed = queue_words | {"und", "die"}
+        cleaned = [
+            word for word in words
+            if word not in removed and not word.startswith("ersetz")
+        ]
+        return cleaned, "replace"
+    return words, "replace"
+
+
 def parse_media_request(text: str) -> MediaRequest | None:
     """A media command or "Was läuft?", else ``None``."""
     words = _words(text)
+    words, enqueue = _queue_directive(words)
     present = set(words)
     if not words or present & {"wenn", "sobald", "falls", "nicht", "kein", "keine"}:
         return None
@@ -170,11 +202,12 @@ def parse_media_request(text: str) -> MediaRequest | None:
             "die", "den", "das", "der", "mir", "uns", *_LIBRARY_MARKERS, *marker_words,
         })
         if not named:
-            return MediaRequest("play", text=text) if present & {"musik", "radio"} else None
+            return MediaRequest("play", text=text, enqueue=enqueue) if present & {"musik", "radio"} else None
         if set(named) <= _MUSIC_WORDS | {"etwas", "was", "ein", "bisschen"}:
-            return MediaRequest("play", text=text)
+            return MediaRequest("play", text=text, enqueue=enqueue)
         return MediaRequest(
-            "play", named, text=text, media_type=media_type, library_only=library_only
+            "play", named, text=text, media_type=media_type, library_only=library_only,
+            enqueue=enqueue,
         )
     return None
 
