@@ -18,6 +18,7 @@ _ha_stub.install()
 
 import homeintent.conversation as ha_conversation  # noqa: E402
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.conversation_scope import conversation_scope_key  # noqa: E402
 from homeintent.dialog_manager import DialogPriority, DialogTaskKind  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.experience import extract_goal_run_experiences  # noqa: E402
@@ -80,7 +81,8 @@ def _agent(tmp_path, monkeypatch, *, fail: bool):
     monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: list(states.values()))
     monkeypatch.setattr(ha_conversation, "build_device_snapshots", lambda *_: [])
     agent._runtime_data.dialog_manager.create(
-        "evidence", "goal-plan", DialogTaskKind.PLAN_CONFIRMATION,
+        conversation_scope_key("evidence", user_id="philipp"),
+        "goal-plan", DialogTaskKind.PLAN_CONFIRMATION,
         DialogPriority.CONFIRMATION, slots={"plan": _plan()},
         reason="test", requested_by_user_id="philipp",
     )
