@@ -87,6 +87,13 @@ jobs:
           python scripts/benchmark_automation_language.py
           --registry-size 5000
           --max-p95-ms 100
+      - name: Music-Assistant-Auflösung bei großer Registry prüfen
+        if: matrix.python-version == '3.12'
+        run: >-
+          python scripts/benchmark_music_assistant.py
+          --registry-size 5000
+          --iterations 300
+          --max-p95-ms 100
       - name: V10 Goal-/Planungsbudgets prüfen
         if: matrix.python-version == '3.12'
         run: >-

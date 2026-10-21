@@ -37,6 +37,11 @@ Bibliothekstreffer werden derzeit nicht dauerhaft gecacht. Dadurch können ein
 Neustart oder in Music Assistant entfernte Sender nicht aus einem veralteten
 HomeIntent-Cache wiederhergestellt werden.
 
+Der lokale Adapterpfad wird in CI mit
+`scripts/benchmark_music_assistant.py` gegen eine Registry mit 5.000 Entities
+gemessen. Der Benchmark verwendet eine deterministische Service-Fake, öffnet
+kein Netzwerk und führt keine Wiedergabe aus.
+
 Explizite Queue-Angaben werden als geschlossene Planwerte behandelt:
 „als Nächstes“ verwendet `next`, „zur Warteschlange hinzu“ verwendet `add`,
 und „Warteschlange ersetzen“ verwendet `replace`. Ohne Queue-Angabe bleibt
