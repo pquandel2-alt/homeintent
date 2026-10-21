@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.9.11**
+- Aktuelle Version: **7.10.0**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -138,24 +138,23 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-## Version 7.9.11
+## Version 7.10.0
 
-7.9.11 ist ein Sicherheits- und Datenintegritäts-Patch. Automationen dürfen
-nur noch mit eindeutigem HomeIntent-Herkunftsnachweis gelöscht werden;
-automatisches Fortsetzen benötigt einen offenen, exakt passenden Pausenauftrag.
-Rückgängig prüft Besitzer oder Administrator sowie exakte YAML- und
-Metadaten-Digests, bevor es schreibt. Thermal-Persistenz blockiert den
-Home-Assistant-Event-Loop nicht mehr. Details und Migrationsgrenzen stehen in
-den [Release Notes](docs/release-notes-7.9.11.md).
+7.10.0 ergänzt optionales Music Assistant mit exakter Bibliothekssuche und
+typisierten Medienplänen. Dialogkontext wird nach Conversation und Benutzer
+beziehungsweise Sprachsatellit getrennt; belegte Temperatur-Rückbezüge,
+relative Rollladenbewegungen und kausale Erklärungen werden kompositionell
+aufgelöst. Mehrdeutige Ziele und Medien starten weiterhin keine Aktion.
+Details und Grenzen stehen in den [Release Notes](docs/release-notes-7.10.0.md).
 
-Geprüfter Release-Stand von Version 7.9.11: Die verpflichtenden GitHub-Prüfungen
+Geprüfter Release-Stand von Version 7.10.0: Die verpflichtenden GitHub-Prüfungen
 müssen für den exakten Release-Commit erfolgreich abgeschlossen sein, bevor
 das Tag und der GitHub-Release erstellt werden.
 
 Die versionierte Korpusbaseline ist
-[`corpus-signatures-7.9.11.json`](docs/perf/corpus-signatures-7.9.11.json).
+[`corpus-signatures-7.10.0.json`](docs/perf/corpus-signatures-7.10.0.json).
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.9.11.md), im
+in den [Release Notes](docs/release-notes-7.10.0.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 
