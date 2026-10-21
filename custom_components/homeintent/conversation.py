@@ -48,6 +48,7 @@ from .conversation_location import (
     materialize_local_reference,
     resolve_conversation_area,
 )
+from .conversation_scope import scope_conversation_input
 from .const import CONF_HOUSE_RELATIONS, DOMAIN
 from .dialog_manager import DialogPriority, DialogTaskKind
 from .engine import (
@@ -156,7 +157,7 @@ from .undo import is_undo_request
 from .runtime_data import HomeIntentRuntimeData
 from .execution_context import begin_turn, end_turn
 from .execution_trace import Evidence
-from .nlu.causal_question import interpret_cause_question
+from .nlu.causal_question import evidence_free_answer, interpret_cause_question
 from .conversation_learning import DialogLearningMixin, is_known_device_word
 from .nlu.meaning_ir import is_deferred
 from .controllers.comfort import ComfortController
@@ -236,8 +237,8 @@ _DIALOG_REPLY = {
 _COMMAND_ANSWER_TASK_KINDS = frozenset({
     DialogTaskKind.ROUTINE_DEFINITION,
     DialogTaskKind.AUTOMATION,
+    DialogTaskKind.MEDIA_SELECTION,
 })
-
 
 # HomeIntent V5 Teil 8/10 (Wave 11, "Automation Disable/Enable") - no
 # confirmation-round-trip vocabulary here (see ``AutomationToggleMatchResult``'s
@@ -557,6 +558,7 @@ class NluConversationEntity(
         satellite microphones open after a plain "Mach das Licht an".
         """
         user_input = _with_session_conversation_id(user_input, chat_log)
+        user_input, public_conversation_id = scope_conversation_input(user_input)
         proactive = self._runtime_data.proactive_context
         if proactive is not None:
             # An authenticated turn on a mapped satellite is short-lived room
@@ -593,7 +595,7 @@ class NluConversationEntity(
         awaiting_answer = self._apply_continue_conversation(user_input, result) or bool(suffix)
         # Speech or confirmation tone: decided here, once, from typed facts.
         apply_response_style(self.hass, self.entry.options, user_input, result, outcomes, awaiting_answer)
-        return result
+        return replace(result, conversation_id=public_conversation_id)
 
     def _apply_continue_conversation(
         self,
@@ -1061,6 +1063,11 @@ class NluConversationEntity(
             # "Warum ist der Saugroboter angegangen?": answered only from HA's
             # context chain and the execution trace (7.3.2).
             cause_question = interpret_cause_question(language_document, entities)
+            evidence_answer = evidence_free_answer(cause_question)
+            if evidence_answer is not None:
+                response.response_type = intent.IntentResponseType.QUERY_ANSWER
+                response.async_set_speech(evidence_answer)
+                return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
             cause = (
                 await self._queries.async_explain_cause(cause_question.entity)
                 if cause_question is not None and cause_question.entity is not None
@@ -2409,7 +2416,6 @@ class NluConversationEntity(
             user_input, response, result, entities
         )
 
-
     def _script_steps(self, entity_id: str) -> list[dict[str, object]] | None:
         """The configured action sequence of one script entity, if readable."""
         component = self.hass.data.get("script")
@@ -2468,8 +2474,6 @@ class NluConversationEntity(
         if decision.kind is DecisionKind.ASK:
             return MatchResult(plan=None, response_text=ambiguous_reading_text(decision))
         return next((payload for _source, payload in payloads if payload is not None), None)
-
-
     def _event_reading_claims(self, text: str, entities: list[EntitySnapshot]) -> bool:
         """Routing rule for monitoring requests (7.8.3).
 
@@ -2484,17 +2488,13 @@ class NluConversationEntity(
             OutcomeKind.CLARIFY,
             OutcomeKind.MONITOR,
         )
-
     def _automation_store(self) -> AutomationExecutor:
         """The one executor of automations.yaml (its lock guards every write)."""
         if self._automation_executor is None:
             self._automation_executor = AutomationExecutor(self.hass)
         return self._automation_executor
-
     def _record_execution(self, user_input, plan) -> None:
         context = getattr(user_input, "context", None)
         self._audit_trail.record(
             dt_util.now(), getattr(context, "user_id", None), plan
         )
-
-

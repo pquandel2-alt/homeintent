@@ -1339,12 +1339,23 @@ class NluEngine:
         coordinated = any(
             token.canonical in {",", "und", "sowie"} for token in document.tokens
         )
+        relative_cover_step = bool(
+            isinstance(legacy, MatchResult)
+            and legacy.plan is not None
+            and legacy.plan.domain == "cover"
+            and any(token.canonical == "weiter" for token in document.tokens)
+            and any(
+                token.canonical in {"hoch", "rauf", "runter", "herunter", "zu"}
+                for token in document.tokens
+            )
+        )
         if (
             isinstance(legacy, MatchResult)
             and legacy.plan is not None
             and isinstance(legacy.plan.entity_id, str)
             and not universal
             and not coordinated
+            and not relative_cover_step
             and _names_its_target(document, legacy.plan.entity_id, entities)
         ):
             # One grounded single-target command that names its device
@@ -1428,8 +1439,11 @@ class NluEngine:
             )
             if (
                 compiled.message is not None
-                and compiled.clauses > 1
-                and len(legacy_commands) < compiled.clauses
+                and (
+                    relative_cover_step
+                    or compiled.clauses > 1
+                    and len(legacy_commands) < compiled.clauses
+                )
             ):
                 # The legacy reading covers fewer clauses than were spoken:
                 # refuse instead of executing a subset (finding S3).  The
@@ -1437,7 +1451,12 @@ class NluEngine:
                 return _REFUSED
             if not (
                 compiled.executable
-                and (drops_clause or too_broad or exact_coordinated_targets)
+                and (
+                    drops_clause
+                    or too_broad
+                    or exact_coordinated_targets
+                    or relative_cover_step
+                )
             ):
                 return None
         if compiled.message is not None:

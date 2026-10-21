@@ -17,6 +17,7 @@ from dataclasses import replace
 import pytest
 
 from _testhaus import PUSH_OPTIONS, HouseConversation, house_entities
+from homeintent.conversation_scope import conversation_scope_key
 
 GATE = "cover.garagentor"
 # 7.9.2 A2 (Eigentümerentscheidung T2, Variante C): Bewässerungsventile dürfen
@@ -155,7 +156,9 @@ def test_the_write_path_refuses_a_stored_opening(monkeypatch, tmp_path):
         actions=(ActionModel(ActionType.TURN_ON, target=TriggerTarget(entity_id=GATE)),),
         source_text="test",
     )
-    house.entity._context_store.set(house.conversation_id, ConversationContext(
+    house.entity._context_store.set(conversation_scope_key(
+        house.conversation_id, user_id="admin"
+    ), ConversationContext(
         last_command=None, last_entities=(), last_area=None, pending_clarification=None,
         pending_automation_confirmation=PendingAutomationConfirmation(model, "admin"),
     ))

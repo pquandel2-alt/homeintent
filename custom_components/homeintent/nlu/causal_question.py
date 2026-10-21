@@ -30,7 +30,7 @@ _CHANGE_WORDS = frozenset({
 
 
 _NOT_A_DEVICE_CAUSE = frozenset({
-    "du", "dich", "dir", "automation", "automationen", "regel", "gestern",
+    "dich", "dir", "automation", "automationen", "regel", "gestern",
     "vorgestern", "letzte", "letzten", "letztes", "vorhin", "damals",
 })
 
@@ -39,6 +39,27 @@ _NOT_A_DEVICE_CAUSE = frozenset({
 class CauseQuestion:
     entity: EntitySnapshot | None
     clarification: str | None = None
+    omitted_homeintent_action: bool = False
+
+
+def evidence_free_answer(question: CauseQuestion | None) -> str | None:
+    """Answer only what the interpreted wording itself proves.
+
+    An omitted action ("warum hast du nicht ...") is not present in the
+    change trace by definition.  Never invent a cause merely because a
+    target was grounded successfully.
+    """
+    if question is None:
+        return None
+    if question.clarification is not None:
+        return question.clarification
+    if question.entity is not None and question.omitted_homeintent_action:
+        return (
+            f"Für {question.entity.friendly_name} habe ich keinen lokalen Nachweis "
+            "eines fehlgeschlagenen Befehls. Ohne einen solchen Nachweis kann ich keinen "
+            "Grund behaupten."
+        )
+    return None
 
 
 def interpret_cause_question(
@@ -60,6 +81,9 @@ def interpret_cause_question(
         pass
     else:
         return None
+    omitted_homeintent_action = (
+        "du" in words and "nicht" in words and bool(set(words) & _CHANGE_WORDS)
+    )
     resolutions = [
         item for item in resolve_text_target(document.tokens, entities)
         if item.outcome is not ResolutionOutcome.NONE
@@ -71,10 +95,24 @@ def interpret_cause_question(
         return None
     first_resolution = resolutions[0]
     if first_resolution.outcome is ResolutionOutcome.RESOLVED and len(first_resolution.entities) == 1:
-        return CauseQuestion(first_resolution.entities[0])
+        return CauseQuestion(
+            first_resolution.entities[0],
+            omitted_homeintent_action=omitted_homeintent_action,
+        )
     candidates = first_resolution.entities
     if 1 < len(candidates) <= 8:
         names = [entity.friendly_name for entity in candidates]
         listed = ", ".join(names[:-1]) + " oder " + names[-1]
-        return CauseQuestion(None, f"Welches Gerät meinst du: {listed}?")
+        return CauseQuestion(
+            None,
+            f"Welches Gerät meinst du: {listed}?",
+            omitted_homeintent_action=omitted_homeintent_action,
+        )
+    if candidates:
+        surface = first_resolution.description.surface.strip() or "Gerät"
+        return CauseQuestion(
+            None,
+            f"Welches {surface} meinst du?",
+            omitted_homeintent_action=omitted_homeintent_action,
+        )
     return None

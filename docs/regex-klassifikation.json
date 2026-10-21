@@ -8,7 +8,8 @@
   "7.6.0": 212,
   "7.7.0": 173,
   "7.7.1": 173,
-  "7.8.0": 173
+  "7.8.0": 173,
+  "7.10.0": 171
  },
  "eintraege": [
   {
@@ -1373,6 +1374,13 @@
    "id": "custom_components/homeintent/comfort_intent.py::_COMFORT_RE::ad0717d93e",
    "datei": "custom_components/homeintent/comfort_intent.py",
    "bereich": "_COMFORT_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/contextual_property.py::ContextualPropertyResolver._previous_value::cf839aab74",
+   "datei": "custom_components/homeintent/contextual_property.py",
+   "bereich": "ContextualPropertyResolver._previous_value",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -2767,6 +2775,20 @@
    "datei": "custom_components/homeintent/monitoring_management.py",
    "bereich": "names_managed_object",
    "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/music_assistant.py::_SAFE_MEDIA_ID::aa0f64e62a",
+   "datei": "custom_components/homeintent/music_assistant.py",
+   "bereich": "_SAFE_MEDIA_ID",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/music_assistant.py::async_resolve_music_assistant::efe3556aea",
+   "datei": "custom_components/homeintent/music_assistant.py",
+   "bereich": "async_resolve_music_assistant",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -4457,7 +4479,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/semantic_utterance.py::_CONTEXTUAL_FOLLOWUP_RE::1d292d08c5",
+   "id": "custom_components/homeintent/nlu/semantic_utterance.py::_CONTEXTUAL_FOLLOWUP_RE::6e7a422b1b",
    "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
    "bereich": "_CONTEXTUAL_FOLLOWUP_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
@@ -5326,9 +5348,9 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 402,
+  "LEXICAL": 404,
   "MORPHOLOGICAL": 37,
-  "STRUCTURAL": 149,
+  "STRUCTURAL": 150,
   "SEMANTIC_SENTENCE_PATTERN": 171
  }
 }

@@ -55,6 +55,8 @@ class DialogTaskKind(StrEnum):
     # 7.9.3 B7: a changed monitoring ("Vorher … Nachher …") waits for "Ja",
     # or which of several matching monitorings is meant.
     MONITOR_EDIT = "monitor_edit"
+    # A Music Assistant library type or target player is still ambiguous.
+    MEDIA_SELECTION = "media_selection"
 
 
 class DialogPriority(IntEnum):

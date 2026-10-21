@@ -58,6 +58,11 @@ class EntitySnapshot:
     capabilities: frozenset[str] = field(default_factory=frozenset)
     last_changed: datetime | None = None
     last_updated: datetime | None = None
+    # Registry provenance used for optional integration adapters.  It is
+    # descriptive only: an entity is still required to be exposed and is
+    # revalidated by the normal execution policy before every write.
+    integration: str | None = None
+    config_entry_id: str | None = None
 
 
 class ResolveStatus(Enum):

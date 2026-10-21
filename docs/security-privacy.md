@@ -38,3 +38,10 @@ Ablauf liegen beim nativen Home-Assistant-`TimerManager`. Ein Client ohne
 native Timer-Audioausgabe erhält nur dann einen Timer, wenn TTS-Engine und
 Medienplayer explizit konfiguriert sind; andernfalls wird der Start abgelehnt,
 damit kein unhörbarer Alarm vorgetäuscht wird.
+
+Die optionale Music-Assistant-Anbindung liest Bibliothekstreffer ausschließlich
+über die registrierte read-only Suchaktion. Direkte Web-, Datei- und Data-URLs
+werden nicht an Player übergeben. Nur ein exakt benannter, eindeutiger Treffer
+und ein freigegebener, verfügbarer Music-Assistant-Player ergeben einen Plan;
+dieser läuft anschließend durch dieselbe Execution Policy wie andere
+Geräteaktionen. HomeIntent hält keinen dauerhaften Medienbibliotheks-Cache.

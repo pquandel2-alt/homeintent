@@ -65,6 +65,7 @@ SERVICE_CALLERS = {
     # plays a sound, never writes a device.
     "response_style",
     "history_query",  # recorder reads
+    "music_assistant",  # capability-detected, read-only library search
     "controllers/productivity",  # todo, timer, calendar entities
     "controllers/goals",  # failure notification of a background plan
 }

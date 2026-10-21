@@ -206,6 +206,17 @@ def read_clauses(
             ))
             continue
         genera_here = {key for item in descriptions for key in item.genera}
+        if genera_here and set(genera_here) <= _MOVABLE_GENERA:
+            # ``weiter`` can mean media playback as well as continuation of
+            # a scalar movement.  Once the target is typed as a shutter (or
+            # another movable genus) and exactly one physical direction is
+            # present, the media reading is incompatible with that target.
+            directional = actions & {"open", "close"}
+            if len(directional) == 1 and (spoken_step is not None or "weiter" in words_here):
+                actions = frozenset(directional)
+                if "weiter" in words_here and degree is None:
+                    degree = ("level", 1 if directional == {"open"} else -1)
+                    actions = frozenset()
         actions, degree = directional_as_degree(actions, degree, words_here, genera_here)
         if spoken_step is not None and degree is None and actions in (
             frozenset({"open"}), frozenset({"close"})

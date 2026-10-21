@@ -682,20 +682,27 @@ CLIMATE_EXTENDED_INTENTS: dict[str, ClimateExtendedIntentSpec] = {
 }
 
 
+def _light_step_text(
+    entities: list[EntitySnapshot], params: Mapping[str, Any], direction: str
+) -> str:
+    subject = entities[0].friendly_name if len(entities) == 1 else f"{len(entities)} Lichter"
+    return f"{subject} um {params['step_percent']} Prozent {direction} gestellt."
+
+
 LIGHT_EXTENDED_INTENTS: dict[str, LightExtendedIntentSpec] = {
     "HassLightBrighten": LightExtendedIntentSpec(
         capability=Capability.BRIGHTNESS,
         build=lambda es, params: ServiceCallPlan(
             "light", "turn_on", _entity_id_field(es), {"brightness_step_pct": params["step_percent"]}
         ),
-        response=lambda es, params: f"{es[0].friendly_name} um {params['step_percent']} Prozent heller gestellt.",
+        response=lambda es, params: _light_step_text(es, params, "heller"),
     ),
     "HassLightDim": LightExtendedIntentSpec(
         capability=Capability.BRIGHTNESS,
         build=lambda es, params: ServiceCallPlan(
             "light", "turn_on", _entity_id_field(es), {"brightness_step_pct": -params["step_percent"]}
         ),
-        response=lambda es, params: f"{es[0].friendly_name} um {params['step_percent']} Prozent dunkler gestellt.",
+        response=lambda es, params: _light_step_text(es, params, "dunkler"),
     ),
     "HassLightSetColor": LightExtendedIntentSpec(
         capability=Capability.COLOR,

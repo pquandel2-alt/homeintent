@@ -14,6 +14,7 @@ _ha_stub.install()
 
 import homeintent.conversation as ha_conversation  # noqa: E402
 from homeintent.conversation import NluConversationEntity  # noqa: E402
+from homeintent.conversation_scope import conversation_scope_key  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.house_graph import FactProvenance  # noqa: E402
 from homeintent.memory import MemoryKind, MemoryStore  # noqa: E402
@@ -246,7 +247,9 @@ def test_movie_goal_uses_one_confirmed_preference_as_preview(monkeypatch, tmp_pa
             None,
         )
     )
-    active = entity._runtime_data.dialog_manager.active("movie-plan")
+    active = entity._runtime_data.dialog_manager.active(
+        conversation_scope_key("movie-plan", user_id="owner")
+    )
     assert "Planvorschau" in result.response.speech
     assert active is not None
     stored_plan = active.slots["plan"]

@@ -101,6 +101,7 @@ def install() -> None:
     )
     config_entries = types.ModuleType("homeassistant.config_entries")
     core = types.ModuleType("homeassistant.core")
+    exceptions = types.ModuleType("homeassistant.exceptions")
     util = types.ModuleType("homeassistant.util")
     util_yaml = types.ModuleType("homeassistant.util.yaml")
     util_file = types.ModuleType("homeassistant.util.file")
@@ -278,6 +279,11 @@ def install() -> None:
 
     core.Context = Context
     core.HomeAssistant = HomeAssistant
+
+    class HomeAssistantError(Exception):
+        """Base class for failures raised across Home Assistant boundaries."""
+
+    exceptions.HomeAssistantError = HomeAssistantError
     core.callback = callback
     core.State = State
     core.ServiceCall = ServiceCall
@@ -537,6 +543,7 @@ def install() -> None:
     components_homeassistant.exposed_entities = components_homeassistant_exposed_entities
     homeassistant.config_entries = config_entries
     homeassistant.core = core
+    homeassistant.exceptions = exceptions
     homeassistant.util = util
     util.yaml = util_yaml
     util.file = util_file
@@ -565,6 +572,7 @@ def install() -> None:
     sys.modules["homeassistant.util.file"] = util_file
     sys.modules["homeassistant.util.dt"] = util_dt
     sys.modules["homeassistant.core"] = core
+    sys.modules["homeassistant.exceptions"] = exceptions
     sys.modules["homeassistant.helpers"] = helpers
     sys.modules["homeassistant.helpers.area_registry"] = helpers_area_registry
     sys.modules["homeassistant.helpers.category_registry"] = helpers_category_registry

@@ -309,7 +309,9 @@ _CONTEXTUAL_FOLLOWUP_RE = re.compile(
     r"^\s*(?:und|dann|danach|nein[,.]?|stattdessen)\b|"
     r"\b(?:der|die|das)\s+andere\w*\b|"
     r"^\s*(?:er|sie|es|das|dort|davon)\b|"
-    r"\b(?:dort|davon)\b",
+    r"\b(?:dort|davon)\b|"
+    r"\b(?:wert|einstellung|temperatur)\s+(?:von\s+)?(?:vorher|zuvor)\b|"
+    r"\b(?:alten|früheren)\s+wert\b",
     re.I,
 )
 

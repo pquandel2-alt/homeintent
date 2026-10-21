@@ -75,6 +75,23 @@ QUERY_INTENT_NAMES = frozenset(QUERY_INTENTS)
 _GENERIC_UNKNOWN_TARGET = "Ich habe die Aktion erkannt, aber kein eindeutig passendes"
 
 
+def _previous_setpoint(
+    plan: ServiceCallPlan | None, entities: Sequence[EntitySnapshot]
+) -> float | None:
+    """Value observed before one exact setpoint write, if representable."""
+    if plan is None or plan.domain != "climate" or plan.service != "set_temperature":
+        return None
+    target_ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+    if len(target_ids) != 1:
+        return None
+    target = next((entity for entity in entities if entity.entity_id == target_ids[0]), None)
+    raw = target.attributes.get("temperature") if target is not None else None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    return value if value == value and value not in {float("inf"), float("-inf")} else None
+
+
 class DeviceController:
     """Executes, previews or clarifies understood device commands."""
 
@@ -234,6 +251,7 @@ class DeviceController:
                     last_area=result.command.area,
                     pending_clarification=None,
                     focus=focus,
+                    previous_value=_previous_setpoint(result.plan, result.command.entities),
                     discourse=discourse,
                     pending_undo=undo_plan,
                     last_explanation=result.explanation_text,

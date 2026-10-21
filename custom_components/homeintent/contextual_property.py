@@ -68,6 +68,10 @@ class ContextualPropertyResolver:
             return None
         normalized = normalize(text)
 
+        previous = self._previous_value(normalized, text, entities, context)
+        if previous is not None:
+            return previous
+
         temperature = self._temperature(normalized, text, entities, context)
         if temperature is not None:
             return temperature
@@ -77,6 +81,35 @@ class ContextualPropertyResolver:
             return percentage
 
         return self._fan_level(normalized, text, entities, context)
+
+    def _previous_value(self, normalized, source, entities, context):
+        words = {word.casefold() for word in re.findall(r"[\wäöüß]+", normalized, re.IGNORECASE)}
+        asks_previous = bool(words & {"vorher", "zuvor", "vorherigen", "alten", "früheren"}) and bool(
+            words & {"wert", "temperatur", "einstellung", "zurück"}
+        )
+        if not asks_previous:
+            return None
+        if self._property(context) is not SemanticProperty.TEMPERATURE:
+            return UnderstandingFeedback(
+                ParseFailureReason.UNSAFE_INFERENCE,
+                "Ich habe keinen belegten vorherigen Stellwert für dieses Gerät und ändere nichts.",
+            )
+        value = context.previous_value
+        if value is None or not 5 <= value <= 30:
+            return UnderstandingFeedback(
+                ParseFailureReason.UNSAFE_INFERENCE,
+                "Ich habe keinen sicheren vorherigen Temperaturwert und ändere nichts.",
+            )
+        candidates = self.candidates("climate", entities, context, capability="TEMPERATURE")
+        if candidates is None or len(candidates) != 1:
+            return UnderstandingFeedback(
+                ParseFailureReason.UNSAFE_INFERENCE,
+                "Die Heizung zum vorherigen Wert ist nicht mehr eindeutig; ich ändere nichts.",
+            )
+        return self._setpoint_result(
+            source, "HassClimateSetTemperature", "Temperatur", "climate",
+            {"temperature": value}, candidates,
+        )
 
     @staticmethod
     def _property(context: ConversationContext) -> SemanticProperty | None:
