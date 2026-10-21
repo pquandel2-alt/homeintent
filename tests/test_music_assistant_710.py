@@ -12,6 +12,7 @@ import _ha_stub
 
 _ha_stub.install()
 
+from homeassistant.exceptions import HomeAssistantError  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.media import MediaRequest, parse_media_request, resolve_media  # noqa: E402
 from homeintent.music_assistant import (  # noqa: E402
@@ -165,6 +166,25 @@ def test_missing_play_capability_never_even_searches():
     )
     assert result is not None and result.plan is None
     hass.services.async_call.assert_not_awaited()
+
+
+def test_library_service_failure_is_reported_without_a_write():
+    hass = _hass()
+    hass.services.async_call.side_effect = HomeAssistantError("provider detail")
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("queen",), media_type="artist"),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert result.spoken == (
+        "Die Music-Assistant-Bibliothek ist gerade nicht erreichbar; "
+        "ich habe nichts gestartet."
+    )
+    hass.services.async_call.assert_awaited_once()
 
 
 def test_exact_saved_radio_becomes_typed_plan_not_a_direct_url():

@@ -479,7 +479,7 @@
     {
       "id": "custom_components/homeintent/controllers/devices.py::DeviceController.async_handle_undo_request::1",
       "path": "custom_components/homeintent/controllers/devices.py",
-      "line": 1087,
+      "line": 1105,
       "scope": "DeviceController.async_handle_undo_request",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -529,7 +529,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_report_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 581,
+      "line": 646,
       "scope": "InsightsController._async_report_answer",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -539,7 +539,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 752,
+      "line": 817,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -549,7 +549,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::2",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 756,
+      "line": 821,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",

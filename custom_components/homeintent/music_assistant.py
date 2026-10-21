@@ -14,6 +14,7 @@ import re
 from typing import Mapping, Sequence
 
 from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from .entities import EntitySnapshot, normalize_for_compare
 from .media import QUEUE_MODES, MediaRequest, _as_said, resolve_media_player
@@ -219,7 +220,7 @@ async def async_resolve_music_assistant(
             return_response=True,
             context=context,
         )
-    except Exception:  # noqa: BLE001 - HA integration errors are heterogeneous
+    except (HomeAssistantError, TimeoutError):
         _LOGGER.exception("HomeIntent Music Assistant library search failed")
         return MusicAssistantResolution(
             None, "Die Music-Assistant-Bibliothek ist gerade nicht erreichbar; ich habe nichts gestartet."
