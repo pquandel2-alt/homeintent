@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import ast
+import logging
 import sys
 import types
 from pathlib import Path
 
 import _ha_stub
+import pytest
 
 _ha_stub.install()
 
@@ -149,3 +151,17 @@ def test_quality_gate_rejects_accuracy_and_safety_regressions(tmp_path):
     )
     assert any("unsafe_execution_count" in failure for failure in failures)
     assert any("passed" in failure for failure in failures)
+
+
+def test_benchmark_restores_process_logging_after_success_and_failure(monkeypatch):
+    original = logging.root.manager.disable
+    dev_benchmark.run([])
+    assert logging.root.manager.disable == original
+
+    def fail(_cases):
+        raise RuntimeError("benchmark failure")
+
+    monkeypatch.setattr(dev_benchmark, "_run_cases", fail)
+    with pytest.raises(RuntimeError, match="benchmark failure"):
+        dev_benchmark.run([])
+    assert logging.root.manager.disable == original

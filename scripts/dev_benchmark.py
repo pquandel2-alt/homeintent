@@ -339,8 +339,8 @@ def error_class(case: Case, index: int, expected: Expectation, observed: Observe
     return "UNDERSTANDING"
 
 
-def run(cases: list[Case]) -> dict:
-    logging.disable(logging.CRITICAL)
+def _run_cases(cases: list[Case]) -> dict:
+    """Execute cases while the public wrapper owns process-global logging."""
     runner = Runner()
     area_of = {entity.entity_id: entity.area_id for entity in runner.house.entities}
     dimension_totals: dict[str, list[int]] = {name: [0, 0] for name in DIMENSIONS}
@@ -397,6 +397,16 @@ def run(cases: list[Case]) -> dict:
         "error_classes": {name: errors.get(name, 0) for name in ERROR_CLASSES},
         "failures": failures,
     }
+
+
+def run(cases: list[Case]) -> dict:
+    """Run a corpus without leaking the benchmark's log suppression."""
+    previous_disable_level = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        return _run_cases(cases)
+    finally:
+        logging.disable(previous_disable_level)
 
 
 def _metric(report: dict, path: str) -> int:
