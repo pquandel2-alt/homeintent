@@ -340,7 +340,6 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
       - name: Echte Home-Assistant-Komponente installieren
         run: python -m pip install "homeassistant==${{ matrix.home-assistant }}"
       - name: Von Home Assistant deklarierte MA-Abhängigkeiten installieren
