@@ -68,6 +68,7 @@
     ,"custom_components/homeintent/notification_language.py"
     ,"custom_components/homeintent/notification_target.py"
     ,"custom_components/homeintent/notification_request.py"
+    ,"custom_components/homeintent/nlu/automation_turn_router.py"
   ],
   "reportMissingImports": false
 }

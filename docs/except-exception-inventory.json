@@ -469,7 +469,7 @@
     {
       "id": "custom_components/homeintent/controllers/automations.py::AutomationController._async_handle_automation_confirmation_reply::1",
       "path": "custom_components/homeintent/controllers/automations.py",
-      "line": 750,
+      "line": 782,
       "scope": "AutomationController._async_handle_automation_confirmation_reply",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -529,7 +529,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_report_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 646,
+      "line": 840,
       "scope": "InsightsController._async_report_answer",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -539,7 +539,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 817,
+      "line": 1011,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -549,7 +549,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::2",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 821,
+      "line": 1015,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",

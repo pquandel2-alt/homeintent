@@ -38,9 +38,28 @@ Bibliothek geprüft. Ein Player-Dialog ist pro Benutzer und Conversation
 isoliert; „Spiel es im Wohnzimmer“ kann nur einen eindeutig passenden Player
 aus dem offenen Auftrag auswählen.
 
-Bibliothekstreffer werden derzeit nicht dauerhaft gecacht. Dadurch können ein
+## Persönliche Medienaliase
+
+Ein angemeldeter Benutzer kann einen eindeutigen aktuellen Bibliothekstreffer
+lokal benennen, zum Beispiel: „Merke dir Radio Bob als meinen Rocksender.“
+HomeIntent zeigt kanonischen Namen und Medientyp zunächst als Vorschau und
+speichert erst nach einem ausdrücklichen „Ja“. Gespeichert werden Besitzer,
+`config_entry_id`, Medientyp, kanonischer Name und die von MA gelieferte sichere
+Media-ID; direkte Web-, Datei- und Daten-URLs sind ausgeschlossen.
+
+„Spiele meinen Rocksender im Wohnzimmer“ löst ausschließlich einen exakt
+gleich geschriebenen Alias des angemeldeten Benutzers auf. Vor jeder
+Wiedergabe wird der kanonische Eintrag erneut exakt in derselben MA-Instanz
+gesucht und die Media-ID verglichen. Ein entfernter, mehrdeutiger oder
+veränderter Eintrag startet nichts. „Vergiss den Medienalias Rocksender“ zeigt
+ebenfalls zuerst eine Löschvorschau. Löschen darf nur der Besitzer oder ein
+Home-Assistant-Administrator. Anonyme Sprach-Turns dürfen Aliase weder anlegen,
+verwenden noch löschen. Namen, die mit Geräten, Räumen, Personen, HA-Benutzern
+oder vorhandenen Medienaliasen kollidieren, werden abgelehnt.
+
+Andere Bibliothekstreffer werden nicht dauerhaft gecacht. Dadurch können ein
 Neustart oder in Music Assistant entfernte Sender nicht aus einem veralteten
-HomeIntent-Cache wiederhergestellt werden.
+HomeIntent-Zustand wiederhergestellt werden.
 
 Der lokale Adapterpfad wird in CI mit
 `scripts/benchmark_music_assistant.py` gegen eine Registry mit 5.000 Entities
@@ -75,8 +94,11 @@ Wiedergabe abgelehnt.
 - Pause, Fortsetzen, Stop, nächster/vorheriger Titel, Stummschaltung und
   Lautstärke verwenden die Standardaktionen von `media_player`.
 - Gruppen werden nicht automatisch erzeugt oder verändert.
-- Es gibt derzeit keine von HomeIntent gepflegten Aliasnamen für
-  Bibliothekseinträge. Maßgeblich ist der Name in Music Assistant.
+- Bereits in Music Assistant vorhandene und für Assist freigegebene,
+  eindeutig benannte Gruppen-Player werden wie jeder andere MA-Player als
+  Ziel verwendet. HomeIntent bildet keine dynamischen Gruppen: Für die
+  unterstützten HA-Versionen ist hier kein eigener stabiler MA-Aktionsvertrag
+  belegt, und HomeIntent erfindet keinen inoffiziellen Serviceaufruf.
 
 HomeIntent selbst sendet dabei nichts an eine Cloud. Die angebundenen
 Music-Assistant-Provider können eigene Netzwerk- und Datenschutzbedingungen

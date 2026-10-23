@@ -40,6 +40,8 @@ from ..execution_context import current_turn, user_facing_error
 from ..execution_policy import validate_automation_action_targets
 from ..execution_trace import record_execution
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
+from ..nlu.automation_turn_router import AutomationRouteKind, route_automation_turn
+from ..nlu.language_frontend import LanguageDocument
 from ..nlu.automation_model import (
     AutomationModel,
     CalendarReference,
@@ -272,6 +274,36 @@ class AutomationController:
 
     def _automation_store(self) -> AutomationExecutor:
         return self._executor()
+
+    def handle_incomplete_frontend_turn(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+        *,
+        dialog_is_active: bool,
+    ) -> conversation.ConversationResult | None:
+        """Ask for missing slots in the migrated automation matrix."""
+        decision = route_automation_turn(document, entities)
+        if dialog_is_active or decision.kind is not AutomationRouteKind.INCOMPLETE:
+            return None
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id,
+            "incomplete-future-automation",
+            DialogTaskKind.MISSING_SLOT,
+            DialogPriority.FOLLOWUP,
+            missing_slots=tuple(
+                slot.name.casefold() for slot in decision.meaning.missing_slots
+            ),
+            reason="Der zukünftige Automationsauftrag ist unvollständig.",
+            requested_by_user_id=conversation_user_id(user_input),
+            payload=decision.meaning,
+        )
+        response.async_set_speech(decision.question)
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id
+        )
 
     def access_openings_of(
         self, model: AutomationModel, entities: list[EntitySnapshot]
@@ -1256,5 +1288,4 @@ class AutomationController:
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
-
 

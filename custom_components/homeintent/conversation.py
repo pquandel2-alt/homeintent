@@ -31,10 +31,7 @@ from homeassistant.util import dt as dt_util
 
 from .automation_executor import AutomationExecutor
 from .automation_composition import OutcomeKind
-from .alias_learning import (
-    AliasLearningDraft,
-    parse_alias_learning,
-)
+from .alias_learning import AliasLearningDraft, parse_alias_learning
 from .automation_action_edit import is_action_edit_request
 from .automation_scenarios import interpret_downstairs_shutdown
 from .automation_management import parse_automation_management
@@ -44,10 +41,7 @@ from .advanced_queries import match_advanced_query
 from .calendar_event import start_calendar_event_draft, writable_calendars
 from .calendar_management import CalendarManagementRequest
 from .capability_audit import match_capability_audit_query
-from .conversation_location import (
-    materialize_local_reference,
-    resolve_conversation_area,
-)
+from .conversation_location import materialize_local_reference, resolve_conversation_area
 from .conversation_scope import scope_conversation_input
 from .const import CONF_HOUSE_RELATIONS, DOMAIN
 from .dialog_manager import DialogPriority, DialogTaskKind
@@ -1052,6 +1046,12 @@ class NluConversationEntity(
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+
+        incomplete_automation = self._automations.handle_incomplete_frontend_turn(
+            user_input, response, language_document, entities, dialog_is_active=active_dialog is not None,
+        )
+        if incomplete_automation is not None:
+            return incomplete_automation
 
         reading = await self._insights.async_handle_reading(
             user_input, response, entities, active_dialog, rerun=lambda again: self._async_handle_message_inner(

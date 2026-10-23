@@ -38,6 +38,16 @@ from ..house_report import (
 from ..const import CONF_SHARE_HOUSEHOLD_LOCATION
 from ..media import claims_other_target, now_playing, parse_media_request, resolve_media
 from ..music_assistant import PendingMusicAssistant, async_resolve_music_assistant
+from ..music_assistant import DOMAIN as MUSIC_ASSISTANT_DOMAIN
+from ..music_assistant import async_search_exact_music_assistant
+from ..music_aliases import (
+    MediaAliasStore,
+    PendingMediaAlias,
+    async_resolve_media_alias,
+    media_alias_conflicts,
+    new_media_alias,
+    parse_media_alias_request,
+)
 from ..presence_query import HABIT_DAYS, PersonState, answer_presence, arrivals, parse_presence_query
 from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
 from ..execution_trace import TRACE_DATA_KEY
@@ -322,6 +332,12 @@ class InsightsController:
             self._rest[user_input.conversation_id or ""] = tuple(rest[5:])
             return self._answer(user_input, response, render_rest(rest, dt_util.now().date()))
         task = self._runtime.dialog_manager.active(user_input.conversation_id)
+        if task is not None and task.kind is DialogTaskKind.MEDIA_ALIAS_CONFIRMATION:
+            handled = await self._async_media_alias_confirmation(
+                user_input, response, task, entities
+            )
+            if handled is not None:
+                return handled
         if task is not None and task.kind is DialogTaskKind.MEDIA_SELECTION:
             handled = await self._async_media_selection(user_input, response, task, entities)
             if handled is not None:
@@ -366,6 +382,11 @@ class InsightsController:
             answered = self._habit_request(user_input, response, habit, entities)
             if answered is not None:
                 return answered
+        media_alias = await self._async_media_alias_management(
+            user_input, response, entities
+        )
+        if media_alias is not None:
+            return media_alias
         media = await self._async_media(user_input, response, entities)
         if media is not None:  # "Pause", "Spiel Bayern 3 in der Küche", "Was läuft gerade?" (7.9.3 B3)
             return media
@@ -438,13 +459,186 @@ class InsightsController:
             return None
         if request.op == "query":
             return self._answer(user_input, response, now_playing(request, entities, self._area_id))
-        resolved = await async_resolve_music_assistant(
-            self.hass, request, entities, satellite_area_id=self._area_id,
+        resolved = await async_resolve_media_alias(
+            self.hass,
+            request,
+            entities,
+            owner_user_id=conversation_user_id(user_input),
+            satellite_area_id=self._area_id,
             context=getattr(user_input, "context", None),
         )
         if resolved is None:
+            resolved = await async_resolve_music_assistant(
+                self.hass, request, entities, satellite_area_id=self._area_id,
+                context=getattr(user_input, "context", None),
+            )
+        if resolved is None:
             resolved = resolve_media(request, entities, satellite_area_id=self._area_id)
         return await self._async_finish_media(user_input, response, resolved, entities)
+
+    async def _async_media_alias_management(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        request = parse_media_alias_request(user_input.text)
+        if request is None:
+            return None
+        actor = conversation_user_id(user_input)
+        if actor is None:
+            return self._result(
+                user_input,
+                response,
+                "Medienaliase speichere und lösche ich nur für angemeldete Personen.",
+            )
+        store = MediaAliasStore(self.hass)
+        if request.operation == "delete":
+            try:
+                existing = await store.async_find_for_delete(
+                    request.alias,
+                    actor,
+                    is_admin=await user_is_admin(self.hass, user_input),
+                )
+            except ValueError as err:
+                return self._result(user_input, response, str(err))
+            if existing is None:
+                return self._result(
+                    user_input, response, f"Den Medienalias „{request.alias}“ finde ich nicht."
+                )
+            pending = PendingMediaAlias("delete", existing)
+            prompt = f"Soll ich den Medienalias „{existing.alias}“ löschen?"
+        else:
+            assert request.canonical_query is not None
+            if media_alias_conflicts(request.alias, entities):
+                return self._result(
+                    user_input,
+                    response,
+                    f"„{request.alias}“ kollidiert mit einem Gerät, Raum oder Benutzer; "
+                    "ich habe nichts gespeichert.",
+                )
+            if await store.async_name_exists(request.alias) or await self._async_user_name_conflict(
+                request.alias
+            ):
+                return self._result(
+                    user_input,
+                    response,
+                    f"Der Name „{request.alias}“ ist bereits belegt; ich habe nichts gespeichert.",
+                )
+            config_entries = {
+                entity.config_entry_id
+                for entity in entities
+                if entity.integration == MUSIC_ASSISTANT_DOMAIN and entity.config_entry_id
+            }
+            if len(config_entries) != 1:
+                return self._result(
+                    user_input,
+                    response,
+                    "Ich kann den Music-Assistant-Eintrag nicht eindeutig bestimmen; "
+                    "ich habe nichts gespeichert.",
+                )
+            config_entry_id = next(iter(config_entries))
+            searched = await async_search_exact_music_assistant(
+                self.hass,
+                config_entry_id=config_entry_id,
+                name=request.canonical_query,
+                media_type=request.media_type,
+                library_only=True,
+                context=getattr(user_input, "context", None),
+            )
+            if searched.status != "ok" or len(searched.items) != 1:
+                return self._result(
+                    user_input,
+                    response,
+                    "Ich finde dafür keinen einzelnen, sicheren aktuellen Music-Assistant-Treffer; "
+                    "ich habe nichts gespeichert.",
+                )
+            pending = PendingMediaAlias(
+                "create",
+                new_media_alias(request, actor, config_entry_id, searched.items[0]),
+            )
+            prompt = (
+                f"Soll ich „{pending.alias.alias}“ als persönlichen Medienalias für "
+                f"{pending.alias.canonical_name} ({pending.alias.media_type}) speichern?"
+            )
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id,
+            "media-alias-confirmation",
+            DialogTaskKind.MEDIA_ALIAS_CONFIRMATION,
+            DialogPriority.CONFIRMATION,
+            reason="Ein Medienalias wird nur nach ausdrücklicher Bestätigung geändert.",
+            requested_by_user_id=actor,
+            payload=pending,
+        )
+        return self._result(user_input, response, prompt)
+
+    async def _async_media_alias_confirmation(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        task: Any,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult | None:
+        pending = getattr(task, "payload", None)
+        if not isinstance(pending, PendingMediaAlias):
+            return None
+        actor = conversation_user_id(user_input)
+        if task.requested_by_user_id != actor or actor is None:
+            return self._result(
+                user_input, response, "Diese Rückfrage gehört zu einem anderen Benutzer."
+            )
+        reply = _yes_no(user_input.text)
+        if reply is ConfirmationReply.UNCLEAR:
+            return self._result(user_input, response, "Bitte antworte mit Ja oder Nein.")
+        self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+        if reply is ConfirmationReply.NO:
+            return self._result(user_input, response, "In Ordnung, ich habe nichts geändert.")
+        store = MediaAliasStore(self.hass)
+        try:
+            if pending.operation == "create":
+                if media_alias_conflicts(pending.alias.alias, entities) or await self._async_user_name_conflict(
+                    pending.alias.alias
+                ):
+                    raise ValueError(
+                        "Der Name kollidiert inzwischen mit einem Gerät, Raum oder Benutzer"
+                    )
+                searched = await async_search_exact_music_assistant(
+                    self.hass,
+                    config_entry_id=pending.alias.config_entry_id,
+                    name=pending.alias.canonical_name,
+                    media_type=pending.alias.media_type,
+                    library_only=True,
+                    context=getattr(user_input, "context", None),
+                )
+                current = searched.items[0] if searched.status == "ok" and len(searched.items) == 1 else None
+                if current is None or current.uri != pending.alias.media_id:
+                    raise ValueError(
+                        "Der Music-Assistant-Treffer ist inzwischen nicht mehr eindeutig gültig"
+                    )
+                await store.async_save(pending.alias)
+                speech = f"Gespeichert. „{pending.alias.alias}“ ist jetzt dein Medienalias."
+            else:
+                await store.async_delete(
+                    pending.alias,
+                    actor,
+                    is_admin=await user_is_admin(self.hass, user_input),
+                )
+                speech = f"Der Medienalias „{pending.alias.alias}“ wurde gelöscht."
+        except (PermissionError, ValueError) as err:
+            speech = str(err)
+        return self._result(user_input, response, speech)
+
+    async def _async_user_name_conflict(self, alias: str) -> bool:
+        auth = getattr(self.hass, "auth", None)
+        getter = getattr(auth, "async_get_users", None)
+        if getter is None:
+            return False
+        users = await getter()
+        wanted = normalize_for_compare(alias)
+        return any(
+            normalize_for_compare(str(getattr(user, "name", ""))) == wanted
+            for user in users
+        )
 
     async def _async_finish_media(
         self, user_input: conversation.ConversationInput, response: intent.IntentResponse,

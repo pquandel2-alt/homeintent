@@ -57,6 +57,8 @@ class DialogTaskKind(StrEnum):
     MONITOR_EDIT = "monitor_edit"
     # A Music Assistant library type or target player is still ambiguous.
     MEDIA_SELECTION = "media_selection"
+    # A fully grounded local MA alias mutation awaits explicit consent.
+    MEDIA_ALIAS_CONFIRMATION = "media_alias_confirmation"
 
 
 class DialogPriority(IntEnum):

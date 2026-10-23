@@ -1,10 +1,11 @@
 # Versionierte Qualitätsgrenzen des Entwicklungsbenchmarks
 
-`scripts/dev_benchmark.py --check` liest die zum Patch gehörende Datei
-`dev-benchmark-quality-gates-7.10.1.json`. Die Grenzen wurden nach Reparatur
+`scripts/dev_benchmark.py --check` liest die zum Release gehörende Datei
+`dev-benchmark-quality-gates-7.11.0.json`. Die Grenzen wurden nach Reparatur
 des Conversation-Scope-Lookups aus vollständigen Läufen beider unveränderter
-Korpora übernommen. Das Skript besitzt absichtlich keinen Schalter, der diese
-Datei aus einem aktuellen, möglicherweise schlechteren Lauf erzeugt.
+Korpora übernommen und gegenüber 7.10.1 nicht abgesenkt. Das Skript besitzt
+absichtlich keinen Schalter, der diese Datei aus einem aktuellen,
+möglicherweise schlechteren Lauf erzeugt.
 
 Die exakten Safety-Grenzen dürfen nicht gelockert werden. Dazu gehören
 unerwartete Schreibzugriffe, Ausführung statt Bestätigung, falsche Operation,

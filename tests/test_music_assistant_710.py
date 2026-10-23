@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -20,6 +21,7 @@ from homeintent.music_assistant import (  # noqa: E402
     MusicAssistantPlan,
     async_resolve_music_assistant,
 )
+from homeintent.music_aliases import MediaAlias  # noqa: E402
 
 
 def _player(
@@ -104,6 +106,12 @@ def test_parser_composes_media_type_and_name(text, media_type, name, library_onl
         name,
         library_only,
     )
+
+
+def test_media_alias_parser_does_not_claim_named_procedures():
+    from homeintent.music_aliases import parse_media_alias_request
+
+    assert parse_media_alias_request("Speichere diesen Plan als Abendrunde") is None
 
 
 @pytest.mark.parametrize(
@@ -557,3 +565,213 @@ def test_media_selection_cannot_be_taken_over_by_another_user(monkeypatch):
     house.user = "admin"
     owner = house.say("Den Künstler.")
     assert owner.calls[-1][:2] == ("music_assistant", "play_media")
+
+
+def test_confirmed_personal_media_alias_is_revalidated_before_playback(
+    monkeypatch, tmp_path
+):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(monkeypatch, entities=[_player()])
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+
+    preview = house.say("Merke dir Radio Bob als meinen Rocksender.")
+    assert "Soll ich" in preview.speech
+    assert not (tmp_path / ".storage/homeintent_music_aliases.json").exists()
+    saved = house.say("Ja")
+    assert "Gespeichert" in saved.speech
+
+    played = house.say("Spiele meinen Rocksender im Wohnzimmer.")
+    assert [(domain, service) for domain, service, _data in played.calls] == [
+        ("music_assistant", "search"),
+        ("music_assistant", "play_media"),
+    ]
+    assert played.calls[-1][2]["media_id"] == "library://radio/42"
+
+
+def test_media_alias_no_confirmation_no_write(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(monkeypatch, entities=[_player()])
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+
+    house.say("Merke dir Radio Bob als meinen Rocksender.")
+    rejected = house.say("Nein")
+
+    assert "nichts geändert" in rejected.speech
+    assert not (tmp_path / ".storage/homeintent_music_aliases.json").exists()
+
+
+def test_media_alias_is_revalidated_after_confirmation_before_save(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(monkeypatch, entities=[_player()])
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+    assert "Soll ich" in house.say("Merke dir Radio Bob als meinen Rocksender.").speech
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/replaced"}]
+    )
+
+    confirmed = house.say("Ja")
+
+    assert "nicht mehr eindeutig gültig" in confirmed.speech
+    assert not (tmp_path / ".storage/homeintent_music_aliases.json").exists()
+
+
+def test_stale_media_alias_never_starts_playback(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(monkeypatch, entities=[_player()])
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+    house.say("Merke dir Radio Bob als meinen Rocksender.")
+    house.say("Ja")
+    house.entity.hass.services.async_call.return_value = _response()
+
+    stale = house.say("Spiele meinen Rocksender im Wohnzimmer.")
+
+    assert "nicht mehr eindeutig gültig" in stale.speech
+    assert not any(service == "play_media" for _domain, service, _data in stale.calls)
+
+
+def test_media_alias_is_user_scoped_and_admin_can_delete_it(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(
+        monkeypatch, entities=[_player()], user="anna"
+    )
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+    house.say("Merke dir Radio Bob als meinen Rocksender.")
+    house.say("Ja")
+
+    house.user = "admin"
+    not_owned = house.say("Spiele meinen Rocksender im Wohnzimmer.")
+    assert not any(service == "play_media" for _domain, service, _data in not_owned.calls)
+    preview = house.say("Vergiss den Medienalias Rocksender.")
+    assert "löschen" in preview.speech
+    deleted = house.say("Ja")
+    assert "wurde gelöscht" in deleted.speech
+
+
+def test_media_alias_delete_confirmation_uses_exact_record_cas(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(monkeypatch, entities=[_player()])
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+    house.say("Merke dir Radio Bob als meinen Rocksender.")
+    house.say("Ja")
+    assert "löschen" in house.say("Vergiss den Medienalias Rocksender.").speech
+    path = tmp_path / ".storage/homeintent_music_aliases.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["aliases"][0]["media_id"] = "library://radio/replaced"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    refused = house.say("Ja")
+
+    assert "inzwischen geändert" in refused.speech
+    assert json.loads(path.read_text(encoding="utf-8"))["aliases"]
+
+
+def test_anonymous_or_conflicting_media_alias_is_rejected(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(
+        monkeypatch, entities=[_player()], user=None
+    )
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    anonymous = house.say("Merke dir Radio Bob als meinen Rocksender.")
+    assert "angemeldete Personen" in anonymous.speech
+    house.user = "admin"
+    collision = house.say("Merke dir Radio Bob als meinen Wohnzimmer Lautsprecher.")
+    assert "kollidiert" in collision.speech
+
+
+def test_media_alias_rejects_authenticated_user_name(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(monkeypatch, entities=[_player()], user="admin")
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+
+    async def get_users():
+        return [
+            SimpleNamespace(id="admin", name="Philipp", is_admin=True),
+            SimpleNamespace(id="anna", name="Anna", is_admin=False),
+        ]
+
+    house.entity.hass.auth.async_get_users = get_users
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+
+    collision = house.say("Merke dir Radio Bob als meinen Philipp.")
+
+    assert "bereits belegt" in collision.speech
+    house.entity.hass.services.async_call.assert_not_awaited()
+
+
+def test_media_alias_store_rejects_direct_urls(tmp_path):
+    hass = _hass()
+    hass.data = {}
+    hass.config = SimpleNamespace(path=lambda *parts: str(tmp_path.joinpath(*parts)))
+    hass.async_add_executor_job = lambda func, *args: asyncio.sleep(
+        0, result=func(*args)
+    )
+
+    with pytest.raises(ValueError, match="sichere"):
+        MediaAlias(
+            "Unsicher", "owner", "mass-entry", "radio", "Unsafe",
+            "https://example.invalid/stream", "2026-10-21T00:00:00+00:00",
+        )
+
+
+def test_existing_named_music_assistant_group_player_is_a_normal_target(
+    monkeypatch
+):
+    from dataclasses import replace
+    from _testhaus import HouseConversation
+
+    group = replace(
+        _player("media_player.ganzes_haus", area="Haus"),
+        friendly_name="Ganzes Haus",
+    )
+    house = HouseConversation(monkeypatch, entities=[group])
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        tracks=[{"name": "One", "uri": "library://track/1"}]
+    )
+
+    turn = house.say("Spiele den Titel One auf Ganzes Haus.")
+
+    assert turn.calls[-1][:2] == ("music_assistant", "play_media")
+    assert turn.calls[-1][2]["entity_id"] == "media_player.ganzes_haus"

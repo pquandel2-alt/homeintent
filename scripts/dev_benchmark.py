@@ -55,7 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "custom_components"))
 sys.path.insert(0, str(ROOT / "tests"))
 CORPUS = ROOT / "tests" / "eval" / "dev_benchmark_77.txt"
-BASELINE = ROOT / "docs" / "perf" / "dev-benchmark-quality-gates-7.10.1.json"
+BASELINE = ROOT / "docs" / "perf" / "dev-benchmark-quality-gates-7.11.0.json"
 OUTCOMES = {"execute", "confirm", "draft", "clarify", "answer", "nowrite", "ask"}
 ERROR_CLASSES = (
     "UNDERSTANDING", "GROUNDING", "AMBIGUITY", "CAPABILITY", "DIALOG",
