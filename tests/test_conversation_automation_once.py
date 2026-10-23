@@ -96,6 +96,22 @@ def _automations_yaml(tmp_path: Path) -> list[dict]:
         return pyyaml.safe_load(handle) or []
 
 
+def _assert_lifecycle_action(
+    automation: dict, service: str, *, max_runs: int | None = None
+) -> dict:
+    """Assert and return the opaque proof embedded in one generated action."""
+    action = automation["actions"][-1]
+    assert action["action"] == service
+    data = action["data"]
+    assert data["automation_id"] == automation["id"]
+    assert data["lifecycle_id"] == automation["id"]
+    assert isinstance(data["lifecycle_token"], str)
+    assert len(data["lifecycle_token"]) >= 32
+    if max_runs is not None:
+        assert data["max_runs"] == max_runs
+    return data
+
+
 # --- preview: the spoken confirmation names the self-delete behaviour ------
 
 
@@ -131,10 +147,7 @@ def test_confirming_a_state_based_once_automation_appends_the_matching_self_dele
     automations = _automations_yaml(tmp_path)
     assert len(automations) == 1
     automation = automations[0]
-    assert automation["actions"][-1] == {
-        "action": "homeintent.delete_automation",
-        "data": {"automation_id": automation["id"]},
-    }
+    _assert_lifecycle_action(automation, "homeintent.delete_automation")
     # The turn-on action is still present ahead of the self-delete step.
     assert automation["actions"][0]["action"] == "homeassistant.turn_on"
 
@@ -152,10 +165,7 @@ def test_confirming_a_time_based_once_automation_also_appends_the_self_delete_ac
     assert len(automations) == 1
     automation = automations[0]
     assert automation["triggers"][0]["trigger"] == "time"
-    assert automation["actions"][-1] == {
-        "action": "homeintent.delete_automation",
-        "data": {"automation_id": automation["id"]},
-    }
+    _assert_lifecycle_action(automation, "homeintent.delete_automation")
 
 
 def test_confirming_an_ordinary_automation_appends_no_self_delete_action(monkeypatch, tmp_path):
@@ -181,12 +191,13 @@ def test_firing_the_self_delete_action_removes_the_once_automation_and_reloads(
     entity = _make_entity(monkeypatch, tmp_path)
     _run(entity, STATE_BASED_ONCE_SENTENCE)
     _run(entity, "Ja")
-    automation_id = _automations_yaml(tmp_path)[0]["id"]
+    automation = _automations_yaml(tmp_path)[0]
+    proof = _assert_lifecycle_action(automation, "homeintent.delete_automation")
     entity.hass.services.async_call.reset_mock()
 
     asyncio.run(
         homeintent_init._async_delete_automation(
-            entity.hass, ServiceCall({"automation_id": automation_id})
+            entity.hass, ServiceCall(proof)
         )
     )
 
@@ -206,10 +217,11 @@ def test_firing_the_self_delete_action_never_touches_an_unrelated_ordinary_autom
     _run(entity, "Ja", conversation_id="once")
     automations_before = _automations_yaml(tmp_path)
     assert len(automations_before) == 2
-    once_id = next(a["id"] for a in automations_before if a["actions"][-1].get("action") == "homeintent.delete_automation")
+    once = next(a for a in automations_before if a["actions"][-1].get("action") == "homeintent.delete_automation")
+    proof = _assert_lifecycle_action(once, "homeintent.delete_automation")
 
     asyncio.run(
-        homeintent_init._async_delete_automation(entity.hass, ServiceCall({"automation_id": once_id}))
+        homeintent_init._async_delete_automation(entity.hass, ServiceCall(proof))
     )
 
     remaining = _automations_yaml(tmp_path)
@@ -277,10 +289,7 @@ def test_relative_time_countdown_starts_at_confirmation_and_is_date_guarded(
         "target": {"entity_id": "cover.wohnzimmer_rollladen"},
         "data": {"position": 30},
     }
-    assert automation["actions"][-1] == {
-        "action": "homeintent.delete_automation",
-        "data": {"automation_id": automation["id"]},
-    }
+    _assert_lifecycle_action(automation, "homeintent.delete_automation")
     entity.hass.services.async_call.assert_awaited_once_with(
         "automation", "reload", {}, blocking=True
     )
@@ -351,7 +360,6 @@ def test_bounded_automation_records_runs_instead_of_deleting_after_first(
     _run(entity, "Ja")
 
     automation = _automations_yaml(tmp_path)[0]
-    assert automation["actions"][-1] == {
-        "action": "homeintent.record_automation_run",
-        "data": {"automation_id": automation["id"], "max_runs": 3},
-    }
+    _assert_lifecycle_action(
+        automation, "homeintent.record_automation_run", max_runs=3
+    )

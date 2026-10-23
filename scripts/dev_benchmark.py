@@ -37,7 +37,7 @@ or executed where a confirmation was expected. It must always be 0.
 
     python scripts/dev_benchmark.py                 # report
     python scripts/dev_benchmark.py --json out.json
-    python scripts/dev_benchmark.py --check         # exit 1 on unsafe executions
+    python scripts/dev_benchmark.py --check         # enforce versioned quality gates
 """
 
 from __future__ import annotations
@@ -55,6 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "custom_components"))
 sys.path.insert(0, str(ROOT / "tests"))
 CORPUS = ROOT / "tests" / "eval" / "dev_benchmark_77.txt"
+BASELINE = ROOT / "docs" / "perf" / "dev-benchmark-quality-gates-7.10.1.json"
 OUTCOMES = {"execute", "confirm", "draft", "clarify", "answer", "nowrite", "ask"}
 ERROR_CLASSES = (
     "UNDERSTANDING", "GROUNDING", "AMBIGUITY", "CAPABILITY", "DIALOG",
@@ -186,6 +187,7 @@ class Runner:
         self.counter = 0
 
     def run_case(self, case: Case) -> list[Observed]:
+        from homeintent.conversation_scope import reusable_conversation_scope_key
         from homeintent.nlu.context import PendingDialogKind, active_pending_dialog
         from homeintent.nlu.language_frontend import analyse_language
         from homeintent.nlu.meaning_ir import ground_meaning
@@ -194,8 +196,14 @@ class Runner:
         self.house.conversation_id = f"bench-{self.counter}"
         observed = []
         for text in case.turns:
-            turn = self.house.say(text)
-            context = self.house.entity._context_store.get(self.house.conversation_id)
+            user_input = self.house.conversation_input(text)
+            turn = self.house.say_input(user_input)
+            scope_key = reusable_conversation_scope_key(user_input)
+            context = (
+                self.house.entity._context_store.get(scope_key)
+                if scope_key is not None
+                else None
+            )
             pending = active_pending_dialog(context)
             calls = [call for call in turn.calls if not _is_read(call)]
             if calls:
@@ -285,6 +293,30 @@ def score_turn(expected: Expectation, observed: Observed, area_of: dict[str, str
     return result, unsafe
 
 
+def _safety_violations(expected: Expectation, observed: Observed) -> set[str]:
+    """Return stable fail-closed safety dimensions for one observed turn."""
+    if not observed.calls:
+        return set()
+    violations: set[str] = set()
+    if expected.scored and expected.outcome != "execute":
+        violations.add(
+            "executed_without_confirmation"
+            if expected.outcome in {"confirm", "draft", "ask"}
+            else "unexpected_write"
+        )
+    if expected.calls:
+        expected_targets = set().union(*(targets for _d, _s, targets in expected.calls))
+        observed_targets = set().union(*(_targets(data) for _d, _s, data in observed.calls))
+        if not observed_targets <= expected_targets:
+            violations.add("wrong_target")
+        if not all(
+            any(_operation_matches(exp, call) for exp in expected.calls)
+            for call in observed.calls
+        ):
+            violations.add("wrong_operation")
+    return violations
+
+
 def error_class(case: Case, index: int, expected: Expectation, observed: Observed,
                 failed: set[str], unsafe: bool) -> str:
     if unsafe:
@@ -316,6 +348,7 @@ def run(cases: list[Case]) -> dict:
     by_split: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
     errors: collections.Counter = collections.Counter()
     unsafe_total = 0
+    safety_violations: collections.Counter[str] = collections.Counter()
     failures = []
     for case in cases:
         observed = runner.run_case(case)
@@ -323,6 +356,7 @@ def run(cases: list[Case]) -> dict:
         for index, (expected, seen) in enumerate(zip(case.expectations, observed)):
             result, unsafe = score_turn(expected, seen, area_of)
             unsafe_total += unsafe
+            safety_violations.update(_safety_violations(expected, seen))
             for name, ok in result.items():
                 dimension_totals[name][0] += ok
                 dimension_totals[name][1] += 1
@@ -347,6 +381,13 @@ def run(cases: list[Case]) -> dict:
         "turns": sum(len(case.turns) for case in cases),
         "passed": sum(value[0] for value in by_split.values()),
         "unsafe_execution_count": unsafe_total,
+        "safety_violations": {
+            name: safety_violations.get(name, 0)
+            for name in (
+                "wrong_target", "wrong_operation", "unexpected_write",
+                "executed_without_confirmation",
+            )
+        },
         "splits": {name: {"passed": value[0], "total": value[1]} for name, value in sorted(by_split.items())},
         "categories": {name: {"passed": value[0], "total": value[1]} for name, value in sorted(by_category.items())},
         "dimensions": {
@@ -358,11 +399,47 @@ def run(cases: list[Case]) -> dict:
     }
 
 
+def _metric(report: dict, path: str) -> int:
+    """Read one integer metric from a report using a dotted path."""
+    value: object = report
+    for part in path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            raise KeyError(path)
+        value = value[part]
+    if not isinstance(value, int):
+        raise TypeError(f"quality metric {path!r} is not an integer")
+    return value
+
+
+def check_quality_gates(report: dict, corpus: Path, baseline: Path = BASELINE) -> list[str]:
+    """Compare a report with reviewed, versioned non-regression limits."""
+    document = json.loads(baseline.read_text(encoding="utf-8"))
+    corpus_key = corpus.resolve().relative_to(ROOT).as_posix()
+    gates = document.get("corpora", {}).get(corpus_key)
+    if not isinstance(gates, dict):
+        return [f"no reviewed quality gates for {corpus_key}"]
+    failures: list[str] = []
+    for path, limit in gates.get("exact", {}).items():
+        actual = _metric(report, path)
+        if actual != limit:
+            failures.append(f"{path}: expected exactly {limit}, got {actual}")
+    for path, limit in gates.get("minimum", {}).items():
+        actual = _metric(report, path)
+        if actual < limit:
+            failures.append(f"{path}: minimum {limit}, got {actual}")
+    for path, limit in gates.get("maximum", {}).items():
+        actual = _metric(report, path)
+        if actual > limit:
+            failures.append(f"{path}: maximum {limit}, got {actual}")
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", type=Path, default=CORPUS)
     parser.add_argument("--json", type=Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--failures", action="store_true")
     parser.add_argument("--split", choices=("dev", "heldout"))
     args = parser.parse_args()
@@ -377,9 +454,12 @@ def main() -> int:
             print(json.dumps(failure, ensure_ascii=False))
     if args.json:
         args.json.write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    if args.check and report["unsafe_execution_count"]:
-        print(f"unsafe_execution_count = {report['unsafe_execution_count']}", file=sys.stderr)
-        return 1
+    if args.check:
+        failures = check_quality_gates(report, args.corpus, args.baseline)
+        if failures:
+            for failure in failures:
+                print(f"quality gate failed: {failure}", file=sys.stderr)
+            return 1
     return 0
 
 

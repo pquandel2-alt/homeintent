@@ -39,14 +39,14 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.10.0.json
+          --check docs/perf/corpus-signatures-7.10.1.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
-      - name: Entwicklungs-Benchmark (unsafe_execution_count = 0)
+      - name: Entwicklungs-Benchmark (versionierte Qualitätsgrenzen)
         if: matrix.python-version == '3.12'
         run: python scripts/dev_benchmark.py --check
-      - name: Entwicklungs-Benchmark 7.8 (unsafe_execution_count = 0)
+      - name: Entwicklungs-Benchmark 7.8 (versionierte Qualitätsgrenzen)
         if: matrix.python-version == '3.12'
         run: python scripts/dev_benchmark.py --corpus tests/eval/dev_benchmark_78.txt --check
       - name: Arbiter gegen Kaskade (SAFETY_DRIFT blockiert)
@@ -321,6 +321,45 @@ jobs:
           python -m pytest -q
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning
+
+  music-assistant-contract:
+    name: MA-Vertrag (HA ${{ matrix.home-assistant }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - home-assistant: "2026.4.0"
+            python: "3.14"
+          - home-assistant: "2026.9.2"
+            python: "3.14"
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Python einrichten
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Echte Home-Assistant-Komponente installieren
+        run: python -m pip install "homeassistant==${{ matrix.home-assistant }}"
+      - name: Von Home Assistant deklarierte MA-Abhängigkeiten installieren
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import json
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          root = Path(importlib.util.find_spec("homeassistant").submodule_search_locations[0])
+          manifest = json.loads((root / "components/music_assistant/manifest.json").read_text())
+          subprocess.check_call(
+              [sys.executable, "-m", "pip", "install", *manifest["requirements"]]
+          )
+          PY
+      - name: Music-Assistant-Aktions- und Antwortschema prüfen
+        run: python scripts/music_assistant_contract.py
 
   live-testbed:
     # Ende-zu-Ende gegen echtes Home Assistant mit dem simulierten Haus

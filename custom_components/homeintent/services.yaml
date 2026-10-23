@@ -1,8 +1,10 @@
 delete_automation:
   name: Delete automation
   description: >-
-    Deletes only an automation whose sidecar metadata proves that HomeIntent
-    created it. Calls for manual, foreign, or damaged entries are rejected.
+    Internal lifecycle service. Deletes only the exact automation authorized
+    by an open one-time proof embedded in a HomeIntent automation and mirrored
+    in its sidecar. An automation id by itself grants no authority; missing,
+    foreign, damaged, or replayed proofs are rejected.
   fields:
     automation_id:
       name: Automation ID
@@ -10,10 +12,25 @@ delete_automation:
       required: true
       selector:
         text:
+    lifecycle_id:
+      name: Lifecycle owner ID
+      description: Internal id of the HomeIntent lifecycle order.
+      required: true
+      selector:
+        text:
+    lifecycle_token:
+      name: Lifecycle proof
+      description: Internal one-time proof. Never enter or disclose manually.
+      required: true
+      selector:
+        text:
 
 record_automation_run:
   name: Automation-Ausführung erfassen
-  description: Interner Dienst für Automationen mit begrenzter Ausführungszahl.
+  description: >-
+    Interner Lifecycle-Dienst für Automationen mit begrenzter Ausführungszahl.
+    Er akzeptiert nur den exakten offenen Einmalnachweis der Automation und
+    rotiert ihn nach jedem erfolgreichen Zählschritt; IDs allein reichen nicht.
   fields:
     automation_id:
       name: Automation-ID
@@ -29,6 +46,17 @@ record_automation_run:
           min: 2
           max: 10
           mode: box
+    lifecycle_id:
+      name: Lifecycle owner ID
+      required: true
+      selector:
+        text:
+    lifecycle_token:
+      name: Lifecycle proof
+      description: Internal one-time proof. Never enter or disclose manually.
+      required: true
+      selector:
+        text:
 
 enable_automation:
   name: Automation fortsetzen

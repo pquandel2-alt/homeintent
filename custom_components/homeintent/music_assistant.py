@@ -8,6 +8,7 @@ never opens a media URL and never executes the resulting write itself.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import logging
 import re
@@ -25,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "music_assistant"
 SEARCH = "search"
 PLAY_MEDIA = "play_media"
+SEARCH_TIMEOUT_SECONDS = 9.0
 _SUPPORTED_TYPES = frozenset({"artist", "album", "playlist", "track", "radio"})
 _RESPONSE_KEYS = {
     "artists": "artist",
@@ -42,6 +44,12 @@ _TYPE_NAMES = {
 }
 _SAFE_MEDIA_ID = re.compile(r"^[a-zA-Z][a-zA-Z0-9+._-]*://[^\s]{1,2040}$")
 _FORBIDDEN_SCHEMES = ("http://", "https://", "file://", "data:", "ftp://")
+
+
+def is_safe_music_assistant_media_id(value: str) -> bool:
+    """Whether a value is an opaque MA URI and never a direct external URL."""
+    folded = value.casefold()
+    return not folded.startswith(_FORBIDDEN_SCHEMES) and _SAFE_MEDIA_ID.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -93,6 +101,14 @@ class MusicAssistantResolution:
 
 
 @dataclass(frozen=True)
+class MusicAssistantSearchResult:
+    """Fail-closed result of one bounded exact library lookup."""
+
+    status: str
+    items: tuple[MusicAssistantItem, ...] = ()
+
+
+@dataclass(frozen=True)
 class PendingMusicAssistant:
     """Typed, short-lived continuation; never contains an executable URL."""
 
@@ -115,8 +131,7 @@ def _safe_item(raw: object, media_type: str) -> MusicAssistantItem | None:
     uri = raw.get("uri")
     if not isinstance(name, str) or not name.strip() or not isinstance(uri, str):
         return None
-    folded_uri = uri.casefold()
-    if folded_uri.startswith(_FORBIDDEN_SCHEMES) or _SAFE_MEDIA_ID.fullmatch(uri) is None:
+    if not is_safe_music_assistant_media_id(uri):
         return None
     return MusicAssistantItem(name.strip(), uri, media_type)
 
@@ -139,10 +154,64 @@ def _exact_items(response: object, query: str, requested_type: str | None) -> tu
     return tuple(found.values())
 
 
+def _valid_search_response(response: object) -> bool:
+    """Whether the documented MA search result container is structurally valid."""
+    return isinstance(response, Mapping) and all(
+        isinstance(response.get(key), (list, tuple)) for key in _RESPONSE_KEYS
+    )
+
+
 def _query_as_said(request: MediaRequest) -> str:
     if request.text:
         return _as_said(request.text, request.source_words)
     return " ".join(request.source_words)
+
+
+async def async_search_exact_music_assistant(
+    hass: HomeAssistant,
+    *,
+    config_entry_id: str,
+    name: str,
+    media_type: str | None,
+    library_only: bool,
+    context: Context | None = None,
+) -> MusicAssistantSearchResult:
+    """Search the real MA service once, bounded and without exposing errors."""
+    if not config_entry_id or media_type not in _SUPPORTED_TYPES | {None}:
+        return MusicAssistantSearchResult("invalid")
+    if not _available(hass, SEARCH):
+        return MusicAssistantSearchResult("unavailable")
+    data: dict[str, object] = {
+        "config_entry_id": config_entry_id,
+        "name": name,
+        "limit": 10,
+        "library_only": library_only,
+    }
+    if media_type is not None:
+        data["media_type"] = media_type
+    try:
+        async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
+            response = await hass.services.async_call(
+                DOMAIN,
+                SEARCH,
+                data,
+                blocking=True,
+                return_response=True,
+                context=context,
+            )
+    except TimeoutError:
+        _LOGGER.warning("HomeIntent Music Assistant library search timed out")
+        return MusicAssistantSearchResult("timeout")
+    except HomeAssistantError:
+        _LOGGER.warning("HomeIntent Music Assistant library search failed")
+        return MusicAssistantSearchResult("unavailable")
+    if not _valid_search_response(response):
+        _LOGGER.warning("HomeIntent Music Assistant returned a malformed search response")
+        return MusicAssistantSearchResult("malformed")
+    items = _exact_items(response, name, media_type)
+    if not items and _has_raw_exact_name(response, name, media_type):
+        return MusicAssistantSearchResult("unsafe")
+    return MusicAssistantSearchResult("ok", items)
 
 
 async def async_resolve_music_assistant(
@@ -203,35 +272,29 @@ async def async_resolve_music_assistant(
         return None
 
     query = _query_as_said(request)
-    data: dict[str, object] = {
-        "config_entry_id": player.config_entry_id,
-        "name": query,
-        "limit": 10,
-        "library_only": request.library_only,
-    }
-    if request.media_type is not None:
-        data["media_type"] = request.media_type
-    try:
-        response = await hass.services.async_call(
-            DOMAIN,
-            SEARCH,
-            data,
-            blocking=True,
-            return_response=True,
-            context=context,
+    searched = await async_search_exact_music_assistant(
+        hass,
+        config_entry_id=player.config_entry_id,
+        name=query,
+        media_type=request.media_type,
+        library_only=request.library_only,
+        context=context,
+    )
+    if searched.status == "timeout":
+        return MusicAssistantResolution(
+            None, "Die Music-Assistant-Bibliothek antwortet gerade nicht; ich habe nichts gestartet."
         )
-    except (HomeAssistantError, TimeoutError):
-        _LOGGER.exception("HomeIntent Music Assistant library search failed")
+    if searched.status == "unavailable":
         return MusicAssistantResolution(
             None, "Die Music-Assistant-Bibliothek ist gerade nicht erreichbar; ich habe nichts gestartet."
         )
-
-    items = _exact_items(response, query, request.media_type)
+    if searched.status in {"malformed", "invalid"}:
+        return MusicAssistantResolution(
+            None, "Music Assistant hat keine gültige Suchantwort geliefert; ich habe nichts gestartet."
+        )
+    items = searched.items
     if not items:
-        # A matching name with an unsafe URI is distinguishable without
-        # exposing it or ever passing it to a player.
-        raw_exact = _has_raw_exact_name(response, query, request.media_type)
-        if raw_exact:
+        if searched.status == "unsafe":
             return MusicAssistantResolution(
                 None, "Music Assistant hat für diesen Treffer keine sichere Media-ID geliefert."
             )
@@ -295,6 +358,10 @@ __all__ = (
     "MusicAssistantItem",
     "MusicAssistantPlan",
     "MusicAssistantResolution",
+    "MusicAssistantSearchResult",
     "PendingMusicAssistant",
+    "SEARCH_TIMEOUT_SECONDS",
     "async_resolve_music_assistant",
+    "async_search_exact_music_assistant",
+    "is_safe_music_assistant_media_id",
 )

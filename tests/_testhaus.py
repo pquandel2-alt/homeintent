@@ -32,6 +32,7 @@ PUSH_OPTIONS = {
     "agent_delivery_channels": ["push"],
     "allow_non_admin_automations": True,
 }
+_CURRENT_USER = object()
 
 
 # 7.9.3 A1: a monitoring whose condition already holds for some devices ends
@@ -186,20 +187,43 @@ class HouseConversation:
 
         self.entity.hass.auth = types.SimpleNamespace(async_get_user=get_user)
 
-    def say(self, text: str) -> Turn:
+    def conversation_input(
+        self,
+        text: str,
+        *,
+        conversation_id: str | None = None,
+        user: str | None | object = _CURRENT_USER,
+        satellite_id: str | None = None,
+        device_id: str | None = None,
+    ):
+        """Build the exact input used by ``say_input``.
+
+        The benchmark uses this boundary so its context lookup cannot drift
+        from the principal fields sent to the real conversation entity.
+        """
         from homeassistant.components.conversation import ConversationInput
+
+        actor = self.user if user is _CURRENT_USER else user
+        return ConversationInput(
+            text=text,
+            conversation_id=(
+                self.conversation_id if conversation_id is None else conversation_id
+            ),
+            context=types.SimpleNamespace(user_id=actor) if actor else None,
+            satellite_id=satellite_id,
+            device_id=device_id,
+        )
+
+    def say_input(self, user_input) -> Turn:
+        """Send a pre-built input and record only calls made by that turn."""
+        text = user_input.text
 
         if self.sink is not None:
             before_notify = len(self.sink.notify_calls)
             before_other = len(self.sink.other_calls)
-            result = asyncio.run(self.entity._async_handle_message(
-                ConversationInput(
-                    text=text,
-                    conversation_id=self.conversation_id,
-                    context=types.SimpleNamespace(user_id=self.user) if self.user else None,
-                ),
-                chat_log=None,
-            ))
+            result = asyncio.run(
+                self.entity._async_handle_message(user_input, chat_log=None)
+            )
             calls = [
                 ("notify", service, dict(data))
                 for service, data in self.sink.notify_calls[before_notify:]
@@ -210,19 +234,16 @@ class HouseConversation:
             return Turn(text, result.response.speech or "", result.response.response_type, calls)
         mock = self.entity.hass.services.async_call
         before = len(mock.await_args_list)
-        result = asyncio.run(self.entity._async_handle_message(
-            ConversationInput(
-                text=text,
-                conversation_id=self.conversation_id,
-                context=types.SimpleNamespace(user_id=self.user) if self.user else None,
-            ),
-            chat_log=None,
-        ))
+        result = asyncio.run(self.entity._async_handle_message(user_input, chat_log=None))
         calls = [
             (call.args[0], call.args[1], dict(call.args[2]) if len(call.args) > 2 else {})
             for call in mock.await_args_list[before:]
         ]
         return Turn(text, result.response.speech or "", result.response.response_type, calls)
+
+    def say(self, text: str) -> Turn:
+        """Send one turn as the house's current user and session."""
+        return self.say_input(self.conversation_input(text))
 
 
     def automations(self) -> list[dict[str, Any]]:

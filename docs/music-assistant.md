@@ -19,6 +19,11 @@ verwendet, wenn `music_assistant.search` und `music_assistant.play_media`
 tatsächlich registriert sind. Fehlt Music Assistant oder eine der Aktionen,
 wird nichts ausgeführt.
 
+Die blockierende Suche ist auf neun Sekunden begrenzt. Timeout, ein zwischen
+Fähigkeitsprüfung und Aufruf verschwundener Dienst, HA-Fehler sowie strukturell
+ungültige Antworten erzeugen keinen Wiedergabeplan. Abbruch der übergeordneten
+HA-Aufgabe (`CancelledError`) wird nicht abgefangen.
+
 ## Bibliothek und gespeicherte Radiosender
 
 Titel, Künstler, Alben, Playlists und Radiosender werden über
@@ -41,6 +46,17 @@ Der lokale Adapterpfad wird in CI mit
 `scripts/benchmark_music_assistant.py` gegen eine Registry mit 5.000 Entities
 gemessen. Der Benchmark verwendet eine deterministische Service-Fake, öffnet
 kein Netzwerk und führt keine Wiedergabe aus.
+
+Zusätzlich validiert `scripts/music_assistant_contract.py` die Request- und
+Response-Payloads gegen die tatsächlich installierte
+`homeassistant.components.music_assistant`-Komponente. CI führt diesen Vertrag
+mit der Mindestversion Home Assistant 2026.4.0 und der Stable-Testversion
+2026.9.2 aus. Geprüft werden Domain/Aktionsnamen, `config_entry_id`, `name`,
+ein einzelner oder mehrere `media_type`-Werte, `limit`, `library_only`, die
+Antwortfelder `artists`, `albums`, `tracks`, `playlists`, `radio`, deren
+`name`/`uri` sowie `media_id`, `media_type` und `enqueue` für `play_media`.
+Dabei wird echter HA-Komponentencode und dessen echtes Schema geladen, aber
+kein Music-Assistant-Server gestartet und keine Wiedergabe ausgelöst.
 
 Explizite Queue-Angaben werden als geschlossene Planwerte behandelt:
 „als Nächstes“ verwendet `next`, „zur Warteschlange hinzu“ verwendet `add`,

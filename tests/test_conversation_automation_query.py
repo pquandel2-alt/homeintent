@@ -370,10 +370,12 @@ def test_existing_automation_can_be_limited_to_three_runs(monkeypatch, tmp_path)
         (tmp_path / "automations.yaml").read_text(encoding="utf-8")
     )
     assert "nur noch 3 Mal" in result.response.speech
-    assert automations[0]["actions"][-1] == {
-        "action": "homeintent.record_automation_run",
-        "data": {"automation_id": automations[0]["id"], "max_runs": 3},
-    }
+    lifecycle_action = automations[0]["actions"][-1]
+    assert lifecycle_action["action"] == "homeintent.record_automation_run"
+    assert lifecycle_action["data"]["automation_id"] == automations[0]["id"]
+    assert lifecycle_action["data"]["max_runs"] == 3
+    assert lifecycle_action["data"]["lifecycle_id"] == automations[0]["id"]
+    assert len(lifecycle_action["data"]["lifecycle_token"]) >= 32
 
 
 def test_only_action_can_be_replaced_in_a_confirmed_dialog(monkeypatch, tmp_path):

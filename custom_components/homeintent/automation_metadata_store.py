@@ -39,6 +39,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.file import write_utf8_file_atomic
 
 from .automation_summary import CREATED_BY_HOMEINTENT
+from .automation_history import canonical_state_digest
 from .storage_migration import resolve_storage_path
 
 METADATA_FILENAME = "homeintent_automation_metadata.json"
@@ -86,6 +87,9 @@ class AutomationMetadata:
     pause_resume_at: str | None = None
     pause_status: str | None = None
     pause_consumed_at: str | None = None
+    # One-time proof records for lifecycle actions embedded in this
+    # automation. Tokens are never rendered in normal Assist output/logs.
+    lifecycle_orders: list[dict[str, Any]] | None = None
 
 
 class AutomationMetadataStore:
@@ -130,6 +134,33 @@ class AutomationMetadataStore:
         path = self._path()
         return await self._hass.async_add_executor_job(
             self._read_snapshot, path
+        )
+
+    async def async_entry_snapshot(
+        self, automation_id: str
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Read one sidecar entry and its canonical target-only digest."""
+        entries = await self.async_load_all()
+        value = entries.get(automation_id)
+        if automation_id in entries and not isinstance(value, dict):
+            raise ValueError("Der Metadateneintrag der Automation ist beschädigt")
+        entry = value if isinstance(value, dict) else None
+        return entry, canonical_state_digest(entry)
+
+    async def async_replace_entry_if_unchanged(
+        self,
+        automation_id: str,
+        replacement: dict[str, Any] | None,
+        expected_entry_digest: str,
+    ) -> str:
+        """Replace only one sidecar entry after a target-scoped CAS check."""
+        path = self._path()
+        return await self._hass.async_add_executor_job(
+            self._replace_entry_if_unchanged,
+            path,
+            automation_id,
+            replacement,
+            expected_entry_digest,
         )
 
     async def async_delete(self, automation_id: str) -> None:
@@ -206,6 +237,30 @@ class AutomationMetadataStore:
                 "Die HomeIntent-Automationsmetadaten wurden inzwischen geändert"
             )
         cls._write(path, entries)
+
+    @classmethod
+    def _replace_entry_if_unchanged(
+        cls,
+        path: str,
+        automation_id: str,
+        replacement: dict[str, Any] | None,
+        expected_entry_digest: str,
+    ) -> str:
+        entries = cls._read(path)
+        current = entries.get(automation_id)
+        if automation_id in entries and not isinstance(current, dict):
+            raise ValueError("Der Metadateneintrag der Automation ist beschädigt")
+        current_entry = current if isinstance(current, dict) else None
+        if canonical_state_digest(current_entry) != expected_entry_digest:
+            raise ValueError(
+                "Die HomeIntent-Metadaten der Automation wurden inzwischen geändert"
+            )
+        if replacement is None:
+            entries.pop(automation_id, None)
+        else:
+            entries[automation_id] = replacement
+        cls._write(path, entries)
+        return canonical_state_digest(replacement)
 
     @staticmethod
     def _file_digest(path: str) -> str:

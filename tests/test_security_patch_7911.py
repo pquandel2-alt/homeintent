@@ -23,7 +23,10 @@ _ha_stub.install()
 from _ha_stub import ServiceMock  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
 from homeassistant.helpers import entity_registry as er  # noqa: E402
-from homeintent.automation_executor import AutomationExecutor  # noqa: E402
+from homeintent.automation_executor import (  # noqa: E402
+    AutomationExecutor,
+    AutomationProvenanceError,
+)
 from homeintent.automation_metadata_store import METADATA_FILENAME  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.goal_run import GoalRunStore  # noqa: E402
@@ -464,6 +467,492 @@ def test_repeated_undo_remains_consistent_across_executor_restarts(tmp_path):
     )
     assert _read_yaml(tmp_path) == []
     assert restarted_again._history.peek() is None
+
+
+def test_delta_undo_enable_restores_disabled_state(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(
+        executor.async_create_automation(
+            {
+                "alias": "Owned",
+                "initial_state": False,
+                "triggers": [],
+                "actions": [],
+            },
+            automation_id="owned",
+            owner_user_id="owner",
+        )
+    )
+
+    asyncio.run(executor.async_enable_automation("owned"))
+    assert _read_yaml(tmp_path)[0]["initial_state"] is True
+
+    asyncio.run(
+        executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        )
+    )
+
+    assert _read_yaml(tmp_path)[0]["initial_state"] is False
+
+
+def test_delta_undo_create_preserves_later_foreign_creation(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    foreign = {"id": "manual", "alias": "Später im UI erstellt"}
+    _write_yaml(tmp_path, [*_read_yaml(tmp_path), foreign])
+
+    asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+
+    assert _read_yaml(tmp_path) == [foreign]
+
+
+def test_delta_undo_create_preserves_later_foreign_edit(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    foreign = {"id": "manual", "alias": "Vorher"}
+    _write_yaml(tmp_path, [foreign])
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    changed_foreign = {"id": "manual", "alias": "Nachher", "mode": "queued"}
+    _write_yaml(tmp_path, [changed_foreign, _read_yaml(tmp_path)[1]])
+
+    asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+
+    assert _read_yaml(tmp_path) == [changed_foreign]
+
+
+def test_delta_undo_edit_restores_only_target_and_its_metadata(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "description": "alt", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    asyncio.run(executor.async_edit_automation(
+        "owned", {"description": "neu"}, "bearbeitet"
+    ))
+    foreign = {"id": "manual", "alias": "Unberührt"}
+    _write_yaml(tmp_path, [*_read_yaml(tmp_path), foreign])
+
+    asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+
+    assert _read_yaml(tmp_path) == [
+        {"id": "owned", "alias": "Owned", "description": "alt", "triggers": [], "actions": []},
+        foreign,
+    ]
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata["owned"]["source_text"] == "Owned"
+    assert metadata["owned"]["version"] == 1
+
+
+def test_delta_undo_delete_reinserts_target_without_removing_foreign(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    asyncio.run(executor.async_delete_automation("owned"))
+    foreign = {"id": "manual", "alias": "Danach"}
+    _write_yaml(tmp_path, [foreign])
+
+    asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+
+    values = _read_yaml(tmp_path)
+    assert values[0]["id"] == "owned"
+    assert values[1] == foreign
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata["owned"]["owner_user_id"] == "owner"
+
+
+def test_delta_undo_refuses_external_target_change_but_keeps_history(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    externally_changed = [{**_read_yaml(tmp_path)[0], "alias": "Extern"}]
+    _write_yaml(tmp_path, externally_changed)
+
+    with pytest.raises(ValueError, match="Zielautomation"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == externally_changed
+    assert executor._history.peek() is not None
+
+
+def test_delta_undo_rejects_anonymous_actor(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+
+    with pytest.raises(PermissionError):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id=None, is_admin=False
+        ))
+
+
+def test_delta_undo_reload_failure_restores_yaml_and_metadata(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    yaml_after = _read_yaml(tmp_path)
+    metadata_after = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    hass.services.async_call = ServiceMock(side_effect=[RuntimeError("reload"), None])
+
+    with pytest.raises(RuntimeError, match="reload"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == yaml_after
+    assert json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")) == metadata_after
+    assert executor._history.peek() is not None
+
+
+def test_delta_undo_metadata_failure_restores_yaml_and_keeps_history(tmp_path):
+    from unittest.mock import AsyncMock
+
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    yaml_after = _read_yaml(tmp_path)
+    executor._metadata_store.async_replace_entry_if_unchanged = AsyncMock(
+        side_effect=OSError("metadata")
+    )
+    hass.services.async_call.reset_mock()
+
+    with pytest.raises(OSError, match="metadata"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == yaml_after
+    assert executor._history.peek() is not None
+    hass.services.async_call.assert_awaited_once()
+
+
+def test_two_concurrent_delta_undo_requests_cannot_replay_one_entry(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+
+    async def scenario():
+        await executor.async_create_automation(
+            {"alias": "Owned", "triggers": [], "actions": []},
+            automation_id="owned", owner_user_id="owner",
+        )
+        return await asyncio.gather(
+            executor.async_rollback_last_change(
+                requesting_user_id="owner", is_admin=False
+            ),
+            executor.async_rollback_last_change(
+                requesting_user_id="owner", is_admin=False
+            ),
+            return_exceptions=True,
+        )
+
+    results = asyncio.run(scenario())
+
+    assert sum(isinstance(item, str) for item in results) == 1
+    assert sum(isinstance(item, ValueError) for item in results) == 1
+    assert _read_yaml(tmp_path) == []
+
+
+def test_delta_undo_rejects_composite_pause_without_partial_restore(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    _write_yaml(tmp_path, [{"id": "target", "alias": "Ziel"}])
+    _write_metadata(tmp_path, {"target": _owned_metadata("target")})
+    asyncio.run(executor.async_pause_automation_until(
+        "target", datetime.now(timezone.utc) + timedelta(hours=1)
+    ))
+    paused_yaml = _read_yaml(tmp_path)
+    paused_metadata = json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    )
+    hass.services.async_call.reset_mock()
+
+    with pytest.raises(ValueError, match="mehrere Automationen"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == paused_yaml
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == paused_metadata
+    assert executor._history.peek() is not None
+    hass.services.async_call.assert_not_awaited()
+
+
+def test_lifecycle_delete_token_is_embedded_stored_and_one_time(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Einmal", "triggers": [],
+            "actions": [{
+                "action": "homeintent.delete_automation",
+                "data": {"automation_id": "once"},
+            }],
+        },
+        automation_id="once", owner_user_id="owner", once=True,
+    ))
+    proof = _read_yaml(tmp_path)[0]["actions"][0]["data"]
+    assert proof["lifecycle_id"] == "once"
+    assert len(proof["lifecycle_token"]) >= 32
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    order = metadata["once"]["lifecycle_orders"][0]
+    assert order == {
+        "operation": "delete",
+        "automation_id": "once",
+        "token": proof["lifecycle_token"],
+        "status": "open",
+    }
+
+    asyncio.run(executor.async_delete_automation_with_proof(
+        "once",
+        lifecycle_id="once",
+        lifecycle_token=proof["lifecycle_token"],
+    ))
+
+    assert _read_yaml(tmp_path) == []
+    with pytest.raises(AutomationProvenanceError):
+        asyncio.run(executor.async_delete_automation_with_proof(
+            "once",
+            lifecycle_id="once",
+            lifecycle_token=proof["lifecycle_token"],
+        ))
+
+
+def test_lifecycle_self_delete_proof_remains_retryable_after_reload_failure(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Einmal", "triggers": [],
+            "actions": [{
+                "action": "homeintent.delete_automation",
+                "data": {"automation_id": "once"},
+            }],
+        },
+        automation_id="once", once=True,
+    ))
+    proof = dict(_read_yaml(tmp_path)[0]["actions"][0]["data"])
+    hass.services.async_call = ServiceMock(side_effect=RuntimeError("reload"))
+
+    with pytest.raises(RuntimeError, match="reload"):
+        asyncio.run(executor.async_delete_automation_with_proof(
+            "once", lifecycle_id="once", lifecycle_token=proof["lifecycle_token"]
+        ))
+
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata["once"]["lifecycle_orders"][0]["status"] == "open"
+    hass.services.async_call = ServiceMock()
+    asyncio.run(executor.async_delete_automation_with_proof(
+        "once", lifecycle_id="once", lifecycle_token=proof["lifecycle_token"]
+    ))
+    assert _read_yaml(tmp_path) == []
+
+
+def test_cross_target_delete_proof_reopens_only_after_transaction_failure(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Ziel", "triggers": [], "actions": []},
+        automation_id="target",
+    ))
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Aufräumer", "triggers": [],
+            "actions": [{
+                "action": "homeintent.delete_automation",
+                "data": {"automation_id": "target"},
+            }],
+        },
+        automation_id="helper", once=True,
+    ))
+    helper = next(item for item in _read_yaml(tmp_path) if item["id"] == "helper")
+    proof = dict(helper["actions"][0]["data"])
+    hass.services.async_call = ServiceMock(side_effect=RuntimeError("reload"))
+
+    with pytest.raises(RuntimeError, match="reload"):
+        asyncio.run(executor.async_delete_automation_with_proof(
+            "target",
+            lifecycle_id="helper",
+            lifecycle_token=proof["lifecycle_token"],
+        ))
+
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    order = metadata["helper"]["lifecycle_orders"][0]
+    assert order["status"] == "open"
+    assert "consumed_at" not in order
+    hass.services.async_call = ServiceMock()
+    asyncio.run(executor.async_delete_automation_with_proof(
+        "target",
+        lifecycle_id="helper",
+        lifecycle_token=proof["lifecycle_token"],
+    ))
+    assert [item["id"] for item in _read_yaml(tmp_path)] == ["helper"]
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata["helper"]["lifecycle_orders"][0]["status"] == "consumed"
+
+
+def test_lifecycle_record_token_rotates_and_replay_cannot_raise_counter(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Zweimal", "triggers": [],
+            "actions": [{
+                "action": "homeintent.record_automation_run",
+                "data": {"automation_id": "bounded", "max_runs": 2},
+            }],
+        },
+        automation_id="bounded", owner_user_id="owner", max_runs=2,
+    ))
+    first = dict(_read_yaml(tmp_path)[0]["actions"][0]["data"])
+
+    deleted = asyncio.run(executor.async_record_automation_run_with_proof(
+        "bounded",
+        lifecycle_id="bounded",
+        lifecycle_token=first["lifecycle_token"],
+    ))
+
+    assert deleted is False
+    second = _read_yaml(tmp_path)[0]["actions"][0]["data"]
+    assert second["lifecycle_token"] != first["lifecycle_token"]
+    with pytest.raises(AutomationProvenanceError):
+        asyncio.run(executor.async_record_automation_run_with_proof(
+            "bounded",
+            lifecycle_id="bounded",
+            lifecycle_token=first["lifecycle_token"],
+        ))
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata["bounded"]["run_count"] == 1
+
+    assert asyncio.run(executor.async_record_automation_run_with_proof(
+        "bounded",
+        lifecycle_id="bounded",
+        lifecycle_token=second["lifecycle_token"],
+    )) is True
+    assert _read_yaml(tmp_path) == []
+
+
+def test_duplicate_gets_fresh_lifecycle_identity_and_token(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Einmal", "triggers": [],
+            "actions": [{
+                "action": "homeintent.delete_automation",
+                "data": {"automation_id": "source"},
+            }],
+        },
+        automation_id="source", owner_user_id="owner", once=True,
+    ))
+    source_proof = dict(_read_yaml(tmp_path)[0]["actions"][0]["data"])
+
+    duplicate_id = asyncio.run(executor.async_duplicate_automation("source"))
+
+    duplicate = next(item for item in _read_yaml(tmp_path) if item["id"] == duplicate_id)
+    duplicate_proof = duplicate["actions"][0]["data"]
+    assert duplicate_proof["automation_id"] == duplicate_id
+    assert duplicate_proof["lifecycle_id"] == duplicate_id
+    assert duplicate_proof["lifecycle_token"] != source_proof["lifecycle_token"]
+
+
+def test_lifecycle_wrong_token_or_target_never_changes_state(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Einmal", "triggers": [],
+            "actions": [{
+                "action": "homeintent.delete_automation",
+                "data": {"automation_id": "once"},
+            }],
+        },
+        automation_id="once", once=True,
+    ))
+    before = _read_yaml(tmp_path)
+    token = before[0]["actions"][0]["data"]["lifecycle_token"]
+
+    for target, candidate in (("other", token), ("once", "forged")):
+        with pytest.raises(AutomationProvenanceError):
+            asyncio.run(executor.async_delete_automation_with_proof(
+                target, lifecycle_id="once", lifecycle_token=candidate
+            ))
+
+    assert _read_yaml(tmp_path) == before
+
+
+def test_legacy_lifecycle_action_is_migrated_only_with_proven_sidecar(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    legacy = {
+        "id": "legacy", "alias": "Alt", "triggers": [],
+        "actions": [{
+            "action": "homeintent.delete_automation",
+            "data": {"automation_id": "legacy"},
+        }],
+    }
+    _write_yaml(tmp_path, [legacy])
+    _write_metadata(tmp_path, {"legacy": _owned_metadata("legacy")})
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+
+    asyncio.run(executor.async_reconcile_homeintent_state())
+
+    proof = _read_yaml(tmp_path)[0]["actions"][0]["data"]
+    assert proof["lifecycle_id"] == "legacy"
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata["legacy"]["lifecycle_orders"][0]["token"] == proof["lifecycle_token"]
 
 
 def test_goal_run_without_thermal_cycle_does_not_write(tmp_path):

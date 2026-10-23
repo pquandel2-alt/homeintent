@@ -37,6 +37,7 @@ _ha_stub.install()
 
 import homeintent as homeintent_init  # noqa: E402
 from homeintent.const import DOMAIN  # noqa: E402
+from homeintent.automation_executor import AutomationExecutor  # noqa: E402
 from homeintent.thermal_deadline import (  # noqa: E402
     ThermalCheckpointPhase,
     ThermalDeadlineCheckpoint,
@@ -282,17 +283,25 @@ def test_calling_the_service_deletes_the_matching_automation(monkeypatch, tmp_pa
     entry = ConfigEntry()
     asyncio.run(homeintent_init.async_setup_entry(hass, entry))
     _write_automations_yaml(
-        tmp_path,
-        [
-            {"id": "keep-me", "alias": "Bleibt", "triggers": [], "actions": []},
-            {"id": "delete-me", "alias": "Wird gelöscht", "triggers": [], "actions": []},
-        ],
+        tmp_path, [{"id": "keep-me", "alias": "Bleibt", "triggers": [], "actions": []}]
     )
-    _write_metadata(tmp_path, "delete-me")
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Wird gelöscht", "triggers": [],
+            "actions": [{
+                "action": "homeintent.delete_automation",
+                "data": {"automation_id": "delete-me"},
+            }],
+        },
+        automation_id="delete-me",
+    ))
+    proof = _automations_yaml(tmp_path)[1]["actions"][0]["data"]
+    hass.services.async_call.reset_mock()
 
     handler = hass.services._handlers[(DOMAIN, "delete_automation")]
     monkeypatch.setattr(homeintent_init, "SELF_DELETE_GRACE_SECONDS", 0)
-    asyncio.run(_call_service_and_wait(hass, handler, ServiceCall({"automation_id": "delete-me"})))
+    asyncio.run(_call_service_and_wait(hass, handler, ServiceCall(proof)))
 
     remaining = _automations_yaml(tmp_path)
     assert [a["id"] for a in remaining] == ["keep-me"]
@@ -321,7 +330,7 @@ def test_delete_and_legacy_service_both_refuse_manual_automation(
 
     assert _automations_yaml(tmp_path) == [manual]
     hass.services.async_call.assert_not_awaited()
-    assert "without valid HomeIntent provenance" in caplog.text
+    assert "without complete lifecycle proof" in caplog.text
 
 
 def test_enable_service_rejects_calls_without_complete_pause_proof(tmp_path, caplog):
@@ -378,16 +387,20 @@ def test_service_handler_returns_before_the_delete_starts(monkeypatch, tmp_path)
         await homeintent_init.async_setup_entry(hass, entry)
         delete_started = asyncio.Event()
 
-        async def record_delete(_hass, _automation_id):
+        async def record_delete(_hass, _automation_id, _lifecycle_id, _token):
+            await asyncio.sleep(0)
             delete_started.set()
 
         monkeypatch.setattr(
-            homeintent_init, "_async_delete_automation_by_id", record_delete
+            homeintent_init, "_async_delete_automation_after_action", record_delete
         )
-        monkeypatch.setattr(homeintent_init, "SELF_DELETE_GRACE_SECONDS", 0)
         handler = hass.services._handlers[(DOMAIN, "delete_automation")]
 
-        await handler(ServiceCall({"automation_id": "delete-me"}))
+        await handler(ServiceCall({
+            "automation_id": "delete-me",
+            "lifecycle_id": "delete-me",
+            "lifecycle_token": "secret",
+        }))
 
         # The handler has returned, but the scheduled deletion has not run
         # inline as part of the service action.
@@ -404,13 +417,17 @@ def test_delayed_self_delete_retries_transient_failures(monkeypatch):
         side_effect=[RuntimeError("reload 1"), RuntimeError("reload 2"), None]
     )
     sleep = AsyncMock()
-    monkeypatch.setattr(homeintent_init, "_async_delete_automation_by_id", delete)
+    monkeypatch.setattr(
+        AutomationExecutor, "async_delete_automation_with_proof", delete
+    )
     monkeypatch.setattr(homeintent_init.asyncio, "sleep", sleep)
     monkeypatch.setattr(homeintent_init, "SELF_DELETE_GRACE_SECONDS", 0.1)
     monkeypatch.setattr(homeintent_init, "SELF_DELETE_RETRY_SECONDS", (1.0, 5.0))
 
     asyncio.run(
-        homeintent_init._async_delete_automation_after_action(hass, "retry-me")
+        homeintent_init._async_delete_automation_after_action(
+            hass, "retry-me", "retry-me", "secret"
+        )
     )
 
     assert delete.await_count == 3

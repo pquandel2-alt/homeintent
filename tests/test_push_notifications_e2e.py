@@ -308,8 +308,10 @@ def test_screenshot_a_delayed_test_push_full_lifecycle(monkeypatch, tmp_path):
         "target": {"entity_id": [IPHONE]},
         "data": {"message": "Testbenachrichtigung von HomeIntent.", "title": "HomeIntent"},
     }
-    assert delete == {"action": "homeintent.delete_automation",
-                      "data": {"automation_id": automation["id"]}}
+    assert delete["action"] == "homeintent.delete_automation"
+    assert delete["data"]["automation_id"] == automation["id"]
+    assert delete["data"]["lifecycle_id"] == automation["id"]
+    assert len(delete["data"]["lifecycle_token"]) >= 32
 
     # HA fires the one-shot: exactly the stored target receives the push and
     # the automation removes itself.

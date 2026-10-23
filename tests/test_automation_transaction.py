@@ -228,25 +228,42 @@ def test_bounded_automation_is_deleted_exactly_at_its_run_limit(tmp_path):
     automation_id = "bounded"
     _write_yaml(
         tmp_path / "automations.yaml",
-        [{"id": automation_id, "alias": "Dreimal", "triggers": [], "actions": []}],
-    )
-    store = AutomationMetadataStore(hass)
-    asyncio.run(
-        store.async_save(
-            AutomationMetadata(
-                automation_id,
-                "Dreimal",
-                "2026-08-21T08:00:00+00:00",
-                max_runs=3,
-            )
-        )
+        [],
     )
     executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {
+            "alias": "Dreimal",
+            "triggers": [],
+            "actions": [{
+                "action": "homeintent.record_automation_run",
+                "data": {"automation_id": automation_id, "max_runs": 3},
+            }],
+        },
+        automation_id=automation_id,
+        max_runs=3,
+    ))
+    store = AutomationMetadataStore(hass)
 
-    assert asyncio.run(executor.async_record_automation_run(automation_id)) is False
-    assert asyncio.run(executor.async_record_automation_run(automation_id)) is False
+    first = _read_yaml(tmp_path / "automations.yaml")[0]["actions"][-1]["data"]
+    assert asyncio.run(executor.async_record_automation_run_with_proof(
+        automation_id,
+        lifecycle_id=automation_id,
+        lifecycle_token=first["lifecycle_token"],
+    )) is False
+    second = _read_yaml(tmp_path / "automations.yaml")[0]["actions"][-1]["data"]
+    assert asyncio.run(executor.async_record_automation_run_with_proof(
+        automation_id,
+        lifecycle_id=automation_id,
+        lifecycle_token=second["lifecycle_token"],
+    )) is False
     assert asyncio.run(store.async_load_all())[automation_id]["run_count"] == 2
-    assert asyncio.run(executor.async_record_automation_run(automation_id)) is True
+    third = _read_yaml(tmp_path / "automations.yaml")[0]["actions"][-1]["data"]
+    assert asyncio.run(executor.async_record_automation_run_with_proof(
+        automation_id,
+        lifecycle_id=automation_id,
+        lifecycle_token=third["lifecycle_token"],
+    )) is True
 
     assert _read_yaml(tmp_path / "automations.yaml") == []
     assert automation_id not in asyncio.run(store.async_load_all())
@@ -280,9 +297,19 @@ def test_existing_homeintent_automation_can_be_limited_transactionally(tmp_path)
     asyncio.run(AutomationExecutor(hass).async_set_max_runs(automation_id, 3))
 
     automation = _read_yaml(tmp_path / "automations.yaml")[0]
-    assert automation["actions"][-1] == {
-        "action": "homeintent.record_automation_run",
-        "data": {"automation_id": automation_id, "max_runs": 3},
-    }
+    action = automation["actions"][-1]
+    assert action["action"] == "homeintent.record_automation_run"
+    assert action["data"]["automation_id"] == automation_id
+    assert action["data"]["max_runs"] == 3
+    assert action["data"]["lifecycle_id"] == automation_id
+    assert isinstance(action["data"]["lifecycle_token"], str)
     metadata = asyncio.run(store.async_load_all())[automation_id]
     assert (metadata["max_runs"], metadata["run_count"]) == (3, 0)
+    assert metadata["lifecycle_orders"] == [
+        {
+            "operation": "record_run",
+            "automation_id": automation_id,
+            "token": action["data"]["lifecycle_token"],
+            "status": "open",
+        }
+    ]

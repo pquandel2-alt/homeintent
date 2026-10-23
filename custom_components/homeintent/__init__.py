@@ -431,15 +431,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_DELETE_AUTOMATION):
 
         async def _handle_delete_automation(call: ServiceCall) -> None:
-            automation_id = _automation_id_from_call(call)
-            if automation_id is None:
+            lifecycle = _lifecycle_proof_from_call(call, "delete_automation")
+            if lifecycle is None:
                 return
+            automation_id, lifecycle_id, lifecycle_token = lifecycle
             # Do not await the delete here. This handler is itself the last
             # action of the automation being deleted. Returning lets that
             # action script finish before the background task reloads HA's
             # automation component and unloads it.
             hass.async_create_task(
-                _async_delete_automation_after_action(hass, automation_id),
+                _async_delete_automation_after_action(
+                    hass, automation_id, lifecycle_id, lifecycle_token
+                ),
                 name=f"HomeIntent self-delete automation {automation_id}",
             )
 
@@ -469,11 +472,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_RECORD_AUTOMATION_RUN):
 
         async def _handle_record_automation_run(call: ServiceCall) -> None:
-            automation_id = _automation_id_from_call(call)
-            if automation_id is None:
+            lifecycle = _lifecycle_proof_from_call(call, "record_automation_run")
+            if lifecycle is None:
                 return
+            automation_id, lifecycle_id, lifecycle_token = lifecycle
             hass.async_create_task(
-                _async_record_automation_run_after_action(hass, automation_id),
+                _async_record_automation_run_after_action(
+                    hass, automation_id, lifecycle_id, lifecycle_token
+                ),
                 name=f"HomeIntent record automation run {automation_id}",
             )
 
@@ -921,7 +927,13 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def _async_delete_automation(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Deletes the automation named by ``call.data["automation_id"]`` -
+    """Delete only with an exact, open embedded lifecycle proof.
+
+    The service is publicly registered because generated HA automations must
+    call it, but an automation id alone is not authority. The same central
+    executor proof check is used by the primary and legacy domains.
+
+    Deletes the automation named by ``call.data["automation_id"]`` -
     reuses ``AutomationExecutor.async_delete_automation()`` (Wave 10)
     verbatim (Regel 6), rather than a second, parallel deletion mechanism.
 
@@ -941,21 +953,35 @@ async def _async_delete_automation(hass: HomeAssistant, call: ServiceCall) -> No
     already deleted by something else between generation and this call
     firing, there is nothing left to do.
     """
-    automation_id = _automation_id_from_call(call)
-    if automation_id is None:
+    lifecycle = _lifecycle_proof_from_call(call, "delete_automation")
+    if lifecycle is None:
         return
-    await _async_delete_automation_by_id(hass, automation_id)
+    automation_id, lifecycle_id, lifecycle_token = lifecycle
+    from .automation_executor import AutomationExecutor
+
+    await AutomationExecutor(hass).async_delete_automation_with_proof(
+        automation_id,
+        lifecycle_id=lifecycle_id,
+        lifecycle_token=lifecycle_token,
+    )
 
 
-def _automation_id_from_call(call: ServiceCall) -> str | None:
-    """Return a validated automation id from the custom service call."""
-    automation_id = call.data.get("automation_id")
-    if not isinstance(automation_id, str) or not automation_id:
+def _lifecycle_proof_from_call(
+    call: ServiceCall, service: str
+) -> tuple[str, str, str] | None:
+    """Read an opaque lifecycle proof without ever logging its token."""
+    values = tuple(
+        call.data.get(key)
+        for key in ("automation_id", "lifecycle_id", "lifecycle_token")
+    )
+    if not all(isinstance(value, str) and value for value in values):
         _LOGGER.warning(
-            "homeintent.delete_automation rejected a call without a valid automation_id"
+            "homeintent.%s rejected a call without complete lifecycle proof",
+            service,
         )
         return None
-    return automation_id
+    automation_id, lifecycle_id, lifecycle_token = values
+    return str(automation_id), str(lifecycle_id), str(lifecycle_token)
 
 
 def _pause_resume_from_call(
@@ -977,14 +1003,23 @@ def _pause_resume_from_call(
 
 
 async def _async_delete_automation_after_action(
-    hass: HomeAssistant, automation_id: str
+    hass: HomeAssistant,
+    automation_id: str,
+    lifecycle_id: str,
+    lifecycle_token: str,
 ) -> None:
     """Delete after the calling automation has left its final action."""
     delays = (SELF_DELETE_GRACE_SECONDS, *SELF_DELETE_RETRY_SECONDS)
     for attempt, delay in enumerate(delays, start=1):
         await asyncio.sleep(delay)
         try:
-            await _async_delete_automation_by_id(hass, automation_id)
+            from .automation_executor import AutomationExecutor
+
+            await AutomationExecutor(hass).async_delete_automation_with_proof(
+                automation_id,
+                lifecycle_id=lifecycle_id,
+                lifecycle_token=lifecycle_token,
+            )
             return
         except Exception as err:  # noqa: BLE001 - distinguish fail-closed provenance
             from .automation_executor import AutomationProvenanceError
@@ -1010,7 +1045,10 @@ async def _async_delete_automation_after_action(
 
 
 async def _async_record_automation_run_after_action(
-    hass: HomeAssistant, automation_id: str
+    hass: HomeAssistant,
+    automation_id: str,
+    lifecycle_id: str,
+    lifecycle_token: str,
 ) -> None:
     """Record a successful run after its service action has returned."""
     delays = (SELF_DELETE_GRACE_SECONDS, *SELF_DELETE_RETRY_SECONDS)
@@ -1019,7 +1057,11 @@ async def _async_record_automation_run_after_action(
         try:
             from .automation_executor import AutomationExecutor
 
-            await AutomationExecutor(hass).async_record_automation_run(automation_id)
+            await AutomationExecutor(hass).async_record_automation_run_with_proof(
+                automation_id,
+                lifecycle_id=lifecycle_id,
+                lifecycle_token=lifecycle_token,
+            )
             return
         except Exception:  # noqa: BLE001 - HA reload/file failures are heterogeneous
             if attempt == len(delays):
@@ -1092,27 +1134,6 @@ async def _async_reconcile_and_cleanup_automations(hass: HomeAssistant) -> None:
             len(orphan_metadata),
         )
     await _async_cleanup_expired_scheduled_automations(hass)
-
-
-async def _async_delete_automation_by_id(
-    hass: HomeAssistant, automation_id: str
-) -> None:
-    """Delete one automation immediately; callers decide when it is safe."""
-    # Function-local import: automation_executor.py imports the real
-    # ``homeassistant.core``/``homeassistant.util`` at module level (no
-    # HA-free path exists there, see its own module docstring) - keeping
-    # that import out of this module's top level is what lets every
-    # existing ``homeintent.engine``-only unit test keep importing bare
-    # ``homeintent.*`` (which always runs this package's ``__init__.py`` first)
-    # without the real ``homeassistant`` package installed, exactly as
-    # before this wave.
-    from .automation_executor import AutomationExecutor, AutomationNotFoundError
-
-    executor = AutomationExecutor(hass)
-    try:
-        await executor.async_delete_automation(automation_id)
-    except AutomationNotFoundError:
-        _LOGGER.debug("homeintent.delete_automation: automation %s already gone", automation_id)
 
 
 def _storage_path(hass: HomeAssistant, current: str, legacy: str) -> str:

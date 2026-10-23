@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -48,7 +49,19 @@ class Services:
             self._available.add(("music_assistant", "search"))
         if play:
             self._available.add(("music_assistant", "play_media"))
-        self.async_call = AsyncMock(return_value=response or {})
+        if isinstance(response, Mapping):
+            complete = {
+                "artists": [], "albums": [], "tracks": [],
+                "playlists": [], "radio": [],
+            }
+            complete.update(response)
+            response = complete
+        elif response is None:
+            response = {
+                "artists": [], "albums": [], "tracks": [],
+                "playlists": [], "radio": [],
+            }
+        self.async_call = AsyncMock(return_value=response)
 
     def has_service(self, domain, service):
         return (domain, service) in self._available
@@ -56,6 +69,15 @@ class Services:
 
 def _hass(response=None, *, search=True, play=True):
     return SimpleNamespace(services=Services(response, search=search, play=play))
+
+
+def _response(**items):
+    response = {
+        "artists": [], "albums": [], "tracks": [],
+        "playlists": [], "radio": [],
+    }
+    response.update(items)
+    return response
 
 
 def _resolve(hass, request, entities, *, satellite_area_id):
@@ -185,6 +207,103 @@ def test_library_service_failure_is_reported_without_a_write():
         "ich habe nichts gestartet."
     )
     hass.services.async_call.assert_awaited_once()
+
+
+def test_library_search_timeout_is_bounded_and_never_builds_a_plan(monkeypatch):
+    import homeintent.music_assistant as adapter
+
+    hass = _hass()
+
+    async def blocked(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    hass.services.async_call = AsyncMock(side_effect=blocked)
+    monkeypatch.setattr(adapter, "SEARCH_TIMEOUT_SECONDS", 0.01)
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("queen",), media_type="artist"),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert result.spoken == (
+        "Die Music-Assistant-Bibliothek antwortet gerade nicht; "
+        "ich habe nichts gestartet."
+    )
+
+
+def test_library_search_cancellation_is_never_swallowed():
+    hass = _hass()
+    hass.services.async_call.side_effect = asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        _resolve(
+            hass,
+            MediaRequest("play", ("queen",), media_type="artist"),
+            [_player()],
+            satellite_area_id="living",
+        )
+
+
+def test_service_disappearing_after_capability_check_fails_closed():
+    hass = _hass()
+    hass.services.async_call.side_effect = HomeAssistantError("service disappeared")
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("queen",), media_type="artist"),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert "nicht erreichbar" in result.spoken
+
+
+@pytest.mark.parametrize("response", [None, [], {"tracks": "not-a-list"}])
+def test_malformed_search_response_fails_closed(response):
+    hass = _hass()
+    hass.services.async_call.return_value = response
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("queen",), media_type="artist"),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert "keine gültige Suchantwort" in result.spoken
+
+
+def test_empty_well_formed_search_response_reports_no_match():
+    result = _resolve(
+        _hass(),
+        MediaRequest("play", ("queen",), media_type="artist"),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert "finde ich" in result.spoken
+
+
+def test_unexpected_failure_does_not_poison_the_next_search():
+    hass = _hass()
+    successful = {
+        "artists": [{"name": "Queen", "uri": "library://artist/1"}],
+        "albums": [], "tracks": [], "playlists": [], "radio": [],
+    }
+    hass.services.async_call.side_effect = [RuntimeError("unexpected"), successful]
+    request = MediaRequest("play", ("queen",), media_type="artist")
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        _resolve(hass, request, [_player()], satellite_area_id="living")
+    recovered = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert recovered is not None and recovered.plan is not None
 
 
 def test_exact_saved_radio_becomes_typed_plan_not_a_direct_url():
@@ -335,9 +454,9 @@ def test_conversation_searches_then_executes_typed_plan(monkeypatch, tmp_path):
     house = HouseConversation(monkeypatch, entities=entities)
     house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
     house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
-    house.entity.hass.services.async_call.return_value = {
-        "playlists": [{"name": "Entspannen", "uri": "library://playlist/7"}]
-    }
+    house.entity.hass.services.async_call.return_value = _response(
+        playlists=[{"name": "Entspannen", "uri": "library://playlist/7"}]
+    )
 
     turn = house.say("Spiel meine Playlist Entspannen in der Küche.")
 
@@ -359,9 +478,9 @@ def test_named_music_assistant_player_is_a_target_not_a_routing_blocker(monkeypa
     house = HouseConversation(monkeypatch, entities=[_player()])
     house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
     house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
-    house.entity.hass.services.async_call.return_value = {
-        "tracks": [{"name": "One", "uri": "library://track/1"}]
-    }
+    house.entity.hass.services.async_call.return_value = _response(
+        tracks=[{"name": "One", "uri": "library://track/1"}]
+    )
 
     turn = house.say("Spiele den Titel One auf Wohnzimmer Lautsprecher.")
 
@@ -375,10 +494,10 @@ def test_dialog_selects_artist_without_reusing_ambiguous_result(monkeypatch):
     house = HouseConversation(monkeypatch, entities=[_player()])
     house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
     house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
-    house.entity.hass.services.async_call.return_value = {
-        "artists": [{"name": "Queen", "uri": "library://artist/1"}],
-        "tracks": [{"name": "Queen", "uri": "library://track/2"}],
-    }
+    house.entity.hass.services.async_call.return_value = _response(
+        artists=[{"name": "Queen", "uri": "library://artist/1"}],
+        tracks=[{"name": "Queen", "uri": "library://track/2"}],
+    )
 
     first = house.say("Spiele Queen im Wohnzimmer.")
     second = house.say("Den Künstler.")
@@ -407,9 +526,9 @@ def test_dialog_resolves_pronoun_plus_room_to_one_player(monkeypatch):
     house = HouseConversation(monkeypatch, entities=[living, kitchen])
     house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
     house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
-    house.entity.hass.services.async_call.return_value = {
-        "tracks": [{"name": "One", "uri": "library://track/1"}]
-    }
+    house.entity.hass.services.async_call.return_value = _response(
+        tracks=[{"name": "One", "uri": "library://track/1"}]
+    )
 
     first = house.say("Spiele den Titel One.")
     second = house.say("Spiel es im Wohnzimmer.")
@@ -425,10 +544,10 @@ def test_media_selection_cannot_be_taken_over_by_another_user(monkeypatch):
     house = HouseConversation(monkeypatch, entities=[_player()])
     house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
     house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
-    house.entity.hass.services.async_call.return_value = {
-        "artists": [{"name": "Queen", "uri": "library://artist/1"}],
-        "tracks": [{"name": "Queen", "uri": "library://track/2"}],
-    }
+    house.entity.hass.services.async_call.return_value = _response(
+        artists=[{"name": "Queen", "uri": "library://artist/1"}],
+        tracks=[{"name": "Queen", "uri": "library://track/2"}],
+    )
     assert "Welche meinst du?" in house.say("Spiele Queen im Wohnzimmer.").speech
 
     house.user = "anna"

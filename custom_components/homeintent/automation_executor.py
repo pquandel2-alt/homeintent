@@ -53,6 +53,7 @@ import hashlib
 import logging
 import re
 import uuid
+import secrets
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from functools import partial
@@ -64,10 +65,18 @@ from homeassistant.util import yaml as yaml_util
 from homeassistant.util.file import write_utf8_file_atomic
 
 from .automation_metadata_store import AutomationMetadata, AutomationMetadataStore, utcnow_isoformat
+from .automation_lifecycle import (
+    LIFECYCLE_OPERATIONS,
+    has_exact_lifecycle_action,
+    prepare_lifecycle_actions,
+    replace_lifecycle_token,
+)
 from .automation_history import (
     AutomationHistoryStore,
     AUTOMATION_HISTORY_FILENAME,
+    HISTORY_SCHEMA_VERSION,
     LEGACY_AUTOMATION_HISTORY_FILENAME,
+    canonical_state_digest,
 )
 from .automation_summary import AutomationSummary, CREATED_BY_HOMEINTENT
 from .automation_ownership import may_manage
@@ -268,6 +277,7 @@ class AutomationExecutor:
                         automation_id=automation_id,
                         created_at=created_at,
                         automations=snapshot.automations,
+                        after_automations=updated,
                         metadata=metadata_snapshot,
                         post_write_digest=after_digest,
                         owner_user_id=(
@@ -307,7 +317,7 @@ class AutomationExecutor:
     ) -> None:
         if transaction.operation != "rollback" and self._history.available:
             try:
-                _metadata, metadata_digest = (
+                metadata, metadata_digest = (
                     await self._metadata_store.async_snapshot()
                 )
                 await self._hass.async_add_executor_job(
@@ -315,6 +325,13 @@ class AutomationExecutor:
                         self._history.finalize,
                         transaction.created_at,
                         post_metadata_digest=metadata_digest,
+                        after_metadata=(
+                            metadata.get(transaction.automation_id)
+                            if isinstance(
+                                metadata.get(transaction.automation_id), dict
+                            )
+                            else None
+                        ),
                     )
                 )
             except (OSError, RuntimeError, TypeError, ValueError) as err:
@@ -434,6 +451,7 @@ class AutomationExecutor:
         """
         if automation_id is None:
             automation_id = uuid.uuid4().hex
+        config, lifecycle_orders = prepare_lifecycle_actions(config, automation_id)
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
@@ -470,6 +488,7 @@ class AutomationExecutor:
                     pause_target_automation_id=pause_target_automation_id,
                     pause_resume_at=pause_resume_at,
                     pause_status=pause_status,
+                    lifecycle_orders=lifecycle_orders,
                 )
                 await self._metadata_store.async_save(metadata)
             except Exception:
@@ -515,10 +534,14 @@ class AutomationExecutor:
 
         def replace_lifecycle_id(value: Any) -> None:
             if isinstance(value, dict):
-                if value.get("action") in {
-                    "homeintent.delete_automation", "homeintent.record_automation_run"
-                } and isinstance(value.get("data"), dict):
+                if value.get("action") in LIFECYCLE_OPERATIONS and isinstance(
+                    value.get("data"), dict
+                ):
                     value["data"]["automation_id"] = new_id
+                    # A duplicate is a new principal.  It must never inherit
+                    # a reusable proof owned by the source automation.
+                    value["data"].pop("lifecycle_id", None)
+                    value["data"].pop("lifecycle_token", None)
                 for child in value.values():
                     replace_lifecycle_id(child)
             elif isinstance(value, list):
@@ -629,11 +652,12 @@ class AutomationExecutor:
 
         Same transactional shape as ``async_create_automation``: runs under
         the shared lock, and a reload failure rolls ``automations.yaml``
-        back to what it was before this call. The metadata delete happens
-        last and is best-effort in the sense that ``AutomationMetadataStore.
-        async_delete()`` is itself a no-op for an id with no entry (e.g. a
-        hand-made automation this integration never recorded) - never an
-        error condition of its own.
+        back to what it was before this call. Before any write, a matching,
+        internally consistent HomeIntent sidecar entry is mandatory. Missing,
+        foreign or contradictory metadata therefore rejects a hand-made or
+        otherwise unproven automation fail-closed. Once provenance has been
+        established, deleting that exact sidecar entry is part of the same
+        recoverable transaction.
 
         Raises ``ValueError`` if no automation with ``automation_id`` exists
         - the caller (``AutomationDeleteParser`` via ``match_automation_
@@ -1019,24 +1043,210 @@ class AutomationExecutor:
                 raise
             await self._async_complete_transaction(transaction)
 
-    async def async_record_automation_run(self, automation_id: str) -> bool:
-        """Increment a bounded automation and delete it at its configured limit."""
+    @staticmethod
+    def _open_lifecycle_order(
+        entry: Mapping[str, Any],
+        *,
+        operation: str,
+        automation_id: str,
+        token: str,
+    ) -> tuple[list[dict[str, Any]], int]:
+        raw_orders = entry.get("lifecycle_orders")
+        if not isinstance(raw_orders, list):
+            raise AutomationProvenanceError(
+                "Die Automation besitzt keinen sicheren Lifecycle-Nachweis"
+            )
+        orders = [copy.deepcopy(item) for item in raw_orders if isinstance(item, dict)]
+        matches = [
+            index
+            for index, order in enumerate(orders)
+            if order.get("operation") == operation
+            and order.get("automation_id") == automation_id
+            and order.get("token") == token
+            and order.get("status") == "open"
+        ]
+        if len(matches) != 1:
+            raise AutomationProvenanceError(
+                "Der Lifecycle-Nachweis fehlt, ist verbraucht oder widersprüchlich"
+            )
+        return orders, matches[0]
+
+    async def async_delete_automation_with_proof(
+        self,
+        automation_id: str,
+        *,
+        lifecycle_id: str,
+        lifecycle_token: str,
+    ) -> None:
+        """Consume one exact delete order before invoking the normal delete path."""
+        consumed_cross_target = False
+        async with self._lock:
+            metadata = await self._metadata_store.async_load_all()
+            lifecycle = _require_homeintent_metadata(metadata, lifecycle_id)
+            orders, index = self._open_lifecycle_order(
+                lifecycle,
+                operation="delete",
+                automation_id=automation_id,
+                token=lifecycle_token,
+            )
+            snapshot = await self._async_read_snapshot(
+                self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+            )
+            source, _position = self._automation_by_id(
+                snapshot.automations, lifecycle_id
+            )
+            if source is None or not has_exact_lifecycle_action(
+                source,
+                operation="delete",
+                automation_id=automation_id,
+                lifecycle_id=lifecycle_id,
+                token=lifecycle_token,
+            ):
+                raise AutomationProvenanceError(
+                    "Der Lifecycle-Nachweis ist nicht exakt in der Automation eingebettet"
+                )
+            # A self-delete consumes its proof by atomically removing the
+            # automation and its sidecar below.  Keeping the proof open until
+            # that transaction commits lets the bounded background retry
+            # authenticate after a transient reload/filesystem failure.
+            if lifecycle_id != automation_id:
+                orders[index]["status"] = "consumed"
+                orders[index]["consumed_at"] = utcnow_isoformat()
+                await self._metadata_store.async_update(
+                    lifecycle_id,
+                    lifecycle_orders=orders,
+                    version=int(lifecycle.get("version", 1)) + 1,
+                )
+                consumed_cross_target = True
+        deleted = False
+        try:
+            await self.async_delete_automation(automation_id)
+            deleted = True
+        finally:
+            if consumed_cross_target and not deleted:
+                await self._async_reopen_failed_delete_order(
+                    lifecycle_id,
+                    automation_id=automation_id,
+                    lifecycle_token=lifecycle_token,
+                )
+
+    async def _async_reopen_failed_delete_order(
+        self,
+        lifecycle_id: str,
+        *,
+        automation_id: str,
+        lifecycle_token: str,
+    ) -> None:
+        """Make an exact consumed cross-target proof retryable after rollback."""
+        async with self._lock:
+            metadata = await self._metadata_store.async_load_all()
+            lifecycle = _require_homeintent_metadata(metadata, lifecycle_id)
+            raw_orders = lifecycle.get("lifecycle_orders")
+            if not isinstance(raw_orders, list):
+                raise AutomationProvenanceError(
+                    "Der fehlgeschlagene Lifecycle-Auftrag kann nicht sicher wieder geöffnet werden"
+                )
+            orders = [
+                copy.deepcopy(order) for order in raw_orders if isinstance(order, dict)
+            ]
+            matches = [
+                index for index, order in enumerate(orders)
+                if order.get("operation") == "delete"
+                and order.get("automation_id") == automation_id
+                and order.get("token") == lifecycle_token
+                and order.get("status") == "consumed"
+            ]
+            if len(matches) != 1:
+                raise AutomationProvenanceError(
+                    "Der fehlgeschlagene Lifecycle-Auftrag kann nicht sicher wieder geöffnet werden"
+                )
+            order = orders[matches[0]]
+            order["status"] = "open"
+            order.pop("consumed_at", None)
+            await self._metadata_store.async_update(
+                lifecycle_id,
+                lifecycle_orders=orders,
+                version=int(lifecycle.get("version", 1)) + 1,
+            )
+
+    async def async_record_automation_run_with_proof(
+        self,
+        automation_id: str,
+        *,
+        lifecycle_id: str,
+        lifecycle_token: str,
+    ) -> bool:
+        """Record one run and rotate its one-time proof before another run."""
+        if lifecycle_id != automation_id:
+            raise AutomationProvenanceError(
+                "Ausführungszähler dürfen nur ihre eigene Automation ändern"
+            )
         delete_now = False
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
+            orders, index = self._open_lifecycle_order(
+                entry,
+                operation="record_run",
+                automation_id=automation_id,
+                token=lifecycle_token,
+            )
             if not isinstance(entry.get("max_runs"), int):
-                raise ValueError(f"No bounded HomeIntent automation {automation_id!r}")
+                raise AutomationProvenanceError(
+                    "Der Lifecycle-Auftrag gehört zu keiner begrenzten Automation"
+                )
             max_runs = int(entry["max_runs"])
             next_count = int(entry.get("run_count", 0)) + 1
             if next_count >= max_runs:
+                # The successful delete consumes the self-owned proof.  Do
+                # not rotate or consume before it commits: otherwise a
+                # transient failure would make the documented retry fail its
+                # own provenance check.
                 delete_now = True
             else:
-                await self._metadata_store.async_update(
-                    automation_id,
-                    run_count=next_count,
-                    version=int(entry.get("version", 1)) + 1,
+                path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+                snapshot = await self._async_read_snapshot(path)
+                updated = copy.deepcopy(snapshot.automations)
+                target, _position = self._automation_by_id(updated, automation_id)
+                new_token = secrets.token_urlsafe(32)
+                if target is None or not replace_lifecycle_token(
+                    target,
+                    operation="record_run",
+                    old_token=lifecycle_token,
+                    new_token=new_token,
+                ):
+                    raise AutomationProvenanceError(
+                        "Der Lifecycle-Nachweis ist nicht exakt in der Automation eingebettet"
+                    )
+                orders[index]["token"] = new_token
+                transaction = await self._async_begin_transaction(
+                    operation="record_run",
+                    automation_id=automation_id,
+                    path=path,
+                    snapshot=snapshot,
+                    updated=updated,
                 )
+                committed = False
+                try:
+                    await self._hass.services.async_call(
+                        "automation", "reload", {}, blocking=True,
+                        context=system_context_for_turn(),
+                    )
+                    await self._metadata_store.async_update(
+                        automation_id,
+                        lifecycle_orders=orders,
+                        run_count=next_count,
+                        version=int(entry.get("version", 1)) + 1,
+                    )
+                    committed = True
+                finally:
+                    if not committed:
+                        await self._async_rollback_transaction(path, transaction)
+                        await self._hass.services.async_call(
+                            "automation", "reload", {}, blocking=True,
+                            context=system_context_for_turn(),
+                        )
+                await self._async_complete_transaction(transaction)
         if delete_now:
             await self.async_delete_automation(automation_id)
         return delete_now
@@ -1132,6 +1342,25 @@ class AutomationExecutor:
                 updated_automations.append({**automation, "actions": actions})
             if not found:
                 raise ValueError(f"No automation with id {automation_id!r} found")
+            existing_orders = entry.get("lifecycle_orders")
+            retained_orders = [
+                copy.deepcopy(order)
+                for order in existing_orders
+                if isinstance(order, dict) and order.get("operation") != "record_run"
+            ] if isinstance(existing_orders, list) else []
+            prepared: list[dict[str, Any]] = []
+            lifecycle_orders = retained_orders
+            for automation in updated_automations:
+                if automation.get("id") != automation_id:
+                    prepared.append(automation)
+                    continue
+                prepared_automation, lifecycle_orders = prepare_lifecycle_actions(
+                    automation,
+                    automation_id,
+                    retained_orders,
+                )
+                prepared.append(prepared_automation)
+            updated_automations = prepared
             transaction = await self._async_begin_transaction(
                 operation="set_max_runs",
                 automation_id=automation_id,
@@ -1147,6 +1376,7 @@ class AutomationExecutor:
                     automation_id,
                     max_runs=max_runs,
                     run_count=0,
+                    lifecycle_orders=lifecycle_orders,
                     version=int(entry.get("version", 1)) + 1,
                 )
             except Exception:
@@ -1434,7 +1664,7 @@ class AutomationExecutor:
             )
 
     async def async_reconcile_homeintent_state(self) -> tuple[str, ...]:
-        """Remove orphan metadata and repair categories for known entries."""
+        """Remove orphans, repair categories, and migrate safe lifecycle proofs."""
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
@@ -1472,24 +1702,82 @@ class AutomationExecutor:
                         **changes,
                         version=int(entry.get("version", 1)) + 1,
                     )
+            metadata = await self._metadata_store.async_load_all()
+            # Existing HomeIntent automations from before schema v2 can be
+            # migrated only when both their YAML id and sidecar provenance
+            # agree. Partial/mismatched proof fields are deliberately kept
+            # untouched; their public lifecycle calls remain fail-closed.
+            for automation_id in sorted(set(metadata) & yaml_ids):
+                entry = _require_homeintent_metadata(metadata, automation_id)
+                automation, position = self._automation_by_id(
+                    snapshot.automations, automation_id
+                )
+                if automation is None or position is None:
+                    continue
+                existing_orders = entry.get("lifecycle_orders")
+                orders = (
+                    existing_orders
+                    if isinstance(existing_orders, list)
+                    and all(isinstance(item, dict) for item in existing_orders)
+                    else []
+                )
+                try:
+                    prepared, migrated_orders = prepare_lifecycle_actions(
+                        automation, automation_id, orders
+                    )
+                except ValueError:
+                    continue
+                if prepared == automation:
+                    continue
+                updated = list(snapshot.automations)
+                updated[position] = prepared
+                transaction = await self._async_begin_transaction(
+                    operation="lifecycle_migration",
+                    automation_id=automation_id,
+                    path=path,
+                    snapshot=snapshot,
+                    updated=updated,
+                )
+                committed = False
+                try:
+                    await self._hass.services.async_call(
+                        "automation", "reload", {}, blocking=True,
+                        context=system_context_for_turn(),
+                    )
+                    await self._metadata_store.async_update(
+                        automation_id,
+                        lifecycle_orders=migrated_orders,
+                        version=int(entry.get("version", 1)) + 1,
+                    )
+                    committed = True
+                finally:
+                    if not committed:
+                        await self._async_rollback_transaction(path, transaction)
+                        await self._hass.services.async_call(
+                            "automation", "reload", {}, blocking=True,
+                            context=system_context_for_turn(),
+                        )
+                await self._async_complete_transaction(transaction)
+                snapshot = await self._async_read_snapshot(path)
             return tuple(orphan_ids)
 
     async def async_rollback_last_change(
         self, *, requesting_user_id: str | None, is_admin: bool
     ) -> str:
-        """Restore one guarded snapshot for its owner or an administrator."""
+        """Undo only the target automation after target-scoped CAS checks."""
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        requested_history = await self._hass.async_add_executor_job(
+            self._history.peek
+        )
+        if requested_history is None:
+            raise ValueError("Es gibt keine frühere HomeIntent-Änderung")
         async with self._lock:
             history = await self._hass.async_add_executor_job(self._history.peek)
             if history is None:
                 raise ValueError("Es gibt keine frühere HomeIntent-Änderung")
-            post_write_digest = history.get("post_write_digest")
-            post_metadata_digest = history.get("post_metadata_digest")
-            if not isinstance(post_write_digest, str) or not isinstance(
-                post_metadata_digest, str
-            ):
+            if history.get("created_at") != requested_history.get("created_at"):
                 raise ValueError(
-                    "Dieser ältere Verlaufseintrag besitzt keine sicheren Zustandsprüfsummen"
+                    "Der Rückgängig-Auftrag wurde inzwischen bereits bearbeitet"
                 )
             owner = history.get("owner_user_id")
             owner_user_id = owner if isinstance(owner, str) and owner else None
@@ -1497,40 +1785,79 @@ class AutomationExecutor:
                 raise PermissionError(
                     "Rückgängig ist nur für den Eigentümer der Automation oder einen Administrator erlaubt"
                 )
-            previous = history.get("automations")
-            if not isinstance(previous, list):
-                raise ValueError("Der letzte Verlaufseintrag ist beschädigt")
             snapshot = await self._async_read_snapshot(path)
-            if snapshot.digest != post_write_digest:
-                raise ValueError(
-                    "Die Automationen wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
-                )
-            _current_metadata, current_metadata_digest = (
+            automation_id = history.get("automation_id")
+            if not isinstance(automation_id, str) or not automation_id:
+                raise ValueError("Der letzte Verlaufseintrag ist beschädigt")
+            current_metadata, current_metadata_digest = (
+                await self._metadata_store.async_entry_snapshot(automation_id)
+            )
+            _all_metadata, current_full_metadata_digest = (
                 await self._metadata_store.async_snapshot()
             )
-            if current_metadata_digest != post_metadata_digest:
+            delta = self._history_delta(
+                history,
+                snapshot,
+                current_metadata,
+                current_metadata_digest,
+                current_full_metadata_digest,
+            )
+            if self._is_composite_lifecycle_history(history, delta):
                 raise ValueError(
-                    "Die HomeIntent-Metadaten wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
+                    "Pause/Fortsetzen ändert mehrere Automationen und kann nicht als "
+                    "einzelnes Delta sicher rückgängig gemacht werden"
                 )
-            previous_metadata = history.get("metadata")
-            if not isinstance(previous_metadata, dict):
-                raise ValueError("Die Metadaten im Verlaufseintrag sind beschädigt")
+            current_automation, current_position = self._automation_by_id(
+                snapshot.automations, automation_id
+            )
+            if canonical_state_digest(current_automation) != delta[
+                "after_automation_digest"
+            ]:
+                raise ValueError(
+                    "Die Zielautomation wurde inzwischen geändert; Rückgängig wurde sicher verweigert"
+                )
+            if current_metadata_digest != delta["after_metadata_digest"]:
+                raise ValueError(
+                    "Die HomeIntent-Metadaten wurden inzwischen geändert (Zielautomation); "
+                    "Rückgängig wurde sicher verweigert"
+                )
+            updated = list(snapshot.automations)
+            before_automation = delta["before_automation"]
+            if current_position is not None:
+                updated.pop(current_position)
+            if isinstance(before_automation, dict):
+                position = (
+                    current_position
+                    if current_position is not None
+                    else min(int(delta["before_position"] or 0), len(updated))
+                )
+                updated.insert(position, copy.deepcopy(before_automation))
             transaction = await self._async_begin_transaction(
                 operation="rollback",
-                automation_id=str(history.get("automation_id") or "unknown"),
+                automation_id=automation_id,
                 path=path,
                 snapshot=snapshot,
-                updated=previous,
+                updated=updated,
                 record_history=False,
             )
+            metadata_changed = False
             try:
+                await self._metadata_store.async_replace_entry_if_unchanged(
+                    automation_id,
+                    copy.deepcopy(delta["before_metadata"]),
+                    current_metadata_digest,
+                )
+                metadata_changed = True
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
-                await self._metadata_store.async_replace_all_if_unchanged(
-                    previous_metadata, current_metadata_digest
-                )
             except Exception:
+                if metadata_changed:
+                    await self._metadata_store.async_replace_entry_if_unchanged(
+                        automation_id,
+                        copy.deepcopy(delta["after_metadata"]),
+                        str(delta["before_metadata_digest"]),
+                    )
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
@@ -1539,6 +1866,121 @@ class AutomationExecutor:
             await self._async_complete_transaction(transaction)
             await self._hass.async_add_executor_job(self._history.pop)
             return str(history.get("operation") or "Änderung")
+
+    @staticmethod
+    def _is_composite_lifecycle_history(
+        history: Mapping[str, Any], delta: Mapping[str, Any]
+    ) -> bool:
+        """Reject history that cannot be restored by one target-only delta."""
+        if history.get("operation") == "resume_pause":
+            return True
+        for name in ("before_metadata", "after_metadata"):
+            metadata = delta.get(name)
+            if isinstance(metadata, dict) and (
+                metadata.get("pause_id") is not None
+                or metadata.get("pause_target_automation_id") is not None
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _automation_by_id(
+        automations: list[dict[str, Any]], automation_id: str
+    ) -> tuple[dict[str, Any] | None, int | None]:
+        matches = [
+            (index, item)
+            for index, item in enumerate(automations)
+            if item.get("id") == automation_id
+        ]
+        if len(matches) > 1:
+            raise ValueError("Die Zielautomation ist nicht eindeutig")
+        if not matches:
+            return None, None
+        position, automation = matches[0]
+        return automation, position
+
+    def _history_delta(
+        self,
+        history: dict[str, Any],
+        snapshot: _AutomationFileSnapshot,
+        current_metadata: dict[str, Any] | None,
+        current_metadata_digest: str,
+        current_full_metadata_digest: str,
+    ) -> dict[str, Any]:
+        """Validate v2 history or safely derive it from a guarded v1 snapshot."""
+        automation_id = str(history["automation_id"])
+        if history.get("schema_version") == HISTORY_SCHEMA_VERSION:
+            required = {
+                "before_automation_digest", "after_automation_digest",
+                "before_metadata_digest", "after_metadata_digest",
+                "before_position", "after_position",
+            }
+            if not required <= history.keys() or not all(
+                isinstance(history.get(name), str)
+                for name in (
+                    "before_automation_digest", "after_automation_digest",
+                    "before_metadata_digest", "after_metadata_digest",
+                )
+            ):
+                raise ValueError("Der Delta-Verlaufseintrag ist unvollständig")
+            if canonical_state_digest(history.get("before_automation")) != history[
+                "before_automation_digest"
+            ] or canonical_state_digest(history.get("after_automation")) != history[
+                "after_automation_digest"
+            ]:
+                raise ValueError("Der Automationszustand im Verlauf ist beschädigt")
+            if canonical_state_digest(history.get("before_metadata")) != history[
+                "before_metadata_digest"
+            ] or canonical_state_digest(history.get("after_metadata")) != history[
+                "after_metadata_digest"
+            ]:
+                raise ValueError("Der Metadatenzustand im Verlauf ist beschädigt")
+            return history
+
+        # Legacy full snapshots are migrated only while their old full-file
+        # digests still prove that *nothing* has diverged. Missing or stale
+        # digests are retained in history and rejected fail-closed.
+        post_write_digest = history.get("post_write_digest")
+        post_metadata_digest = history.get("post_metadata_digest")
+        if not isinstance(post_write_digest, str) or not isinstance(
+            post_metadata_digest, str
+        ):
+            raise ValueError(
+                "Dieser ältere Verlaufseintrag besitzt keine sicheren Zustandsprüfsummen"
+            )
+        if snapshot.digest != post_write_digest:
+            raise ValueError(
+                "Die Automationen wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
+            )
+        if current_full_metadata_digest != post_metadata_digest:
+            raise ValueError(
+                "Die HomeIntent-Metadaten wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
+            )
+        previous = history.get("automations")
+        previous_metadata = history.get("metadata")
+        if not isinstance(previous, list) or not isinstance(previous_metadata, dict):
+            raise ValueError("Der ältere Verlaufseintrag ist beschädigt")
+        before_automation, before_position = self._automation_by_id(
+            previous, automation_id
+        )
+        after_automation, after_position = self._automation_by_id(
+            snapshot.automations, automation_id
+        )
+        before_metadata = previous_metadata.get(automation_id)
+        return {
+            **history,
+            "schema_version": HISTORY_SCHEMA_VERSION,
+            "before_automation": before_automation,
+            "after_automation": after_automation,
+            "before_automation_digest": canonical_state_digest(before_automation),
+            "after_automation_digest": canonical_state_digest(after_automation),
+            "before_metadata": before_metadata,
+            "after_metadata": current_metadata,
+            "before_metadata_digest": canonical_state_digest(before_metadata),
+            "after_metadata_digest": current_metadata_digest,
+            "before_position": before_position,
+            "after_position": after_position,
+        }
 
     @staticmethod
     def _scheduled_for_from_yaml(

@@ -36,7 +36,13 @@ class _Services:
 
     async def async_call(self, *args: Any, **kwargs: Any) -> dict[str, object]:
         self.calls += 1
-        return {"artists": [{"name": "Queen", "uri": "library://artist/queen"}]}
+        return {
+            "artists": [{"name": "Queen", "uri": "library://artist/queen"}],
+            "albums": [],
+            "tracks": [],
+            "playlists": [],
+            "radio": [],
+        }
 
 
 class _Hass:
