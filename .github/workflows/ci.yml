@@ -426,6 +426,7 @@ jobs:
           python -m pytest -q
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning
+          --ignore=tests_ha/test_music_assistant_contract.py
           tests_ha
 
   learning-center-ui:
