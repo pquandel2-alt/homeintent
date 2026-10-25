@@ -54,12 +54,13 @@ import logging
 import re
 import uuid
 import secrets
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Mapping
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import category_registry as cr, entity_registry as er
 from homeassistant.util import yaml as yaml_util
 from homeassistant.util.file import write_utf8_file_atomic
@@ -78,6 +79,7 @@ from .automation_history import (
     LEGACY_AUTOMATION_HISTORY_FILENAME,
     canonical_state_digest,
 )
+from .automation_undo import automation_by_id, prepare_undo_plan
 from .automation_summary import AutomationSummary, CREATED_BY_HOMEINTENT
 from .automation_ownership import may_manage
 from .automation_transaction import (
@@ -215,7 +217,21 @@ class AutomationExecutor:
         updated: list[dict[str, Any]],
         record_history: bool = True,
         history_owner_user_id: str | None = None,
+        history_target_ids: tuple[str, ...] | None = None,
+        history_target_roles: Mapping[str, str] | None = None,
+        transaction_before_metadata: Mapping[str, dict[str, Any] | None] | None = None,
+        transaction_after_metadata: Mapping[str, dict[str, Any] | None] | None = None,
     ) -> AutomationTransaction:
+        if (transaction_before_metadata is None) != (
+            transaction_after_metadata is None
+        ) or (
+            transaction_before_metadata is not None
+            and transaction_after_metadata is not None
+            and set(transaction_before_metadata) != set(transaction_after_metadata)
+        ):
+            raise ValueError(
+                "Die Transaktionsmetadaten besitzen widersprüchliche Ziele"
+            )
         existing = await self._hass.async_add_executor_job(self._journal.read)
         if existing is not None:
             raise RuntimeError(
@@ -241,6 +257,18 @@ class AutomationExecutor:
             after_digest=expected_after_digest,
             before_automations=snapshot.automations,
             after_automations=updated,
+            history_target_ids=history_target_ids or (automation_id,),
+            history_target_roles=tuple((history_target_roles or {}).items()),
+            before_metadata_by_id=(
+                copy.deepcopy(dict(transaction_before_metadata))
+                if transaction_before_metadata is not None
+                else None
+            ),
+            after_metadata_by_id=(
+                copy.deepcopy(dict(transaction_after_metadata))
+                if transaction_after_metadata is not None
+                else None
+            ),
         )
         await self._hass.async_add_executor_job(self._journal.write, transaction)
         try:
@@ -287,6 +315,8 @@ class AutomationExecutor:
                                 metadata_snapshot, automation_id
                             )
                         ),
+                        target_ids=history_target_ids,
+                        target_roles=dict(history_target_roles or {}),
                     )
                 )
             except Exception:
@@ -312,6 +342,60 @@ class AutomationExecutor:
                 self._history.pop_if_created_at, transaction.created_at
             )
 
+    async def _async_restore_transaction_metadata(
+        self, transaction: AutomationTransaction
+    ) -> bool:
+        """Restore only journaled target metadata after exact CAS checks."""
+        before = transaction.before_metadata_by_id
+        after = transaction.after_metadata_by_id
+        if before is None and after is None:
+            return False
+        if before is None or after is None or set(before) != set(after):
+            raise ValueError("Die Transaktionsmetadaten sind beschädigt")
+        current = await self._metadata_store.async_load_all()
+        expected: dict[str, str] = {}
+        for target_id in before:
+            before_value = before[target_id]
+            after_value = after[target_id]
+            current_value = current.get(target_id)
+            if any(
+                value is not None and not isinstance(value, dict)
+                for value in (before_value, after_value, current_value)
+            ):
+                raise ValueError("Die Transaktionsmetadaten sind beschädigt")
+            if target_id not in current:
+                current_value = None
+            current_digest = canonical_state_digest(current_value)
+            if current_digest not in {
+                canonical_state_digest(before_value),
+                canonical_state_digest(after_value),
+            }:
+                raise ConcurrentAutomationUpdateError(
+                    "Die Zielmetadaten wurden nach einer unvollständigen "
+                    "HomeIntent-Transaktion geändert"
+                )
+            expected[target_id] = current_digest
+        await self._metadata_store.async_replace_entries_if_unchanged(
+            before, expected
+        )
+        return True
+
+    async def _async_reapply_transaction_metadata(
+        self, transaction: AutomationTransaction
+    ) -> None:
+        """Compensate when YAML rollback loses a race after metadata restore."""
+        before = transaction.before_metadata_by_id
+        after = transaction.after_metadata_by_id
+        if before is None or after is None:
+            return
+        await self._metadata_store.async_replace_entries_if_unchanged(
+            after,
+            {
+                target_id: canonical_state_digest(before[target_id])
+                for target_id in before
+            },
+        )
+
     async def _async_complete_transaction(
         self, transaction: AutomationTransaction
     ) -> None:
@@ -332,6 +416,14 @@ class AutomationExecutor:
                             )
                             else None
                         ),
+                        after_metadata_by_id={
+                            target_id: (
+                                metadata.get(target_id)
+                                if isinstance(metadata.get(target_id), dict)
+                                else None
+                            )
+                            for target_id in transaction.history_target_ids
+                        },
                     )
                 )
             except (OSError, RuntimeError, TypeError, ValueError) as err:
@@ -566,13 +658,7 @@ class AutomationExecutor:
     async def async_pause_automation_until(
         self, automation_id: str, resume_at: datetime
     ) -> str:
-        """Persistently disable an automation and schedule a durable resume."""
-        metadata = _require_homeintent_metadata(
-            await self._metadata_store.async_load_all(), automation_id
-        )
-        owner = metadata.get("owner_user_id")
-        owner_user_id = owner if isinstance(owner, str) else None
-        await self.async_disable_automation(automation_id)
+        """Disable a target and create its helper as one atomic mutation."""
         helper_id = uuid.uuid4().hex
         pause_id = uuid.uuid4().hex
         config = {
@@ -605,23 +691,106 @@ class AutomationExecutor:
             ],
             "mode": "single",
         }
-        try:
-            await self.async_create_automation(
-                config,
-                helper_id,
-                scheduled_for=resume_at,
+        config, lifecycle_orders = prepare_lifecycle_actions(config, helper_id)
+        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        async with self._lock:
+            all_metadata = await self._metadata_store.async_load_all()
+            target_metadata = _require_homeintent_metadata(all_metadata, automation_id)
+            owner = target_metadata.get("owner_user_id")
+            owner_user_id = owner if isinstance(owner, str) else None
+            if helper_id in all_metadata:
+                raise ValueError("Die neue Helper-ID ist bereits belegt")
+            snapshot = await self._async_read_snapshot(path)
+            updated: list[dict[str, Any]] = []
+            found = False
+            for automation in snapshot.automations:
+                if automation.get("id") == automation_id:
+                    if found:
+                        raise ValueError("Die Zielautomation ist nicht eindeutig")
+                    found = True
+                    automation = {**automation, "initial_state": False}
+                updated.append(automation)
+            if not found:
+                raise AutomationNotFoundError(
+                    f"No automation with id {automation_id!r} found"
+                )
+            updated.append({"id": helper_id, **config})
+            helper_metadata = asdict(AutomationMetadata(
+                automation_id=helper_id,
+                source_text=str(config.get("alias") or ""),
+                created_at=utcnow_isoformat(),
+                scheduled_for=resume_at.isoformat(),
                 once=True,
                 owner_user_id=owner_user_id,
                 pause_id=pause_id,
                 pause_target_automation_id=automation_id,
                 pause_resume_at=resume_at.isoformat(),
                 pause_status="open",
+                lifecycle_orders=lifecycle_orders,
+            ))
+            transaction = await self._async_begin_transaction(
+                operation="pause",
+                automation_id=automation_id,
+                path=path,
+                snapshot=snapshot,
+                updated=updated,
+                history_owner_user_id=owner_user_id,
+                history_target_ids=(automation_id, helper_id),
+                history_target_roles={
+                    automation_id: "target",
+                    helper_id: "resume_helper",
+                },
+                transaction_before_metadata={
+                    automation_id: copy.deepcopy(target_metadata),
+                    helper_id: None,
+                },
+                transaction_after_metadata={
+                    automation_id: copy.deepcopy(target_metadata),
+                    helper_id: copy.deepcopy(helper_metadata),
+                },
             )
-        except Exception:
-            # Do not leave the requested automation disabled when creating
-            # the durable resume failed.
-            await self.async_enable_automation(automation_id)
-            raise
+            metadata_changed = False
+            try:
+                await self._hass.services.async_call(
+                    "automation", "reload", {}, blocking=True,
+                    context=system_context_for_turn(),
+                )
+                self._assign_homeintent_category(helper_id)
+                await self._metadata_store.async_replace_entries_if_unchanged(
+                    {
+                        automation_id: copy.deepcopy(target_metadata),
+                        helper_id: helper_metadata,
+                    },
+                    {
+                        automation_id: canonical_state_digest(target_metadata),
+                        helper_id: canonical_state_digest(None),
+                    },
+                )
+                metadata_changed = True
+            except Exception:
+                if metadata_changed:
+                    await self._metadata_store.async_replace_entries_if_unchanged(
+                        {
+                            automation_id: copy.deepcopy(target_metadata),
+                            helper_id: None,
+                        },
+                        {
+                            automation_id: canonical_state_digest(target_metadata),
+                            helper_id: canonical_state_digest(helper_metadata),
+                        },
+                    )
+                await self._async_rollback_transaction(path, transaction)
+                try:
+                    await self._hass.services.async_call(
+                        "automation", "reload", {}, blocking=True,
+                        context=system_context_for_turn(),
+                    )
+                except (HomeAssistantError, RuntimeError, OSError, ValueError) as rollback_err:
+                    log_rate_limited_boundary_failure(
+                        _LOGGER, "HomeIntent pause reload after rollback", rollback_err
+                    )
+                raise
+            await self._async_complete_transaction(transaction)
         return helper_id
 
     async def async_delete_automation(self, automation_id: str) -> None:
@@ -851,6 +1020,12 @@ class AutomationExecutor:
                 raise AutomationNotFoundError(
                     "Der nachgewiesene HomeIntent-Pausenauftrag ist nicht mehr vollständig"
                 )
+            updated_helper = {
+                **helper,
+                "pause_status": "consumed",
+                "pause_consumed_at": utcnow_isoformat(),
+                "version": int(helper.get("version", 1)) + 1,
+            }
 
             transaction = await self._async_begin_transaction(
                 operation="resume_pause",
@@ -863,17 +1038,34 @@ class AutomationExecutor:
                     if isinstance(target.get("owner_user_id"), str)
                     else None
                 ),
+                history_target_ids=(automation_id, helper_id),
+                history_target_roles={
+                    automation_id: "target",
+                    helper_id: "resume_helper",
+                },
+                transaction_before_metadata={
+                    automation_id: copy.deepcopy(target),
+                    helper_id: copy.deepcopy(helper),
+                },
+                transaction_after_metadata={
+                    automation_id: copy.deepcopy(target),
+                    helper_id: copy.deepcopy(updated_helper),
+                },
             )
             try:
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True,
                     context=system_context_for_turn(),
                 )
-                await self._metadata_store.async_update(
-                    helper_id,
-                    pause_status="consumed",
-                    pause_consumed_at=utcnow_isoformat(),
-                    version=int(helper.get("version", 1)) + 1,
+                await self._metadata_store.async_replace_entries_if_unchanged(
+                    {
+                        automation_id: copy.deepcopy(target),
+                        helper_id: updated_helper,
+                    },
+                    {
+                        automation_id: canonical_state_digest(target),
+                        helper_id: canonical_state_digest(helper),
+                    },
                 )
             except Exception:
                 await self._async_rollback_transaction(path, transaction)
@@ -1092,7 +1284,7 @@ class AutomationExecutor:
             snapshot = await self._async_read_snapshot(
                 self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
             )
-            source, _position = self._automation_by_id(
+            source, _position = automation_by_id(
                 snapshot.automations, lifecycle_id
             )
             if source is None or not has_exact_lifecycle_action(
@@ -1207,7 +1399,7 @@ class AutomationExecutor:
                 path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
                 snapshot = await self._async_read_snapshot(path)
                 updated = copy.deepcopy(snapshot.automations)
-                target, _position = self._automation_by_id(updated, automation_id)
+                target, _position = automation_by_id(updated, automation_id)
                 new_token = secrets.token_urlsafe(32)
                 if target is None or not replace_lifecycle_token(
                     target,
@@ -1654,7 +1846,23 @@ class AutomationExecutor:
                 if transaction.operation in {"delete", "expire"}:
                     await self._hass.async_add_executor_job(self._journal.clear)
                 else:
-                    await self._async_rollback_transaction(path, transaction)
+                    metadata_restored = (
+                        await self._async_restore_transaction_metadata(transaction)
+                    )
+                    try:
+                        await self._async_rollback_transaction(path, transaction)
+                    except (
+                        ConcurrentAutomationUpdateError,
+                        OSError,
+                        RuntimeError,
+                        TypeError,
+                        ValueError,
+                    ):
+                        if metadata_restored:
+                            await self._async_reapply_transaction_metadata(
+                                transaction
+                            )
+                        raise
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
@@ -1709,7 +1917,7 @@ class AutomationExecutor:
             # untouched; their public lifecycle calls remain fail-closed.
             for automation_id in sorted(set(metadata) & yaml_ids):
                 entry = _require_homeintent_metadata(metadata, automation_id)
-                automation, position = self._automation_by_id(
+                automation, position = automation_by_id(
                     snapshot.automations, automation_id
                 )
                 if automation is None or position is None:
@@ -1764,7 +1972,7 @@ class AutomationExecutor:
     async def async_rollback_last_change(
         self, *, requesting_user_id: str | None, is_admin: bool
     ) -> str:
-        """Undo only the target automation after target-scoped CAS checks."""
+        """Atomically undo every target in the newest delta entry."""
         path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
         requested_history = await self._hass.async_add_executor_job(
             self._history.peek
@@ -1786,78 +1994,56 @@ class AutomationExecutor:
                     "Rückgängig ist nur für den Eigentümer der Automation oder einen Administrator erlaubt"
                 )
             snapshot = await self._async_read_snapshot(path)
-            automation_id = history.get("automation_id")
-            if not isinstance(automation_id, str) or not automation_id:
-                raise ValueError("Der letzte Verlaufseintrag ist beschädigt")
-            current_metadata, current_metadata_digest = (
-                await self._metadata_store.async_entry_snapshot(automation_id)
-            )
-            _all_metadata, current_full_metadata_digest = (
+            all_metadata, current_full_metadata_digest = (
                 await self._metadata_store.async_snapshot()
             )
-            delta = self._history_delta(
+            plan = prepare_undo_plan(
                 history,
-                snapshot,
-                current_metadata,
-                current_metadata_digest,
+                snapshot.automations,
+                snapshot.digest,
+                all_metadata,
                 current_full_metadata_digest,
             )
-            if self._is_composite_lifecycle_history(history, delta):
-                raise ValueError(
-                    "Pause/Fortsetzen ändert mehrere Automationen und kann nicht als "
-                    "einzelnes Delta sicher rückgängig gemacht werden"
-                )
-            current_automation, current_position = self._automation_by_id(
-                snapshot.automations, automation_id
-            )
-            if canonical_state_digest(current_automation) != delta[
-                "after_automation_digest"
-            ]:
-                raise ValueError(
-                    "Die Zielautomation wurde inzwischen geändert; Rückgängig wurde sicher verweigert"
-                )
-            if current_metadata_digest != delta["after_metadata_digest"]:
-                raise ValueError(
-                    "Die HomeIntent-Metadaten wurden inzwischen geändert (Zielautomation); "
-                    "Rückgängig wurde sicher verweigert"
-                )
-            updated = list(snapshot.automations)
-            before_automation = delta["before_automation"]
-            if current_position is not None:
-                updated.pop(current_position)
-            if isinstance(before_automation, dict):
-                position = (
-                    current_position
-                    if current_position is not None
-                    else min(int(delta["before_position"] or 0), len(updated))
-                )
-                updated.insert(position, copy.deepcopy(before_automation))
             transaction = await self._async_begin_transaction(
                 operation="rollback",
-                automation_id=automation_id,
+                automation_id=plan.automation_id,
                 path=path,
                 snapshot=snapshot,
-                updated=updated,
+                updated=plan.updated_automations,
                 record_history=False,
             )
             metadata_changed = False
             try:
-                await self._metadata_store.async_replace_entry_if_unchanged(
-                    automation_id,
-                    copy.deepcopy(delta["before_metadata"]),
-                    current_metadata_digest,
-                )
+                if len(plan.deltas) == 1:
+                    only_id = str(plan.deltas[0]["automation_id"])
+                    await self._metadata_store.async_replace_entry_if_unchanged(
+                        only_id,
+                        plan.before_metadata[only_id],
+                        plan.after_metadata_digests[only_id],
+                    )
+                else:
+                    await self._metadata_store.async_replace_entries_if_unchanged(
+                        plan.before_metadata,
+                        plan.after_metadata_digests,
+                    )
                 metadata_changed = True
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
                 )
             except Exception:
                 if metadata_changed:
-                    await self._metadata_store.async_replace_entry_if_unchanged(
-                        automation_id,
-                        copy.deepcopy(delta["after_metadata"]),
-                        str(delta["before_metadata_digest"]),
-                    )
+                    if len(plan.deltas) == 1:
+                        only_id = str(plan.deltas[0]["automation_id"])
+                        await self._metadata_store.async_replace_entry_if_unchanged(
+                            only_id,
+                            plan.after_metadata[only_id],
+                            plan.restored_metadata_digests[only_id],
+                        )
+                    else:
+                        await self._metadata_store.async_replace_entries_if_unchanged(
+                            plan.after_metadata,
+                            plan.restored_metadata_digests,
+                        )
                 await self._async_rollback_transaction(path, transaction)
                 await self._hass.services.async_call(
                     "automation", "reload", {}, blocking=True, context=system_context_for_turn()
@@ -1867,120 +2053,52 @@ class AutomationExecutor:
             await self._hass.async_add_executor_job(self._history.pop)
             return str(history.get("operation") or "Änderung")
 
-    @staticmethod
-    def _is_composite_lifecycle_history(
-        history: Mapping[str, Any], delta: Mapping[str, Any]
-    ) -> bool:
-        """Reject history that cannot be restored by one target-only delta."""
-        if history.get("operation") == "resume_pause":
-            return True
-        for name in ("before_metadata", "after_metadata"):
-            metadata = delta.get(name)
-            if isinstance(metadata, dict) and (
-                metadata.get("pause_id") is not None
-                or metadata.get("pause_target_automation_id") is not None
-            ):
-                return True
-        return False
+    async def async_discard_unsupported_history_entry(
+        self, *, requesting_user_id: str | None, is_admin: bool
+    ) -> str:
+        """Explicitly discard only an old, unsupported composite LIFO head.
 
-    @staticmethod
-    def _automation_by_id(
-        automations: list[dict[str, Any]], automation_id: str
-    ) -> tuple[dict[str, Any] | None, int | None]:
-        matches = [
-            (index, item)
-            for index, item in enumerate(automations)
-            if item.get("id") == automation_id
-        ]
-        if len(matches) > 1:
-            raise ValueError("Die Zielautomation ist nicht eindeutig")
-        if not matches:
-            return None, None
-        position, automation = matches[0]
-        return automation, position
-
-    def _history_delta(
-        self,
-        history: dict[str, Any],
-        snapshot: _AutomationFileSnapshot,
-        current_metadata: dict[str, Any] | None,
-        current_metadata_digest: str,
-        current_full_metadata_digest: str,
-    ) -> dict[str, Any]:
-        """Validate v2 history or safely derive it from a guarded v1 snapshot."""
-        automation_id = str(history["automation_id"])
-        if history.get("schema_version") == HISTORY_SCHEMA_VERSION:
-            required = {
-                "before_automation_digest", "after_automation_digest",
-                "before_metadata_digest", "after_metadata_digest",
-                "before_position", "after_position",
-            }
-            if not required <= history.keys() or not all(
-                isinstance(history.get(name), str)
-                for name in (
-                    "before_automation_digest", "after_automation_digest",
-                    "before_metadata_digest", "after_metadata_digest",
+        This is deliberately not part of undo: it changes no automation or
+        metadata and requires a separately confirmed administrator request.
+        Supported entries and arbitrary corrupt history are never skipped.
+        """
+        if requesting_user_id is None or not is_admin:
+            raise PermissionError(
+                "Nur ein angemeldeter Administrator darf einen nicht unterstützten "
+                "Verlaufseintrag verwerfen"
+            )
+        async with self._lock:
+            history = await self._hass.async_add_executor_job(self._history.peek)
+            if history is None:
+                raise ValueError("Es gibt keinen HomeIntent-Verlaufseintrag")
+            if history.get("schema_version") == HISTORY_SCHEMA_VERSION:
+                raise ValueError(
+                    "Der letzte Verlaufseintrag besitzt ein unterstütztes Delta und wird nicht verworfen"
                 )
-            ):
-                raise ValueError("Der Delta-Verlaufseintrag ist unvollständig")
-            if canonical_state_digest(history.get("before_automation")) != history[
-                "before_automation_digest"
-            ] or canonical_state_digest(history.get("after_automation")) != history[
-                "after_automation_digest"
-            ]:
-                raise ValueError("Der Automationszustand im Verlauf ist beschädigt")
-            if canonical_state_digest(history.get("before_metadata")) != history[
-                "before_metadata_digest"
-            ] or canonical_state_digest(history.get("after_metadata")) != history[
-                "after_metadata_digest"
-            ]:
-                raise ValueError("Der Metadatenzustand im Verlauf ist beschädigt")
-            return history
-
-        # Legacy full snapshots are migrated only while their old full-file
-        # digests still prove that *nothing* has diverged. Missing or stale
-        # digests are retained in history and rejected fail-closed.
-        post_write_digest = history.get("post_write_digest")
-        post_metadata_digest = history.get("post_metadata_digest")
-        if not isinstance(post_write_digest, str) or not isinstance(
-            post_metadata_digest, str
-        ):
-            raise ValueError(
-                "Dieser ältere Verlaufseintrag besitzt keine sicheren Zustandsprüfsummen"
+            operation = history.get("operation")
+            composite = operation in {"pause", "resume_pause"}
+            for name in ("before_metadata", "after_metadata", "metadata"):
+                value = history.get(name)
+                candidates = value.values() if name == "metadata" and isinstance(value, dict) else (value,)
+                composite = composite or any(
+                    isinstance(item, dict)
+                    and (
+                        item.get("pause_id") is not None
+                        or item.get("pause_target_automation_id") is not None
+                    )
+                    for item in candidates
+                )
+            if not composite:
+                raise ValueError(
+                    "Nur ein alter, nicht unterstützter Pause-/Fortsetzen-Eintrag darf verworfen werden"
+                )
+            created_at = history.get("created_at")
+            if not isinstance(created_at, str):
+                raise ValueError("Der Verlaufseintrag besitzt keine eindeutige Transaktions-ID")
+            await self._hass.async_add_executor_job(
+                self._history.pop_if_created_at, created_at
             )
-        if snapshot.digest != post_write_digest:
-            raise ValueError(
-                "Die Automationen wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
-            )
-        if current_full_metadata_digest != post_metadata_digest:
-            raise ValueError(
-                "Die HomeIntent-Metadaten wurden inzwischen geändert; Rückgängig wurde sicher verweigert"
-            )
-        previous = history.get("automations")
-        previous_metadata = history.get("metadata")
-        if not isinstance(previous, list) or not isinstance(previous_metadata, dict):
-            raise ValueError("Der ältere Verlaufseintrag ist beschädigt")
-        before_automation, before_position = self._automation_by_id(
-            previous, automation_id
-        )
-        after_automation, after_position = self._automation_by_id(
-            snapshot.automations, automation_id
-        )
-        before_metadata = previous_metadata.get(automation_id)
-        return {
-            **history,
-            "schema_version": HISTORY_SCHEMA_VERSION,
-            "before_automation": before_automation,
-            "after_automation": after_automation,
-            "before_automation_digest": canonical_state_digest(before_automation),
-            "after_automation_digest": canonical_state_digest(after_automation),
-            "before_metadata": before_metadata,
-            "after_metadata": current_metadata,
-            "before_metadata_digest": canonical_state_digest(before_metadata),
-            "after_metadata_digest": current_metadata_digest,
-            "before_position": before_position,
-            "after_position": after_position,
-        }
+            return str(operation or "Pause-/Fortsetzen-Änderung")
 
     @staticmethod
     def _scheduled_for_from_yaml(

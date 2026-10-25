@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import hashlib
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -163,6 +163,28 @@ class AutomationMetadataStore:
             expected_entry_digest,
         )
 
+    async def async_replace_entries_if_unchanged(
+        self,
+        replacements: Mapping[str, dict[str, Any] | None],
+        expected_entry_digests: Mapping[str, str],
+    ) -> dict[str, str]:
+        """Atomically replace several entries after checking every target.
+
+        The complete set is validated before the single atomic write, so one
+        stale helper can never leave a pause/resume rollback half-applied.
+        Unrelated sidecar entries are retained byte-for-byte at JSON-value
+        level and do not participate in the comparison.
+        """
+        if not replacements or set(replacements) != set(expected_entry_digests):
+            raise ValueError("Die Metadaten-Transaktion besitzt widersprüchliche Ziele")
+        path = self._path()
+        return await self._hass.async_add_executor_job(
+            self._replace_entries_if_unchanged,
+            path,
+            dict(replacements),
+            dict(expected_entry_digests),
+        )
+
     async def async_delete(self, automation_id: str) -> None:
         """Removes ``automation_id``'s entry if present - a no-op otherwise
         (rollback calling this for an id whose metadata write never
@@ -261,6 +283,34 @@ class AutomationMetadataStore:
             entries[automation_id] = replacement
         cls._write(path, entries)
         return canonical_state_digest(replacement)
+
+    @classmethod
+    def _replace_entries_if_unchanged(
+        cls,
+        path: str,
+        replacements: dict[str, dict[str, Any] | None],
+        expected_entry_digests: dict[str, str],
+    ) -> dict[str, str]:
+        entries = cls._read(path)
+        for automation_id, expected_digest in expected_entry_digests.items():
+            current = entries.get(automation_id)
+            if automation_id in entries and not isinstance(current, dict):
+                raise ValueError("Der Metadateneintrag der Automation ist beschädigt")
+            current_entry = current if isinstance(current, dict) else None
+            if canonical_state_digest(current_entry) != expected_digest:
+                raise ValueError(
+                    "Die HomeIntent-Metadaten einer Zielautomation wurden inzwischen geändert"
+                )
+        for automation_id, replacement in replacements.items():
+            if replacement is None:
+                entries.pop(automation_id, None)
+            else:
+                entries[automation_id] = replacement
+        cls._write(path, entries)
+        return {
+            automation_id: canonical_state_digest(replacement)
+            for automation_id, replacement in replacements.items()
+        }
 
     @staticmethod
     def _file_digest(path: str) -> str:

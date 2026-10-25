@@ -19,6 +19,7 @@ import _ha_stub  # noqa: E402
 _ha_stub.install()
 
 from homeintent.automation_executor import AutomationExecutor  # noqa: E402
+from homeintent.automation_history import canonical_state_digest  # noqa: E402
 from homeintent.automation_metadata_store import (  # noqa: E402
     AutomationMetadata,
     AutomationMetadataStore,
@@ -141,6 +142,74 @@ def test_prepared_journal_already_recovers_crash_after_yaml_replace(tmp_path):
         AutomationExecutor(hass).async_recover_incomplete_transaction()
     ) is True
     assert _read_yaml(path) == original
+
+
+def test_startup_recovery_restores_only_composite_target_metadata(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    store = AutomationMetadataStore(hass)
+    path = tmp_path / "automations.yaml"
+    original = [{"id": "target", "initial_state": True}]
+    updated = [
+        {"id": "target", "initial_state": False},
+        {"id": "helper", "alias": "Fortsetzen"},
+    ]
+    _write_yaml(path, original)
+
+    async def interrupt_composite_write() -> None:
+        await store.async_save(
+            AutomationMetadata("target", "Ziel", "2026-10-25T00:00:00+00:00")
+        )
+        await store.async_save(
+            AutomationMetadata(
+                "foreign",
+                "Fremd",
+                "2026-10-25T00:00:00+00:00",
+                lifecycle_orders=[{"lifecycle_token": "must-not-be-journaled"}],
+            )
+        )
+        before_all = await store.async_load_all()
+        before = {"target": before_all["target"], "helper": None}
+        helper = {
+            "automation_id": "helper",
+            "created_by": "homeintent",
+            "pause_status": "open",
+        }
+        after = {"target": before_all["target"], "helper": helper}
+        snapshot = await executor._async_read_snapshot(str(path))
+        await executor._async_begin_transaction(
+            operation="pause",
+            automation_id="target",
+            path=str(path),
+            snapshot=snapshot,
+            updated=updated,
+            history_target_ids=("target", "helper"),
+            transaction_before_metadata=before,
+            transaction_after_metadata=after,
+        )
+        await store.async_replace_entries_if_unchanged(
+            after,
+            {
+                "target": canonical_state_digest(before["target"]),
+                "helper": canonical_state_digest(None),
+            },
+        )
+
+    asyncio.run(interrupt_composite_write())
+    journal = (tmp_path / TRANSACTION_JOURNAL_FILENAME).read_text(encoding="utf-8")
+    assert "must-not-be-journaled" not in journal
+
+    recovered = AutomationExecutor(hass)
+    assert asyncio.run(recovered.async_recover_incomplete_transaction()) is True
+
+    assert _read_yaml(path) == original
+    metadata = asyncio.run(AutomationMetadataStore(hass).async_load_all())
+    assert set(metadata) == {"target", "foreign"}
+    assert "helper" not in metadata
+    assert metadata["foreign"]["lifecycle_orders"][0]["lifecycle_token"] == (
+        "must-not-be-journaled"
+    )
 
 
 def test_startup_reconciliation_removes_orphan_metadata_and_repairs_category(

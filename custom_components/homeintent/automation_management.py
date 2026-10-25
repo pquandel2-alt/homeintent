@@ -26,6 +26,7 @@ class AutomationManagementKind(Enum):
     CONTROLS_ENTITY = auto()
     DETAIL = auto()
     ROLLBACK = auto()
+    DISCARD_UNDO_ENTRY = auto()
     DUPLICATE = auto()
     PAUSE_UNTIL = auto()
     DIAGNOSE = auto()

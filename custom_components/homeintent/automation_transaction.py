@@ -33,6 +33,13 @@ class AutomationTransaction:
     before_automations: list[dict[str, Any]]
     after_automations: list[dict[str, Any]]
     state: str = "prepared"
+    history_target_ids: tuple[str, ...] = ()
+    history_target_roles: tuple[tuple[str, str], ...] = ()
+    # Only affected sidecar entries, never the complete metadata store. These
+    # optional values let startup recovery roll back a crash between the YAML
+    # and sidecar halves of a composite pause/resume transaction.
+    before_metadata_by_id: dict[str, dict[str, Any] | None] | None = None
+    after_metadata_by_id: dict[str, dict[str, Any] | None] | None = None
 
 
 class AutomationTransactionJournal:

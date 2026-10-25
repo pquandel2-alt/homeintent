@@ -191,6 +191,20 @@ def _rollback(tokens: list[Token]) -> dict[str, object] | None:
     return {} if back is not None else None
 
 
+def _discard_undo_entry(tokens: list[Token]) -> dict[str, object] | None:
+    """Explicit maintenance phrase for one unsupported legacy LIFO head."""
+    keys = [token.key for token in tokens]
+    discard = any(key.startswith("verwirf") or key.startswith("verwerf") for key in keys)
+    last = any(key in {"letzte", "letzten"} for key in keys)
+    history = any(key.startswith("verlaufseintrag") for key in keys)
+    unsupported = (
+        "nicht" in keys
+        and any(key.startswith("rueckgaengig") for key in keys)
+        and any(key.startswith("machbar") for key in keys)
+    )
+    return {} if discard and last and history and unsupported else None
+
+
 def _set_max_runs(tokens: list[Token]) -> dict[str, object] | None:
     cue = _find(tokens, set(), ("wiederhol",))
     obj = _object(tokens, cue + 1, frozenset({"automation"})) if cue is not None else None
@@ -357,6 +371,7 @@ FRAMES: tuple[Frame, ...] = (
     Frame("PAUSE_UNTIL", _pause),
     Frame("COUNT", _count, True),
     Frame("CLEAN_EXPIRED", _clean_expired),
+    Frame("DISCARD_UNDO_ENTRY", _discard_undo_entry),
     Frame("ROLLBACK", _rollback),
     Frame("SET_MAX_RUNS", _set_max_runs),
     Frame("RESCHEDULE", _reschedule),

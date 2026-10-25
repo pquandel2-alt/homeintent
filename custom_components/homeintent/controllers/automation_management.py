@@ -142,6 +142,7 @@ class AutomationManagementController:
         if request.kind in {
             AutomationManagementKind.CLEAN_EXPIRED,
             AutomationManagementKind.ROLLBACK,
+            AutomationManagementKind.DISCARD_UNDO_ENTRY,
         }:
             self._context_store.set(
                 user_input.conversation_id,
@@ -154,9 +155,14 @@ class AutomationManagementController:
                 ),
             )
             response.async_set_speech(
-                "Soll ich die letzte HomeIntent-Automationsänderung wirklich rückgängig machen?"
-                if request.kind is AutomationManagementKind.ROLLBACK
-                else "Soll ich alle abgelaufenen HomeIntent-Aufträge wirklich löschen?"
+                (
+                    "Soll ich den letzten nicht rückgängig machbaren alten "
+                    "Verlaufseintrag wirklich verwerfen? Die Automationen bleiben unverändert."
+                    if request.kind is AutomationManagementKind.DISCARD_UNDO_ENTRY
+                    else "Soll ich die letzte HomeIntent-Automationsänderung wirklich rückgängig machen?"
+                    if request.kind is AutomationManagementKind.ROLLBACK
+                    else "Soll ich alle abgelaufenen HomeIntent-Aufträge wirklich löschen?"
+                )
             )
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
@@ -576,6 +582,18 @@ class AutomationManagementController:
                 )
                 response.async_set_speech(
                     f"Die letzte HomeIntent-Änderung ({operation}) wurde rückgängig gemacht."
+                )
+            elif request.kind is AutomationManagementKind.DISCARD_UNDO_ENTRY:
+                operation = await self._automation_store().async_discard_unsupported_history_entry(
+                    requesting_user_id=conversation_user_id(user_input),
+                    is_admin=await user_is_admin(
+                        self._hass_of() if self._hass_of is not None else None,
+                        user_input,
+                    ),
+                )
+                response.async_set_speech(
+                    f"Der alte nicht unterstützte Verlaufseintrag ({operation}) wurde verworfen. "
+                    "Automationen und Metadaten wurden nicht verändert."
                 )
             elif request.kind is AutomationManagementKind.RESCHEDULE:
                 assert pending.automation is not None and pending.target is not None

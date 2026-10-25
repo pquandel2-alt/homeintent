@@ -306,6 +306,30 @@ def test_resume_reload_failure_restores_disabled_state_and_open_record(tmp_path)
     assert metadata["helper"]["pause_status"] == "open"
 
 
+def test_pause_reload_failure_restores_target_and_creates_no_helper(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    hass.services.async_call = ServiceMock(
+        side_effect=[RuntimeError("reload failed"), None]
+    )
+    target = {"id": "target", "alias": "Ziel", "initial_state": True}
+    metadata = {"target": _owned_metadata("target")}
+    _write_yaml(tmp_path, [target])
+    _write_metadata(tmp_path, metadata)
+    executor = AutomationExecutor(hass)
+
+    with pytest.raises(RuntimeError, match="reload failed"):
+        asyncio.run(executor.async_pause_automation_until(
+            "target", datetime.now(timezone.utc) + timedelta(hours=1)
+        ))
+
+    assert _read_yaml(tmp_path) == [target]
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == metadata
+    assert executor._history.peek() is None
+
+
 def test_rollback_refuses_external_yaml_change_and_keeps_history(tmp_path):
     hass = _hass(tmp_path)
     (tmp_path / ".storage").mkdir()
@@ -435,6 +459,41 @@ def test_old_history_without_digests_is_rejected_and_retained(tmp_path):
     assert _read_yaml(tmp_path) == [{"id": "owned"}]
     assert history.peek() is not None
     hass.services.async_call.assert_not_awaited()
+
+
+def test_schema_two_target_delta_ignores_redundant_full_snapshots(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    history_path = tmp_path / ".storage/homeintent_automation_history.json"
+    entries = json.loads(history_path.read_text(encoding="utf-8"))
+    entries[-1]["schema_version"] = 2
+    entries[-1]["automations"] = [{"id": "stale", "alias": "Nicht schreiben"}]
+    entries[-1]["metadata"] = {
+        "stale": {"lifecycle_token": "must-not-be-restored"}
+    }
+    history_path.write_text(json.dumps(entries), encoding="utf-8")
+    foreign = {"id": "manual", "alias": "Später erstellt"}
+    _write_yaml(tmp_path, [*_read_yaml(tmp_path), foreign])
+    metadata = json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    )
+    metadata["manual"] = {"external": True}
+    _write_metadata(tmp_path, metadata)
+
+    asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+
+    assert _read_yaml(tmp_path) == [foreign]
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == {"manual": {"external": True}}
+    assert "must-not-be-restored" not in history_path.read_text(encoding="utf-8")
 
 
 def test_repeated_undo_remains_consistent_across_executor_restarts(tmp_path):
@@ -606,6 +665,31 @@ def test_delta_undo_refuses_external_target_change_but_keeps_history(tmp_path):
     assert executor._history.peek() is not None
 
 
+def test_delta_undo_refuses_corrupt_embedded_digest_without_writing(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    before = _read_yaml(tmp_path)
+    history_path = tmp_path / ".storage/homeintent_automation_history.json"
+    entries = json.loads(history_path.read_text(encoding="utf-8"))
+    entries[-1]["before_automation_digest"] = "sha256:corrupt"
+    history_path.write_text(json.dumps(entries), encoding="utf-8")
+    hass.services.async_call.reset_mock()
+
+    with pytest.raises(ValueError, match="beschädigt"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == before
+    assert executor._history.peek() is not None
+    hass.services.async_call.assert_not_awaited()
+
+
 def test_delta_undo_rejects_anonymous_actor(tmp_path):
     (tmp_path / ".storage").mkdir()
     hass = _hass(tmp_path)
@@ -696,7 +780,7 @@ def test_two_concurrent_delta_undo_requests_cannot_replay_one_entry(tmp_path):
     assert _read_yaml(tmp_path) == []
 
 
-def test_delta_undo_rejects_composite_pause_without_partial_restore(tmp_path):
+def test_delta_undo_atomically_restores_composite_pause(tmp_path):
     (tmp_path / ".storage").mkdir()
     hass = _hass(tmp_path)
     executor = AutomationExecutor(hass)
@@ -705,23 +789,164 @@ def test_delta_undo_rejects_composite_pause_without_partial_restore(tmp_path):
     asyncio.run(executor.async_pause_automation_until(
         "target", datetime.now(timezone.utc) + timedelta(hours=1)
     ))
+    history = executor._history.peek()
+    assert history is not None
+    assert history["schema_version"] == 3
+    assert [target["role"] for target in history["targets"]] == [
+        "target", "resume_helper"
+    ]
+    assert "automations" not in history
+    assert "metadata" not in history
+    hass.services.async_call.reset_mock()
+
+    result = asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+
+    assert result == "pause"
+    assert _read_yaml(tmp_path) == [{"id": "target", "alias": "Ziel"}]
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == {"target": _owned_metadata("target")}
+    assert executor._history.peek() is None
+    hass.services.async_call.assert_awaited_once()
+
+
+def test_delta_undo_atomically_restores_resume_target_and_helper(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    _write_yaml(tmp_path, [{"id": "target", "alias": "Ziel"}])
+    _write_metadata(tmp_path, {"target": _owned_metadata("target")})
+    helper_id = asyncio.run(executor.async_pause_automation_until(
+        "target", datetime.now(timezone.utc) - timedelta(minutes=1)
+    ))
     paused_yaml = _read_yaml(tmp_path)
     paused_metadata = json.loads(
         (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
     )
-    hass.services.async_call.reset_mock()
+    pause_id = paused_metadata[helper_id]["pause_id"]
+    asyncio.run(executor.async_resume_paused_automation(
+        "target", helper_id=helper_id, pause_id=pause_id
+    ))
 
-    with pytest.raises(ValueError, match="mehrere Automationen"):
-        asyncio.run(executor.async_rollback_last_change(
-            requesting_user_id="owner", is_admin=False
-        ))
+    history = executor._history.peek()
+    assert history is not None and history["operation"] == "resume_pause"
+    assert [item["role"] for item in history["targets"]] == [
+        "target", "resume_helper"
+    ]
+    result = asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
 
+    assert result == "resume_pause"
     assert _read_yaml(tmp_path) == paused_yaml
     assert json.loads(
         (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
     ) == paused_metadata
+
+
+def test_composite_undo_helper_change_blocks_every_target(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    original = [{"id": "target", "alias": "Ziel"}]
+    _write_yaml(tmp_path, original)
+    _write_metadata(tmp_path, {"target": _owned_metadata("target")})
+    helper_id = asyncio.run(executor.async_pause_automation_until(
+        "target", datetime.now(timezone.utc) + timedelta(hours=1)
+    ))
+    changed = _read_yaml(tmp_path)
+    next(item for item in changed if item["id"] == helper_id)["alias"] = "Extern geändert"
+    _write_yaml(tmp_path, changed)
+    metadata_before = json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    )
+
+    with pytest.raises(ValueError, match="resume_helper"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == changed
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == metadata_before
+
+
+def test_composite_undo_helper_metadata_change_blocks_every_target(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    original = [{"id": "target", "alias": "Ziel"}]
+    _write_yaml(tmp_path, original)
+    _write_metadata(tmp_path, {"target": _owned_metadata("target")})
+    helper_id = asyncio.run(executor.async_pause_automation_until(
+        "target", datetime.now(timezone.utc) + timedelta(hours=1)
+    ))
+    yaml_before = _read_yaml(tmp_path)
+    metadata = json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    )
+    metadata[helper_id]["external_note"] = "changed"
+    _write_metadata(tmp_path, metadata)
+
+    with pytest.raises(ValueError, match="resume_helper"):
+        asyncio.run(executor.async_rollback_last_change(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    assert _read_yaml(tmp_path) == yaml_before
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == metadata
     assert executor._history.peek() is not None
-    hass.services.async_call.assert_not_awaited()
+
+
+def test_admin_can_explicitly_discard_only_unsupported_legacy_composite_head(tmp_path):
+    (tmp_path / ".storage").mkdir()
+    hass = _hass(tmp_path)
+    executor = AutomationExecutor(hass)
+    asyncio.run(executor.async_create_automation(
+        {"alias": "Owned", "triggers": [], "actions": []},
+        automation_id="owned", owner_user_id="owner",
+    ))
+    current_yaml = _read_yaml(tmp_path)
+    current_metadata = json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    )
+    executor._history.append(
+        operation="pause",
+        automation_id="old-target",
+        created_at="legacy-pause",
+        automations=current_yaml,
+        metadata={
+            **current_metadata,
+            "old-helper": {"pause_id": "legacy", "pause_status": "open"},
+        },
+        owner_user_id="owner",
+    )
+
+    with pytest.raises(PermissionError):
+        asyncio.run(executor.async_discard_unsupported_history_entry(
+            requesting_user_id="owner", is_admin=False
+        ))
+
+    discarded = asyncio.run(executor.async_discard_unsupported_history_entry(
+        requesting_user_id="admin", is_admin=True
+    ))
+    assert discarded == "pause"
+    assert _read_yaml(tmp_path) == current_yaml
+    assert json.loads(
+        (tmp_path / METADATA_FILENAME).read_text(encoding="utf-8")
+    ) == current_metadata
+
+    # The older supported entry is now the actual LIFO head and remains
+    # undoable; no entry was silently skipped or executed out of order.
+    asyncio.run(executor.async_rollback_last_change(
+        requesting_user_id="owner", is_admin=False
+    ))
+    assert _read_yaml(tmp_path) == []
 
 
 def test_lifecycle_delete_token_is_embedded_stored_and_one_time(tmp_path):

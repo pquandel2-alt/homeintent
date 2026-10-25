@@ -163,6 +163,15 @@ def test_rollback_phrase_is_classified():
     assert request is not None and request.kind is AutomationManagementKind.ROLLBACK
 
 
+def test_explicit_discard_of_unsupported_history_head_is_classified():
+    request = parse_automation_management(
+        "Verwirf den letzten nicht rückgängig machbaren Verlaufseintrag."
+    )
+
+    assert request is not None
+    assert request.kind is AutomationManagementKind.DISCARD_UNDO_ENTRY
+
+
 def test_duplicate_and_durable_pause_are_classified():
     duplicate = parse_automation_management(
         "Dupliziere die Automation für Büro Rollladen"
