@@ -59,6 +59,21 @@ def test_complete_action_and_target_stay_behind_compatibility_adapter(text):
 @pytest.mark.parametrize(
     "text",
     [
+        "Sag mir Bescheid, wenn der Stromverbrauch heute über 10 kWh liegt.",
+        "Melde dich, wenn der Energieverbrauch heute über 10 Kilowattstunden liegt.",
+        "Warne mich, wenn heute mehr als 10000 Wh Strom verbraucht wurden.",
+    ],
+)
+def test_complete_monitoring_reactions_never_open_an_incomplete_slot_dialog(text):
+    decision = route_automation_turn(analyse_language(text, [HEATING]), [HEATING])
+
+    assert decision.kind is AutomationRouteKind.COMPATIBILITY
+    assert Slot.ACTION in decision.meaning.slots
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
         "20 Minuten vor Sonnenuntergang schalte die Heizung ein.",
         "Zwanzig Minuten vor Sonnenuntergang schalte die Heizung ein.",
     ],

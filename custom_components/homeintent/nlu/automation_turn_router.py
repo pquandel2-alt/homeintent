@@ -77,6 +77,9 @@ _TARGET_NOUNS = frozenset({
     "licht", "lichter", "lampe", "lampen", "heizung", "heizungen",
     "thermostat", "thermostate", "waschmaschine",
 })
+_REACTION_ACTION_WORDS = frozenset({
+    "benachrichtige", "melde", "meld", "sage", "sag", "warne",
+})
 
 
 def _has_exact_registry_target(
@@ -129,7 +132,10 @@ def project_automation_meaning(
         SemanticKind.PROPERTY
     ):
         slots.add(AutomationMeaningSlot.STATE)
-    if document.semantics.values(SemanticKind.ACTION):
+    if document.semantics.values(SemanticKind.ACTION) or any(
+        token.is_word and token.canonical in _REACTION_ACTION_WORDS
+        for token in document.tokens
+    ):
         slots.add(AutomationMeaningSlot.ACTION)
     if _has_exact_registry_target(document, entities) or any(
         token.canonical in _TARGET_NOUNS for token in document.tokens

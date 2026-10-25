@@ -3201,12 +3201,37 @@ class NluEngine:
         # coordinated "notify and switch" action unparseable, and it never
         # introduces a delay or a second execution path.
         original_text = text
-        text = re.sub(
-            r"\bsag(?:e)?\s+(mir|uns)(?:\s+sofort)?\s+bescheid\b",
-            lambda match: "benachrichtige " + ("mich" if match.group(1).casefold() == "mir" else "uns"),
-            text,
-            flags=re.IGNORECASE,
+        notification_tokens = (
+            document.tokens
+            if document is not None and document.source_text == text
+            else tokenize_language(text)
         )
+        word_tokens = tuple(token for token in notification_tokens if token.is_word)
+        for index, token in enumerate(word_tokens):
+            if token.canonical not in {"sag", "sage"} or index + 2 >= len(word_tokens):
+                continue
+            recipient = word_tokens[index + 1]
+            if recipient.canonical not in {"mir", "uns"}:
+                continue
+            end_index = index + 2
+            if word_tokens[end_index].canonical == "sofort":
+                end_index += 1
+            if (
+                end_index >= len(word_tokens)
+                or word_tokens[end_index].canonical != "bescheid"
+            ):
+                continue
+            replacement = (
+                "benachrichtige mich"
+                if recipient.canonical == "mir"
+                else "benachrichtige uns"
+            )
+            text = (
+                text[:token.start]
+                + replacement
+                + text[word_tokens[end_index].end:]
+            )
+            break
         seconds, untimed = split_action_duration(text)
         if seconds is not None:
             # "… für 20 Minuten ein": do it, wait, undo it - one automation
