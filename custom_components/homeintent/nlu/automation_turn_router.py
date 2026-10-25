@@ -73,6 +73,10 @@ _DURATION_UNITS = frozenset({
 _REPETITION_WORDS = frozenset({
     "jede", "jeden", "jedes", "immer", "taeglich", "woechentlich",
 })
+_TARGET_NOUNS = frozenset({
+    "licht", "lichter", "lampe", "lampen", "heizung", "heizungen",
+    "thermostat", "thermostate", "waschmaschine",
+})
 
 
 def _has_exact_registry_target(
@@ -127,7 +131,9 @@ def project_automation_meaning(
         slots.add(AutomationMeaningSlot.STATE)
     if document.semantics.values(SemanticKind.ACTION):
         slots.add(AutomationMeaningSlot.ACTION)
-    if _has_exact_registry_target(document, entities):
+    if _has_exact_registry_target(document, entities) or any(
+        token.canonical in _TARGET_NOUNS for token in document.tokens
+    ):
         slots.add(AutomationMeaningSlot.TARGET)
     if any(
         clause.kind is ClauseKind.CONDITION for clause in document.structure.clauses
@@ -164,38 +170,59 @@ def route_automation_turn(
     ):
         return AutomationRouteDecision(AutomationRouteKind.UNSAFE, meaning)
 
-    has_state_without_action = (
-        AutomationMeaningSlot.STATE in meaning.slots
-        and AutomationMeaningSlot.ACTION not in meaning.slots
+    has_incomplete_payload = (
+        AutomationMeaningSlot.ACTION not in meaning.slots
+        and bool(
+            meaning.slots
+            & {AutomationMeaningSlot.STATE, AutomationMeaningSlot.TARGET}
+        )
     )
     # A plain explicit question remains a query.  The migrated shape is a
     # fragment with future timing + desired/observed state but no predicate
     # saying what should happen (the requested "Morgen ... noch warm" case).
     explicit_question = document.source_text.rstrip().endswith("?")
-    single_clause_fragment = len(document.structure.clauses) == 1
-    if not has_state_without_action or explicit_question or not single_clause_fragment:
+    # An explicit condition is a valid additional clause, not evidence that
+    # the fragment is complete. Other clause kinds remain on the established
+    # compatibility path until their binding is migrated.
+    main_clause_count = sum(
+        clause.kind is ClauseKind.MAIN for clause in document.structure.clauses
+    )
+    fragment_clauses = main_clause_count == 1 and all(
+        clause.kind is ClauseKind.MAIN
+        or (
+            clause.kind is ClauseKind.CONDITION
+            and clause.connector in {"wenn", "nur wenn", "sofern", "falls"}
+        )
+        for clause in document.structure.clauses
+    )
+    if not has_incomplete_payload or explicit_question or not fragment_clauses:
         return AutomationRouteDecision(AutomationRouteKind.COMPATIBILITY, meaning)
 
     missing: list[AutomationMeaningSlot] = [AutomationMeaningSlot.ACTION]
-    if AutomationMeaningSlot.TARGET not in meaning.slots:
+    # A generic device noun proves the target class, not a concrete room or
+    # entity.  Heating-state fragments therefore still need their location;
+    # a light fragment may obtain it together with the action next turn.
+    if (
+        AutomationMeaningSlot.TARGET not in meaning.slots
+        or (
+            AutomationMeaningSlot.STATE in meaning.slots
+            and not _has_exact_registry_target(document, entities)
+        )
+    ):
         missing.insert(0, AutomationMeaningSlot.TARGET)
-    if AutomationMeaningSlot.CONDITION not in meaning.slots:
-        missing.append(AutomationMeaningSlot.CONDITION)
     projected = AutomationTurnMeaning(
         meaning.slots,
         tuple(missing),
         meaning.unexplained_tokens,
     )
-    names = {
-        AutomationMeaningSlot.TARGET: "Ziel",
-        AutomationMeaningSlot.ACTION: "gewünschte Aktion",
-        AutomationMeaningSlot.CONDITION: "Bedingung",
-    }
-    listed = ", ".join(names[item] for item in missing)
+    question = (
+        "Welcher Raum soll warm sein?"
+        if AutomationMeaningSlot.STATE in meaning.slots
+        and AutomationMeaningSlot.TARGET in missing
+        else "Was soll zu diesem Zeitpunkt passieren?"
+    )
     return AutomationRouteDecision(
         AutomationRouteKind.INCOMPLETE,
         projected,
-        "Ich erkenne die zukünftige Zeitangabe und den Zustand, aber der "
-        f"Automationsauftrag ist unvollständig. Bitte nenne {listed}. "
-        "Ich habe nichts ausgeführt oder angelegt.",
+        question,
     )

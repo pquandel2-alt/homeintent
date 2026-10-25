@@ -29,16 +29,19 @@ def conversation_scope_key(
     nonce: str | None = None,
 ) -> str:
     """Return an opaque key for one session and authenticated endpoint."""
-    if user_id:
-        principal_kind, principal_id = "user", user_id
-    elif satellite_id:
-        principal_kind, principal_id = "satellite", satellite_id
-    elif device_id:
-        principal_kind, principal_id = "device", device_id
-    else:
-        principal_kind, principal_id = "anonymous", ""
     session_id = conversation_id or f"unbound:{nonce or uuid.uuid4().hex}"
-    material = "\0".join((principal_kind, principal_id, session_id)).encode()
+    # Every available boundary participates.  Selecting only the first
+    # principal let the same authenticated user and public conversation id
+    # share pending state across two voice satellites.
+    material = "\0".join(
+        (
+            "session", session_id,
+            "user", user_id or "",
+            "satellite", satellite_id or "",
+            "device", device_id or "",
+            "anonymous", "0" if user_id else "1",
+        )
+    ).encode()
     return "homeintent:" + hashlib.sha256(material).hexdigest()
 
 

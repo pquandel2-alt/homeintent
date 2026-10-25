@@ -22,6 +22,7 @@ from ..floors import FloorSnapshot
 from ..plan_origin import PlanOrigin
 from ..service_call import ServiceCallPlan
 from .automation_model import AutomationModel, TriggerModel
+from .automation_slot_dialog import PendingAutomationSlotDraft
 from .command import SemanticCommand
 from .dialog_focus import DialogFocus
 from .discourse import DiscourseState
@@ -56,6 +57,7 @@ __all__ = [
     "PendingAutomationDeletion",
     "PendingServiceConfirmation",
     "PendingAutomationDraft",
+    "PendingAutomationSlotDraft",
     "PendingAutomationActionEdit",
     "PendingAutomationStructureEdit",
     "PendingAutomationManagement",
@@ -85,6 +87,7 @@ class PendingDialogKind(Enum):
     SERVICE_CONFIRMATION = auto()
     SEMANTIC_COMMAND = auto()
     AUTOMATION_DRAFT = auto()
+    AUTOMATION_SLOT_FILLING = auto()
     AUTOMATION_EVENT_CLARIFICATION = auto()
     CLARIFICATION = auto()
 
@@ -367,6 +370,7 @@ class ConversationContext:
     # and property from free-form parser parameters.
     focus: DialogFocus | None = None
     pending_automation_draft: PendingAutomationDraft | None = None
+    pending_automation_slot_draft: PendingAutomationSlotDraft | None = None
     pending_automation_event_clarification: PendingAutomationEventClarification | None = None
     pending_automation_action_edit: PendingAutomationActionEdit | None = None
     pending_automation_structure_edit: PendingAutomationStructureEdit | None = None
@@ -401,6 +405,7 @@ _PENDING_DIALOG_FIELDS: tuple[tuple[PendingDialogKind, str], ...] = (
     (PendingDialogKind.SERVICE_CONFIRMATION, "pending_service_confirmation"),
     (PendingDialogKind.SEMANTIC_COMMAND, "pending_semantic_command"),
     (PendingDialogKind.AUTOMATION_DRAFT, "pending_automation_draft"),
+    (PendingDialogKind.AUTOMATION_SLOT_FILLING, "pending_automation_slot_draft"),
     (PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION, "pending_automation_event_clarification"),
     (PendingDialogKind.CLARIFICATION, "pending_clarification"),
 )

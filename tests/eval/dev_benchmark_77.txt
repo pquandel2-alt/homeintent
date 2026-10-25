@@ -202,6 +202,10 @@ mehrturn :: Schalte das Bürolicht ein || Mach das rückgängig :: call=turn.tur
 mehrturn :: Schließ die Haustür ab || Schalte stattdessen das Flurlicht an :: confirm || call=turn.turn_on:light.flurlicht
 mehrturn :: Schalte das Schlafzimmerlicht an || Und das im Kinderzimmer auch :: call=turn.turn_on:light.schlafzimmerlicht || call=turn.turn_on:light.kinderzimmerlicht
 mehrturn heldout :: Öffne das Garagentor || Wie warm ist es draußen? :: confirm || answer
+mehrturn :: Morgen nach Sonnenuntergang noch warm || Im Wohnzimmer || Stell die Heizung auf 21 Grad || Nein, lieber 20 Grad :: draft || draft || draft || draft
+mehrturn heldout :: Morgen um acht das Licht || Im Flur einschalten :: draft || draft
+mehrturn :: Morgen um acht das Licht, nur wenn Anna zuhause ist || Im Flur einschalten :: draft || draft
+mehrturn :: Morgen nach Sonnenuntergang noch warm || Wenn ich im Wohnzimmer wäre :: draft || draft
 
 # ---------------------------------------------------------------- Ellipsen
 ellipse :: Schalte das Küchenlicht an || Im Büro auch :: call=turn.turn_on:light.kuechenlicht || call=turn.turn_on:light.buerolicht  # 7.7.1 A3: Rolle statt Raummenge

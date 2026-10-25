@@ -324,6 +324,7 @@ class DialogManager:
             kind, priority = DialogTaskKind.SAFETY_CONFIRMATION, DialogPriority.CONFIRMATION
         elif kind_name in {
             "AUTOMATION_DRAFT",
+            "AUTOMATION_SLOT_FILLING",
             "AUTOMATION_ACTION_EDIT",
             "AUTOMATION_STRUCTURE_EDIT",
             "AUTOMATION_WIZARD",

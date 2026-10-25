@@ -41,7 +41,20 @@ from ..execution_policy import validate_automation_action_targets
 from ..execution_trace import record_execution
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
 from ..nlu.automation_turn_router import AutomationRouteKind, route_automation_turn
+from ..nlu.automation_slot_dialog import (
+    PendingAutomationSlotDraft,
+    RequiredAutomationSlot,
+    compile_slot_draft,
+    new_slot_draft,
+    next_question,
+    project_followup,
+    revise_preview_model,
+    with_actions,
+    with_condition,
+)
+from ..nlu.german_structure import ClauseKind
 from ..nlu.language_frontend import LanguageDocument
+from ..nlu.semantic_utterance import Modality, Polarity
 from ..nlu.automation_model import (
     AutomationModel,
     CalendarReference,
@@ -73,6 +86,7 @@ from ..nlu.context import (
     PendingAutomationDraft,
     PendingAutomationEventClarification,
     PendingAutomationWizard,
+    PendingDialogKind,
 )
 from ..nlu.ha_automation_generator import (
     generate_ha_automation_config,
@@ -288,22 +302,159 @@ class AutomationController:
         decision = route_automation_turn(document, entities)
         if dialog_is_active or decision.kind is not AutomationRouteKind.INCOMPLETE:
             return None
+        actor = conversation_user_id(user_input)
+        if actor is None:
+            response.async_set_speech(
+                "Zum Erstellen einer persönlichen Automation musst du angemeldet sein. "
+                "Ich habe keinen Entwurf gespeichert."
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
+        draft = new_slot_draft(
+            document,
+            entities,
+            requesting_user_id=actor,
+            conversation_scope=user_input.conversation_id,
+            now=dt_util.now(),
+            ttl_seconds=int(self._runtime.dialog_manager.ttl.total_seconds()),
+        )
+        condition_clauses = tuple(
+            document.source_text[clause.char_start:clause.char_end]
+            for clause in document.structure.clauses
+            if clause.kind is ClauseKind.CONDITION
+        )
+        if draft.condition_announced and len(condition_clauses) == 1:
+            condition = self._engine.parse_automation_condition(
+                condition_clauses[0], entities, self._world_model
+            )
+            if condition is not None:
+                draft = with_condition(draft, condition, document)
+        self._context_store.set(
+            user_input.conversation_id,
+            ConversationContext(
+                last_command=None,
+                last_entities=(),
+                last_area=None,
+                pending_clarification=None,
+                pending_automation_slot_draft=draft,
+            ),
+        )
         self._runtime.dialog_manager.create(
             user_input.conversation_id,
             "incomplete-future-automation",
-            DialogTaskKind.MISSING_SLOT,
+            DialogTaskKind.AUTOMATION,
             DialogPriority.FOLLOWUP,
             missing_slots=tuple(
-                slot.name.casefold() for slot in decision.meaning.missing_slots
+                slot.name.casefold() for slot in draft.missing_slots
             ),
             reason="Der zukünftige Automationsauftrag ist unvollständig.",
-            requested_by_user_id=conversation_user_id(user_input),
-            payload=decision.meaning,
+            requested_by_user_id=actor,
+            payload=draft,
         )
-        response.async_set_speech(decision.question)
+        response.async_set_speech(next_question(draft))
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    async def async_handle_slot_filling(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        draft: PendingAutomationSlotDraft,
+        document: LanguageDocument,
+        entities: list[EntitySnapshot],
+    ) -> conversation.ConversationResult:
+        """Project one answer into a typed draft and preview only when complete."""
+        manager = self._runtime.dialog_manager
+        actor = conversation_user_id(user_input)
+        if draft.requesting_user_id != actor:
+            response.async_set_speech("Diese Rückfrage gehört zu einem anderen Benutzer.")
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+        if draft.conversation_scope != user_input.conversation_id or dt_util.now() >= draft.expires_at:
+            self._context_store.clear(user_input.conversation_id)
+            manager.cancel(user_input.conversation_id)
+            response.async_set_speech("Der offene Automationsentwurf ist abgelaufen. Ich habe nichts angelegt.")
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+        if document.utterance.polarity is Polarity.NEGATIVE or document.utterance.modality in {
+            Modality.HYPOTHETICAL, Modality.IRREALIS, Modality.DELIBERATION,
+        }:
+            response.async_set_speech(
+                "Diese Antwort ist verneint oder nur hypothetisch. Ich ändere den Entwurf nicht. "
+                + next_question(draft)
+            )
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+
+        updated = project_followup(draft, document, entities)
+        if RequiredAutomationSlot.CONDITION in updated.missing_slots:
+            condition = self._engine.parse_automation_condition(
+                user_input.text, entities, self._world_model
+            )
+            if condition is not None:
+                updated = with_condition(updated, condition, document)
+        scoped_entities = entities
+        if updated.action_target is not None:
+            scoped = [
+                entity for entity in entities
+                if (
+                    updated.action_target.area_id is None
+                    or entity.area_id == updated.action_target.area_id
+                )
+                and (
+                    updated.action_target.entity_id is None
+                    or entity.entity_id == updated.action_target.entity_id
+                )
+                and (
+                    updated.action_target.domain is None
+                    or entity.domain == updated.action_target.domain
+                )
+            ]
+            if scoped:
+                scoped_entities = scoped
+        actions = self._engine.parse_automation_actions(
+            user_input.text,
+            scoped_entities,
+            self._world_model,
+            document=document,
+        )
+        if actions is not None:
+            updated = with_actions(updated, actions, document)
+
+        model = compile_slot_draft(updated)
+        if model is not None:
+            problem = validate_automation(model, entities)
+            if problem is None:
+                manager.cancel(user_input.conversation_id)
+                self.offer_preview(user_input, response, model, entities, actor)
+                return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+            response.async_set_speech(
+                f"Der Entwurf ist noch nicht sicher ausführbar ({problem}). Ich habe nichts angelegt."
+            )
+            return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
+
+        self._context_store.set(
+            user_input.conversation_id,
+            ConversationContext(
+                last_command=None,
+                last_entities=(),
+                last_area=None,
+                pending_clarification=None,
+                pending_automation_slot_draft=updated,
+            ),
+        )
+        manager.create(
+            user_input.conversation_id,
+            "incomplete-future-automation",
+            DialogTaskKind.AUTOMATION,
+            DialogPriority.FOLLOWUP,
+            missing_slots=tuple(slot.name.casefold() for slot in updated.missing_slots),
+            candidates=updated.ambiguities,
+            reason="Der Automationsentwurf benötigt genau eine weitere sichere Angabe.",
+            requested_by_user_id=actor,
+            payload=updated,
+        )
+        response.async_set_speech(next_question(updated))
+        return conversation.ConversationResult(response=response, conversation_id=user_input.conversation_id)
 
     def access_openings_of(
         self, model: AutomationModel, entities: list[EntitySnapshot]
@@ -1060,13 +1211,26 @@ class AutomationController:
         response: intent.IntentResponse,
         pending: PendingAutomationConfirmation,
         entities: list[EntitySnapshot],
+        document: LanguageDocument | None = None,
     ) -> conversation.ConversationResult:
         """Revise a pending automation or interpret its confirmation reply."""
-        revised = self._engine.revise_pending_automation(
-            user_input.text,
-            pending.model,
-            entities,
-            self._world_model,
+        typed_revision = (
+            revise_preview_model(document, pending.model, entities)
+            if document is not None else None
+        )
+        revised = (
+            AutomationMatchResult(
+                typed_revision,
+                render_automation_tree(typed_revision),
+                validate_automation(typed_revision),
+            )
+            if typed_revision is not None
+            else self._engine.revise_pending_automation(
+                user_input.text,
+                pending.model,
+                entities,
+                self._world_model,
+            )
         )
         if revised is not None and revised.validation_error is None:
             self.offer_preview(
@@ -1116,6 +1280,45 @@ class AutomationController:
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
+
+    async def async_dispatch_pending_dialog(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        kind: PendingDialogKind | None,
+        payload: object,
+        pending: ConversationContext | None,
+        entities: list[EntitySnapshot],
+        document: LanguageDocument,
+    ) -> conversation.ConversationResult | None:
+        """Dispatch automation-owned pending tasks outside the orchestrator."""
+        if kind is PendingDialogKind.AUTOMATION_CONFIRMATION and isinstance(
+            payload, PendingAutomationConfirmation
+        ):
+            return await self.async_handle_pending_confirmation_turn(
+                user_input, response, payload, entities, document
+            )
+        if kind is PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION and isinstance(
+            payload, PendingAutomationEventClarification
+        ):
+            return self.handle_pending_event_clarification(
+                user_input, response, payload, entities
+            )
+        if kind is PendingDialogKind.AUTOMATION_SLOT_FILLING and isinstance(
+            payload, PendingAutomationSlotDraft
+        ):
+            return await self.async_handle_slot_filling(
+                user_input, response, payload, document, entities
+            )
+        if (
+            kind is PendingDialogKind.AUTOMATION_DRAFT
+            and isinstance(payload, PendingAutomationDraft)
+            and pending is not None
+        ):
+            return await self.async_handle_pending_draft(
+                user_input, response, payload, pending, entities
+            )
+        return None
 
     def start_wizard(
         self,
@@ -1288,4 +1491,3 @@ class AutomationController:
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
-

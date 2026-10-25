@@ -36,9 +36,9 @@ def test_incomplete_future_state_metamorphs_request_the_same_slots(text):
     decision = route_automation_turn(analyse_language(text, [HEATING]), [HEATING])
 
     assert decision.kind is AutomationRouteKind.INCOMPLETE
-    assert decision.meaning.missing_slots == (Slot.TARGET, Slot.ACTION, Slot.CONDITION)
+    assert decision.meaning.missing_slots == (Slot.TARGET, Slot.ACTION)
     assert decision.question is not None
-    assert all(word in decision.question for word in ("Ziel", "Aktion", "Bedingung"))
+    assert "Bedingung" not in decision.question
 
 
 @pytest.mark.parametrize(
@@ -107,5 +107,6 @@ def test_incomplete_fragment_end_to_end_never_writes(monkeypatch):
 
     turn = house.say("Morgen nach Sonnenuntergang noch warm.")
 
-    assert all(word in turn.speech for word in ("Ziel", "Aktion", "Bedingung"))
+    assert "Automation" in turn.speech
+    assert "Bedingung" not in turn.speech
     assert turn.calls == []

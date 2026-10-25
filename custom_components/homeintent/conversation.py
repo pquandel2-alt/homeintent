@@ -100,10 +100,7 @@ from .nlu.automation_model import TriggerTarget
 from .nlu.context import (
     active_pending_dialog,
     ConversationContext,
-    PendingAutomationConfirmation,
     PendingAutomationDeletion,
-    PendingAutomationDraft,
-    PendingAutomationEventClarification,
     PendingAutomationActionEdit,
     PendingAutomationManagement,
     PendingAutomationStructureEdit,
@@ -218,6 +215,7 @@ _UNIVERSAL_CANCEL_RE = re.compile(
 # not a new topic (unless the user switches explicitly, "mach lieber ...").
 _COMPOSING_DIALOG_KINDS = frozenset({
     PendingDialogKind.AUTOMATION_DRAFT,
+    PendingDialogKind.AUTOMATION_SLOT_FILLING,
     PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
     PendingDialogKind.AUTOMATION_ACTION_EDIT,
     PendingDialogKind.AUTOMATION_STRUCTURE_EDIT,
@@ -322,6 +320,7 @@ def _dialog_manager_kind(
         return DialogTaskKind.SAFETY_CONFIRMATION, DialogPriority.CONFIRMATION
     if kind in {
         PendingDialogKind.AUTOMATION_DRAFT,
+        PendingDialogKind.AUTOMATION_SLOT_FILLING,
         PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
         PendingDialogKind.AUTOMATION_ACTION_EDIT,
         PendingDialogKind.AUTOMATION_STRUCTURE_EDIT,
@@ -359,6 +358,7 @@ _CONTINUE_CONVERSATION_KINDS: frozenset[PendingDialogKind] = frozenset(
         PendingDialogKind.SERVICE_CONFIRMATION,
         PendingDialogKind.SEMANTIC_COMMAND,
         PendingDialogKind.AUTOMATION_DRAFT,
+        PendingDialogKind.AUTOMATION_SLOT_FILLING,
         PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION,
         PendingDialogKind.CLARIFICATION,
     }
@@ -1509,19 +1509,6 @@ class NluConversationEntity(
 
         if (
             active_dialog is not None
-            and active_dialog.kind is PendingDialogKind.AUTOMATION_CONFIRMATION
-            and active_task is not None
-            and isinstance(active_task.payload, PendingAutomationConfirmation)
-        ):
-            return await self._automations.async_handle_pending_confirmation_turn(
-                user_input,
-                response,
-                active_task.payload,
-                entities,
-            )
-
-        if (
-            active_dialog is not None
             and active_dialog.kind is PendingDialogKind.AUTOMATION_ACTION_EDIT
             and active_task is not None
             and isinstance(active_task.payload, PendingAutomationActionEdit)
@@ -1595,28 +1582,17 @@ class NluConversationEntity(
                 user_input, response, active_task.payload, entities
             )
 
-        if (
-            active_dialog is not None
-            and active_dialog.kind is PendingDialogKind.AUTOMATION_EVENT_CLARIFICATION
-            and active_task is not None
-            and isinstance(active_task.payload, PendingAutomationEventClarification)
-        ):
-            handled = self._automations.handle_pending_event_clarification(
-                user_input, response, active_task.payload, entities
-            )
-            if handled is not None:
-                return handled
-
-        if (
-            active_dialog is not None
-            and active_dialog.kind is PendingDialogKind.AUTOMATION_DRAFT
-            and active_task is not None
-            and isinstance(active_task.payload, PendingAutomationDraft)
-            and pending is not None
-        ):
-            return await self._automations.async_handle_pending_draft(
-                user_input, response, active_task.payload, pending, entities
-            )
+        automation_dialog = await self._automations.async_dispatch_pending_dialog(
+            user_input,
+            response,
+            active_dialog.kind if active_dialog is not None else None,
+            active_task.payload if active_task is not None else None,
+            pending,
+            entities,
+            language_document,
+        )
+        if automation_dialog is not None:
+            return automation_dialog
 
         # One language/safety gate now protects every fresh domain router,
         # including historical calendar/device/productivity matchers.  This

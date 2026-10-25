@@ -3185,7 +3185,10 @@ class NluEngine:
         return self._parse_action_semantically(action_text, parse_context)
 
     def _parse_action_semantically(
-        self, text: str, context: ParseContext
+        self,
+        text: str,
+        context: ParseContext,
+        document: LanguageDocument | None = None,
     ) -> tuple[ActionModel | ActionGroup, ...] | None:
         """Prefer the shared direct-command semantics for automation actions.
 
@@ -3194,6 +3197,16 @@ class NluEngine:
         commands. Automation-only actions remain available through the
         established dedicated parser as the fallback.
         """
+        # Immediacy is a harmless notification modifier. It must not make a
+        # coordinated "notify and switch" action unparseable, and it never
+        # introduces a delay or a second execution path.
+        original_text = text
+        text = re.sub(
+            r"\bsag(?:e)?\s+(mir|uns)(?:\s+sofort)?\s+bescheid\b",
+            lambda match: "benachrichtige " + ("mich" if match.group(1).casefold() == "mir" else "uns"),
+            text,
+            flags=re.IGNORECASE,
+        )
         seconds, untimed = split_action_duration(text)
         if seconds is not None:
             # "… für 20 Minuten ein": do it, wait, undo it - one automation
@@ -3214,7 +3227,13 @@ class NluEngine:
                 clause, clause.resolved_message(), context.entities
             )
             return (notification,) if notification is not None else None
-        document = analyse_language(text, context.entities)
+        # Conversation already produced the loss-aware document for this
+        # exact turn.  Reuse it whenever no bounded semantic rewrite changed
+        # the text; this keeps the normal slot-filling path at one frontend
+        # analysis per turn. Rewritten compatibility forms deliberately use a
+        # fresh document because their token offsets and clauses differ.
+        if document is None or text != original_text:
+            document = analyse_language(text, context.entities)
         interpreted = SemanticInterpreter.interpret(
             document,
             context.entities,
@@ -3269,10 +3288,14 @@ class NluEngine:
         text: str,
         entities: list[EntitySnapshot],
         world_model: WorldModel | None = None,
+        *,
+        document: LanguageDocument | None = None,
     ) -> tuple[ActionModel | ActionGroup, ...] | None:
         """Parse one replacement action through the shared semantic pipeline."""
         return self._parse_action_semantically(
-            text, create_parse_context(entities, world_model=world_model)
+            text,
+            create_parse_context(entities, world_model=world_model),
+            document,
         )
 
     def parse_automation_trigger(
@@ -3770,9 +3793,13 @@ class NluEngine:
         _, separator, remainder = normalized.partition(",")
         if separator and remainder.strip(" .!?").casefold() not in {"", "dann"}:
             return None
-        trigger = self._automation_trigger_parser.parse(
-            normalized.split(",", 1)[0].strip(), parse_context
-        )
+        trigger_text = normalized.split(",", 1)[0].strip()
+        trigger = self._automation_trigger_parser.parse(trigger_text, parse_context)
+        if trigger is None:
+            # The typed event reader understands device class, place and
+            # state composition such as "im Keller Wasser erkannt". Reuse
+            # it here instead of adding sentence templates to the draft path.
+            trigger = self._typed_trigger(trigger_text, entities)
         if trigger is None:
             return None
         return AutomationDraftMatchResult(trigger=trigger, source_text=text)
@@ -3793,7 +3820,11 @@ class NluEngine:
             last_entities=context.last_entities if context is not None else (),
             last_area=context.last_area if context is not None else None,
         )
-        actions = self._parse_action_semantically(normalize(text), parse_context)
+        # Keep the lexical notification predicate intact. ``normalize()`` is
+        # intended for direct commands and removes polite speech-act framing;
+        # on a coordinated draft answer that would erase "sag mir Bescheid"
+        # before the typed action reader can compose both actions.
+        actions = self._parse_action_semantically(text, parse_context)
         if not actions:
             return None
         model = AutomationModel(
