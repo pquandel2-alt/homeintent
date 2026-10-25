@@ -58,6 +58,7 @@ class MediaAliasRequest:
     alias: str
     canonical_query: str | None = None
     media_type: str | None = None
+    instance_hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,34 @@ class PendingMediaAlias:
 
     operation: str
     alias: MediaAlias
+    player_entity_id: str | None = None
+
+
+@dataclass(frozen=True)
+class MusicAssistantInstanceCandidate:
+    """One explicitly selectable player and its authoritative MA instance."""
+
+    player_entity_id: str
+    player_name: str
+    area_id: str | None
+    area_name: str | None
+    config_entry_id: str
+
+
+@dataclass(frozen=True)
+class PendingMediaAliasInstanceSelection:
+    """Alias request waiting for a user-owned MA player/instance choice."""
+
+    request: MediaAliasRequest
+    requesting_user_id: str
+    candidates: tuple[MusicAssistantInstanceCandidate, ...]
+
+
+@dataclass(frozen=True)
+class MusicAssistantInstanceResolution:
+    config_entry_id: str | None
+    player_entity_id: str | None
+    candidates: tuple[MusicAssistantInstanceCandidate, ...] = ()
 
 
 _TYPE_PREFIXES = {
@@ -112,7 +141,17 @@ def parse_media_alias_request(text: str) -> MediaAliasRequest | None:
     if len(separators) != 1:
         return None
     separator = separators[0]
-    item_words = words[start:separator]
+    item_words = list(words[start:separator])
+    instance_hint = None
+    item_canonical = [normalize_for_compare(word) for word in item_words]
+    scope_indexes = [
+        index for index, word in enumerate(item_canonical)
+        if word in {"fuer", "auf", "im"} and index >= 2
+    ]
+    if scope_indexes:
+        scope = scope_indexes[-1]
+        instance_hint = " ".join(item_words[scope + 1:]).strip()
+        item_words = item_words[:scope]
     alias_words = words[separator + 1:]
     if alias_words and normalize_for_compare(alias_words[0]) in _POSSESSIVES:
         alias_words = alias_words[1:]
@@ -127,7 +166,102 @@ def parse_media_alias_request(text: str) -> MediaAliasRequest | None:
     )
     if media_type is None:
         return None
-    return MediaAliasRequest("create", alias, item, media_type)
+    return MediaAliasRequest("create", alias, item, media_type, instance_hint)
+
+
+def _ma_candidates(entities: Sequence[EntitySnapshot]) -> tuple[MusicAssistantInstanceCandidate, ...]:
+    return tuple(
+        MusicAssistantInstanceCandidate(
+            entity.entity_id,
+            entity.friendly_name,
+            entity.area_id,
+            entity.area_name,
+            str(entity.config_entry_id),
+        )
+        for entity in entities
+        if entity.integration == DOMAIN and entity.config_entry_id
+    )
+
+
+def _exact_hint_matches(
+    hint: str, candidates: Sequence[MusicAssistantInstanceCandidate], entities: Sequence[EntitySnapshot]
+) -> tuple[MusicAssistantInstanceCandidate, ...]:
+    wanted = normalize_for_compare(hint)
+    by_id = {entity.entity_id: entity for entity in entities}
+    return tuple(
+        candidate for candidate in candidates
+        if wanted in {
+            normalize_for_compare(candidate.player_name),
+            normalize_for_compare(candidate.player_entity_id),
+            *(normalize_for_compare(alias) for alias in by_id[candidate.player_entity_id].aliases),
+        }
+    )
+
+
+def resolve_music_assistant_instance(
+    request: MediaAliasRequest,
+    entities: Sequence[EntitySnapshot],
+    *,
+    satellite_area_id: str | None,
+) -> MusicAssistantInstanceResolution:
+    """Resolve MA instance evidence without first-match or ID ordering."""
+    candidates = _ma_candidates(entities)
+    if not candidates:
+        return MusicAssistantInstanceResolution(None, None)
+    if request.instance_hint:
+        explicit = _exact_hint_matches(request.instance_hint, candidates, entities)
+        if len(explicit) == 1:
+            chosen = explicit[0]
+            return MusicAssistantInstanceResolution(chosen.config_entry_id, chosen.player_entity_id)
+        wanted = normalize_for_compare(request.instance_hint)
+        in_room = tuple(
+            candidate for candidate in candidates
+            if candidate.area_name and normalize_for_compare(candidate.area_name) == wanted
+        )
+        if len(in_room) == 1:
+            chosen = in_room[0]
+            return MusicAssistantInstanceResolution(chosen.config_entry_id, chosen.player_entity_id)
+        return MusicAssistantInstanceResolution(None, None, explicit or in_room or candidates)
+    if satellite_area_id:
+        local = tuple(candidate for candidate in candidates if candidate.area_id == satellite_area_id)
+        if len(local) == 1:
+            chosen = local[0]
+            return MusicAssistantInstanceResolution(chosen.config_entry_id, chosen.player_entity_id)
+    entries = {candidate.config_entry_id for candidate in candidates}
+    if len(entries) == 1:
+        return MusicAssistantInstanceResolution(next(iter(entries)), None)
+    return MusicAssistantInstanceResolution(None, None, candidates)
+
+
+def select_music_assistant_instance(
+    text: str,
+    pending: PendingMediaAliasInstanceSelection,
+    entities: Sequence[EntitySnapshot],
+) -> MusicAssistantInstanceResolution:
+    """Select exactly one still-live offered player by name, alias or area."""
+    offered = {candidate.player_entity_id: candidate for candidate in pending.candidates}
+    live = [
+        entity for entity in entities
+        if entity.entity_id in offered
+        and entity.integration == DOMAIN
+        and entity.config_entry_id == offered[entity.entity_id].config_entry_id
+    ]
+    wanted = normalize_for_compare(text.strip().rstrip(".!?"))
+    matches = [
+        entity for entity in live
+        if wanted in {
+            normalize_for_compare(entity.friendly_name),
+            normalize_for_compare(entity.area_name or ""),
+            normalize_for_compare(entity.entity_id),
+            *(normalize_for_compare(alias) for alias in entity.aliases),
+        }
+    ]
+    if len(matches) != 1:
+        return MusicAssistantInstanceResolution(None, None, pending.candidates)
+    chosen = matches[0]
+    return MusicAssistantInstanceResolution(
+        str(chosen.config_entry_id), chosen.entity_id
+    )
 
 
 class MediaAliasStore:

@@ -43,10 +43,13 @@ from ..music_assistant import async_search_exact_music_assistant
 from ..music_aliases import (
     MediaAliasStore,
     PendingMediaAlias,
+    PendingMediaAliasInstanceSelection,
     async_resolve_media_alias,
     media_alias_conflicts,
     new_media_alias,
     parse_media_alias_request,
+    resolve_music_assistant_instance,
+    select_music_assistant_instance,
 )
 from ..presence_query import HABIT_DAYS, PersonState, answer_presence, arrivals, parse_presence_query
 from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
@@ -525,41 +528,49 @@ class InsightsController:
                     response,
                     f"Der Name „{request.alias}“ ist bereits belegt; ich habe nichts gespeichert.",
                 )
-            config_entries = {
-                entity.config_entry_id
-                for entity in entities
-                if entity.integration == MUSIC_ASSISTANT_DOMAIN and entity.config_entry_id
-            }
-            if len(config_entries) != 1:
+            resolution = resolve_music_assistant_instance(
+                request, entities, satellite_area_id=self._area_id
+            )
+            if resolution.config_entry_id is None and resolution.candidates:
+                pending_selection = PendingMediaAliasInstanceSelection(
+                    request, actor, resolution.candidates
+                )
+                self._runtime.dialog_manager.create(
+                    user_input.conversation_id,
+                    "media-alias-instance-selection",
+                    DialogTaskKind.MEDIA_SELECTION,
+                    DialogPriority.SELECTION,
+                    candidates=tuple(
+                        candidate.player_entity_id for candidate in resolution.candidates
+                    ),
+                    reason="Der Medienalias benötigt eine eindeutige Music-Assistant-Instanz.",
+                    requested_by_user_id=actor,
+                    payload=pending_selection,
+                )
+                labels = " oder ".join(
+                    candidate.area_name or candidate.player_name
+                    for candidate in resolution.candidates
+                )
                 return self._result(
                     user_input,
                     response,
-                    "Ich kann den Music-Assistant-Eintrag nicht eindeutig bestimmen; "
-                    "ich habe nichts gespeichert.",
+                    "Für welche Music-Assistant-Instanz beziehungsweise welchen Player: "
+                    f"{labels}?",
                 )
-            config_entry_id = next(iter(config_entries))
-            searched = await async_search_exact_music_assistant(
-                self.hass,
-                config_entry_id=config_entry_id,
-                name=request.canonical_query,
-                media_type=request.media_type,
-                library_only=True,
-                context=getattr(user_input, "context", None),
-            )
-            if searched.status != "ok" or len(searched.items) != 1:
+            if resolution.config_entry_id is None:
                 return self._result(
                     user_input,
                     response,
-                    "Ich finde dafür keinen einzelnen, sicheren aktuellen Music-Assistant-Treffer; "
+                    "Ich finde keinen eindeutig zugeordneten Music-Assistant-Player; "
                     "ich habe nichts gespeichert.",
                 )
-            pending = PendingMediaAlias(
-                "create",
-                new_media_alias(request, actor, config_entry_id, searched.items[0]),
-            )
-            prompt = (
-                f"Soll ich „{pending.alias.alias}“ als persönlichen Medienalias für "
-                f"{pending.alias.canonical_name} ({pending.alias.media_type}) speichern?"
+            return await self._async_prepare_media_alias_create(
+                user_input,
+                response,
+                request,
+                actor,
+                resolution.config_entry_id,
+                resolution.player_entity_id,
             )
         self._runtime.dialog_manager.create(
             user_input.conversation_id,
@@ -571,6 +582,53 @@ class InsightsController:
             payload=pending,
         )
         return self._result(user_input, response, prompt)
+
+    async def _async_prepare_media_alias_create(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        request: Any,
+        actor: str,
+        config_entry_id: str,
+        player_entity_id: str | None,
+    ) -> conversation.ConversationResult:
+        """Search only the selected instance and open the existing preview gate."""
+        assert request.canonical_query is not None
+        searched = await async_search_exact_music_assistant(
+            self.hass,
+            config_entry_id=config_entry_id,
+            name=request.canonical_query,
+            media_type=request.media_type,
+            library_only=True,
+            context=getattr(user_input, "context", None),
+        )
+        if searched.status != "ok" or len(searched.items) != 1:
+            return self._result(
+                user_input,
+                response,
+                "Ich finde dafür keinen einzelnen, sicheren aktuellen Music-Assistant-Treffer; "
+                "ich habe nichts gespeichert.",
+            )
+        pending = PendingMediaAlias(
+            "create",
+            new_media_alias(request, actor, config_entry_id, searched.items[0]),
+            player_entity_id,
+        )
+        self._runtime.dialog_manager.create(
+            user_input.conversation_id,
+            "media-alias-confirmation",
+            DialogTaskKind.MEDIA_ALIAS_CONFIRMATION,
+            DialogPriority.CONFIRMATION,
+            reason="Ein Medienalias wird nur nach ausdrücklicher Bestätigung geändert.",
+            requested_by_user_id=actor,
+            payload=pending,
+        )
+        return self._result(
+            user_input,
+            response,
+            f"Soll ich „{pending.alias.alias}“ als persönlichen Medienalias für "
+            f"{pending.alias.canonical_name} ({pending.alias.media_type}) speichern?",
+        )
 
     async def _async_media_alias_confirmation(
         self,
@@ -601,6 +659,20 @@ class InsightsController:
                 ):
                     raise ValueError(
                         "Der Name kollidiert inzwischen mit einem Gerät, Raum oder Benutzer"
+                    )
+                live_players = [
+                    entity for entity in entities
+                    if entity.integration == MUSIC_ASSISTANT_DOMAIN
+                    and entity.config_entry_id == pending.alias.config_entry_id
+                ]
+                if pending.player_entity_id is not None:
+                    live_players = [
+                        entity for entity in live_players
+                        if entity.entity_id == pending.player_entity_id
+                    ]
+                if not live_players:
+                    raise ValueError(
+                        "Die gewählte Music-Assistant-Instanz oder der Player ist inzwischen nicht mehr gültig"
                     )
                 searched = await async_search_exact_music_assistant(
                     self.hass,
@@ -671,6 +743,31 @@ class InsightsController:
         task: Any, entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult | None:
         pending = getattr(task, "payload", None)
+        if isinstance(pending, PendingMediaAliasInstanceSelection):
+            actor = conversation_user_id(user_input)
+            if actor is None or pending.requesting_user_id != actor:
+                return self._result(
+                    user_input, response, "Diese Rückfrage gehört zu einem anderen Benutzer."
+                )
+            resolution = select_music_assistant_instance(
+                user_input.text, pending, entities
+            )
+            if resolution.config_entry_id is None:
+                return self._result(
+                    user_input,
+                    response,
+                    "Die Auswahl ist noch nicht eindeutig; ich habe nichts gespeichert. "
+                    "Bitte nenne genau einen der angebotenen Player oder Räume.",
+                )
+            self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+            return await self._async_prepare_media_alias_create(
+                user_input,
+                response,
+                pending.request,
+                actor,
+                resolution.config_entry_id,
+                resolution.player_entity_id,
+            )
         if not isinstance(pending, PendingMusicAssistant):
             return None
         if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:

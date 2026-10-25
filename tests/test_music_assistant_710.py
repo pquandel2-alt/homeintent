@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import replace
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -737,6 +738,149 @@ def test_media_alias_rejects_authenticated_user_name(monkeypatch, tmp_path):
 
     assert "bereits belegt" in collision.speech
     house.entity.hass.services.async_call.assert_not_awaited()
+
+
+def _workshop_player() -> EntitySnapshot:
+    return EntitySnapshot(
+        "media_player.werkstatt",
+        "Werkstatt Lautsprecher",
+        "media_player",
+        "idle",
+        area_id="workshop",
+        area_name="Werkstatt",
+        integration="music_assistant",
+        config_entry_id="mass-workshop",
+    )
+
+
+def test_media_alias_selects_one_of_two_instances_over_two_turns(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    players = [_player(config_entry_id="mass-living"), _workshop_player()]
+    house = HouseConversation(monkeypatch, entities=players)
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+
+    choice = house.say("Merke dir Radio Bob als meinen Rocksender.")
+    assert "Wohnzimmer" in choice.speech and "Werkstatt" in choice.speech
+    assert not (tmp_path / ".storage/homeintent_music_aliases.json").exists()
+    house.entity.hass.services.async_call.reset_mock()
+
+    preview = house.say("Wohnzimmer.")
+    assert "Soll ich" in preview.speech
+    search = house.entity.hass.services.async_call.await_args
+    assert search.args[2]["config_entry_id"] == "mass-living"
+    house.say("Ja.")
+    document = json.loads(
+        (tmp_path / ".storage/homeintent_music_aliases.json").read_text(encoding="utf-8")
+    )
+    assert document["aliases"][0]["config_entry_id"] == "mass-living"
+
+
+def test_media_alias_explicit_room_resolves_instance_without_selection(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(
+        monkeypatch,
+        entities=[_player(config_entry_id="mass-living"), _workshop_player()],
+    )
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+
+    preview = house.say(
+        "Merke dir Radio Bob für Werkstatt als meinen Werkstattsender."
+    )
+
+    assert "Soll ich" in preview.speech
+    assert house.entity.hass.services.async_call.await_args.args[2]["config_entry_id"] == "mass-workshop"
+
+
+def test_media_alias_explicit_player_and_existing_group_resolve_exact_instances(
+    monkeypatch, tmp_path
+):
+    from dataclasses import replace
+    from _testhaus import HouseConversation
+
+    living = _player(config_entry_id="mass-living")
+    group = replace(
+        _workshop_player(),
+        entity_id="media_player.werkstatt_gruppe",
+        friendly_name="Werkstatt Gruppe",
+    )
+    house = HouseConversation(monkeypatch, entities=[living, group])
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+
+    player_preview = house.say(
+        "Merke dir Radio Bob für Wohnzimmer Lautsprecher als meinen Rocksender."
+    )
+    assert "Soll ich" in player_preview.speech
+    assert house.entity.hass.services.async_call.await_args.args[2]["config_entry_id"] == "mass-living"
+    house.say("Nein.")
+
+    group_preview = house.say(
+        "Merke dir Radio Bob für Werkstatt Gruppe als meinen Werkstattsender."
+    )
+    assert "Soll ich" in group_preview.speech
+    assert house.entity.hass.services.async_call.await_args.args[2]["config_entry_id"] == "mass-workshop"
+
+
+def test_media_alias_never_crosses_music_assistant_instances_on_playback(
+    monkeypatch, tmp_path
+):
+    from _testhaus import HouseConversation
+
+    house = HouseConversation(
+        monkeypatch,
+        entities=[_player(config_entry_id="mass-living"), _workshop_player()],
+    )
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+    house.say("Merke dir Radio Bob für Wohnzimmer als meinen Rocksender.")
+    house.say("Ja.")
+    house.entity.hass.services.async_call.reset_mock()
+
+    refused = house.say("Spiele meinen Rocksender in der Werkstatt.")
+
+    assert "gehört nicht" in refused.speech
+    assert not any(service == "play_media" for _domain, service, _data in refused.calls)
+
+
+def test_media_alias_instance_selection_is_user_bound_and_revalidated(monkeypatch, tmp_path):
+    from _testhaus import HouseConversation
+
+    players = [_player(config_entry_id="mass-living"), _workshop_player()]
+    house = HouseConversation(monkeypatch, entities=players)
+    house.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "Radio Bob", "uri": "library://radio/42"}]
+    )
+    house.say("Merke dir Radio Bob als meinen Rocksender.")
+    house.user = "anna"
+    foreign = house.say("Wohnzimmer.")
+    assert "Soll ich" not in foreign.speech
+    house.user = "admin"
+    assert "Soll ich" in house.say("Wohnzimmer.").speech
+
+    house.entities[0] = replace(house.entities[0], config_entry_id="mass-changed")
+    refused = house.say("Ja.")
+
+    assert "nicht mehr gültig" in refused.speech
+    assert not (tmp_path / ".storage/homeintent_music_aliases.json").exists()
 
 
 def test_media_alias_store_rejects_direct_urls(tmp_path):
