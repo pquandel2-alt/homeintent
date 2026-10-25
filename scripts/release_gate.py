@@ -21,6 +21,8 @@ REQUIRED_CI_JOBS = frozenset(
         "Live-Testbett (echtes Home Assistant)",
         "Home Assistant 2026.9 Options Flow",
         "Learning Center mobile UI",
+        "MA-Vertrag (HA 2026.4.0)",
+        "MA-Vertrag (HA 2026.9.2)",
         "Hassfest",
         "Home Assistant Stable Smoke-Test",
         "HACS",

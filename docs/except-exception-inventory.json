@@ -189,17 +189,17 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._async_begin_transaction::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 253,
+      "line": 281,
       "scope": "AutomationExecutor._async_begin_transaction",
       "caught": "Exception",
-      "classification": "RETHROW",
-      "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
+      "classification": "ROLLBACK",
+      "reason": "Pause-Transaktion stellt Sidecar und YAML unter derselben Sperre wieder her; der ursprüngliche Fehler wird erneut geworfen.",
       "body_digest": "f27ca3babe2a047e"
     },
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._async_begin_transaction::2",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 292,
+      "line": 322,
       "scope": "AutomationExecutor._async_begin_transaction",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -209,7 +209,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_create_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 471,
+      "line": 563,
       "scope": "AutomationExecutor.async_create_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -219,7 +219,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_create_automation::2",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 494,
+      "line": 586,
       "scope": "AutomationExecutor.async_create_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -229,7 +229,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_create_automation::3",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 504,
+      "line": 596,
       "scope": "AutomationExecutor.async_create_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -239,17 +239,17 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_pause_automation_until::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 620,
+      "line": 770,
       "scope": "AutomationExecutor.async_pause_automation_until",
       "caught": "Exception",
       "classification": "RETHROW",
       "reason": "Bereinigung oder Diagnose erfolgt vor unverändertem erneutem Werfen.",
-      "body_digest": "675e4b910d79c00d"
+      "body_digest": "7cda57269778878b"
     },
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_delete_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 695,
+      "line": 864,
       "scope": "AutomationExecutor.async_delete_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -259,7 +259,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_delete_automation::2",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 700,
+      "line": 869,
       "scope": "AutomationExecutor.async_delete_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -269,7 +269,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._remove_entity_registry_entry::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 722,
+      "line": 891,
       "scope": "AutomationExecutor._remove_entity_registry_entry",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -279,7 +279,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor._async_set_initial_state::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 793,
+      "line": 962,
       "scope": "AutomationExecutor._async_set_initial_state",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -289,7 +289,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_resume_paused_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 878,
+      "line": 1070,
       "scope": "AutomationExecutor.async_resume_paused_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -299,7 +299,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_reschedule_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1038,
+      "line": 1230,
       "scope": "AutomationExecutor.async_reschedule_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -309,7 +309,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_set_owner::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1295,
+      "line": 1487,
       "scope": "AutomationExecutor.async_set_owner",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -319,7 +319,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_set_max_runs::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1382,
+      "line": 1574,
       "scope": "AutomationExecutor.async_set_max_runs",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -329,7 +329,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_replace_automation_actions::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1442,
+      "line": 1634,
       "scope": "AutomationExecutor.async_replace_automation_actions",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -339,7 +339,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_edit_automation::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1500,
+      "line": 1692,
       "scope": "AutomationExecutor.async_edit_automation",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -349,7 +349,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_replace_automation_section::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1558,
+      "line": 1750,
       "scope": "AutomationExecutor.async_replace_automation_section",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -359,7 +359,7 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_cleanup_expired_scheduled_automations::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1625,
+      "line": 1817,
       "scope": "AutomationExecutor.async_cleanup_expired_scheduled_automations",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -369,12 +369,12 @@
     {
       "id": "custom_components/homeintent/automation_executor.py::AutomationExecutor.async_rollback_last_change::1",
       "path": "custom_components/homeintent/automation_executor.py",
-      "line": 1854,
+      "line": 2033,
       "scope": "AutomationExecutor.async_rollback_last_change",
       "caught": "Exception",
       "classification": "ROLLBACK",
       "reason": "Transaktionaler Fehlerpfad stellt Zustand wieder her; der ursprüngliche Fehler bleibt maßgeblich.",
-      "body_digest": "65cdf776c2070838"
+      "body_digest": "3bde37d38135532f"
     },
     {
       "id": "custom_components/homeintent/automation_history.py::_write_atomic::1",
@@ -419,7 +419,7 @@
     {
       "id": "custom_components/homeintent/controllers/automation_management.py::AutomationManagementController.async_handle_management_confirmation::1",
       "path": "custom_components/homeintent/controllers/automation_management.py",
-      "line": 614,
+      "line": 632,
       "scope": "AutomationManagementController.async_handle_management_confirmation",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -429,7 +429,7 @@
     {
       "id": "custom_components/homeintent/controllers/automation_management.py::AutomationManagementController.async_handle_deletion_confirmation_reply::1",
       "path": "custom_components/homeintent/controllers/automation_management.py",
-      "line": 663,
+      "line": 681,
       "scope": "AutomationManagementController.async_handle_deletion_confirmation_reply",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -439,7 +439,7 @@
     {
       "id": "custom_components/homeintent/controllers/automation_management.py::AutomationManagementController.async_handle_toggle_result::1",
       "path": "custom_components/homeintent/controllers/automation_management.py",
-      "line": 700,
+      "line": 718,
       "scope": "AutomationManagementController.async_handle_toggle_result",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -449,7 +449,7 @@
     {
       "id": "custom_components/homeintent/controllers/automation_management.py::AutomationManagementController.async_handle_structure_edit_turn::1",
       "path": "custom_components/homeintent/controllers/automation_management.py",
-      "line": 1027,
+      "line": 1045,
       "scope": "AutomationManagementController.async_handle_structure_edit_turn",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -459,7 +459,7 @@
     {
       "id": "custom_components/homeintent/controllers/automation_management.py::AutomationManagementController.async_handle_action_edit_turn::1",
       "path": "custom_components/homeintent/controllers/automation_management.py",
-      "line": 1108,
+      "line": 1126,
       "scope": "AutomationManagementController.async_handle_action_edit_turn",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -469,7 +469,7 @@
     {
       "id": "custom_components/homeintent/controllers/automations.py::AutomationController._async_handle_automation_confirmation_reply::1",
       "path": "custom_components/homeintent/controllers/automations.py",
-      "line": 782,
+      "line": 933,
       "scope": "AutomationController._async_handle_automation_confirmation_reply",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -529,7 +529,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_report_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 840,
+      "line": 937,
       "scope": "InsightsController._async_report_answer",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -539,7 +539,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 1011,
+      "line": 1108,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -549,7 +549,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::2",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 1015,
+      "line": 1112,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",

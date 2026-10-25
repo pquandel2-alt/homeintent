@@ -46,6 +46,13 @@ def test_exact_sha_with_every_required_job_passes():
     assert validate_ci_run(SHA, [_run()], _jobs()) == 2
 
 
+def test_music_assistant_contract_matrix_is_release_blocking():
+    assert {
+        "MA-Vertrag (HA 2026.4.0)",
+        "MA-Vertrag (HA 2026.9.2)",
+    } <= REQUIRED_CI_JOBS
+
+
 @pytest.mark.parametrize(
     ("status", "conclusion"),
     [

@@ -6,7 +6,25 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 21. September 2026
+Stand: 25. Oktober 2026
+
+## Release Candidate 7.12.0
+
+- [x] typisierter Automations-Slotdialog mit Scope, TTL, Korrektur, Abbruch,
+  Themenwechsel, expliziten Bedingungen und No-Write-Zwischenständen
+- [x] History Schema 3 enthält keine Vollsnapshots für neue Single- oder
+  Multi-Target-Einträge
+- [x] atomarer Pause-/Resume-Undo prüft und restauriert Ziel und Helper
+  gemeinsam; fremde Objekte bleiben erhalten
+- [x] Music-Assistant-Multiinstanzauflösung und benutzergebundene Rückfrage
+- [x] echter HA-Komponenten-/Schemavertrag automatisiert geprüft
+- [ ] echter Music-Assistant-Server mit Audioplayer automatisiert geprüft –
+  bewusst nicht behauptet; dokumentierte manuelle Matrix vorhanden
+- [x] Entwicklungsbenchmarks: 471/507 und 102/107, sämtliche Safety-Zähler 0
+- [x] Korpus-Shadow: 4.153 gemeinsame Signaturen, 0 geändert; 38 neue
+- [ ] vollständige Gesamtsuite, Coverage, Pyright/Pyflakes, Hassfest, HACS,
+  HA-Matrix und Performance für den finalen Release-Commit – vor Tag auszuführen
+- [ ] CI für exakt den finalen Commit, Tag und GitHub Release
 
 ## V10 Completion / 5.0.2
 

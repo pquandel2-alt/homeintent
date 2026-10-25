@@ -86,6 +86,32 @@ aktuellen Zustand.
 HomeIntent überschreibt eine gleichzeitig im UI geänderte Datei nicht blind.
 Ein erkannter Dateikonflikt wird abgebrochen und protokolliert.
 
+## Eine Automationsrückfrage lässt sich nicht fortsetzen
+
+Antworten müssen aus demselben Conversation-Scope, vom selben angemeldeten
+Benutzer und – sofern übermittelt – von demselben Satelliten/Gerät kommen. Nach
+Ablauf der Dialog-TTL oder einem Home-Assistant-Neustart ist der flüchtige
+Entwurf absichtlich verworfen. Beginne den Wunsch dann neu. Ein vollständiger
+neuer Befehl mit „mach lieber …“ verwirft den alten Entwurf; ein späteres „Ja“
+kann ihn nicht wiederbeleben.
+
+## „Rückgängig“ meldet einen alten Pause-Eintrag
+
+Schema-1/2-Einträge ohne vollständiges beweiskräftiges Mehrziel-Delta werden
+nicht teilweise ausgeführt. Der Eintrag bleibt sichtbar an der LIFO-Spitze.
+Nach manueller Prüfung kann ein angemeldeter Administrator sagen: „Verwirf den
+letzten nicht rückgängig machbaren Verlaufseintrag.“ HomeIntent fragt nochmals
+nach; dabei werden keine Automationen oder Metadaten verändert. Normale
+beschädigte oder unterstützte Einträge lassen sich damit nicht überspringen.
+
+## Mehrere Music-Assistant-Instanzen
+
+Nenne einen vorhandenen freigegebenen MA-Player oder einen Raum mit genau einem
+MA-Player. Ohne eindeutige Zuordnung fragt HomeIntent nach und speichert oder
+spielt nichts. Ändert sich die `config_entry_id` zwischen Vorschau und „Ja",
+wird die Alias-Erstellung abgelehnt. Ein Alias aus Instanz A lässt sich nicht
+auf einem Player aus Instanz B wiedergeben.
+
 ## Datenschutzfreundliche Diagnose
 
 Unter der HomeIntent-Integration kann eine Diagnose heruntergeladen werden.

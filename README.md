@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.11.0**
+- Aktuelle Version: **7.12.0**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -117,6 +117,15 @@ ausschließlich registrierte Home-Assistant-Aktionen. Direkte Medien-URLs
   werden nicht erfunden.
 - Kalender- und Automationssprache deckt dokumentierte Strukturen ab, nicht
   jede denkbare natürliche Formulierung.
+- Der neue Slotdialog deckt unvollständige zeitliche, solare und die
+  dokumentierten Ereignisformen ab. Weitere wiederkehrende und komplex
+  verschachtelte Fragmente laufen noch über die bestehenden
+  Compatibility-Dialoge oder werden sicher abgelehnt.
+- Offene Slotentwürfe sind absichtlich flüchtig und werden nach Neustart nicht
+  wieder aufgenommen.
+- Music Assistant ist automatisiert gegen echten Home-Assistant-Komponentencode
+  und mit Service-Fakes geprüft; ein echter MA-Server samt Audiowiedergabe ist
+  nur durch die dokumentierte manuelle Matrix abgedeckt.
 - Proaktive Raumansprache benötigt aktuelle Präsenzdaten und eine eindeutige
   Satellitenzuordnung; andernfalls wird konservativ ausgewichen oder nichts
   ausgeführt.
@@ -138,24 +147,26 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-## Version 7.11.0
+## Version 7.12.0
 
-7.11.0 ergänzt ausdrücklich bestätigte, benutzergebundene Music-Assistant-
-Aliase und den ersten eng begrenzten typisierten Ausschnitt der NLU-Roadmap
-Phase 4. Bereits vorhandene, eindeutig benannte MA-Gruppen-Player können als
-normale Ziele verwendet werden; dynamische Gruppen werden mangels belegtem
-stabilem HA-/MA-Aktionsvertrag nicht erzeugt. Die weiterhin bestehenden
-Compatibility-Pfade und alle Grenzen stehen in den
-[Release Notes](docs/release-notes-7.11.0.md).
+7.12.0 vervollständigt den typisierten Mehrturn-Dialog für unvollständige
+zeitliche Automationswünsche: Slots werden benutzer-, Gesprächs- und
+Satelliten-gebunden ergänzt, korrigiert oder verworfen; erst ein vollständiger
+validierter Entwurf erreicht Vorschau und Bestätigung. Der Automationsverlauf
+speichert neue Änderungen als Schema-3-Zieldeltas und kann Pause/Fortsetzen
+atomar über Ziel und Helper zurücknehmen. Medienaliase lösen mehrere
+Music-Assistant-Instanzen anhand ausdrücklicher Player-/Raumevidenz auf oder
+fragen gezielt nach. Details und ehrlich ausgewiesene Testgrenzen stehen in den
+[Release Notes](docs/release-notes-7.12.0.md).
 
-Geprüfter Release-Stand von Version 7.11.0: Die verpflichtenden GitHub-Prüfungen
+Geprüfter Release-Stand von Version 7.12.0: Die verpflichtenden GitHub-Prüfungen
 müssen für den exakten Release-Commit erfolgreich abgeschlossen sein, bevor
 das Tag und der GitHub-Release erstellt werden.
 
 Die versionierte Korpusbaseline ist
-[`corpus-signatures-7.11.0.json`](docs/perf/corpus-signatures-7.11.0.json).
+[`corpus-signatures-7.12.0.json`](docs/perf/corpus-signatures-7.12.0.json).
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.11.0.md), im
+in den [Release Notes](docs/release-notes-7.12.0.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 

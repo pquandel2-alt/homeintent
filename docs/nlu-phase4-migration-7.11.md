@@ -29,6 +29,21 @@ Metamorphische Tests decken Wortstellung, Höflichkeit, Füllwörter,
 Wunschformen, Zahlwort/Ziffer, Datumsvarianten, Sonnenoffsets, Negation,
 Hypothese, bedeutungstragende Zusätze, Mehrdeutigkeit und fehlende Slots ab.
 
+## Erweiterung in 7.12.0
+
+Der unvollständige Zukunfts-/Sonnenrouter besitzt nun einen eigenen
+`PendingAutomationSlotDraft`. Er speichert Besitzer, Scope, TTL, Intent,
+Trigger-/Zeit-/Sonnenfelder, Wiederholung/Gültigkeit, Aktion/Ziel/Wert,
+Bedingungen/Ausnahmen, Negation/Modalität, Slot-Provenienz, fehlende Slots,
+Mehrdeutigkeiten und bereits geerdete Entity-IDs. Antworten werden als
+typisierte Projektionen eingearbeitet; Rohtexte werden nicht verkettet.
+
+Die Pflichtslotmatrix unterscheidet Geräteaktion, Heizungs-Setpoint,
+Zustandsüberwachung, Wiederholung und ausdrücklich bedingte Konstruktion. Eine
+Bedingung ist nicht mehr pauschal Pflicht. Vollständige Entwürfe gehen durch
+Grounding, Capability-Prüfung, `AutomationModel`, Validator, Vorschau,
+Bestätigung und den bestehenden `AutomationExecutor`.
+
 ## Noch nicht migriert
 
 Die folgenden Bereiche sind weiterhin Compatibility-/Legacy-Pfade und daher
@@ -44,14 +59,14 @@ nicht als autoritativ migriert zu bezeichnen:
 
 Diese Pfade werden erst entfernt, wenn ein Shadow-Vergleich für die jeweilige
 Capability-Matrix Parität zeigt. Bis dahin entscheidet der neue Router nur in
-seinem schmalen unvollständigen Zukunfts-/Sonnen-Ausschnitt; vollständige
+seinem typisierten unvollständigen Zukunfts-/Sonnen-Ausschnitt; vollständige
 Äußerungen werden unverändert an die vorhandenen Adapter weitergegeben.
 
 ## Sicherheitsinvarianten
 
 Der migrierte Router kann nur `NOT_APPLICABLE`, `COMPATIBILITY`, `INCOMPLETE`
-oder `UNSAFE` liefern. Nur `INCOMPLETE` öffnet einen Rückfragedialog. Er besitzt
-keinen Ausführungspfad. Queries, Negation, Hypothesen, unvollständige Sätze,
+oder `UNSAFE` liefern. Nur `INCOMPLETE` öffnet einen Rückfragedialog. Der
+Dialog selbst besitzt keinen Schreibpfad. Queries, Negation, Hypothesen, unvollständige Sätze,
 unbekannte bedeutungstragende Zusätze und mehrdeutige Ziele dürfen dadurch
 keinen reduzierten Schreibplan erhalten. Das globale Benchmark-Gate verlangt
 weiterhin exakt null unsichere Ausführungen und null Wrong-Target-/Safety-

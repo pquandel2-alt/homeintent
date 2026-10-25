@@ -39,7 +39,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.11.0.json
+          --check docs/perf/corpus-signatures-7.12.0.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
@@ -186,6 +186,7 @@ jobs:
           custom_components/homeintent/nlu/automation_lexicon.py
           custom_components/homeintent/nlu/measurement.py
           custom_components/homeintent/nlu/automation_turn_router.py
+          custom_components/homeintent/nlu/automation_slot_dialog.py
           custom_components/homeintent/notification_target.py
           custom_components/homeintent/notification_request.py
           custom_components/homeintent/native_timer.py
@@ -197,6 +198,7 @@ jobs:
           custom_components/homeintent/entity_scope.py
           custom_components/homeintent/risk.py
           custom_components/homeintent/automation_history.py
+          custom_components/homeintent/automation_undo.py
           custom_components/homeintent/query_target.py
           custom_components/homeintent/capability_audit.py
           custom_components/homeintent/household_query.py

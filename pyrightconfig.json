@@ -8,6 +8,7 @@
     "custom_components/homeintent/entity_scope.py",
     "custom_components/homeintent/risk.py",
     "custom_components/homeintent/automation_history.py",
+    "custom_components/homeintent/automation_undo.py",
     "custom_components/homeintent/query_target.py",
     "custom_components/homeintent/capability_audit.py",
     "custom_components/homeintent/household_query.py",
@@ -69,6 +70,7 @@
     ,"custom_components/homeintent/notification_target.py"
     ,"custom_components/homeintent/notification_request.py"
     ,"custom_components/homeintent/nlu/automation_turn_router.py"
+    ,"custom_components/homeintent/nlu/automation_slot_dialog.py"
   ],
   "reportMissingImports": false
 }

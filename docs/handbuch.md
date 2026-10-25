@@ -693,6 +693,19 @@ Schreibvorgänge auf `automations.yaml` sind abgesichert durch:
 - Abgleich nach `automation.reload` und
 - einen begrenzten Verlauf der letzten zehn Automationsstände.
 
+Seit 7.12.0 enthält dieser Verlauf für neue Einträge ausschließlich
+zielbezogene Schema-3-Deltas. Pause und Fortsetzen speichern Ziel und
+Resume-Helper als ein geordnetes Mehrziel-Delta und werden nur gemeinsam
+zurückgenommen. Fremde Automationen und Metadaten bleiben erhalten.
+
+Unvollständige zeitliche Automationswünsche können über mehrere Turns ergänzt
+werden, zum Beispiel „Morgen nach Sonnenuntergang noch warm“ → „Im Wohnzimmer“
+→ „Stell die Heizung auf 21 Grad“. Jeder Turn füllt nur typisierte Slots; vor
+der vollständigen Vorschau wird nichts geschrieben. „Nein, lieber 20 Grad“
+ändert nur den Setpoint, „Vergiss es“ verwirft alles. Bedingungen sind nur dann
+Pflicht, wenn die Konstruktion sie ausdrücklich ankündigt, etwa mit „nur wenn“
+oder „sofern“.
+
 ## Sicherheit
 
 ### Niemals bei Mehrdeutigkeit raten
@@ -797,6 +810,11 @@ Wenn Home Assistant eine Benutzer-ID bereitstellt, kann nur derselbe Benutzer
 eine offene Service- oder Automationserstellungsbestätigung abschließen.
 Sprach-Pipelines ohne authentifizierte Benutzerkennung bleiben aus
 Kompatibilitätsgründen über die Integrationsoptionen steuerbar.
+
+Persönliche Mehrturn-Automationsentwürfe und Music-Assistant-Aliasdialoge sind
+enger: Sie benötigen einen authentifizierten Benutzer und sind zusätzlich an
+Conversation-, Satelliten- und Geräte-Scope gebunden. Sie sind nicht persistent
+und verfallen nach der Dialog-TTL.
 
 ### Audit und Diagnose
 
@@ -913,6 +931,12 @@ Für zuverlässige Ergebnisse:
   gefragt hat, und unterliegt den Regeln für Nicht-Administratoren.
 - Daueranweisungen decken derzeit genau eine Satzform ab (Licht aus, wenn
   niemand zu Hause ist); alles andere bleibt eine normale Automation.
+- Der neue Slotdialog deckt zeitliche/solare Geräteaktionen,
+  Heizungs-Setpoints und ausdrücklich gebundene Bedingungen ab. Freie
+  universelle deutsche Automationsdialoge bleiben Compatibility-Pfade.
+- Echte Music-Assistant-Wiedergabe gegen einen gestarteten MA-Server und
+  Audioplayer ist nicht Teil der CI; echte HA-Schemas sind automatisiert,
+  der Server-/Audio-E2E ist als manuelle Matrix dokumentiert.
 
 ## Architektur
 

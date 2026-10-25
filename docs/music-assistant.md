@@ -47,6 +47,16 @@ speichert erst nach einem ausdrücklichen „Ja“. Gespeichert werden Besitzer,
 `config_entry_id`, Medientyp, kanonischer Name und die von MA gelieferte sichere
 Media-ID; direkte Web-, Datei- und Daten-URLs sind ausgeschlossen.
 
+Bei mehreren MA-Instanzen wird die Instanz in dieser Reihenfolge bestimmt:
+ausdrücklich genannter MA-Player, vorhandener eindeutig genannter
+MA-Gruppenplayer, Raum mit genau einem MA-Player, eindeutige aktuelle
+Satellitenzuordnung und zuletzt genau eine verfügbare MA-Instanz. Bleiben
+mehrere Möglichkeiten, fragt HomeIntent nach Player beziehungsweise Raum und
+sucht erst nach der benutzergebundenen Antwort ausschließlich in dessen
+`config_entry_id`. Reihenfolge, interne ID und „erster Treffer“ sind keine
+Auswahlevidenz. Player und Instanz werden vor dem speichernden „Ja“ erneut
+geprüft.
+
 „Spiele meinen Rocksender im Wohnzimmer“ löst ausschließlich einen exakt
 gleich geschriebenen Alias des angemeldeten Benutzers auf. Vor jeder
 Wiedergabe wird der kanonische Eintrag erneut exakt in derselben MA-Instanz
@@ -76,6 +86,28 @@ Antwortfelder `artists`, `albums`, `tracks`, `playlists`, `radio`, deren
 `name`/`uri` sowie `media_id`, `media_type` und `enqueue` für `play_media`.
 Dabei wird echter HA-Komponentencode und dessen echtes Schema geladen, aber
 kein Music-Assistant-Server gestartet und keine Wiedergabe ausgelöst.
+
+### E2E-Status und manuelle Matrix
+
+Ein automatischer Test mit echtem Music-Assistant-Server und physischem oder
+virtuellem Audioplayer ist **nicht Teil der verpflichtenden CI**. Im aktuellen
+Repository existiert kein deterministischer lokaler MA-Testprovider samt
+kontrolliertem Player, der ohne Providerkonto und ohne instabile öffentliche
+Streamingquelle reale Wiedergabe beweist. Daher wird keine echte Wiedergabe
+behauptet. Automatisiert sind echte HA-Komponenten-/Serviceschemas sowie der
+HomeIntent-Pfad mit Fakes geprüft.
+
+Für einen manuellen E2E-Test: Home Assistant 2026.4.0 und die im Stable-CI-Job
+angegebene aktuelle Version jeweils mit einer kompatiblen Music-Assistant-
+Version installieren, zwei MA-Config-Entries mit je einem freigegebenen Player
+anlegen und einen lokalen Testprovider mit einer lokalen Audiodatei verwenden.
+Dann (1) denselben Sendernamen in beiden Instanzen bereitstellen, (2) den Alias
+ohne Player anlegen und die Rückfrage prüfen, (3) einen Player wählen und beim
+Search-Aufruf dessen `config_entry_id` protokollieren, (4) Vorschau bestätigen
+und die zweite identische Suche prüfen, (5) den Alias auf genau diesem Player
+abspielen und `media_id`, `media_type`, `enqueue` sowie hörbare Wiedergabe
+prüfen, (6) den anderen Instanzplayer wählen und den fail-closed Abbruch prüfen.
+Private URLs, Tokens und vollständige Serviceantworten gehören nicht ins Log.
 
 Explizite Queue-Angaben werden als geschlossene Planwerte behandelt:
 „als Nächstes“ verwendet `next`, „zur Warteschlange hinzu“ verwendet `add`,

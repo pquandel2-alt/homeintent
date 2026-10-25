@@ -1,9 +1,11 @@
 # Versionierte Qualitätsgrenzen des Entwicklungsbenchmarks
 
 `scripts/dev_benchmark.py --check` liest die zum Release gehörende Datei
-`dev-benchmark-quality-gates-7.11.0.json`. Die Grenzen wurden nach Reparatur
-des Conversation-Scope-Lookups aus vollständigen Läufen beider unveränderter
-Korpora übernommen und gegenüber 7.10.1 nicht abgesenkt. Das Skript besitzt
+`dev-benchmark-quality-gates-7.12.0.json`. Die Grenzen wurden nach Reparatur
+des Conversation-Scope-Lookups aus vollständigen Läufen übernommen. Im
+Standardkorpus blieben alle bestehenden Fälle unverändert; vier neue
+Mehrturnfälle kamen hinzu. Die Grenzen wurden gegenüber 7.10.1 nicht
+abgesenkt. Das Skript besitzt
 absichtlich keinen Schalter, der diese Datei aus einem aktuellen,
 möglicherweise schlechteren Lauf erzeugt.
 

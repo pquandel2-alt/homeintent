@@ -1,9 +1,5 @@
 # HomeIntent 7.11.0
 
-Diese Datei beschreibt den vorgesehenen Minor-Release-Inhalt. Sie bestätigt
-weder Tag noch Veröffentlichung; beides ist erst nach grünen Pflichtjobs für
-denselben `main`-Commit zulässig.
-
 ## Music Assistant
 
 - Angemeldete Benutzer können einen einzelnen, exakt gefundenen

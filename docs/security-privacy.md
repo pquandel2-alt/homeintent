@@ -45,3 +45,17 @@ werden nicht an Player übergeben. Nur ein exakt benannter, eindeutiger Treffer
 und ein freigegebener, verfügbarer Music-Assistant-Player ergeben einen Plan;
 dieser läuft anschließend durch dieselbe Execution Policy wie andere
 Geräteaktionen. HomeIntent hält keinen dauerhaften Medienbibliotheks-Cache.
+
+Offene Automations- und MA-Instanzdialoge sind flüchtiger RAM-Zustand. Ihr
+Schlüssel bindet Conversation-ID, authentifizierten Benutzer sowie vorhandene
+Satelliten- und Geräte-ID; ein Administrator erbt dadurch keinen fremden
+Sprachdialog. Sie verfallen nach der Dialog-TTL und werden nach Neustart nicht
+wiederhergestellt. Anonyme Turns dürfen keinen persönlichen Automationsentwurf
+oder Medienalias eröffnen.
+
+Automation-History Schema 3 enthält nur die betroffenen Zielobjekte und deren
+Sidecarwerte. Vollständige Automationsdateien, fremde Metadaten und deren
+Lifecycle-Tokens werden in neuen Einträgen nicht kopiert. Lifecycle-Token,
+Zugangsdaten, Auth-Token, private Dateipfade und vollständige interne
+Serviceantworten werden weder in Assist-Antworten noch in normalen Logs
+ausgegeben.
