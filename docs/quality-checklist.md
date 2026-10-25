@@ -21,10 +21,13 @@ Stand: 25. Oktober 2026
 - [ ] echter Music-Assistant-Server mit Audioplayer automatisiert geprüft –
   bewusst nicht behauptet; dokumentierte manuelle Matrix vorhanden
 - [x] Entwicklungsbenchmarks: 471/507 und 102/107, sämtliche Safety-Zähler 0
-- [x] Korpus-Shadow: 4.153 gemeinsame Signaturen, 0 geändert; 38 neue
-- [ ] vollständige Gesamtsuite, Coverage, Pyright/Pyflakes, Hassfest, HACS,
-  HA-Matrix und Performance für den finalen Release-Commit – vor Tag auszuführen
-- [ ] CI für exakt den finalen Commit, Tag und GitHub Release
+- [x] Korpus-Shadow: 4.153 gemeinsame Signaturen, 0 geändert; 39 neue
+- [x] Code-RC `18a286d42bd88a174aea2ca748ad2924d7bc50e8`:
+  Gesamtsuite 10.033 bestanden/12 übersprungen, Coverage 90 Prozent,
+  Pyright samt Strict-Profilen 0/0, Pyflakes, Hassfest, HACS, HA-Matrix und
+  Performance grün in [CI 40173229191](https://github.com/pquandel2-alt/homeintent/actions/runs/40173229191)
+- [ ] CI für exakt den finalen Dokumentations-Commit, Tag und GitHub Release –
+  durch den Release-Workflow vor Veröffentlichung zu erzwingen
 
 ## V10 Completion / 5.0.2
 

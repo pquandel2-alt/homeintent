@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "release": "7.12.0",
-  "source_commit": "a934a533a3e127e89e9968bfb005a2a956f461f4",
+  "source_commit": "18a286d42bd88a174aea2ca748ad2924d7bc50e8",
   "policy": {
     "automatic_updates": false,
     "regression_justification_directory": "docs/perf/regression-justifications",
