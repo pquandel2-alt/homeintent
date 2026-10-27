@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -229,3 +230,37 @@ def test_unavailable_scene_is_still_rejected():
         entity, ServiceCallPlan("scene", "turn_on", entity.entity_id)
     )
     assert result.executed is False
+
+
+def test_unverified_background_script_is_not_observed_as_learning_success():
+    hass = HomeAssistant()
+    _ha_stub.register_script(hass, "script.background", [
+        {"action": "persistent_notification.create", "data": {"message": "Test"}},
+    ])
+    hass.services.async_remove("script", "background")
+    entity = EntitySnapshot(
+        "script.background",
+        "Hintergrund",
+        "script",
+        "off",
+        capabilities=frozenset({"TURN_ON"}),
+    )
+    monitor = Mock()
+
+    result = asyncio.run(
+        async_execute_service_plan(
+            hass,
+            ServiceCallPlan("script", "turn_on", entity.entity_id),
+            [entity],
+            {},
+            is_admin=True,
+            user_id="admin",
+            confirmed=True,
+            effect_monitor=monitor,
+        )
+    )
+
+    assert result.executed
+    assert result.script_outcome is not None
+    assert result.script_outcome.status.value == "accepted"
+    monitor.register.assert_not_called()

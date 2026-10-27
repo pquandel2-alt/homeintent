@@ -170,3 +170,21 @@ def build_undo_plan(
             return None
         plans.extend(inverse)
     return UndoPlan(tuple(plans), requested_by_user_id) if plans else None
+
+
+def restrict_undo_plan(
+    undo: UndoPlan | None, entity_ids: frozenset[str]
+) -> UndoPlan | None:
+    """Keep inverse calls only for targets confirmed as successfully changed."""
+    if undo is None or not entity_ids:
+        return None
+    plans = tuple(
+        plan
+        for plan in undo.plans
+        if (
+            (plan.entity_id in entity_ids)
+            if isinstance(plan.entity_id, str)
+            else bool(plan.entity_id) and set(plan.entity_id) <= entity_ids
+        )
+    )
+    return UndoPlan(plans, undo.requested_by_user_id) if plans else None

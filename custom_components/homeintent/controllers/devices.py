@@ -28,7 +28,12 @@ from ..areas import AreaSnapshot
 from ..audit_log import AuditTrail
 from ..const import NOT_UNDERSTOOD_TEXT
 from ..monitoring_management import names_managed_object
-from ..controllers.replies import confirmation_question, execution_failure_text, with_effect_summary
+from ..controllers.replies import (
+    confirmation_question,
+    execution_failure_text,
+    with_effect_summary,
+    with_planned_effect_summary,
+)
 from ..device_result import DeviceControlResult
 from ..effect_graph import build_plan_effects
 from ..engine import CommandPlan, MatchResult, NluEngine
@@ -53,7 +58,12 @@ from ..security_control import conversation_user_id, user_is_admin
 from ..semantic_dialog import continue_semantic_dialog, start_semantic_dialog
 from ..service_call import QUERY_INTENTS, ServiceCallPlan
 from ..service_executor import async_execute_service_plan, confirmed_scope
-from ..undo import build_undo_plan, UndoPlan
+from ..script_execution_observer import (
+    ScriptExecutionStatus,
+    script_execution_speech,
+)
+from ..batch_execution import batch_execution_speech
+from ..undo import build_undo_plan, restrict_undo_plan, UndoPlan
 from ..world_model import WorldModel
 
 _LOGGER = logging.getLogger(__name__)
@@ -315,14 +325,48 @@ class DeviceController:
                 )
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    execution_failure_text(execution),
+                    batch_execution_speech(execution.batch_result)
+                    if execution.batch_result is not None
+                    else execution_failure_text(execution),
                 )
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            result = replace(
-                result, response_text=with_effect_summary(result.response_text, execution)
-            )
+            if execution.batch_result is not None:
+                stored = self._context_store.get(user_input.conversation_id)
+                if stored is not None:
+                    self._context_store.set(
+                        user_input.conversation_id,
+                        replace(
+                            stored,
+                            pending_undo=restrict_undo_plan(
+                                stored.pending_undo,
+                                execution.batch_result.succeeded_entity_ids,
+                            ),
+                        ),
+                    )
+            response_text = with_effect_summary(result.response_text, execution)
+            if (
+                execution.batch_result is not None
+                and not execution.batch_result.fully_successful
+            ):
+                response_text = batch_execution_speech(execution.batch_result)
+            elif (
+                execution.script_outcome is not None
+                and result.command is not None
+                and result.command.entities
+            ):
+                response_text = script_execution_speech(
+                    result.command.entities[0].friendly_name,
+                    execution.script_outcome,
+                )
+                if execution.script_outcome.status is ScriptExecutionStatus.COMPLETED:
+                    response_text = with_effect_summary(response_text, execution)
+                else:
+                    response_text = with_planned_effect_summary(
+                        response_text, execution
+                    )
+            result = replace(result, response_text=response_text)
 
         if (
             result.command is not None and result.command.intent in QUERY_INTENT_NAMES

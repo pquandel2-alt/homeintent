@@ -45,6 +45,14 @@ _LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class ConfirmedPlanScope:
+    """Exact effective target set and risk shown for one proposed plan."""
+
+    risk: RiskLevel
+    targets: frozenset[str]
+
+
+@dataclass(frozen=True)
 class ConfirmedScope:
     """What a "Ja" agreed to: the risk and effective targets of the preview.
 
@@ -55,6 +63,7 @@ class ConfirmedScope:
 
     risk: RiskLevel
     targets: frozenset[str]
+    plans: tuple[ConfirmedPlanScope, ...] = ()
 
 
 CHANGED_SINCE_CONFIRMATION = (
@@ -84,6 +93,7 @@ def confirmed_scope(
     """The scope a pending confirmation covers, taken when the question is asked."""
     risk = RiskLevel.LOW
     targets: set[str] = set()
+    bindings: list[ConfirmedPlanScope] = []
     for plan in plans:
         effects = build_plan_effects(hass, plan)
         decision = evaluate_service_plan(
@@ -91,8 +101,26 @@ def confirmed_scope(
             origin=origin, binding_confirmed=binding_confirmed,
         )
         risk = max(risk, decision.risk)
-        targets |= _effective_targets(plan, effects)
-    return ConfirmedScope(risk, frozenset(targets))
+        effective = _effective_targets(plan, effects)
+        targets |= effective
+        bindings.append(ConfirmedPlanScope(decision.risk, effective))
+    return ConfirmedScope(risk, frozenset(targets), tuple(bindings))
+
+
+def _confirmation_scope_changed(
+    decision: PolicyDecision,
+    effective_targets: frozenset[str],
+    scope: ConfirmedScope,
+) -> bool:
+    """Return whether this is no longer one exact plan shown to the user."""
+    if scope.plans:
+        return not any(
+            effective_targets == item.targets and decision.risk <= item.risk
+            for item in scope.plans
+        )
+    # Compatibility for persisted/tests scopes created before per-plan
+    # bindings existed. They remain fail-closed for additions and risk.
+    return decision.risk > scope.risk or not effective_targets <= scope.targets
 
 
 @dataclass(frozen=True)
@@ -132,6 +160,33 @@ async def async_execute_service_plan(
     event-driven) before the reply is decided. A write that did not run is
     ``NOT_DONE``.
     """
+    target_ids = (
+        (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+    )
+    batch_domain = _independent_batch_domain(plan, entities)
+    if (
+        len(target_ids) > 1
+        and batch_domain in {"light", "cover"}
+        and plan.service
+        in {"turn_on", "turn_off", "open_cover", "close_cover", "set_cover_position"}
+    ):
+        return await _async_execute_independent_batch(
+            hass,
+            plan,
+            tuple(entities),
+            options,
+            is_admin=is_admin,
+            user_id=user_id,
+            confirmed=confirmed,
+            audit_trail=audit_trail,
+            audit_actor_id=audit_actor_id,
+            effect_monitor=effect_monitor,
+            origin=origin,
+            attended=attended,
+            binding_confirmed=binding_confirmed,
+            context=context,
+            scope=scope,
+        )
     names = {entity.entity_id: entity.friendly_name for entity in entities}
     expectations = expectations_for(plan, lambda entity_id: _snapshot(hass, entity_id), names)
     result = await _async_execute_service_plan(
@@ -157,6 +212,227 @@ async def async_execute_service_plan(
     elif not defer_outcome(pending):
         report_outcome(TurnOutcomeKind.UNCONFIRMED)
     return result
+
+
+async def _async_execute_independent_batch(
+    hass: HomeAssistant,
+    plan: ServiceCallPlan,
+    entities: Sequence[EntitySnapshot],
+    options: Mapping[str, object],
+    *,
+    is_admin: bool,
+    user_id: str | None,
+    confirmed: bool,
+    audit_trail: AuditTrail | None,
+    audit_actor_id: str | None,
+    effect_monitor: EffectMonitor | None,
+    origin: PlanOrigin,
+    attended: bool,
+    binding_confirmed: bool,
+    context: Context | None,
+    scope: ConfirmedScope | None,
+) -> ExecutionResult:
+    """Preflight every target, then run only independent validated targets."""
+
+    target_ids = tuple(plan.entity_id) if not isinstance(plan.entity_id, str) else (plan.entity_id,)
+    by_id = {entity.entity_id: entity for entity in entities}
+    names = {
+        entity_id: by_id[entity_id].friendly_name
+        if entity_id in by_id
+        else entity_id
+        for entity_id in target_ids
+    }
+    overall_effects = build_plan_effects(hass, plan)
+    overall_decision = evaluate_service_plan(
+        plan,
+        list(entities),
+        options,
+        is_admin=is_admin,
+        user_id=user_id,
+        effects=overall_effects,
+        origin=origin,
+        attended=attended,
+        binding_confirmed=binding_confirmed,
+    )
+    if overall_decision.risk > RiskLevel.LOW:
+        # Critical/dependent batches retain the established all-or-nothing
+        # path. This helper is only for independent everyday operations.
+        return await _async_execute_service_plan(
+            hass,
+            plan,
+            tuple(entities),
+            options,
+            is_admin=is_admin,
+            user_id=user_id,
+            confirmed=confirmed,
+            audit_trail=audit_trail,
+            audit_actor_id=audit_actor_id,
+            effect_monitor=effect_monitor,
+            origin=origin,
+            attended=attended,
+            binding_confirmed=binding_confirmed,
+            context=context,
+            scope=scope,
+        )
+    if overall_decision.outcome is PolicyOutcome.DENY or (
+        overall_decision.outcome is PolicyOutcome.CONFIRM and not confirmed
+    ):
+        status = (
+            BatchTargetStatus.UNAUTHORIZED
+            if overall_decision.outcome is PolicyOutcome.DENY
+            else BatchTargetStatus.NOT_CONFIRMED
+        )
+        batch = BatchExecutionResult(
+            plan,
+            tuple(
+                BatchTargetResult(
+                    entity_id,
+                    names[entity_id],
+                    status,
+                    overall_decision.reason,
+                )
+                for entity_id in target_ids
+            ),
+        )
+        for _entity_id in target_ids:
+            report_outcome(TurnOutcomeKind.NOT_DONE)
+        return ExecutionResult(
+            False,
+            overall_decision,
+            overall_decision.reason,
+            batch_result=batch,
+        )
+
+    preflight: dict[str, BatchTargetResult] = {}
+    runnable: list[tuple[EntitySnapshot, ServiceCallPlan]] = []
+    required = _required_capabilities(plan)
+    confirmed_targets_changed = (
+        confirmed
+        and scope is not None
+        and _confirmation_scope_changed(
+            overall_decision, _effective_targets(plan, overall_effects), scope
+        )
+    )
+    for entity_id in target_ids:
+        entity = by_id.get(entity_id)
+        if entity is None:
+            # ``entities`` is the exposed HomeIntent snapshot.  A plan target
+            # absent from it has no authority merely because its entity id was
+            # present in caller data.
+            preflight[entity_id] = BatchTargetResult(
+                entity_id, names[entity_id], BatchTargetStatus.UNAUTHORIZED
+            )
+            continue
+        if _state_is_unreliable(entity):
+            preflight[entity_id] = BatchTargetResult(
+                entity_id, names[entity_id], BatchTargetStatus.UNAVAILABLE
+            )
+            continue
+        if required and entity.capabilities and not required <= entity.capabilities:
+            preflight[entity_id] = BatchTargetResult(
+                entity_id, entity.friendly_name, BatchTargetStatus.UNSUPPORTED
+            )
+            continue
+        child = ServiceCallPlan(plan.domain, plan.service, entity_id, dict(plan.data))
+        decision = evaluate_service_plan(
+            child,
+            list(entities),
+            options,
+            is_admin=is_admin,
+            user_id=user_id,
+            effects=build_plan_effects(hass, child),
+            origin=origin,
+            attended=attended,
+            binding_confirmed=binding_confirmed,
+        )
+        if decision.outcome is PolicyOutcome.DENY:
+            preflight[entity_id] = BatchTargetResult(
+                entity_id,
+                entity.friendly_name,
+                BatchTargetStatus.UNAUTHORIZED,
+                decision.reason,
+            )
+        elif confirmed_targets_changed or (
+            decision.outcome is PolicyOutcome.CONFIRM and not confirmed
+        ):
+            preflight[entity_id] = BatchTargetResult(
+                entity_id, entity.friendly_name, BatchTargetStatus.NOT_CONFIRMED
+            )
+        else:
+            runnable.append((entity, child))
+
+    # The complete preflight above finishes before this first write.
+    outcomes = dict(preflight)
+    any_executed = False
+    execution_id: str | None = None
+    for entity, child in runnable:
+        result = await _async_execute_service_plan(
+            hass,
+            child,
+            tuple(entities),
+            options,
+            is_admin=is_admin,
+            user_id=user_id,
+            confirmed=confirmed,
+            audit_trail=audit_trail,
+            audit_actor_id=audit_actor_id,
+            effect_monitor=effect_monitor,
+            origin=origin,
+            attended=attended,
+            binding_confirmed=binding_confirmed,
+            context=context,
+            # The complete batch was bound and checked above before its first
+            # write. A child is an execution unit, not a separately previewed
+            # plan; policy is still re-evaluated immediately here.
+            scope=None,
+        )
+        execution_id = execution_id or result.execution_id
+        if not result.executed:
+            status = (
+                BatchTargetStatus.UNAUTHORIZED
+                if result.error == UNAUTHORIZED_TEXT
+                else BatchTargetStatus.FAILED
+            )
+            outcomes[entity.entity_id] = BatchTargetResult(
+                entity.entity_id, entity.friendly_name, status, result.error
+            )
+            report_outcome(TurnOutcomeKind.NOT_DONE)
+            continue
+        any_executed = True
+        expectations = expectations_for(
+            child,
+            lambda entity_id: _snapshot(hass, entity_id),
+            names,
+        )
+        pending = PendingEffect(expectations)
+        judge_now(hass, pending)
+        if pending.confirmed:
+            report_outcome(TurnOutcomeKind.EXECUTED)
+            status = BatchTargetStatus.SUCCESS
+        else:
+            if not defer_outcome(pending):
+                report_outcome(TurnOutcomeKind.UNCONFIRMED)
+            # A service accepted by Home Assistant is not proof that the
+            # device reached the requested state.  Keep this distinct from a
+            # call exception and never include it in the successful Undo set.
+            status = BatchTargetStatus.UNVERIFIED
+        outcomes[entity.entity_id] = BatchTargetResult(
+            entity.entity_id, entity.friendly_name, status
+        )
+
+    for item in preflight.values():
+        report_outcome(TurnOutcomeKind.NOT_DONE)
+    batch = BatchExecutionResult(
+        plan,
+        tuple(outcomes[entity_id] for entity_id in target_ids),
+    )
+    return ExecutionResult(
+        any_executed,
+        overall_decision,
+        None if any_executed else "Kein Ziel hat die vollständige Vorprüfung bestanden.",
+        execution_id,
+        batch_result=batch,
+    )
 
 
 def _snapshot(hass: HomeAssistant, entity_id: str) -> tuple[str | None, Mapping[str, object] | None]:
@@ -213,8 +489,8 @@ async def _async_execute_service_plan(
         return ExecutionResult(False, decision, decision.reason)
     if decision.outcome is PolicyOutcome.CONFIRM and not confirmed:
         return ExecutionResult(False, decision, "Die Aktion benötigt eine Bestätigung.")
-    if confirmed and scope is not None and (
-        decision.risk > scope.risk or not _effective_targets(plan, effects) <= scope.targets
+    if confirmed and scope is not None and _confirmation_scope_changed(
+        decision, _effective_targets(plan, effects), scope
     ):
         # The "Ja" answered a different question (7.7, B7).
         return ExecutionResult(False, decision, CHANGED_SINCE_CONFIRMATION)
@@ -354,3 +630,19 @@ def _required_capabilities(plan: ServiceCallPlan) -> frozenset[str]:
     if plan.service == "set_cover_position":
         return frozenset({"POSITION"})
     return frozenset()
+
+
+def _independent_batch_domain(
+    plan: ServiceCallPlan, entities: Sequence[EntitySnapshot]
+) -> str | None:
+    """Domain shared by every validated target, including HA turn helpers."""
+    target_ids = (
+        (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+    )
+    by_id = {entity.entity_id: entity.domain for entity in entities}
+    domains = {by_id.get(entity_id) for entity_id in target_ids}
+    if len(domains) == 1:
+        domain = next(iter(domains))
+        if domain in {"light", "cover"}:
+            return domain
+    return plan.domain if plan.domain in {"light", "cover"} else None

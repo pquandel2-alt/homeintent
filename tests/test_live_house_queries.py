@@ -131,6 +131,16 @@ def test_count_then_davon_then_demonstrative_command(monkeypatch):
     listed = _say(agent, "Welche davon sind im Erdgeschoss?")
     assert all(name in listed for name in ("Küchenlicht", "Flurlicht", "Bürolicht"))
     assert "Schlafzimmerlicht" not in listed
+    call_count = len(agent.hass.services.async_call.await_args_list)
     _say(agent, "Schalte die aus.")
-    call = agent.hass.services.async_call.await_args_list[-1]
-    assert sorted(call.args[2]["entity_id"]) == ["light.buerolicht", "light.flurlicht", "light.kuechenlicht"]
+    calls = agent.hass.services.async_call.await_args_list[call_count:]
+    assert [(call.args[0], call.args[1]) for call in calls] == [
+        ("homeassistant", "turn_off"),
+        ("homeassistant", "turn_off"),
+        ("homeassistant", "turn_off"),
+    ]
+    assert sorted(call.args[2]["entity_id"] for call in calls) == [
+        "light.buerolicht",
+        "light.flurlicht",
+        "light.kuechenlicht",
+    ]

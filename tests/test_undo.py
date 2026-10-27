@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from homeintent.entities import EntitySnapshot
 from homeintent.service_call import ServiceCallPlan
-from homeintent.undo import build_undo_plan, is_undo_request
+from homeintent.undo import build_undo_plan, is_undo_request, restrict_undo_plan
 
 
 def test_undo_request_is_deliberately_narrow():
@@ -63,3 +63,21 @@ def test_irreversible_or_missing_target_refuses_whole_undo():
     assert build_undo_plan(
         ServiceCallPlan("light", "turn_on", "light.missing"), [script]
     ) is None
+
+
+def test_partial_batch_undo_contains_only_confirmed_successes():
+    first = EntitySnapshot("light.first", "Erstes Licht", "light", "on")
+    second = EntitySnapshot("light.second", "Zweites Licht", "light", "on")
+    undo = build_undo_plan(
+        ServiceCallPlan("light", "turn_off", [first.entity_id, second.entity_id]),
+        [first, second],
+        requested_by_user_id="user-1",
+    )
+
+    restricted = restrict_undo_plan(undo, frozenset({second.entity_id}))
+
+    assert restricted is not None
+    assert restricted.requested_by_user_id == "user-1"
+    assert restricted.plans == (
+        ServiceCallPlan("light", "turn_on", second.entity_id),
+    )
