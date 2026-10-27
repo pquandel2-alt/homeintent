@@ -37,6 +37,7 @@ from ..house_report import (
 )
 from ..const import CONF_SHARE_HOUSEHOLD_LOCATION
 from ..media import claims_other_target, now_playing, parse_media_request, resolve_media
+from ..media_coverage import analyse_media_coverage
 from ..music_assistant import PendingMusicAssistant, async_resolve_music_assistant
 from ..music_assistant import DOMAIN as MUSIC_ASSISTANT_DOMAIN
 from ..music_assistant import async_search_exact_music_assistant
@@ -472,6 +473,18 @@ class InsightsController:
             request.op != "query"
             and not utterance.allows_bounded_parser_action
         ):
+            return None
+        coverage = analyse_media_coverage(user_input.text, entities, request)
+        if coverage.coordinations or (request.op != "query" and not coverage.complete):
+            # 7.13.1: the bounded media reading explains only part of the
+            # sentence (a further clause, an unknown word, a second place or
+            # target).  It never writes then; the shared multi-command
+            # pipeline compiles every clause before the first write and
+            # rejects the whole sentence when one part is not understood.
+            _LOGGER.debug(
+                "Media fast path declined: residue=%s coordinations=%s conflicts=%s",
+                coverage.residue, coverage.coordinations, coverage.conflicts,
+            )
             return None
         if request.op == "query":
             return self._answer(user_input, response, now_playing(request, entities, self._area_id))

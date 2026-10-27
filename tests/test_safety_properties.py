@@ -992,9 +992,18 @@ def test_short_command_never_writes_more_than_the_full_command(device, switch):
 
 # ------------------------------------------------------------ fixed regressions
 # Counterexamples from nightly runs are pinned here (sentence, forbidden writes).
-REGRESSIONS: list[str] = []
+REGRESSIONS: list[str] = [
+    # Nightly run 40470216752 on 7.13.0 (324cfb8): the bounded media reader
+    # paused the radio and ignored the unknown second clause (fixed in 7.13.1
+    # by the complete-coverage check ``media_coverage``).
+    "Mach das Radio in der Küche aus und dann Quirlomat den Quirlomat.",
+    # Found while fixing it: an unfinished coordinated clause and a
+    # coordinated place without target ran the understood first half.
+    "Mach das Licht im Büro aus und dann das.",
+    "Pausiere das Radio in der Küche und im Wohnzimmer.",
+]
 
 
-@pytest.mark.parametrize("sentence", REGRESSIONS or ["Mach das Licht im Büro nicht an."])
+@pytest.mark.parametrize("sentence", REGRESSIONS)
 def test_pinned_counterexamples_never_write(sentence):
     assert writes(say(sentence)) == []

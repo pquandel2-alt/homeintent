@@ -37,6 +37,13 @@ __all__ = (
     "MediaResolution",
     "now_playing",
     "parse_media_request",
+    "queue_directive_positions",
+    "media_words",
+    "MEDIA_CONTENT_WORDS",
+    "MEDIA_LIGHT_VERBS",
+    "MEDIA_OPERATION_WORDS",
+    "PLAY_NAME_FILLERS",
+    "PLAY_NAME_STOPS",
     "resolve_media",
     "resolve_media_player",
 )
@@ -59,6 +66,33 @@ _POWER_ACTION_WORDS = frozenset({
 })
 _MEDIA_DOMAIN = "media_player"
 QUEUE_MODES = frozenset({"replace", "next", "add"})
+
+# Generic light verbs that carry any media operation ("Mach …", "Stell …").
+MEDIA_LIGHT_VERBS = frozenset({"mach", "mache", "schalte", "schalt", "stell", "stelle", "dreh", "drehe"})
+# Words that stop the free-text name of a play command (the place or player).
+PLAY_NAME_STOPS = frozenset({"im", "in", "am", "auf", "ueber"})
+# Words the play reader drops from the free-text name.
+PLAY_NAME_FILLERS = frozenset({"bitte", "mal", "eben", "doch", "etwas", "an", "ab", "ein"})
+# The closed lexemes each media operation consists of.  The parser selects
+# the operation from them; the complete-coverage check (``media_coverage``)
+# accepts exactly these words for the selected operation, so a lexeme of a
+# different operation in the same sentence stays an unexplained residue.
+MEDIA_OPERATION_WORDS: dict[str, frozenset[str]] = {
+    "play": _PLAY_VERBS | PLAY_NAME_FILLERS | frozenset({"was"}),
+    "pause": _PAUSE_WORDS | frozenset({"pause"}),
+    "stop": _STOP_WORDS,
+    "resume": _RESUME_WORDS | frozenset({"mit", "spiel", "spiele"}),
+    "next": _NEXT_WORDS | _TRACK_WORDS | frozenset({"ueberspringe", "ueberspring", "skip", "spiel", "spiele"}),
+    "previous": _PREVIOUS_WORDS | _TRACK_WORDS | frozenset({"spiel", "spiele"}),
+    "louder": _LOUDER,
+    "quieter": _QUIETER,
+    "volume": _VOLUME_WORDS | frozenset({"auf", "prozent", "setze", "setz"}),
+    "mute": frozenset({"stumm", "stummschalten"}),
+    "unmute": frozenset({"ton", "an", "laut"}),
+    "off": frozenset({"aus", "stopp", "stop", "ausmachen", "ausschalten"}),
+    "on": frozenset({"an", "ein", "anmachen", "einschalten", "starte", "start"}),
+}
+MEDIA_CONTENT_WORDS = _MUSIC_WORDS | frozenset({"wiedergabe", "ton"})
 
 
 @dataclass(frozen=True)
@@ -90,12 +124,18 @@ def _words(text: str) -> list[str]:
     return "".join(char if char.isalnum() else " " for char in folded).split()
 
 
+def media_words(text: str) -> list[str]:
+    """The folded word sequence every media reading works on."""
+    return _words(text)
+
+
 def _short(words: list[str], allowed: frozenset[str], extra: frozenset[str] = frozenset()) -> bool:
     """A short command made only of these words, music words, room phrases and fillers."""
     fillers = frozenset({"bitte", "mal", "die", "den", "das", "der", "im", "in", "auf", "am", "dem", "noch", "etwas",
                          "ein", "bisschen", "jetzt", "doch", "musik", "radio", "wieder", "es", "wiedergabe",
                          "dort", "da", "hier", "ton"})
-    if len(words) > 7 or not set(words) & allowed:
+    # No word-count limit: ``media_coverage`` proves the complete sentence.
+    if not set(words) & allowed:
         return False
     # Before a room phrase ("… im Wohnzimmer") only command words and fillers.
     cut = next((index for index, word in enumerate(words) if word in {"im", "in", "am", "auf"}), len(words))
@@ -111,33 +151,52 @@ def _has_media_power_form(words: Sequence[str], present: set[str]) -> bool:
     )
 
 
-def _queue_directive(words: list[str]) -> tuple[list[str], str]:
-    """Remove one explicit queue modifier and return its closed value.
+def queue_directive_positions(words: Sequence[str]) -> tuple[frozenset[int], str]:
+    """Word positions of one explicit queue modifier and its closed value.
 
     Queue language only applies to an explicit play command.  The remaining
     words continue through the ordinary type/name/player composition, so a
-    queue modifier can never become part of a library search term.
+    queue modifier can never become part of a library search term.  The
+    positions are also what the complete-coverage check (``media_coverage``)
+    counts as consumed by the queue directive.
     """
     if not words or words[0] not in _PLAY_VERBS:
-        return words, "replace"
+        return frozenset(), "replace"
     for index in range(len(words) - 1):
-        if words[index:index + 2] == ["als", "naechstes"]:
-            return [*words[:index], *words[index + 2:]], "next"
+        if words[index] == "als" and words[index + 1] == "naechstes":
+            return frozenset({index, index + 1}), "next"
     queue_words = {"warteschlange", "queue"}
-    if set(words) & queue_words and "hinzu" in words:
-        removed = queue_words | {"hinzu", "zur"}
-        cleaned = [word for word in words if word not in removed]
-        if cleaned[-1:] == ["und"]:
-            cleaned.pop()
-        return cleaned, "add"
-    if set(words) & queue_words and any(word.startswith("ersetz") for word in words):
-        removed = queue_words | {"und", "die"}
-        cleaned = [
-            word for word in words
-            if word not in removed and not word.startswith("ersetz")
-        ]
-        return cleaned, "replace"
-    return words, "replace"
+    present = set(words)
+    if present & queue_words and "hinzu" in present:
+        removed = {
+            index for index, word in enumerate(words)
+            if word in queue_words | {"hinzu", "zur"}
+        }
+        kept = [index for index in range(len(words)) if index not in removed]
+        if kept and words[kept[-1]] == "und":
+            removed.add(kept[-1])
+        return frozenset(removed), "add"
+    replace_at = next(
+        (index for index, word in enumerate(words) if word.startswith("ersetz")), None
+    )
+    if present & queue_words and replace_at is not None:
+        removed = {replace_at} | {
+            index for index, word in enumerate(words) if word in queue_words
+        }
+        # Only the joiner directly before and the article directly after the
+        # directive belong to it ("… und ersetze die Warteschlange").
+        if replace_at > 0 and words[replace_at - 1] == "und":
+            removed.add(replace_at - 1)
+        if replace_at + 1 < len(words) and words[replace_at + 1] == "die":
+            removed.add(replace_at + 1)
+        return frozenset(removed), "replace"
+    return frozenset(), "replace"
+
+
+def _queue_directive(words: list[str]) -> tuple[list[str], str]:
+    """Remove one explicit queue modifier and return its closed value."""
+    removed, mode = queue_directive_positions(words)
+    return [word for index, word in enumerate(words) if index not in removed], mode
 
 
 def parse_media_request(text: str) -> MediaRequest | None:
@@ -178,12 +237,12 @@ def parse_media_request(text: str) -> MediaRequest | None:
     ):
         return MediaRequest("unmute", text=text)
     # A bare "Stopp"/"Halt" stays the universal cancel; "Pause" pauses.
-    if words[0] in _PAUSE_WORDS and len(words) <= 5 and (
+    if words[0] in _PAUSE_WORDS and (
         words == ["pause"] or words[0] in {"pausiere", "pausieren"}
         or present & _MUSIC_WORDS or present & {"im", "in", "am", "auf"}
     ):
         return MediaRequest("pause", text=text)
-    if words[0] in {"mach", "mache"} and len(words) <= 5 and "pause" in present and _short(
+    if words[0] in {"mach", "mache"} and "pause" in present and _short(
         words, frozenset({"pause"}), frozenset({"mach", "mache"})
     ):
         return MediaRequest("pause", text=text)
@@ -203,7 +262,7 @@ def parse_media_request(text: str) -> MediaRequest | None:
         _has_media_power_form(words, present)
     ):
         return MediaRequest("on", text=text)
-    if words[0] in _RESUME_WORDS and len(words) <= 5 and (len(words) == 1 or present & _MUSIC_WORDS or present & {
+    if words[0] in _RESUME_WORDS and (len(words) == 1 or present & _MUSIC_WORDS or present & {
         "im", "in", "am", "auf", "spielen"
     }):
         return MediaRequest("resume", text=text)
@@ -216,8 +275,8 @@ def parse_media_request(text: str) -> MediaRequest | None:
     ) or (
         words[0] in {"mach", "mache"} and present & {"musik"} and "an" in present
     ):
-        rest = [word for word in words[1:] if word not in {"bitte", "mal", "doch", "etwas", "an", "ab", "ein"}]
-        cut = next((index for index, word in enumerate(rest) if word in {"im", "in", "am", "auf", "ueber"}), len(rest))
+        rest = [word for word in words[1:] if word not in PLAY_NAME_FILLERS]
+        cut = next((index for index, word in enumerate(rest) if word in PLAY_NAME_STOPS), len(rest))
         candidate = rest[:cut]
         marked_types = [kind for kind, markers in _TYPE_MARKERS.items() if set(candidate) & markers]
         media_type = marked_types[0] if len(marked_types) == 1 else None

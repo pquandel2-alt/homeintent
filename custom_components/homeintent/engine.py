@@ -56,6 +56,7 @@ from .nlu.entity_resolution import (
     resolve_mentioned_target,
 )
 from .nlu.entity_clarification import render_candidate_question
+from .nlu.clause_completeness import analyse_write_completeness
 from .nlu.composition import independent_predicate_clauses
 from .nlu.command import SemanticCommand, build_semantic_command
 from .nlu.context import ConversationContext
@@ -703,6 +704,43 @@ def _repetition_count(text: str) -> str | None:
     return None
 
 
+def _payload_entities(
+    payload: "MatchResult | CommandPlan | None", entities: Sequence[EntitySnapshot]
+) -> list[EntitySnapshot]:
+    """Every entity a payload acts on or answers about."""
+    results = payload.commands if isinstance(payload, CommandPlan) else (
+        (payload,) if isinstance(payload, MatchResult) else ()
+    )
+    by_id = {entity.entity_id: entity for entity in entities}
+    found: dict[str, EntitySnapshot] = {}
+    for result in results:
+        if result.command is not None:
+            found.update((entity.entity_id, entity) for entity in result.command.entities)
+        if result.plan is not None:
+            ids = (
+                (result.plan.entity_id,) if isinstance(result.plan.entity_id, str)
+                else tuple(result.plan.entity_id)
+            )
+            found.update((entity_id, by_id[entity_id]) for entity_id in ids if entity_id in by_id)
+    return list(found.values())
+
+
+def _payload_scoped_places(payload: "MatchResult | CommandPlan | None") -> frozenset[str]:
+    """Area/floor ids a payload's readings bound as their location scope."""
+    results = payload.commands if isinstance(payload, CommandPlan) else (
+        (payload,) if isinstance(payload, MatchResult) else ()
+    )
+    scoped: set[str] = set()
+    for result in results:
+        locations = result.frame.parameters.get("locations") if result.frame is not None else None
+        for location in locations if isinstance(locations, (list, tuple)) else ():
+            if isinstance(location, Mapping):
+                scoped.update(
+                    str(location[key]) for key in ("area_id", "floor_id") if location.get(key)
+                )
+    return frozenset(scoped)
+
+
 def _writes(payload: object) -> bool:
     commands = getattr(payload, "commands", None)
     if commands is not None:
@@ -962,6 +1000,23 @@ class NluEngine:
                     "Ich habe nichts ausgeführt."
                 ),
             ))
+        if _writes(payload):
+            completeness = analyse_write_completeness(
+                text, entities, _payload_entities(payload, entities),
+                _payload_scoped_places(payload),
+            )
+            if not completeness.complete:
+                # 7.13.1: a coordinated part is unfinished ("… und dann das")
+                # or names a place no planned target lies in.  Never run the
+                # understood rest of such a sentence.
+                parts = "“ und „".join(completeness.parts)
+                refusal = (
+                    f"Den Teil „{parts}“ habe ich nicht verstanden. "
+                    "Ich habe deshalb nichts ausgeführt."
+                )
+                return replace(outcome, payload=MatchResult(
+                    plan=None, response_text=refusal, failure_text=refusal,
+                ))
         marked = _mark_inferred_routines(payload, text, entities)
         if marked is payload:
             return outcome

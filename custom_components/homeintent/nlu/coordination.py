@@ -25,7 +25,7 @@ from ..entities import EntitySnapshot, normalize_for_compare
 from .device_ontology import GENERA, Gender, analyse_word
 from .language_frontend import LanguageToken, tokenize_language
 
-__all__ = ("expand_coordination",)
+__all__ = ("expand_coordination", "opens_clause")
 
 _CONJUNCTIONS = frozenset({"und", "sowie", "oder"})
 _CLAUSE_WORDS = frozenset({"und", "dann", "danach", "anschliessend", "sowie"})
@@ -124,20 +124,34 @@ def _registry_covered(words: Sequence[str], entities: Sequence[EntitySnapshot]) 
     return covered
 
 
-def _segments(tokens: Sequence[LanguageToken]) -> list[tuple[int, int]]:
-    """Clause ranges: at commas and at a joiner that opens a new clause."""
+def opens_clause(tokens: Sequence[LanguageToken], index: int) -> bool:
+    """Whether the joiner at ``index`` opens a new coordinated clause.
+
+    "und"/"sowie" open a clause before an imperative verb, an article or a
+    further joiner; "dann"/"danach" always do. Shared by the
+    place carrying below and by the complete-coverage check of bounded
+    domain parsers (``media_coverage``), so both read coordination alike.
+    """
     from .self_correction import IMPERATIVE_VERBS as _VERBS
 
+    token = tokens[index]
+    if not token.is_word or token.canonical not in _CLAUSE_WORDS:
+        return False
+    following = next((item for item in tokens[index + 1:] if item.is_word), None)
+    return following is not None and (
+        following.canonical in _VERBS | _ARTICLES | {"dann", "danach"}
+        or token.canonical in {"dann", "danach"}
+    )
+
+
+def _segments(tokens: Sequence[LanguageToken]) -> list[tuple[int, int]]:
+    """Clause ranges: at commas and at a joiner that opens a new clause."""
     ranges: list[tuple[int, int]] = []
     start = 0
     for index, token in enumerate(tokens):
         boundary = token.canonical in {",", ";"}
-        if token.is_word and token.canonical in _CLAUSE_WORDS and index > start:
-            following = next((item for item in tokens[index + 1:] if item.is_word), None)
-            boundary = following is not None and (
-                following.canonical in _VERBS | _ARTICLES | {"dann", "danach"}
-                or token.canonical in {"dann", "danach"}
-            )
+        if index > start and opens_clause(tokens, index):
+            boundary = True
         if boundary:
             if index > start:
                 ranges.append((start, index))
