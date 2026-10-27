@@ -3,6 +3,8 @@ name: Nightly Live-Testbett
 on:
   schedule:
     - cron: "17 2 * * *"
+  # Also started explicitly for a release candidate: the release gate
+  # (scripts/release_gate.py) requires a green run for the exact SHA.
   workflow_dispatch:
 
 permissions:
@@ -74,4 +76,7 @@ jobs:
       - name: Property-Suite (nightly-Profil)
         env:
           HOMEINTENT_HYPOTHESIS_PROFILE: nightly
-        run: python -m pytest -q tests/test_safety_properties.py
+        run: >-
+          python -m pytest -q
+          tests/test_safety_properties.py
+          tests/test_media_sentence_coverage_7131.py

@@ -13,7 +13,9 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ inputs.version }}
+  # One release at a time, whatever the version: two concurrent releases
+  # could otherwise both pass the gate against the same main commit.
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -47,14 +49,28 @@ jobs:
           --notes "$RELEASE_NOTES"
       - name: Unmittelbar erneut prüfen und Release erstellen
         run: |
+          set -euo pipefail
           python3 scripts/release_gate.py \
             --repository "$GITHUB_REPOSITORY" \
             --sha "$RELEASE_SHA" \
             --version "$RELEASE_VERSION" \
             --title "$RELEASE_TITLE" \
             --notes "$RELEASE_NOTES"
+          # Create the tag ref pinned to the exact checked SHA first. The ref
+          # API fails if the tag already exists, so the release can never
+          # attach to a commit other than the one the gate just checked.
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/v${RELEASE_VERSION}" \
+            -f sha="$RELEASE_SHA"
           gh release create "v${RELEASE_VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
             --target "$RELEASE_SHA" \
             --title "$RELEASE_TITLE" \
             --notes-file "$RELEASE_NOTES"
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/v${RELEASE_VERSION}" --jq .sha)"
+          if [ "$tagged" != "$RELEASE_SHA" ]; then
+            echo "Tag v${RELEASE_VERSION} zeigt auf $tagged statt $RELEASE_SHA" >&2
+            exit 1
+          fi
+          echo "Veröffentlicht: v${RELEASE_VERSION} auf $RELEASE_SHA"
