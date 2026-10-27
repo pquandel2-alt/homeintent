@@ -85,7 +85,11 @@ proactive_message:
   name: Proaktive Agentenmeldung verarbeiten
   description: >-
     Erzeugt eine deduplizierte Agentensituation und liefert sie gemäß den
-    Integrationsoptionen per Push und/oder TTS aus.
+    Integrationsoptionen per Push und/oder TTS aus. Öffentliche ASK-/AUTO-
+    Aufrufe benötigen einen authentifizierten Administrator. Von HomeIntent
+    erzeugte Automationen verwenden stattdessen einen intern eingebetteten,
+    aktionsgebundenen Nachweis. Unlock und Alarm-Disarm sind über diesen
+    generischen Dienst grundsätzlich gesperrt.
   fields:
     rule_id:
       name: Regel-ID

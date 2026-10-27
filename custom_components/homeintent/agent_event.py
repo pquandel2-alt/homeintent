@@ -73,6 +73,13 @@ class AgentEvent:
     notification_device_ids: tuple[str, ...] = ()
     last_error: str | None = None
     safety_critical: bool = False
+    origin: str = "internal_runtime"
+    created_by_user_id: str | None = None
+    creator_was_admin: bool = False
+    provenance: str = "entry_owned_runtime"
+    canonical_action: str | None = None
+    canonical_target_ids: tuple[str, ...] = ()
+    canonical_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -101,6 +108,7 @@ class AgentEvent:
                 )
         delivered = raw.get("delivered_channels", ())
         notification_devices = raw.get("notification_device_ids", ())
+        canonical_targets = raw.get("canonical_target_ids", ())
         return cls(
             event_id=str(raw["event_id"]),
             rule_id=str(raw["rule_id"]),
@@ -136,6 +144,17 @@ class AgentEvent:
             ),
             last_error=_optional_str(raw.get("last_error")),
             safety_critical=bool(raw.get("safety_critical", False)),
+            origin=str(raw.get("origin", "internal_runtime")),
+            created_by_user_id=_optional_str(raw.get("created_by_user_id")),
+            creator_was_admin=bool(raw.get("creator_was_admin", False)),
+            provenance=str(raw.get("provenance", "legacy_event")),
+            canonical_action=_optional_str(raw.get("canonical_action")),
+            canonical_target_ids=(
+                tuple(str(item) for item in cast(Sequence[object], canonical_targets))
+                if isinstance(canonical_targets, (list, tuple))
+                else ()
+            ),
+            canonical_message=_optional_str(raw.get("canonical_message")),
         )
 
 

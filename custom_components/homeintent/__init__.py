@@ -16,7 +16,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping, cast
 
 from .const import (
     CONF_CONTEXT_TTL_SECONDS,
@@ -512,9 +512,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         async def _handle_proactive_message(call: ServiceCall) -> None:
             try:
-                await proactive_agent.async_signal(call.data)
-            except ValueError as err:
-                _LOGGER.warning("Invalid proactive message request: %s", err)
+                authority = await _proactive_authority_from_call(hass, call)
+                await proactive_agent.async_signal(call.data, authority=authority)
+            except (PermissionError, ValueError):
+                # Proof tokens and caller-written action data must never reach
+                # logs. The stable rejection class is sufficient for admins.
+                _LOGGER.warning("Rejected unauthorized proactive message request")
 
         hass.services.async_register(
             DOMAIN, SERVICE_PROACTIVE_MESSAGE, _handle_proactive_message
@@ -1173,6 +1176,56 @@ async def _require_admin_service_call(hass: HomeAssistant, call: ServiceCall) ->
     user = await get_user(user_id) if get_user is not None and user_id is not None else None
     if user is None or not bool(getattr(user, "is_admin", False)):
         raise PermissionError("HomeIntent binding services require an authenticated administrator")
+
+
+async def _proactive_authority_from_call(
+    hass: HomeAssistant, call: ServiceCall
+):
+    """Authenticate public action proposals or an exact embedded proof."""
+
+    from .automation_executor import automation_executor_for_hass
+    from .proactive_authority import (
+        SENSITIVE_PROACTIVE_ACTIONS,
+        automation_authority,
+        public_authority,
+    )
+
+    data = cast(Mapping[str, object], call.data)
+    proof_values = (data.get("lifecycle_id"), data.get("lifecycle_token"))
+    has_any_proof = any(value is not None for value in proof_values)
+    action_key = (data.get("action_domain"), data.get("action_service"))
+    if action_key in SENSITIVE_PROACTIVE_ACTIONS:
+        raise PermissionError(
+            "Generische Proaktivnachrichten dürfen weder entsperren noch unscharf schalten"
+        )
+    if has_any_proof:
+        proof = await automation_executor_for_hass(
+            hass
+        ).async_verify_proactive_message_proof(data)
+        return automation_authority(proof)
+
+    user_id = getattr(getattr(call, "context", None), "user_id", None)
+    auth = getattr(hass, "auth", None)
+    get_user = getattr(auth, "async_get_user", None)
+    user = (
+        await get_user(user_id)
+        if get_user is not None and isinstance(user_id, str) and user_id
+        else None
+    )
+    is_admin = bool(user is not None and getattr(user, "is_admin", False))
+    mode = str(data.get("mode", "inform")).casefold()
+    actionable = mode in {"ask", "auto"} or any(
+        data.get(key) is not None
+        for key in ("action_domain", "action_service", "action_entity_id")
+    )
+    if actionable and not is_admin:
+        raise PermissionError(
+            "Actionable proactive messages require an authenticated administrator"
+        )
+    return public_authority(
+        user_id if isinstance(user_id, str) and user_id else None,
+        is_admin=is_admin,
+    )
 
 
 def _optional_text(value: object) -> str | None:

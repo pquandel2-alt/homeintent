@@ -929,6 +929,7 @@ class AutomationController:
                 once=model.once,
                 max_runs=model.max_runs,
                 owner_user_id=HOUSEHOLD_OWNER if confirmation.shared else current_user_id,
+                owner_was_admin=await user_is_admin(self.hass, user_input),
             )
         except Exception as err:  # noqa: BLE001 - a YAML write + service call can fail in ways beyond HomeAssistantError; must not propagate as "Unexpected error during intent recognition"
             _LOGGER.error("Automation creation failed: %s", err)

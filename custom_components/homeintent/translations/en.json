@@ -111,7 +111,7 @@
     },
     "proactive_message": {
       "name": "Process proactive agent message",
-      "description": "Creates a deduplicated local agent situation."
+      "description": "Creates a deduplicated local agent situation; public ASK/AUTO calls require an authenticated administrator."
     },
     "recheck_agent_event": {
       "name": "Recheck agent situation",

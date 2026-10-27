@@ -1119,7 +1119,8 @@ def test_duplicate_gets_fresh_lifecycle_identity_and_token(tmp_path):
                 "data": {"automation_id": "source"},
             }],
         },
-        automation_id="source", owner_user_id="owner", once=True,
+        automation_id="source", owner_user_id="owner", owner_was_admin=True,
+        once=True,
     ))
     source_proof = dict(_read_yaml(tmp_path)[0]["actions"][0]["data"])
 
@@ -1130,6 +1131,9 @@ def test_duplicate_gets_fresh_lifecycle_identity_and_token(tmp_path):
     assert duplicate_proof["automation_id"] == duplicate_id
     assert duplicate_proof["lifecycle_id"] == duplicate_id
     assert duplicate_proof["lifecycle_token"] != source_proof["lifecycle_token"]
+    metadata = json.loads((tmp_path / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert metadata[duplicate_id]["owner_user_id"] == "owner"
+    assert metadata[duplicate_id]["owner_was_admin"] is True
 
 
 def test_lifecycle_wrong_token_or_target_never_changes_state(tmp_path):

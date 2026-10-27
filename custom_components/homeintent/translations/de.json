@@ -124,7 +124,7 @@
     },
     "proactive_message": {
       "name": "Proaktive Agentenmeldung verarbeiten",
-      "description": "Erzeugt eine deduplizierte lokale Agentensituation."
+      "description": "Erzeugt eine deduplizierte lokale Agentensituation; öffentliche ASK-/AUTO-Aufrufe sind Administratoren vorbehalten."
     },
     "recheck_agent_event": {
       "name": "Agentensituation erneut prüfen",

@@ -18,7 +18,14 @@ from .agent_delivery import AgentDelivery
 from .agent_action_policy import validate_agent_service_plan
 from .agent_event import AgentEvent, AgentEventState, AgentMode, StoredServicePlan
 from .agent_event_store import AgentEventStore
-from .automation_executor import AutomationExecutor
+from .proactive_authority import (
+    ProactiveAuthority,
+    SENSITIVE_PROACTIVE_ACTIONS,
+    describe_action,
+    internal_runtime_authority,
+    plan_fingerprint,
+    proactive_message_fingerprint,
+)
 from .const import (
     CONF_AGENT_AUTO_ENABLED,
     CONF_AGENT_AUTO_ENTITY_IDS,
@@ -63,7 +70,12 @@ class ProactiveAgentRuntime:
         self._hass = hass
         self._entry = entry
         self._runtime_data = runtime_data
-        self._store = AgentEventStore(hass)
+        event_path = (
+            runtime_data.storage_paths.agent_events
+            if runtime_data.storage_paths is not None
+            else None
+        )
+        self._store = AgentEventStore(hass, event_path)
         self._delivery = AgentDelivery(hass)
         self._lock = asyncio.Lock()
 
@@ -112,7 +124,12 @@ class ProactiveAgentRuntime:
             ):
                 await self.async_recheck(event.event_id)
 
-    async def async_signal(self, data: Mapping[str, Any]) -> AgentEvent | None:
+    async def async_signal(
+        self,
+        data: Mapping[str, Any],
+        *,
+        authority: ProactiveAuthority | None = None,
+    ) -> AgentEvent | None:
         """Create/deliver one deduplicated situation from a native automation."""
         if not self.enabled:
             return None
@@ -142,6 +159,30 @@ class ProactiveAgentRuntime:
         if mode in {AgentMode.ASK, AgentMode.AUTO} and action is None:
             raise ValueError("ask und auto benötigen eine vollständig validierbare Aktion")
         now = dt_util.utcnow()
+        effective_authority = authority or internal_runtime_authority()
+        target_ids = (
+            ()
+            if action is None
+            else (
+                (action.entity_id,)
+                if isinstance(action.entity_id, str)
+                else tuple(action.entity_id)
+            )
+        )
+        rendered_message = message
+        rendered_title = title
+        action_description: str | None = None
+        if action is not None:
+            snapshots = build_entity_snapshots(self._hass, self._entry)
+            names = {item.entity_id: item.friendly_name for item in snapshots}
+            action_description = describe_action(action, names)
+        if mode is AgentMode.ASK and action_description is not None:
+            # Caller-written prose cannot be proven equivalent to a service
+            # plan.  ASK therefore displays only the canonical description;
+            # this closes message/action confusion instead of trying to infer
+            # whether arbitrary context contradicts the bound action.
+            rendered_title = "HomeIntent: Aktion bestätigen"
+            rendered_message = action_description
         expires_seconds = _bounded_int(data.get("expires_seconds"), 86400, 60, 604800)
         cooldown = _bounded_int(
             data.get("cooldown_seconds"),
@@ -157,8 +198,8 @@ class ProactiveAgentRuntime:
                 event_id=uuid.uuid4().hex,
                 rule_id=rule_id,
                 dedupe_key=dedupe_key,
-                title=title,
-                message=message,
+                title=rendered_title,
+                message=rendered_message,
                 mode=mode,
                 state=AgentEventState.ACTIVE,
                 created_at=now.isoformat(),
@@ -171,6 +212,17 @@ class ProactiveAgentRuntime:
                 proposed_action=(StoredServicePlan.from_plan(action) if action else None),
                 notification_device_ids=self._configured_notification_device_ids(),
                 safety_critical=bool(data.get("safety_critical", False)),
+                origin=effective_authority.origin.value,
+                created_by_user_id=effective_authority.created_by_user_id,
+                creator_was_admin=effective_authority.creator_was_admin,
+                provenance=effective_authority.provenance,
+                canonical_action=(
+                    plan_fingerprint(action, mode=mode.value, rule_id=rule_id)
+                    if action is not None
+                    else None
+                ),
+                canonical_target_ids=target_ids,
+                canonical_message=proactive_message_fingerprint(rendered_message),
             )
             await self._store.async_save(event)
 
@@ -219,7 +271,18 @@ class ProactiveAgentRuntime:
                 or auto_decision.risk is not RiskLevel.LOW
             ):
                 # AUTO can only execute a plan that is both policy-ALLOW and LOW.
-                event = replace(event, mode=AgentMode.ASK)
+                assert action_description is not None
+                ask_message = action_description
+                event = replace(
+                    event,
+                    mode=AgentMode.ASK,
+                    title="HomeIntent: Aktion bestätigen",
+                    message=ask_message,
+                    canonical_action=plan_fingerprint(
+                        action, mode=AgentMode.ASK.value, rule_id=rule_id
+                    ),
+                    canonical_message=proactive_message_fingerprint(ask_message),
+                )
             else:
                 result = await async_execute_service_plan(
                     self._hass,
@@ -287,8 +350,10 @@ class ProactiveAgentRuntime:
             event_device_id = getattr(event, "data", {}).get("device_id")
             if (
                 current.notification_device_ids
-                and isinstance(event_device_id, str)
-                and event_device_id not in current.notification_device_ids
+                and (
+                    not isinstance(event_device_id, str)
+                    or event_device_id not in current.notification_device_ids
+                )
             ):
                 _LOGGER.warning(
                     "Ignored notification action for agent event %s from an unexpected device",
@@ -465,6 +530,28 @@ class ProactiveAgentRuntime:
             await self._store.async_save(updated)
             return updated
         plan = action.to_plan()
+        current_targets = (
+            (plan.entity_id,)
+            if isinstance(plan.entity_id, str)
+            else tuple(plan.entity_id)
+        )
+        if (
+            event.canonical_action is None
+            or event.canonical_action
+            != plan_fingerprint(plan, mode=event.mode.value, rule_id=event.rule_id)
+            or current_targets != event.canonical_target_ids
+            or event.canonical_message is None
+            or event.canonical_message
+            != proactive_message_fingerprint(event.message)
+        ):
+            updated = replace(
+                event,
+                state=AgentEventState.DENIED,
+                updated_at=dt_util.utcnow().isoformat(),
+                last_error="Die gespeicherte Aktion oder Zielmenge wurde verändert.",
+            )
+            await self._store.async_save(updated)
+            return updated
         if plan_error := validate_agent_service_plan(plan):
             updated = replace(
                 event,
@@ -474,17 +561,41 @@ class ProactiveAgentRuntime:
             )
             await self._store.async_save(updated)
             return updated
+        if (plan.domain, plan.service) in SENSITIVE_PROACTIVE_ACTIONS and (
+            not event.creator_was_admin or not is_admin
+        ):
+            updated = replace(
+                event,
+                state=AgentEventState.DENIED,
+                updated_at=dt_util.utcnow().isoformat(),
+                last_error=(
+                    "Diese sicherheitskritische Aktion benötigt einen "
+                    "authentifizierten Benutzer mit Administratorrechten."
+                ),
+            )
+            await self._store.async_save(updated)
+            return updated
         entities = build_entity_snapshots(self._hass, self._entry)
+        runtime_owned = (
+            event.origin == "internal_runtime"
+            and event.created_by_user_id is None
+        )
+        execution_user_id = (
+            user_id if runtime_owned else event.created_by_user_id
+        )
+        execution_is_admin = (
+            is_admin if runtime_owned else event.creator_was_admin
+        )
         result = await async_execute_service_plan(
             self._hass,
             plan,
             entities,
             self._entry.options,
-            is_admin=is_admin,
-            user_id=user_id,
+            is_admin=execution_is_admin,
+            user_id=execution_user_id,
             confirmed=True,
             audit_trail=self._runtime_data.audit_trail,
-            audit_actor_id=user_id or "proactive-agent",
+            audit_actor_id=execution_user_id or "proactive-agent",
             effect_monitor=self._runtime_data.effect_monitor,
             origin=PlanOrigin.PROACTIVE_PROPOSAL,
         )
@@ -566,7 +677,9 @@ class ProactiveAgentRuntime:
                 },
             ],
         }
-        await AutomationExecutor(self._hass).async_create_automation(
+        from .automation_executor import automation_executor_for_hass
+
+        await automation_executor_for_hass(self._hass).async_create_automation(
             config,
             automation_id=automation_id,
             scheduled_for=due,

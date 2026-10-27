@@ -37,7 +37,13 @@ _ha_stub.install()
 
 import homeintent as homeintent_init  # noqa: E402
 from homeintent.const import DOMAIN  # noqa: E402
-from homeintent.automation_executor import AutomationExecutor  # noqa: E402
+from homeintent.automation_executor import (  # noqa: E402
+    AUTOMATION_EXECUTOR_DATA_KEY,
+    AUTOMATION_LOCK_DATA_KEY,
+    AutomationExecutor,
+)
+from homeintent.automation_lifecycle import prepare_lifecycle_actions  # noqa: E402
+from homeintent.storage_paths import STORAGE_PATHS_DATA_KEY  # noqa: E402
 from homeintent.thermal_deadline import (  # noqa: E402
     ThermalCheckpointPhase,
     ThermalDeadlineCheckpoint,
@@ -110,6 +116,203 @@ def test_async_setup_entry_registers_the_delete_automation_service(tmp_path):
     assert hass.services.has_service(DOMAIN, "save_routine") is True
     assert hass.services.has_service(DOMAIN, "save_comfort_profile") is True
     assert hass.services.has_service(DOMAIN, "delete_monitor_goal") is True
+
+
+@pytest.mark.parametrize(
+    ("action_domain", "action_service", "entity_id", "caller_is_admin"),
+    [
+        ("lock", "unlock", "lock.front", False),
+        ("alarm_control_panel", "alarm_disarm", "alarm_control_panel.home", False),
+        ("lock", "unlock", "lock.front", True),
+        ("alarm_control_panel", "alarm_disarm", "alarm_control_panel.home", True),
+    ],
+)
+def test_public_proactive_service_cannot_prepare_sensitive_action(
+    tmp_path, action_domain, action_service, entity_id, caller_is_admin
+):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    hass.auth = SimpleNamespace(
+        async_get_user=AsyncMock(
+            return_value=SimpleNamespace(is_admin=caller_is_admin)
+        )
+    )
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    handler = hass.services._handlers[(DOMAIN, "proactive_message")]
+    call = ServiceCall(
+        {
+            "rule_id": "attacker",
+            "message": "Das Licht ist noch an.",
+            "mode": "ask",
+            "action_domain": action_domain,
+            "action_service": action_service,
+            "action_entity_id": entity_id,
+        }
+    )
+    call.context = SimpleNamespace(user_id="resident")
+
+    asyncio.run(handler(call))
+
+    assert asyncio.run(entry.runtime_data.proactive_agent._store.async_load_all()) == {}
+    assert all(
+        item.args[:2] != (action_domain, action_service)
+        for item in hass.services.async_call.await_args_list
+    )
+
+
+def test_public_proactive_ask_requires_admin_and_legacy_is_not_a_bypass(tmp_path):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    hass.auth = SimpleNamespace(
+        async_get_user=AsyncMock(return_value=SimpleNamespace(is_admin=False))
+    )
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    call = ServiceCall(
+        {
+            "rule_id": "pump",
+            "message": "Pumpe ausschalten?",
+            "mode": "ask",
+            "action_domain": "homeassistant",
+            "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        }
+    )
+    call.context = SimpleNamespace(user_id="resident")
+
+    asyncio.run(hass.services._handlers[("ha_nlu", "proactive_message")](call))
+
+    assert asyncio.run(entry.runtime_data.proactive_agent._store.async_load_all()) == {}
+
+
+def test_admin_proactive_ask_stores_bound_action_and_visible_description(tmp_path):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    hass.auth = SimpleNamespace(
+        async_get_user=AsyncMock(return_value=SimpleNamespace(is_admin=True))
+    )
+    hass.states._states["switch.pump"] = State(
+        "switch.pump", "on", {"friendly_name": "Kellerpumpe"}
+    )
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    handler = hass.services._handlers[(DOMAIN, "proactive_message")]
+    call = ServiceCall(
+        {
+            "rule_id": "pump",
+            "message": "Soll ich eingreifen?",
+            "mode": "ask",
+            "action_domain": "homeassistant",
+            "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        }
+    )
+    call.context = SimpleNamespace(user_id="admin")
+
+    asyncio.run(handler(call))
+
+    events = asyncio.run(entry.runtime_data.proactive_agent._store.async_load_all())
+    event = next(iter(events.values()))
+    assert event.origin == "public_service"
+    assert event.created_by_user_id == "admin"
+    assert event.creator_was_admin is True
+    assert event.canonical_target_ids == ("switch.pump",)
+    assert event.canonical_action is not None
+    assert "Tatsächliche Aktion:" in event.message
+    assert "ausschalten" in event.message
+    assert "Soll ich eingreifen?" not in event.message
+
+
+def test_homeintent_automation_proof_allows_bound_internal_message(tmp_path):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    payload = {
+        "rule_id": "owned-rule",
+        "message": "Pumpe ausschalten?",
+        "mode": "ask",
+        "action_domain": "homeassistant",
+        "action_service": "turn_off",
+        "action_entity_id": "switch.pump",
+    }
+    prepared, orders = prepare_lifecycle_actions(
+        {
+            "alias": "Owned",
+            "actions": [
+                {"action": "homeintent.proactive_message", "data": payload}
+            ],
+        },
+        "owned-rule",
+    )
+    _write_automations_yaml(tmp_path, [{"id": "owned-rule", **prepared}])
+    (tmp_path / "homeintent_automation_metadata.json").write_text(
+        json.dumps(
+            {
+                "owned-rule": {
+                    "automation_id": "owned-rule",
+                    "created_by": "homeintent",
+                    "owner_user_id": "owner",
+                    "owner_was_admin": True,
+                    "lifecycle_orders": orders,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    call_data = prepared["actions"][0]["data"]
+    call = ServiceCall(call_data)
+
+    asyncio.run(hass.services._handlers[(DOMAIN, "proactive_message")](call))
+
+    event = next(
+        iter(
+            asyncio.run(
+                entry.runtime_data.proactive_agent._store.async_load_all()
+            ).values()
+        )
+    )
+    assert event.origin == "homeintent_automation"
+    assert event.created_by_user_id == "owner"
+    assert event.creator_was_admin is True
+    assert "lifecycle_token" not in event.to_dict()
+
+
+def test_proactive_proof_cannot_be_reused_for_another_automation(tmp_path):
+    hass = _make_hass(tmp_path)
+    entry = ConfigEntry()
+    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
+    payload = {
+        "rule_id": "owned-rule",
+        "message": "Pumpe ausschalten?",
+        "mode": "ask",
+        "action_domain": "homeassistant",
+        "action_service": "turn_off",
+        "action_entity_id": "switch.pump",
+    }
+    prepared, orders = prepare_lifecycle_actions(
+        {"actions": [{"action": "homeintent.proactive_message", "data": payload}]},
+        "owned-rule",
+    )
+    _write_automations_yaml(tmp_path, [{"id": "owned-rule", **prepared}])
+    (tmp_path / "homeintent_automation_metadata.json").write_text(
+        json.dumps(
+            {
+                "owned-rule": {
+                    "automation_id": "owned-rule",
+                    "created_by": "homeintent",
+                    "lifecycle_orders": orders,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    forged = dict(prepared["actions"][0]["data"])
+    forged["rule_id"] = "other-rule"
+    forged["lifecycle_id"] = "other-rule"
+
+    asyncio.run(
+        hass.services._handlers[(DOMAIN, "proactive_message")](ServiceCall(forged))
+    )
+
+    assert asyncio.run(entry.runtime_data.proactive_agent._store.async_load_all()) == {}
 
 
 def test_async_setup_entry_uses_configured_context_ttl(tmp_path):
@@ -210,10 +413,25 @@ def test_setup_schedules_expired_automation_reconciliation_when_reload_exists(
 def test_async_unload_entry_removes_the_service(tmp_path):
     hass = _make_hass(tmp_path)
     entry = ConfigEntry()
-    asyncio.run(homeintent_init.async_setup_entry(hass, entry))
-    assert hass.services.has_service(DOMAIN, "delete_automation") is True
 
-    asyncio.run(homeintent_init.async_unload_entry(hass, entry))
+    async def scenario() -> None:
+        await homeintent_init.async_setup_entry(hass, entry)
+        first_executor = entry.runtime_data.automation_executor
+        assert first_executor is hass.data[AUTOMATION_EXECUTOR_DATA_KEY]
+        assert STORAGE_PATHS_DATA_KEY in hass.data
+        await homeintent_init.async_unload_entry(hass, entry)
+        assert AUTOMATION_EXECUTOR_DATA_KEY not in hass.data
+        assert AUTOMATION_LOCK_DATA_KEY not in hass.data
+        assert STORAGE_PATHS_DATA_KEY not in hass.data
+
+        # A reload creates fresh setup-owned collaborators from one newly
+        # resolved path bundle; it never retains unloaded stores or locks.
+        await homeintent_init.async_setup_entry(hass, entry)
+        assert entry.runtime_data.automation_executor is not first_executor
+        assert STORAGE_PATHS_DATA_KEY in hass.data
+        await homeintent_init.async_unload_entry(hass, entry)
+
+    asyncio.run(scenario())
 
     assert hass.services.has_service(DOMAIN, "delete_automation") is False
     assert hass.services.has_service(DOMAIN, "record_automation_run") is False

@@ -289,7 +289,9 @@ def test_alarm_disarm_push_is_denied_without_authenticated_actor(monkeypatch, tm
     )
 
 
-def test_authenticated_non_admin_critical_requires_explicit_opt_in(monkeypatch, tmp_path):
+def test_authenticated_non_admin_cannot_inherit_proactive_critical_authority(
+    monkeypatch, tmp_path
+):
     hass, runtime = _runtime(tmp_path, {"allow_non_admin_critical": True})
     hass.auth = SimpleNamespace(
         async_get_user=AsyncMock(return_value=SimpleNamespace(is_admin=False))
@@ -317,9 +319,10 @@ def test_authenticated_non_admin_critical_requires_explicit_opt_in(monkeypatch, 
         return (await runtime._store.async_load_all())[created.event_id]
 
     stored = asyncio.run(scenario())
-    assert stored.state is AgentEventState.RESOLVED
-    hass.services.async_call.assert_awaited_once_with(
-        "lock", "unlock", {"entity_id": "lock.front"}, blocking=True
+    assert stored.state is AgentEventState.DENIED
+    assert all(
+        call.args[:2] != ("lock", "unlock")
+        for call in hass.services.async_call.await_args_list
     )
 
 
@@ -480,6 +483,201 @@ def test_notification_action_from_unconfigured_device_is_ignored(monkeypatch, tm
     hass.services.async_call.assert_not_awaited()
 
 
+def test_notification_action_without_bound_device_id_is_ignored(monkeypatch, tmp_path):
+    hass, runtime = _runtime(
+        tmp_path,
+        {
+            CONF_AGENT_NOTIFY_TARGETS: ["notify.mobile_app_phone"],
+            CONF_AGENT_DELIVERY_CHANNELS: ["push"],
+        },
+    )
+    er.async_get(hass).entries["notify.mobile_app_phone"] = er.RegistryEntry(
+        device_id="phone-device"
+    )
+    entities = [EntitySnapshot("switch.pump", "Pumpe", "switch", "on")]
+    monkeypatch.setattr("homeintent.agent_runtime.build_entity_snapshots", lambda *_: entities)
+
+    async def scenario():
+        created = await runtime.async_signal({
+            "rule_id": "pump-rule",
+            "message": "Pumpe ausschalten?",
+            "mode": "ask",
+            "action_domain": "homeassistant",
+            "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        })
+        assert created is not None
+        hass.services.async_call.reset_mock()
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(
+                data={"action": f"HOMEINTENT_EXECUTE_{created.event_id}"}
+            )
+        )
+        return (await runtime._store.async_load_all())[created.event_id]
+
+    stored = asyncio.run(scenario())
+    assert stored.state is AgentEventState.NOTIFIED
+    hass.services.async_call.assert_not_awaited()
+
+
+def test_stored_proactive_target_tampering_is_denied(monkeypatch, tmp_path):
+    hass, runtime = _runtime(tmp_path)
+    entities = [
+        EntitySnapshot("switch.pump", "Pumpe", "switch", "on"),
+        EntitySnapshot("switch.other", "Andere", "switch", "on"),
+    ]
+    monkeypatch.setattr("homeintent.agent_runtime.build_entity_snapshots", lambda *_: entities)
+
+    async def scenario():
+        created = await runtime.async_signal({
+            "rule_id": "pump-rule",
+            "message": "Pumpe ausschalten?",
+            "mode": "ask",
+            "action_domain": "homeassistant",
+            "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        })
+        assert created is not None
+        await runtime._store.async_save(
+            replace(
+                created,
+                proposed_action=StoredServicePlan(
+                    "homeassistant", "turn_off", ("switch.other",), {}
+                ),
+            )
+        )
+        hass.services.async_call.reset_mock()
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(data={"action": f"HOMEINTENT_EXECUTE_{created.event_id}"})
+        )
+        return (await runtime._store.async_load_all())[created.event_id]
+
+    stored = asyncio.run(scenario())
+    assert stored.state is AgentEventState.DENIED
+    assert "verändert" in (stored.last_error or "")
+    assert all(
+        item.args[:2] != ("homeassistant", "turn_off")
+        for item in hass.services.async_call.await_args_list
+    )
+
+
+def test_stored_proactive_message_tampering_breaks_action_binding(monkeypatch, tmp_path):
+    hass, runtime = _runtime(tmp_path)
+    entities = [EntitySnapshot("switch.pump", "Pumpe", "switch", "on")]
+    monkeypatch.setattr("homeintent.agent_runtime.build_entity_snapshots", lambda *_: entities)
+
+    async def scenario():
+        created = await runtime.async_signal({
+            "rule_id": "pump-rule",
+            "message": "Das Licht ist an.",
+            "mode": "ask",
+            "action_domain": "homeassistant",
+            "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        })
+        assert created is not None
+        await runtime._store.async_save(replace(created, message="Harmloser anderer Text"))
+        hass.services.async_call.reset_mock()
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(data={"action": f"HOMEINTENT_EXECUTE_{created.event_id}"})
+        )
+        return (await runtime._store.async_load_all())[created.event_id]
+
+    stored = asyncio.run(scenario())
+    assert stored.state is AgentEventState.DENIED
+    assert all(
+        call.args[:2] != ("homeassistant", "turn_off")
+        for call in hass.services.async_call.await_args_list
+    )
+
+
+def test_expired_event_and_replay_never_execute_twice(monkeypatch, tmp_path):
+    from homeassistant.util import dt as dt_util
+
+    hass, runtime = _runtime(tmp_path)
+    entities = [EntitySnapshot("switch.pump", "Pumpe", "switch", "on")]
+    monkeypatch.setattr("homeintent.agent_runtime.build_entity_snapshots", lambda *_: entities)
+
+    async def scenario():
+        expired = await runtime.async_signal({
+            "rule_id": "expired", "message": "Pumpe?", "mode": "ask",
+            "action_domain": "homeassistant", "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        })
+        assert expired is not None
+        await runtime._store.async_save(
+            replace(expired, expires_at="2000-01-01T00:00:00+00:00")
+        )
+        hass.services.async_call.reset_mock()
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(data={"action": f"HOMEINTENT_EXECUTE_{expired.event_id}"})
+        )
+        expired_state = (await runtime._store.async_load_all())[expired.event_id]
+
+        fresh = await runtime.async_signal({
+            "rule_id": "fresh", "message": "Pumpe?", "mode": "ask",
+            "action_domain": "homeassistant", "action_service": "turn_off",
+            "action_entity_id": "switch.pump", "dedupe_key": dt_util.utcnow().isoformat(),
+        })
+        assert fresh is not None
+        hass.services.async_call.reset_mock()
+        click = SimpleNamespace(data={"action": f"HOMEINTENT_EXECUTE_{fresh.event_id}"})
+        await runtime.async_handle_notification_action(click)
+        await runtime.async_handle_notification_action(click)
+        return expired_state
+
+    expired_state = asyncio.run(scenario())
+    assert expired_state.state is AgentEventState.EXPIRED
+    assert hass.services.async_call.await_count == 1
+
+
+def test_policy_and_exposure_are_rechecked_immediately_before_click(
+    monkeypatch, tmp_path
+):
+    hass, runtime = _runtime(tmp_path)
+    current = [[EntitySnapshot("switch.pump", "Pumpe", "switch", "on")]]
+    monkeypatch.setattr(
+        "homeintent.agent_runtime.build_entity_snapshots", lambda *_: current[0]
+    )
+
+    async def scenario():
+        removed = await runtime.async_signal({
+            "rule_id": "removed", "message": "Pumpe?", "mode": "ask",
+            "action_domain": "homeassistant", "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        })
+        assert removed is not None
+        current[0] = []
+        hass.services.async_call.reset_mock()
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(data={"action": f"HOMEINTENT_EXECUTE_{removed.event_id}"})
+        )
+        removed_state = (await runtime._store.async_load_all())[removed.event_id]
+
+        current[0] = [EntitySnapshot("switch.pump", "Pumpe", "switch", "on")]
+        tightened = await runtime.async_signal({
+            "rule_id": "tightened", "message": "Pumpe?", "mode": "ask",
+            "action_domain": "homeassistant", "action_service": "turn_off",
+            "action_entity_id": "switch.pump",
+        })
+        assert tightened is not None
+        runtime._entry.options[CONF_ADMIN_ONLY_ENTITIES] = ["switch.pump"]
+        hass.services.async_call.reset_mock()
+        await runtime.async_handle_notification_action(
+            SimpleNamespace(data={"action": f"HOMEINTENT_EXECUTE_{tightened.event_id}"})
+        )
+        tightened_state = (await runtime._store.async_load_all())[tightened.event_id]
+        return removed_state, tightened_state
+
+    removed, tightened = asyncio.run(scenario())
+    assert removed.state in {AgentEventState.DENIED, AgentEventState.FAILED}
+    assert tightened.state is AgentEventState.DENIED
+    assert all(
+        call.args[:2] != ("homeassistant", "turn_off")
+        for call in hass.services.async_call.await_args_list
+    )
+
+
 def test_execute_event_cannot_promote_an_inform_event(tmp_path):
     hass, runtime = _runtime(tmp_path)
 
@@ -634,6 +832,8 @@ def test_auto_never_executes_medium_risk_cover_action(monkeypatch, tmp_path):
 
     assert event is not None
     assert event.mode.value == "ask"
+    assert "Tatsächliche Aktion:" in event.message
+    assert "Das Rollo ist noch offen." not in event.message
     assert all(
         call.args[:2] != ("cover", "close_cover")
         for call in hass.services.async_call.await_args_list

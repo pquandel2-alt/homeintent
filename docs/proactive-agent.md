@@ -170,12 +170,24 @@ fragen`) bleibt eine inhaltsarme Entscheidungshistorie. `ignorieren` und
 Aktionsberechtigung freischalten.
 
 Der öffentliche HA-Action-Editor zeigt `homeintent.proactive_message` auch für
-fortgeschrittene Regeln an. Vorgeschlagene Aktionen werden durch eine
-geschlossene Service-Allowlist geprüft; freie `domain.service`-Ausführung ist
-nicht möglich. Derselbe Validator läuft beim Erzeugen, beim Neustart und
-unmittelbar vor der Ausführung eines persistierten Plans. Target-Felder sind
-in `action_data` verboten; Nutzdaten können das geprüfte Ziel daher nicht
-ersetzen oder erweitern.
+fortgeschrittene Regeln an. Öffentliche ASK-/AUTO-Aufrufe benötigen einen
+authentifizierten Administrator. Von HomeIntent erzeugte Automationen können
+ohne Benutzerkontext auslösen, tragen dafür aber einen zufälligen, im Sidecar
+gespeicherten Nachweis, der exakt an Automation, Aktion und Zielmenge gebunden
+und beim Löschen widerrufen wird. Der Aufrufer kann dieses Vertrauensmerkmal
+nicht frei setzen. Generische Unlock- und Alarm-Disarm-Vorschläge sind
+gesperrt. Jede ASK-Ausgabe nennt zusätzlich zum Kontexttext die tatsächliche
+Aktion, Ziele und Parameter.
+
+Vorgeschlagene Aktionen werden durch eine geschlossene Service-Allowlist
+geprüft; freie `domain.service`-Ausführung ist nicht möglich. Derselbe
+Validator läuft beim Erzeugen, beim Neustart und unmittelbar vor der
+Ausführung eines persistierten Plans. Target-Felder sind in `action_data`
+verboten; Nutzdaten können das geprüfte Ziel daher nicht ersetzen oder
+erweitern. Ablauf, Replay, veränderte Nachricht/Aktion/Ziele, unbekannte
+Push-Geräte und inzwischen nicht mehr freigegebene Entitäten führen ohne
+Serviceaufruf zur Ablehnung. `ha_nlu.proactive_message` verwendet denselben
+Handler und ist kein Kompatibilitäts-Bypass.
 
 ## Erwartete Wirkung
 

@@ -6,6 +6,8 @@ import copy
 import secrets
 from typing import Any
 
+from .proactive_authority import proactive_action_fingerprint
+
 LIFECYCLE_TOKEN_FIELD = "lifecycle_token"
 LIFECYCLE_OWNER_FIELD = "lifecycle_id"
 LIFECYCLE_OPERATIONS = {
@@ -13,6 +15,8 @@ LIFECYCLE_OPERATIONS = {
     "ha_nlu.delete_automation": "delete",
     "homeintent.record_automation_run": "record_run",
     "ha_nlu.record_automation_run": "record_run",
+    "homeintent.proactive_message": "proactive_message",
+    "ha_nlu.proactive_message": "proactive_message",
 }
 
 
@@ -31,7 +35,11 @@ def prepare_lifecycle_actions(
             operation = LIFECYCLE_OPERATIONS.get(action) if isinstance(action, str) else None
             data = value.get("data")
             if operation is not None and isinstance(data, dict):
-                target = data.get("automation_id")
+                target = (
+                    data.get("rule_id")
+                    if operation == "proactive_message"
+                    else data.get("automation_id")
+                )
                 if isinstance(target, str) and target:
                     embedded_owner = data.get(LIFECYCLE_OWNER_FIELD)
                     embedded_token = data.get(LIFECYCLE_TOKEN_FIELD)
@@ -55,6 +63,14 @@ def prepare_lifecycle_actions(
                                 "automation_id": target,
                                 "token": token,
                                 "status": "open",
+                                **(
+                                    {
+                                        "action_fingerprint":
+                                            proactive_action_fingerprint(data)
+                                    }
+                                    if operation == "proactive_message"
+                                    else {}
+                                ),
                             }
                         )
                     else:
