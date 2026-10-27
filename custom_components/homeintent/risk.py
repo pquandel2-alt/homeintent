@@ -32,7 +32,10 @@ def classify_service_plan(
         level = RiskLevel.CRITICAL
     elif "lock" in domains and plan.service == "unlock":
         level = RiskLevel.CRITICAL
-    elif device_classes & {"garage", "garage_door", "gate"} and plan.service.startswith(("open", "close")):
+    elif device_classes & {"garage", "garage_door", "gate"} and (
+        plan.service.startswith(("open", "close")) or plan.service == "set_cover_position"
+    ):
+        # Moving an entrance to a position is as critical as opening it.
         level = RiskLevel.CRITICAL
     elif domains & _HIGH_RISK_DOMAINS:
         level = RiskLevel.HIGH

@@ -23,9 +23,16 @@ from .execution_context import (
 from .execution_trace import record_execution
 from .execution_policy import PolicyDecision, PolicyOutcome, evaluate_service_plan
 from .plan_origin import PlanOrigin
-from .risk import RiskLevel
+from .risk import RiskLevel, classify_service_plan
 from .service_call import ServiceCallPlan
-from .effect_wait import PendingEffect, expectations_for, judge_now
+from .effect_wait import (
+    EffectVerdict,
+    PendingEffect,
+    async_settle,
+    expectations_for,
+    judge_now,
+    wait_seconds,
+)
 from .turn_outcome import TurnOutcomeKind, defer_outcome, report_outcome
 from .const import CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS
 from .script_execution_observer import (
@@ -35,9 +42,13 @@ from .script_execution_observer import (
     script_execution_speech,
 )
 from .batch_execution import (
+    BatchEligibility,
+    BatchTarget,
+    batch_eligibility,
     BatchExecutionResult,
     BatchTargetResult,
     BatchTargetStatus,
+    PendingBatchExecution,
 )
 
 
@@ -159,17 +170,12 @@ async def async_execute_service_plan(
     not reported yet is handed to the turn, which waits for it (bounded,
     event-driven) before the reply is decided. A write that did not run is
     ``NOT_DONE``.
+
+    An independent batch (``batch_execution.batch_eligibility``) settles all
+    accepted targets itself in one bounded window and returns its final
+    result; nothing of it is left for the turn to settle.
     """
-    target_ids = (
-        (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
-    )
-    batch_domain = _independent_batch_domain(plan, entities)
-    if (
-        len(target_ids) > 1
-        and batch_domain in {"light", "cover"}
-        and plan.service
-        in {"turn_on", "turn_off", "open_cover", "close_cover", "set_cover_position"}
-    ):
+    if _batch_eligibility(plan, entities) is BatchEligibility.ELIGIBLE:
         return await _async_execute_independent_batch(
             hass,
             plan,
@@ -254,9 +260,17 @@ async def _async_execute_independent_batch(
         attended=attended,
         binding_confirmed=binding_confirmed,
     )
-    if overall_decision.risk > RiskLevel.LOW:
-        # Critical/dependent batches retain the established all-or-nothing
-        # path. This helper is only for independent everyday operations.
+    if any(
+        classify_service_plan(
+            ServiceCallPlan(plan.domain, plan.service, entity_id, dict(plan.data)),
+            list(entities),
+        ) >= RiskLevel.HIGH
+        for entity_id in target_ids
+    ):
+        # Eligibility is decided separately from risk, but a target that is
+        # itself high or critical risk keeps the established all-or-nothing
+        # path. The overall risk (including the broad-action tier) still
+        # decides confirmation for the whole batch below.
         return await _async_execute_service_plan(
             hass,
             plan,
@@ -362,10 +376,16 @@ async def _async_execute_independent_batch(
             runnable.append((entity, child))
 
     # The complete preflight above finishes before this first write.
-    outcomes = dict(preflight)
-    any_executed = False
+    outcomes: dict[str, BatchTargetResult] = dict(preflight)
+    pending_effects: dict[str, PendingEffect] = {}
+    called: list[str] = []
     execution_id: str | None = None
     for entity, child in runnable:
+        expectations = expectations_for(
+            child,
+            lambda entity_id: _snapshot(hass, entity_id),
+            names,
+        )
         result = await _async_execute_service_plan(
             hass,
             child,
@@ -374,7 +394,9 @@ async def _async_execute_independent_batch(
             is_admin=is_admin,
             user_id=user_id,
             confirmed=confirmed,
-            audit_trail=audit_trail,
+            # The batch is audited once, after the effect wait, with every
+            # target's final status (``AuditTrail.record_batch``).
+            audit_trail=None,
             audit_actor_id=audit_actor_id,
             effect_monitor=effect_monitor,
             origin=origin,
@@ -388,44 +410,53 @@ async def _async_execute_independent_batch(
         )
         execution_id = execution_id or result.execution_id
         if not result.executed:
-            status = (
-                BatchTargetStatus.UNAUTHORIZED
-                if result.error == UNAUTHORIZED_TEXT
-                else BatchTargetStatus.FAILED
-            )
+            if result.error == UNAUTHORIZED_TEXT:
+                status = BatchTargetStatus.UNAUTHORIZED
+            elif result.execution_id is None:
+                # Refused by the re-evaluation directly before the call.
+                status = BatchTargetStatus.REJECTED
+            else:
+                status = BatchTargetStatus.FAILED
             outcomes[entity.entity_id] = BatchTargetResult(
                 entity.entity_id, entity.friendly_name, status, result.error
             )
-            report_outcome(TurnOutcomeKind.NOT_DONE)
             continue
-        any_executed = True
-        expectations = expectations_for(
-            child,
-            lambda entity_id: _snapshot(hass, entity_id),
-            names,
-        )
-        pending = PendingEffect(expectations)
-        judge_now(hass, pending)
-        if pending.confirmed:
-            report_outcome(TurnOutcomeKind.EXECUTED)
-            status = BatchTargetStatus.SUCCESS
-        else:
-            if not defer_outcome(pending):
-                report_outcome(TurnOutcomeKind.UNCONFIRMED)
-            # A service accepted by Home Assistant is not proof that the
-            # device reached the requested state.  Keep this distinct from a
-            # call exception and never include it in the successful Undo set.
-            status = BatchTargetStatus.UNVERIFIED
+        called.append(entity.entity_id)
+        pending_effects[entity.entity_id] = PendingEffect(expectations)
+        # A service accepted by Home Assistant is not proof that the device
+        # reached the requested state: pending until the wait below.
         outcomes[entity.entity_id] = BatchTargetResult(
-            entity.entity_id, entity.friendly_name, status
+            entity.entity_id, entity.friendly_name, BatchTargetStatus.PENDING
         )
 
-    for item in preflight.values():
-        report_outcome(TurnOutcomeKind.NOT_DONE)
-    batch = BatchExecutionResult(
-        plan,
-        tuple(outcomes[entity_id] for entity_id in target_ids),
+    pending_batch = PendingBatchExecution(
+        plan, tuple(outcomes[entity_id] for entity_id in target_ids)
     )
+    # Every accepted call is observed together: one listener, one bounded
+    # window of ``effect_wait_seconds`` - never one full wait per device.
+    settled = await async_settle(
+        hass, list(pending_effects.values()), wait_seconds(options)
+    )
+    verdicts = {
+        entity_id: (
+            "reached" if not pending.expectations
+            else pending.verdicts.get(entity_id, EffectVerdict.PENDING).value
+        )
+        for entity_id, pending in pending_effects.items()
+    }
+    batch = pending_batch.finalize(verdicts, observed=settled.observed)
+    for item in batch.targets:
+        if item.status is BatchTargetStatus.SUCCESS:
+            report_outcome(TurnOutcomeKind.EXECUTED)
+        elif item.entity_id in pending_effects:
+            report_outcome(TurnOutcomeKind.UNCONFIRMED)
+        else:
+            report_outcome(TurnOutcomeKind.NOT_DONE)
+    if audit_trail is not None and called:
+        from homeassistant.util import dt as dt_util
+
+        audit_trail.record_batch(dt_util.now(), audit_actor_id, batch, tuple(called))
+    any_executed = bool(called)
     return ExecutionResult(
         any_executed,
         overall_decision,
@@ -646,17 +677,26 @@ def _required_capabilities(plan: ServiceCallPlan) -> frozenset[str]:
     return frozenset()
 
 
-def _independent_batch_domain(
+def _batch_eligibility(
     plan: ServiceCallPlan, entities: Sequence[EntitySnapshot]
-) -> str | None:
-    """Domain shared by every validated target, including HA turn helpers."""
+) -> BatchEligibility:
+    """Eligibility of the plan's targets, including HA turn helpers.
+
+    The domain comes from each resolved target (``homeassistant.turn_off``
+    on lights is a light batch); a target outside the exposed snapshot keeps
+    the domain of its entity id and is refused per target in the preflight.
+    """
     target_ids = (
         (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
     )
-    by_id = {entity.entity_id: entity.domain for entity in entities}
-    domains = {by_id.get(entity_id) for entity_id in target_ids}
-    if len(domains) == 1:
-        domain = next(iter(domains))
-        if domain in {"light", "cover"}:
-            return domain
-    return plan.domain if plan.domain in {"light", "cover"} else None
+    by_id = {entity.entity_id: entity for entity in entities}
+    targets = tuple(
+        BatchTarget(
+            entity_id,
+            by_id[entity_id].domain if entity_id in by_id else entity_id.partition(".")[0],
+            by_id[entity_id].device_class if entity_id in by_id else None,
+            entity_id in by_id,
+        )
+        for entity_id in target_ids
+    )
+    return batch_eligibility(plan.service, targets)

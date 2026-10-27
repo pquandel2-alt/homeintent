@@ -193,9 +193,10 @@ def test_a4_floor_and_position_in_one_question(monkeypatch):
 def test_a4_command_with_place_keeps_the_floor(monkeypatch):
     house = HouseConversation(monkeypatch)
     turn = house.say("Fahr oben alle Rollläden runter.")
-    ((domain, service, data),) = _writes(turn)
-    assert (domain, service) == ("cover", "close_cover")
-    assert sorted(data["entity_id"]) == [
+    writes = _writes(turn)
+    assert {(domain, service) for domain, service, _data in writes} == {("cover", "close_cover")}
+    # 7.13.1: independent standard shutters run as one call per target.
+    assert sorted(data["entity_id"] for _domain, _service, data in writes) == [
         "cover.badezimmer_rollladen", "cover.kinderzimmer_rollladen", "cover.schlafzimmer_rollladen",
     ]
 
