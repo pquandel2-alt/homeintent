@@ -2467,7 +2467,13 @@ class NluConversationEntity(
     def _automation_store(self) -> AutomationExecutor:
         """The one executor of automations.yaml (its lock guards every write)."""
         if self._automation_executor is None:
-            self._automation_executor = AutomationExecutor(self.hass)
+            existing = self._runtime_data.automation_executor
+            if isinstance(existing, AutomationExecutor):
+                self._automation_executor = existing
+            else:
+                from .automation_executor import automation_executor_for_hass
+
+                self._automation_executor = automation_executor_for_hass(self.hass)
         return self._automation_executor
     def _record_execution(self, user_input, plan) -> None:
         context = getattr(user_input, "context", None)

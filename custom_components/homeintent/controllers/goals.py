@@ -91,6 +91,7 @@ from ..profiles import RoutineDefinition, RoutineStepDefinition
 from ..security_control import conversation_user_id, user_is_admin
 from ..service_call import ServiceCallPlan
 from ..service_executor import async_execute_service_plan
+from ..storage_paths import storage_paths_for_hass
 from ..thermal_deadline import (
     append_start_checkpoint,
     checkpoint_automation_config,
@@ -849,9 +850,9 @@ class GoalController:
                             checkpoint_store = self._runtime.thermal_checkpoints
                             if checkpoint_store is None:
                                 checkpoint_store = PendingThermalCheckpointStore(
-                                    self.hass.config.path(
-                                        ".storage/homeintent_thermal_checkpoints.json"
-                                    )
+                                    storage_paths_for_hass(
+                                        self.hass
+                                    ).thermal_checkpoints
                                 )
                                 self._runtime.thermal_checkpoints = checkpoint_store
                             for checkpoint_record, checkpoint_at in checkpoint_records:

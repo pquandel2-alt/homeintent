@@ -30,6 +30,7 @@ from .event_summary import (
 from .execution_trace import TRACE_DATA_KEY
 from .history_query import async_read_state_rows
 from .house_report import ReportRecord, ReportStore, WeeklyFacts, render_weekly
+from .storage_paths import storage_paths_for_hass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ def report_store(hass: Any) -> ReportStore:
     data = hass.data if isinstance(getattr(hass, "data", None), dict) else {}
     store = data.get(REPORT_STORE_KEY)
     if not isinstance(store, ReportStore):
-        store = ReportStore(hass.config.path("homeintent_reports.json"))
+        store = ReportStore(storage_paths_for_hass(hass).reports)
         data[REPORT_STORE_KEY] = store
     return store
 

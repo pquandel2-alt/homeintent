@@ -18,6 +18,17 @@ class _Hass:
         self.config = _Config(root)
 
 
+def test_fresh_install_uses_canonical_path_without_creating_a_file(tmp_path):
+    resolved = resolve_storage_path(
+        _Hass(tmp_path),
+        ".storage/homeintent_goal_runs.json",
+        ".storage/ha_nlu_goal_runs.json",
+    )
+
+    assert resolved == str(tmp_path / ".storage" / "homeintent_goal_runs.json")
+    assert not Path(resolved).exists()
+
+
 def test_legacy_storage_is_atomically_adopted_under_homeintent_name(tmp_path):
     legacy = tmp_path / ".storage" / "ha_nlu_goal_runs.json"
     legacy.parent.mkdir()

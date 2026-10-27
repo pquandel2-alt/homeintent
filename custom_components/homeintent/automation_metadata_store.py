@@ -40,7 +40,7 @@ from homeassistant.util.file import write_utf8_file_atomic
 
 from .automation_summary import CREATED_BY_HOMEINTENT
 from .automation_history import canonical_state_digest
-from .storage_migration import resolve_storage_path
+from .storage_paths import storage_paths_for_hass
 
 METADATA_FILENAME = "homeintent_automation_metadata.json"
 LEGACY_METADATA_FILENAME = "ha_nlu_automation_metadata.json"
@@ -78,6 +78,9 @@ class AutomationMetadata:
     # Entries written before 7.9.1 have no owner (key absent -> None): they
     # stay untouched and only an administrator may manage them.
     owner_user_id: str | None = None
+    # Captured when the automation is confirmed. Runtime user lookup is not
+    # allowed to retroactively upgrade an unprivileged creator.
+    owner_was_admin: bool = False
     # Durable proof for a temporary pause helper. These fields are populated
     # only on the one-shot helper automation, never inferred from its alias or
     # action text. Older helpers do not have this proof and are intentionally
@@ -100,13 +103,9 @@ class AutomationMetadataStore:
     metadata file either.
     """
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, path: str | None = None) -> None:
         self._hass = hass
-
-    def _path(self) -> str:
-        return resolve_storage_path(
-            self._hass, METADATA_FILENAME, LEGACY_METADATA_FILENAME
-        )
+        self._path = path or storage_paths_for_hass(hass).automation_metadata
 
     async def async_save(self, metadata: AutomationMetadata) -> None:
         """Adds or overwrites ``metadata``'s entry, keyed by its
@@ -114,7 +113,7 @@ class AutomationMetadataStore:
         same lock guarding the paired ``automations.yaml`` write) - this
         method has no lock of its own, since it must never be interleaved
         with the automation-file half of the same transaction."""
-        path = self._path()
+        path = self._path
         entries = await self._hass.async_add_executor_job(self._read, path)
         entries[metadata.automation_id] = asdict(metadata)
         await self._hass.async_add_executor_job(self._write, path, entries)
@@ -126,12 +125,12 @@ class AutomationMetadataStore:
         for its own read: nothing here writes, so this can never race
         ``async_save``/``async_delete`` into a torn read (each of those is
         itself a single atomic file write)."""
-        path = self._path()
+        path = self._path
         return await self._hass.async_add_executor_job(self._read, path)
 
     async def async_snapshot(self) -> tuple[dict[str, Any], str]:
         """Read entries and the exact byte digest from one stable state."""
-        path = self._path()
+        path = self._path
         return await self._hass.async_add_executor_job(
             self._read_snapshot, path
         )
@@ -154,7 +153,7 @@ class AutomationMetadataStore:
         expected_entry_digest: str,
     ) -> str:
         """Replace only one sidecar entry after a target-scoped CAS check."""
-        path = self._path()
+        path = self._path
         return await self._hass.async_add_executor_job(
             self._replace_entry_if_unchanged,
             path,
@@ -177,7 +176,7 @@ class AutomationMetadataStore:
         """
         if not replacements or set(replacements) != set(expected_entry_digests):
             raise ValueError("Die Metadaten-Transaktion besitzt widersprüchliche Ziele")
-        path = self._path()
+        path = self._path
         return await self._hass.async_add_executor_job(
             self._replace_entries_if_unchanged,
             path,
@@ -189,7 +188,7 @@ class AutomationMetadataStore:
         """Removes ``automation_id``'s entry if present - a no-op otherwise
         (rollback calling this for an id whose metadata write never
         succeeded must not itself raise)."""
-        path = self._path()
+        path = self._path
         entries = await self._hass.async_add_executor_job(self._read, path)
         if automation_id in entries:
             del entries[automation_id]
@@ -197,7 +196,7 @@ class AutomationMetadataStore:
 
     async def async_update(self, automation_id: str, **changes: Any) -> dict[str, Any]:
         """Update selected fields without discarding forward-compatible data."""
-        path = self._path()
+        path = self._path
         entries = await self._hass.async_add_executor_job(self._read, path)
         entry = entries.get(automation_id)
         if not isinstance(entry, dict):
@@ -209,14 +208,14 @@ class AutomationMetadataStore:
 
     async def async_replace_all(self, entries: dict[str, Any]) -> None:
         """Atomically restore a version-history metadata snapshot."""
-        path = self._path()
+        path = self._path
         await self._hass.async_add_executor_job(self._write, path, entries)
 
     async def async_replace_all_if_unchanged(
         self, entries: dict[str, Any], expected_digest: str
     ) -> None:
         """Restore a snapshot only if no newer sidecar bytes exist."""
-        path = self._path()
+        path = self._path
         await self._hass.async_add_executor_job(
             self._replace_all_if_unchanged, path, entries, expected_digest
         )

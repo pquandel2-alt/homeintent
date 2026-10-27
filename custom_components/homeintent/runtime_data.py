@@ -32,6 +32,7 @@ from .predictive_house_model import PredictiveHouseModel
 from .thermal_tracker import ThermalExperienceTracker
 from .thermal_deadline import PendingThermalCheckpointStore
 from .learning_center import LearningCenterRevision
+from .storage_paths import HomeIntentStoragePaths
 
 
 @dataclass
@@ -85,6 +86,8 @@ class HomeIntentRuntimeData:
         default_factory=LearningCenterRevision
     )
     learning_center_audit: Any | None = None
+    storage_paths: HomeIntentStoragePaths | None = None
+    automation_executor: Any | None = None
 
     def __post_init__(self) -> None:
         self.context_store.bind_dialog_listener(self._synchronize_dialog)

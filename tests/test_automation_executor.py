@@ -184,9 +184,10 @@ def test_file_io_runs_via_async_add_executor_job_not_directly_on_the_event_loop(
         asyncio.run(executor.async_create_automation(SAMPLE_CONFIG))
 
     # Stable YAML snapshot + journal preflight + off-loop serialization + two
-    # durable journal writes + guarded YAML write + metadata read/write +
-    # journal cleanup: every blocking operation stays off the event loop.
-    assert hass.async_add_executor_job.await_count == 9
+    # durable journal writes + guarded YAML write + metadata/history
+    # preparation/finalization + journal cleanup: every blocking operation
+    # stays off the event loop.
+    assert hass.async_add_executor_job.await_count == 13
 
 
 def test_two_executor_instances_share_one_lock_and_serialize_creations():

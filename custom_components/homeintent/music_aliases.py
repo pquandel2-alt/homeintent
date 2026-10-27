@@ -22,6 +22,7 @@ from .music_assistant import (
     async_search_exact_music_assistant,
     is_safe_music_assistant_media_id,
 )
+from .storage_paths import storage_paths_for_hass
 
 MEDIA_ALIAS_FILENAME = ".storage/homeintent_music_aliases.json"
 MEDIA_ALIAS_SCHEMA_VERSION = 1
@@ -267,15 +268,13 @@ def select_music_assistant_instance(
 class MediaAliasStore:
     """Atomic per-HA store with globally unambiguous names and user ownership."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, path: str | None = None) -> None:
         self._hass = hass
         self._lock = hass.data.setdefault(MEDIA_ALIAS_LOCK_KEY, asyncio.Lock())
-
-    def _path(self) -> str:
-        return self._hass.config.path(MEDIA_ALIAS_FILENAME)
+        self._path = path or storage_paths_for_hass(hass).music_aliases
 
     async def async_list(self) -> tuple[MediaAlias, ...]:
-        raw = await self._hass.async_add_executor_job(self._read, self._path())
+        raw = await self._hass.async_add_executor_job(self._read, self._path)
         return tuple(self._decode(item) for item in raw)
 
     async def async_find_owned(self, alias: str, owner_user_id: str) -> MediaAlias | None:
@@ -311,21 +310,21 @@ class MediaAliasStore:
 
     async def async_save(self, alias: MediaAlias) -> None:
         async with self._lock:
-            raw = await self._hass.async_add_executor_job(self._read, self._path())
+            raw = await self._hass.async_add_executor_job(self._read, self._path)
             decoded = [self._decode(item) for item in raw]
             wanted = normalize_for_compare(alias.alias)
             conflicts = [item for item in decoded if normalize_for_compare(item.alias) == wanted]
             if conflicts:
                 raise ValueError(f"Der Medienalias „{alias.alias}“ ist bereits vergeben")
             await self._hass.async_add_executor_job(
-                self._write, self._path(), [*raw, asdict(alias)]
+                self._write, self._path, [*raw, asdict(alias)]
             )
 
     async def async_delete(self, alias: MediaAlias, actor_user_id: str, *, is_admin: bool) -> None:
         if alias.owner_user_id != actor_user_id and not is_admin:
             raise PermissionError("Nur der Besitzer oder ein Administrator darf den Medienalias löschen")
         async with self._lock:
-            raw = await self._hass.async_add_executor_job(self._read, self._path())
+            raw = await self._hass.async_add_executor_job(self._read, self._path)
             decoded = [self._decode(item) for item in raw]
             matches = [index for index, current in enumerate(decoded) if current == alias]
             if len(matches) != 1:
@@ -333,7 +332,7 @@ class MediaAliasStore:
                     "Der Medienalias wurde inzwischen geändert oder existiert nicht mehr"
                 )
             retained = [item for index, item in enumerate(raw) if index != matches[0]]
-            await self._hass.async_add_executor_job(self._write, self._path(), retained)
+            await self._hass.async_add_executor_job(self._write, self._path, retained)
 
     @staticmethod
     def _read(path: str) -> list[dict[str, Any]]:

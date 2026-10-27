@@ -44,7 +44,11 @@ from .engine import NluEngine
 from .bindings import BindingStore
 from .execution_trace import DEFAULT_TRACE_DAYS, DEFAULT_TRACE_LIMIT, async_setup_trace
 from .runtime_data import HomeIntentRuntimeData
-from .storage_migration import resolve_storage_path
+from .storage_paths import (
+    STORAGE_PATHS_DATA_KEY,
+    install_storage_paths,
+    resolve_homeintent_storage_paths,
+)
 from .user_context import UserContextStore
 from .experience_store import ExperienceStore
 from .learning_manager import LearningManager
@@ -102,6 +106,10 @@ def _build_engine() -> NluEngine:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    storage_paths = await hass.async_add_executor_job(
+        resolve_homeintent_storage_paths, hass
+    )
+    install_storage_paths(hass, storage_paths)
     try:
         # The confirmation tone (7.9.1 Teil B) is served by Home Assistant itself.
         from .response_style import async_register_sound
@@ -122,22 +130,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else 90
     )
     memory = MemoryStore(
-        _storage_path(hass, "homeintent_memory.sqlite3", "ha_nlu_memory.sqlite3"),
+        storage_paths.memory,
         enabled=bool(entry.options.get(CONF_MEMORY_ENABLED, False)),
         retention_days=retention_days,
     )
     user_contexts = UserContextStore(
-        Path(_storage_path(hass, "homeintent_users.json", "ha_nlu_users.json"))
+        Path(storage_paths.users)
     )
-    profile_store = ProfileStore(
-        _storage_path(hass, "homeintent_profiles.json", "ha_nlu_profiles.json")
-    )
-    goal_runs = GoalRunStore(
-        _storage_path(hass, "homeintent_goal_runs.json", "ha_nlu_goal_runs.json")
-    )
-    monitor_goals = MonitorGoalStore(
-        _storage_path(hass, "homeintent_monitor_goals.json", "ha_nlu_monitor_goals.json")
-    )
+    profile_store = ProfileStore(storage_paths.profiles)
+    goal_runs = GoalRunStore(storage_paths.goal_runs)
+    monitor_goals = MonitorGoalStore(storage_paths.monitor_goals)
     learning_enabled = bool(entry.options.get(CONF_EXPERIENCE_LEARNING_ENABLED, False))
     suggestions_enabled = bool(entry.options.get(CONF_PROACTIVE_SUGGESTIONS_ENABLED, False))
     configured_confidence = entry.options.get(CONF_MINIMUM_PREDICTION_CONFIDENCE, 0.75)
@@ -166,11 +168,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ),
     )
     experiences = ExperienceStore(
-        _storage_path(hass, "homeintent_experiences.json", "ha_nlu_experiences.json"),
+        storage_paths.experiences,
         learning_policy,
     )
     learned_models = ModelRegistry(
-        _storage_path(hass, "homeintent_models.json", "ha_nlu_models.json"),
+        storage_paths.models,
         learning_policy,
     )
     predictive_house = PredictiveHouseModel(learning_policy)
@@ -179,15 +181,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     thermal_tracker = ThermalExperienceTracker(
         learning_manager,
-        state_path=_storage_path(
-            hass, "homeintent_thermal_cycles.json", "ha_nlu_thermal_cycles.json"
-        ),
+        state_path=storage_paths.thermal_cycles,
     )
     thermal_checkpoints = PendingThermalCheckpointStore(
-        _storage_path(
-            hass, "homeintent_thermal_checkpoints.json",
-            "ha_nlu_thermal_checkpoints.json",
-        )
+        storage_paths.thermal_checkpoints
     )
     engine = await hass.async_add_executor_job(_build_engine)
     entry.runtime_data = HomeIntentRuntimeData(
@@ -205,7 +202,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         learning_manager=learning_manager,
         thermal_tracker=thermal_tracker,
         thermal_checkpoints=thermal_checkpoints,
+        storage_paths=storage_paths,
     )
+    from .automation_executor import automation_executor_for_hass
+
+    entry.runtime_data.automation_executor = automation_executor_for_hass(hass)
     def _learned_effect_timeout(plan: ServiceCallPlan) -> timedelta | None:
         entity_ids = (
             (plan.entity_id,) if isinstance(plan.entity_id, str)
@@ -262,14 +263,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     configured_trace_days = entry.options.get(CONF_TRACE_DAYS, DEFAULT_TRACE_DAYS)
     entry.runtime_data.trace, entry.runtime_data.stop_trace = await async_setup_trace(
         hass,
-        hass.config.path(".storage", "homeintent_trace.json"),
+        storage_paths.trace,
         limit=configured_trace_limit if isinstance(configured_trace_limit, int) else DEFAULT_TRACE_LIMIT,
         days=configured_trace_days if isinstance(configured_trace_days, int) else DEFAULT_TRACE_DAYS,
         store_text=bool(entry.options.get(CONF_TRACE_STORE_TEXT, True)),
     )
-    entry.runtime_data.bindings = BindingStore(
-        _storage_path(hass, "homeintent_bindings.json", "ha_nlu_bindings.json")
-    )
+    entry.runtime_data.bindings = BindingStore(storage_paths.bindings)
     await entry.runtime_data.bindings.async_load()
     await user_contexts.async_load()
     await profile_store.async_load()
@@ -307,7 +306,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             document_index = LocalDocumentIndex(
                 hass.config.path(*relative.parts),
-                _storage_path(hass, "homeintent_documents.sqlite3", "ha_nlu_documents.sqlite3"),
+                storage_paths.documents,
                 enabled=True,
             )
             entry.runtime_data.document_index = document_index
@@ -368,7 +367,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # SituationRuntime and acts only through the V10 pipeline.
     proactive_context = ProactiveRuntime(
         hass, entry, entry.runtime_data,
-        _storage_path(hass, "homeintent_proactive.json", "ha_nlu_proactive.json"),
+        storage_paths.proactive,
     )
     entry.runtime_data.proactive_context = proactive_context
     entry.async_on_unload(await proactive_context.async_start())
@@ -881,6 +880,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ):
             if hass.services.has_service(LEGACY_DOMAIN, service):
                 hass.services.async_remove(LEGACY_DOMAIN, service)
+        # HomeIntent currently allows one config entry. Drop setup-owned
+        # collaborators so reload reconstructs them from the freshly resolved
+        # immutable paths instead of retaining an unloaded entry's objects.
+        from .automation_executor import (
+            AUTOMATION_EXECUTOR_DATA_KEY,
+            AUTOMATION_LOCK_DATA_KEY,
+        )
+
+        hass.data.pop(AUTOMATION_EXECUTOR_DATA_KEY, None)
+        hass.data.pop(AUTOMATION_LOCK_DATA_KEY, None)
+        hass.data.pop(STORAGE_PATHS_DATA_KEY, None)
     return unloaded
 
 
@@ -957,9 +967,9 @@ async def _async_delete_automation(hass: HomeAssistant, call: ServiceCall) -> No
     if lifecycle is None:
         return
     automation_id, lifecycle_id, lifecycle_token = lifecycle
-    from .automation_executor import AutomationExecutor
+    from .automation_executor import automation_executor_for_hass
 
-    await AutomationExecutor(hass).async_delete_automation_with_proof(
+    await automation_executor_for_hass(hass).async_delete_automation_with_proof(
         automation_id,
         lifecycle_id=lifecycle_id,
         lifecycle_token=lifecycle_token,
@@ -1013,9 +1023,9 @@ async def _async_delete_automation_after_action(
     for attempt, delay in enumerate(delays, start=1):
         await asyncio.sleep(delay)
         try:
-            from .automation_executor import AutomationExecutor
+            from .automation_executor import automation_executor_for_hass
 
-            await AutomationExecutor(hass).async_delete_automation_with_proof(
+            await automation_executor_for_hass(hass).async_delete_automation_with_proof(
                 automation_id,
                 lifecycle_id=lifecycle_id,
                 lifecycle_token=lifecycle_token,
@@ -1055,9 +1065,11 @@ async def _async_record_automation_run_after_action(
     for attempt, delay in enumerate(delays, start=1):
         await asyncio.sleep(delay)
         try:
-            from .automation_executor import AutomationExecutor
+            from .automation_executor import automation_executor_for_hass
 
-            await AutomationExecutor(hass).async_record_automation_run_with_proof(
+            await automation_executor_for_hass(
+                hass
+            ).async_record_automation_run_with_proof(
                 automation_id,
                 lifecycle_id=lifecycle_id,
                 lifecycle_token=lifecycle_token,
@@ -1085,9 +1097,9 @@ async def _async_enable_automation_after_action(
     """Enable after the calling automation action has returned."""
     await asyncio.sleep(SELF_DELETE_GRACE_SECONDS)
     try:
-        from .automation_executor import AutomationExecutor
+        from .automation_executor import automation_executor_for_hass
 
-        await AutomationExecutor(hass).async_resume_paused_automation(
+        await automation_executor_for_hass(hass).async_resume_paused_automation(
             automation_id, helper_id=helper_id, pause_id=pause_id
         )
     except Exception:  # noqa: BLE001
@@ -1102,10 +1114,10 @@ async def _async_cleanup_expired_scheduled_automations(
     """Reconcile date-bound one-shots after Home Assistant startup."""
     from homeassistant.util import dt as dt_util
 
-    from .automation_executor import AutomationExecutor
+    from .automation_executor import automation_executor_for_hass
 
     try:
-        expired = await AutomationExecutor(
+        expired = await automation_executor_for_hass(
             hass
         ).async_cleanup_expired_scheduled_automations(dt_util.now())
     except Exception:  # noqa: BLE001 - startup cleanup must not unload HomeIntent
@@ -1117,9 +1129,9 @@ async def _async_cleanup_expired_scheduled_automations(
 
 async def _async_reconcile_and_cleanup_automations(hass: HomeAssistant) -> None:
     """Repair durable state first, then apply the missed-schedule policy."""
-    from .automation_executor import AutomationExecutor
+    from .automation_executor import automation_executor_for_hass
 
-    executor = AutomationExecutor(hass)
+    executor = automation_executor_for_hass(hass)
     try:
         recovered = await executor.async_recover_incomplete_transaction()
         orphan_metadata = await executor.async_reconcile_homeintent_state()
@@ -1134,11 +1146,6 @@ async def _async_reconcile_and_cleanup_automations(hass: HomeAssistant) -> None:
             len(orphan_metadata),
         )
     await _async_cleanup_expired_scheduled_automations(hass)
-
-
-def _storage_path(hass: HomeAssistant, current: str, legacy: str) -> str:
-    """Resolve a canonical .storage path with one lossless legacy adoption."""
-    return resolve_storage_path(hass, f".storage/{current}", f".storage/{legacy}")
 
 
 def _register_legacy_service(hass: HomeAssistant, service: str, handler) -> None:

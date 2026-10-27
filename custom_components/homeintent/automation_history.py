@@ -119,10 +119,6 @@ class AutomationHistoryStore:
         self._path = path
         self._limit = limit
 
-    @property
-    def available(self) -> bool:
-        return os.path.isdir(os.path.dirname(self._path) or ".")
-
     def read(self) -> list[dict[str, Any]]:
         try:
             with open(self._path, encoding="utf-8") as handle:
@@ -218,6 +214,40 @@ class AutomationHistoryStore:
             ),
         )
 
+    def append_if_available(
+        self,
+        *,
+        operation: str,
+        automation_id: str,
+        created_at: str,
+        automations: list[dict[str, Any]],
+        metadata: dict[str, Any] | None = None,
+        post_write_digest: str | None = None,
+        post_metadata_digest: str | None = None,
+        owner_user_id: str | None = None,
+        after_automations: list[dict[str, Any]] | None = None,
+        target_ids: tuple[str, ...] | None = None,
+        target_roles: dict[str, str] | None = None,
+    ) -> bool:
+        """Append only when the directory exists, in one worker operation."""
+
+        if not os.path.isdir(os.path.dirname(self._path) or "."):
+            return False
+        self.append(
+            operation=operation,
+            automation_id=automation_id,
+            created_at=created_at,
+            automations=automations,
+            metadata=metadata,
+            post_write_digest=post_write_digest,
+            post_metadata_digest=post_metadata_digest,
+            owner_user_id=owner_user_id,
+            after_automations=after_automations,
+            target_ids=target_ids,
+            target_roles=target_roles,
+        )
+        return True
+
     def finalize(
         self,
         created_at: str,
@@ -269,6 +299,26 @@ class AutomationHistoryStore:
             ),
         )
 
+    def finalize_if_available(
+        self,
+        created_at: str,
+        *,
+        post_metadata_digest: str,
+        after_metadata: dict[str, Any] | None = None,
+        after_metadata_by_id: dict[str, dict[str, Any] | None] | None = None,
+    ) -> bool:
+        """Finalize only when history storage is still available."""
+
+        if not os.path.isdir(os.path.dirname(self._path) or "."):
+            return False
+        self.finalize(
+            created_at,
+            post_metadata_digest=post_metadata_digest,
+            after_metadata=after_metadata,
+            after_metadata_by_id=after_metadata_by_id,
+        )
+        return True
+
     def pop(self) -> dict[str, Any] | None:
         entries = self.read()
         if not entries:
@@ -287,3 +337,11 @@ class AutomationHistoryStore:
         latest = self.peek()
         if latest is not None and latest.get("created_at") == created_at:
             self.pop()
+
+    def pop_if_available(self, created_at: str) -> bool:
+        """Remove a prepared entry without a loop-thread directory check."""
+
+        if not os.path.isdir(os.path.dirname(self._path) or "."):
+            return False
+        self.pop_if_created_at(created_at)
+        return True

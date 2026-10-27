@@ -74,9 +74,7 @@ from .automation_lifecycle import (
 )
 from .automation_history import (
     AutomationHistoryStore,
-    AUTOMATION_HISTORY_FILENAME,
     HISTORY_SCHEMA_VERSION,
-    LEGACY_AUTOMATION_HISTORY_FILENAME,
     canonical_state_digest,
 )
 from .automation_undo import automation_by_id, prepare_undo_plan
@@ -86,10 +84,13 @@ from .automation_transaction import (
     AutomationTransaction,
     AutomationTransactionJournal,
     ConcurrentAutomationUpdateError,
-    TRANSACTION_JOURNAL_FILENAME,
-    LEGACY_TRANSACTION_JOURNAL_FILENAME,
 )
-from .storage_migration import resolve_storage_path
+from .storage_paths import HomeIntentStoragePaths, storage_paths_for_hass
+from .proactive_authority import (
+    VerifiedProactiveProof,
+    exact_proactive_action_count,
+    proactive_action_fingerprint,
+)
 from .execution_context import system_context_for_turn
 from .error_logging import log_rate_limited_boundary_failure
 
@@ -99,6 +100,7 @@ AUTOMATIONS_YAML_FILENAME = "automations.yaml"
 AUTOMATION_CATEGORY_SCOPE = "automation"
 HOMEINTENT_CATEGORY_NAME = "HomeIntent"
 AUTOMATION_LOCK_DATA_KEY = "homeintent_automation_write_lock"
+AUTOMATION_EXECUTOR_DATA_KEY = "homeintent_automation_executor"
 
 
 class AutomationNotFoundError(ValueError):
@@ -178,34 +180,89 @@ def _mapping_tuple(value: Any) -> tuple[dict[str, Any], ...]:
 
 
 class AutomationExecutor:
-    """One instance per config entry (same lifetime/ownership as
-    ``NluEngine``/``ConversationContextStore`` on ``NluConversationEntity``),
-    sharing one ``asyncio.Lock()`` per Home Assistant instance. The custom
-    self-delete service creates fresh executor objects, so an instance-local
-    lock cannot protect its writes against conversation-driven writes.
+    """Setup-owned automation writer shared by conversation and services.
+
+    Its constructor consumes immutable path strings and performs no file
+    checks.  The shared lock serializes every YAML/sidecar transaction.
     """
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        storage_paths: HomeIntentStoragePaths | None = None,
+    ) -> None:
         self._hass = hass
         self._lock = hass.data.setdefault(AUTOMATION_LOCK_DATA_KEY, asyncio.Lock())
-        self._metadata_store = AutomationMetadataStore(hass)
+        paths = storage_paths or storage_paths_for_hass(hass)
+        self._metadata_store = AutomationMetadataStore(
+            hass, paths.automation_metadata
+        )
         self._journal = AutomationTransactionJournal(
-            resolve_storage_path(
-                hass,
-                TRANSACTION_JOURNAL_FILENAME,
-                LEGACY_TRANSACTION_JOURNAL_FILENAME,
-            )
+            paths.automation_transaction
         )
-        self._history = AutomationHistoryStore(
-            resolve_storage_path(
-                hass,
-                AUTOMATION_HISTORY_FILENAME,
-                LEGACY_AUTOMATION_HISTORY_FILENAME,
-            )
-        )
+        self._history = AutomationHistoryStore(paths.automation_history)
+        self._automations_path = paths.automations_yaml
 
     async def _async_read_snapshot(self, path: str) -> _AutomationFileSnapshot:
         return await self._hass.async_add_executor_job(self._read_snapshot, path)
+
+    async def async_verify_proactive_message_proof(
+        self, data: Mapping[str, object]
+    ) -> VerifiedProactiveProof:
+        """Verify a reusable proof bound to one owned automation and action."""
+
+        automation_id = data.get("lifecycle_id")
+        token = data.get("lifecycle_token")
+        rule_id = data.get("rule_id")
+        if not all(
+            isinstance(value, str) and value
+            for value in (automation_id, token, rule_id)
+        ) or automation_id != rule_id:
+            raise AutomationProvenanceError(
+                "Unvollständiger interner Proaktivnachweis"
+            )
+        assert isinstance(automation_id, str)
+        assert isinstance(token, str)
+        fingerprint = proactive_action_fingerprint(data)
+        metadata = await self._metadata_store.async_load_all()
+        entry = _require_homeintent_metadata(metadata, automation_id)
+        orders = entry.get("lifecycle_orders")
+        matching = [
+            order
+            for order in orders
+            if isinstance(orders, list) and isinstance(order, dict)
+            and order.get("operation") == "proactive_message"
+            and order.get("automation_id") == automation_id
+            and order.get("status") == "open"
+            and isinstance(order.get("token"), str)
+            and secrets.compare_digest(str(order["token"]), token)
+            and order.get("action_fingerprint") == fingerprint
+        ] if isinstance(orders, list) else []
+        if len(matching) != 1:
+            raise AutomationProvenanceError("Ungültiger interner Proaktivnachweis")
+        automations = await self._hass.async_add_executor_job(
+            self._read_automations, self._automations_path
+        )
+        automation = next(
+            (item for item in automations if item.get("id") == automation_id),
+            None,
+        )
+        if automation is None or exact_proactive_action_count(
+            automation,
+            automation_id=automation_id,
+            token=token,
+            action_fingerprint=fingerprint,
+        ) != 1:
+            raise AutomationProvenanceError(
+                "Der Proaktivnachweis ist nicht unverändert eingebettet"
+            )
+        owner = entry.get("owner_user_id")
+        return VerifiedProactiveProof(
+            automation_id=automation_id,
+            owner_user_id=owner if isinstance(owner, str) and owner else None,
+            owner_was_admin=entry.get("owner_was_admin") is True,
+            action_fingerprint=fingerprint,
+        )
 
     async def _async_begin_transaction(
         self,
@@ -243,7 +300,7 @@ class AutomationExecutor:
         created_at = utcnow_isoformat()
         metadata_snapshot = (
             (await self._metadata_store.async_snapshot())[0]
-            if record_history and self._history.available
+            if record_history
             else None
         )
         transaction = AutomationTransaction(
@@ -300,7 +357,7 @@ class AutomationExecutor:
             try:
                 await self._hass.async_add_executor_job(
                     partial(
-                        self._history.append,
+                        self._history.append_if_available,
                         operation=operation,
                         automation_id=automation_id,
                         created_at=created_at,
@@ -337,9 +394,9 @@ class AutomationExecutor:
             transaction.after_digest,
         )
         await self._hass.async_add_executor_job(self._journal.clear)
-        if transaction.operation != "rollback" and self._history.available:
+        if transaction.operation != "rollback":
             await self._hass.async_add_executor_job(
-                self._history.pop_if_created_at, transaction.created_at
+                self._history.pop_if_available, transaction.created_at
             )
 
     async def _async_restore_transaction_metadata(
@@ -399,14 +456,14 @@ class AutomationExecutor:
     async def _async_complete_transaction(
         self, transaction: AutomationTransaction
     ) -> None:
-        if transaction.operation != "rollback" and self._history.available:
+        if transaction.operation != "rollback":
             try:
                 metadata, metadata_digest = (
                     await self._metadata_store.async_snapshot()
                 )
                 await self._hass.async_add_executor_job(
                     partial(
-                        self._history.finalize,
+                        self._history.finalize_if_available,
                         transaction.created_at,
                         post_metadata_digest=metadata_digest,
                         after_metadata=(
@@ -508,6 +565,7 @@ class AutomationExecutor:
         once: bool = False,
         max_runs: int | None = None,
         owner_user_id: str | None = None,
+        owner_was_admin: bool = False,
         pause_id: str | None = None,
         pause_target_automation_id: str | None = None,
         pause_resume_at: str | None = None,
@@ -544,7 +602,7 @@ class AutomationExecutor:
         if automation_id is None:
             automation_id = uuid.uuid4().hex
         config, lifecycle_orders = prepare_lifecycle_actions(config, automation_id)
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
             original_automations = snapshot.automations
@@ -576,6 +634,7 @@ class AutomationExecutor:
                     once=once,
                     max_runs=max_runs,
                     owner_user_id=owner_user_id,
+                    owner_was_admin=owner_was_admin,
                     pause_id=pause_id,
                     pause_target_automation_id=pause_target_automation_id,
                     pause_resume_at=pause_resume_at,
@@ -606,7 +665,7 @@ class AutomationExecutor:
 
     async def async_duplicate_automation(self, automation_id: str) -> str:
         """Duplicate one HomeIntent automation with fresh lifecycle IDs."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         automations = await self._hass.async_add_executor_job(
             self._read_automations, path
         )
@@ -653,6 +712,7 @@ class AutomationExecutor:
                 metadata.get("owner_user_id")
                 if isinstance(metadata.get("owner_user_id"), str) else None
             ),
+            owner_was_admin=metadata.get("owner_was_admin") is True,
         )
 
     async def async_pause_automation_until(
@@ -692,7 +752,7 @@ class AutomationExecutor:
             "mode": "single",
         }
         config, lifecycle_orders = prepare_lifecycle_actions(config, helper_id)
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             all_metadata = await self._metadata_store.async_load_all()
             target_metadata = _require_homeintent_metadata(all_metadata, automation_id)
@@ -835,7 +895,7 @@ class AutomationExecutor:
         race (deleted again from elsewhere between resolution and
         confirmation), not on the ordinary path.
         """
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
             original_automations = snapshot.automations
@@ -934,7 +994,7 @@ class AutomationExecutor:
         await self._async_set_initial_state(automation_id, enabled=True)
 
     async def _async_set_initial_state(self, automation_id: str, *, enabled: bool) -> None:
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
             original_automations = snapshot.automations
@@ -968,7 +1028,7 @@ class AutomationExecutor:
         self, automation_id: str, *, helper_id: str, pause_id: str
     ) -> None:
         """Resume only the target proven by one durable, open pause helper."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             target = _require_homeintent_metadata(metadata, automation_id)
@@ -1093,7 +1153,7 @@ class AutomationExecutor:
         ``automations.yaml`` on every single conversation turn regardless of
         its content would be real, unnecessary per-turn I/O cost.
         """
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         automations = await self._hass.async_add_executor_job(self._read_automations, path)
         metadata = await self._metadata_store.async_load_all()
 
@@ -1159,7 +1219,7 @@ class AutomationExecutor:
         self, automation_id: str, scheduled_for: datetime
     ) -> None:
         """Move a known date-bound HomeIntent one-shot transactionally."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
@@ -1282,7 +1342,7 @@ class AutomationExecutor:
                 token=lifecycle_token,
             )
             snapshot = await self._async_read_snapshot(
-                self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+                self._automations_path
             )
             source, _position = automation_by_id(
                 snapshot.automations, lifecycle_id
@@ -1396,7 +1456,7 @@ class AutomationExecutor:
                 # own provenance check.
                 delete_now = True
             else:
-                path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+                path = self._automations_path
                 snapshot = await self._async_read_snapshot(path)
                 updated = copy.deepcopy(snapshot.automations)
                 target, _position = automation_by_id(updated, automation_id)
@@ -1451,7 +1511,7 @@ class AutomationExecutor:
         With ``notify_entity_ids`` every push of the automation goes to
         exactly these (the confirmed household's) devices afterwards.
         """
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
@@ -1500,7 +1560,7 @@ class AutomationExecutor:
         """Limit an existing HomeIntent automation to a total run count."""
         if not 2 <= max_runs <= 10:
             raise ValueError("Die Ausführungszahl muss zwischen 2 und 10 liegen")
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
@@ -1588,7 +1648,7 @@ class AutomationExecutor:
         """Replace only user actions, preserving trigger/conditions and bookkeeping."""
         if not new_actions:
             raise ValueError("Mindestens eine neue Aktion ist erforderlich")
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
@@ -1641,7 +1701,7 @@ class AutomationExecutor:
 
     async def async_get_automation_config(self, automation_id: str) -> dict[str, Any] | None:
         """The stored configuration of one HomeIntent automation (read only)."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         snapshot = await self._async_read_snapshot(path)
         for automation in snapshot.automations:
             if automation.get("id") == automation_id:
@@ -1661,7 +1721,7 @@ class AutomationExecutor:
             raise ValueError("Unbekannte Änderung einer Automation")
         if "triggers" in changes and not changes["triggers"]:
             raise ValueError("Mindestens ein Auslöser ist erforderlich")
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
@@ -1709,7 +1769,7 @@ class AutomationExecutor:
             raise ValueError("Unbekannter Automationsabschnitt")
         if section == "triggers" and not new_values:
             raise ValueError("Mindestens ein Auslöser ist erforderlich")
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             metadata = await self._metadata_store.async_load_all()
             entry = _require_homeintent_metadata(metadata, automation_id)
@@ -1765,7 +1825,7 @@ class AutomationExecutor:
         clock trigger was due, the safe policy is to expire the command, not
         execute a stale physical action after restart.
         """
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
             original_automations = snapshot.automations
@@ -1825,7 +1885,7 @@ class AutomationExecutor:
 
     async def async_recover_incomplete_transaction(self) -> bool:
         """Recover a crash-interrupted YAML transaction when still safe."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             transaction = await self._hass.async_add_executor_job(self._journal.read)
             if transaction is None:
@@ -1873,7 +1933,7 @@ class AutomationExecutor:
 
     async def async_reconcile_homeintent_state(self) -> tuple[str, ...]:
         """Remove orphans, repair categories, and migrate safe lifecycle proofs."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         async with self._lock:
             snapshot = await self._async_read_snapshot(path)
             yaml_ids = {
@@ -1973,7 +2033,7 @@ class AutomationExecutor:
         self, *, requesting_user_id: str | None, is_admin: bool
     ) -> str:
         """Atomically undo every target in the newest delta entry."""
-        path = self._hass.config.path(AUTOMATIONS_YAML_FILENAME)
+        path = self._automations_path
         requested_history = await self._hass.async_add_executor_job(
             self._history.peek
         )
@@ -2242,3 +2302,14 @@ class AutomationExecutor:
     @staticmethod
     def _write_automations(path: str, automations: list[dict[str, Any]]) -> None:
         write_utf8_file_atomic(path, yaml_util.dump(automations))
+
+
+def automation_executor_for_hass(hass: HomeAssistant) -> AutomationExecutor:
+    """Return the setup-owned executor used by conversation and services."""
+
+    existing = hass.data.get(AUTOMATION_EXECUTOR_DATA_KEY)
+    if isinstance(existing, AutomationExecutor):
+        return existing
+    executor = AutomationExecutor(hass)
+    hass.data[AUTOMATION_EXECUTOR_DATA_KEY] = executor
+    return executor

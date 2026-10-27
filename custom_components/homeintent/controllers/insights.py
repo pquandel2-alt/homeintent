@@ -81,6 +81,7 @@ from ..notification_target import NotificationTargetResolver
 from ..security_control import conversation_user_id, user_is_admin
 from ..service_call import ServiceCallPlan
 from ..service_executor import async_execute_service_plan
+from ..storage_paths import storage_paths_for_hass
 from ..turn_outcome import TurnOutcomeKind, report_outcome
 from ..vacation import (
     VacationRecord,
@@ -1389,7 +1390,7 @@ def _asks_more(text: str) -> bool:
 
 
 def _vacation_store(hass: Any) -> VacationStore:
-    return VacationStore(hass.config.path("homeintent_vacation.json"))
+    return VacationStore(storage_paths_for_hass(hass).vacation)
 
 
 _HABIT_STORE_KEY = "homeintent_habit_store"
@@ -1401,7 +1402,7 @@ def _habit_store(hass: Any) -> HabitStore:
     data = hass.data if isinstance(getattr(hass, "data", None), dict) else {}
     store = data.get(_HABIT_STORE_KEY)
     if not isinstance(store, HabitStore):
-        store = HabitStore(hass.config.path("homeintent_habit_suggestions.json"))
+        store = HabitStore(storage_paths_for_hass(hass).habit_suggestions)
         data[_HABIT_STORE_KEY] = store
     return store
 

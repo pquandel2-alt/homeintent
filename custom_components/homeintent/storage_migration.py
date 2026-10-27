@@ -13,12 +13,12 @@ class _ConfigPath(Protocol):
     def path(self, *parts: str) -> str: ...
 
 
-class _HassWithConfig(Protocol):
+class HassWithConfigPath(Protocol):
     config: _ConfigPath
 
 
 def resolve_storage_path(
-    hass: _HassWithConfig, current: str, legacy: str
+    hass: HassWithConfigPath, current: str, legacy: str
 ) -> str:
     """Return the canonical path and atomically adopt a legacy file once.
 
@@ -44,4 +44,4 @@ def resolve_storage_path(
     return current_path
 
 
-__all__ = ("resolve_storage_path",)
+__all__ = ("HassWithConfigPath", "resolve_storage_path")
