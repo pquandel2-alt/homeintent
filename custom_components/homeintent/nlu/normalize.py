@@ -49,6 +49,9 @@ _DEGREE_SYMBOL_RE = re.compile(r"(\d)\s*°")
 # other words are prefixes of each other's tokens. "bitte" excluded, see
 # module docstring.
 _FILLER_RE = re.compile(r"\b(mal|ma|doch|kurz)\b", re.IGNORECASE)
+# The same discourse particles as words; shared with the complete-coverage
+# check of bounded parsers (``media_coverage``). A test keeps both in sync.
+DISCOURSE_FILLERS = frozenset({"mal", "ma", "doch", "kurz"})
 # "Mach jetzt das Licht an": "jetzt"/"sofort" only say "now", which every
 # plain command means anyway (7.5.0). "ab jetzt", "bis jetzt", "von jetzt
 # an" carry meaning and stay.

@@ -46,6 +46,14 @@ und ein freigegebener, verfügbarer Music-Assistant-Player ergeben einen Plan;
 dieser läuft anschließend durch dieselbe Execution Policy wie andere
 Geräteaktionen. HomeIntent hält keinen dauerhaften Medienbibliotheks-Cache.
 
+Sammelaktionen (7.13.1) schreiben einen Audit-Eintrag pro Batch mit dem
+endgültigen Status jedes Ziels nach der begrenzten Wirkungsprüfung. Undo
+enthält ausschließlich Ziele mit bestätigter Wirkung; fehlgeschlagene,
+widersprüchliche, nicht zurückgemeldete oder nicht überprüfbare Ziele werden
+nie zurückgestellt. Ein angenommener Service Call allein gilt nicht als
+Erfolg. Garagentore und Tore sind auch beim Setzen einer Position
+`CRITICAL`.
+
 Offene Automations- und MA-Instanzdialoge sind flüchtiger RAM-Zustand. Ihr
 Schlüssel bindet Conversation-ID, authentifizierten Benutzer sowie vorhandene
 Satelliten- und Geräte-ID; ein Administrator erbt dadurch keinen fremden

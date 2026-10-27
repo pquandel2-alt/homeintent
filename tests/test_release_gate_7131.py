@@ -178,3 +178,13 @@ def test_workflows_wire_the_gate_and_the_nightly_dispatch():
     assert '[ "$tagged" != "$RELEASE_SHA" ]' in release
     for name in REQUIRED_NIGHTLY_JOBS:
         assert f"name: {name}" in nightly
+
+
+def test_evidence_names_the_commit_and_every_checked_run():
+    from scripts.release_gate import render_evidence
+
+    checked = _validate([_run(NIGHTLY_WORKFLOW, 200)], {200: _jobs(REQUIRED_NIGHTLY_JOBS)})
+    text = render_evidence("o/r", SHA, checked)
+    assert f"https://github.com/o/r/commit/{SHA}" in text
+    assert "[Lauf 100](https://github.com/o/r/actions/runs/100)" in text
+    assert "[Lauf 200](https://github.com/o/r/actions/runs/200)" in text

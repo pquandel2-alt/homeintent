@@ -43,3 +43,20 @@ Sonos und Music Assistant sind gegen Home-Assistant-Verträge und realistische
 Fakes geprüft. Ein echter Sonos-Lautsprecher und ein echter Music-Assistant-
 Server mit hörbarer Ausgabe waren nicht Teil der automatisierten Prüfung.
 Mocks belegen daher keine reale Hardwarewiedergabe.
+
+## Korrektur (nachgetragen mit 7.13.1)
+
+- Die Aussage zu unabhängigen **Cover**-Sammelaktionen traf auf 7.13.0 nicht
+  zu: Die partielle Ausführung lief nur bei `RiskLevel.LOW`; Cover sind
+  `MEDIUM` und fielen auf einen gemeinsamen Service Call zurück. Erst 7.13.1
+  führt Standard-Rollläden tatsächlich pro Ziel aus.
+- Licht-Sammelaktionen meldeten Geräte, die erst kurz nach dem Service Call
+  bestätigten, als „nicht verifiziert“ und nahmen sie aus dem Undo. Behoben in
+  7.13.1.
+- Die normale CI von `324cfb8` war grün
+  ([Lauf 40457654872](https://github.com/pquandel2-alt/homeintent/actions/runs/40457654872)),
+  der Nightly-Sicherheitslauf desselben Commits jedoch fehlgeschlagen
+  ([Lauf 40470216752](https://github.com/pquandel2-alt/homeintent/actions/runs/40470216752)):
+  „Mach das Radio in der Küche aus und dann Quirlomat den Quirlomat.“
+  pausierte das Radio. Das Release-Gate prüfte den Nightly-Lauf nicht. Beides
+  ist in 7.13.1 behoben.

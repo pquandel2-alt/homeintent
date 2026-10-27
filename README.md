@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.13.0**
+- Aktuelle Version: **7.13.1**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -147,25 +147,39 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-## Version 7.13.0
+## Version 7.13.1
 
-7.13.0 löst Speicherpfade einmalig und außerhalb des Event-Loops auf, bindet
-proaktive Aktionen kryptografisch an ihre HomeIntent-Automation und zeigt in
-ASK-Nachrichten stets die tatsächliche Aktion. Ein gemeinsames Orts- und
-Zielmodell trägt nun auch Umgangssprache, Komposita, Skriptanforderungen und
-capability-basierte Medienbefehle. Skript- und Sammelausführungen melden
-typisierte, überprüfbare Teilergebnisse statt pauschal „Erledigt“. Details und
-ehrlich ausgewiesene Hardwaregrenzen stehen in den
-[Release Notes](docs/release-notes-7.13.0.md).
+7.13.1 schließt die Lücken aus der unabhängigen Prüfung von 7.13.0:
 
-Geprüfter Release-Stand von Version 7.13.0: Die verpflichtenden GitHub-Prüfungen
-müssen für den exakten Release-Commit erfolgreich abgeschlossen sein, bevor
-das Tag und der GitHub-Release erstellt werden.
+- **Vollständiger Satzverbrauch:** Ein schreibender Medienbefehl wird nur
+  ausgeführt, wenn jedes Wort des Satzes erklärt ist. Zusammengesetzte Sätze
+  werden von der gemeinsamen Mehrbefehls-Pipeline vollständig kompiliert;
+  ist ein Teil unverstanden, unvollständig oder nennt er einen Ort oder ein
+  Ziel, das der Plan nicht abdeckt, wird nichts ausgeführt.
+- **Finalisierte Sammelergebnisse:** Licht- und Rollladen-Sammelaktionen
+  beobachten alle angenommenen Ziele gemeinsam in einem begrenzten,
+  ereignisbasierten Zeitfenster. Antwort, Audit (pro Ziel) und Undo entstehen
+  erst danach aus demselben unveränderlichen Ergebnis.
+- **Rollläden wirklich pro Ziel:** Batch-Eignung ist von der Risikoklasse
+  getrennt. Standard-Rollläden bleiben `MEDIUM` und laufen pro Ziel;
+  Garagentore, Tore und unklassifizierte Cover bleiben atomar und
+  bestätigungspflichtig.
+- **Strengeres Release-Gate:** Ein Release verlangt für den exakten Commit
+  sowohl die grüne CI als auch den grünen Nightly-Sicherheitslauf.
+
+Details, Root Causes, Testergebnisse und eine manuelle Testmatrix für echte
+Hardware stehen in den [Release Notes](docs/release-notes-7.13.1.md) und im
+[Umsetzungsbericht](docs/umsetzung-7.13.1.md).
+
+Geprüfter Release-Stand von Version 7.13.1: Die verpflichtenden GitHub-Prüfungen
+(`ci.yml` und `nightly-live.yml`) müssen für den exakten Release-Commit
+erfolgreich abgeschlossen sein, bevor Tag und GitHub-Release erstellt werden;
+die geprüften Lauf-Links stehen im GitHub-Release.
 
 Die versionierte Korpusbaseline ist
-[`corpus-signatures-7.13.0.json`](docs/perf/corpus-signatures-7.13.0.json).
+[`corpus-signatures-7.13.1.json`](docs/perf/corpus-signatures-7.13.1.json).
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.13.0.md), im
+in den [Release Notes](docs/release-notes-7.13.1.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 

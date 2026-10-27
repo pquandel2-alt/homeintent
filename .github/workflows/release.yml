@@ -55,7 +55,10 @@ jobs:
             --sha "$RELEASE_SHA" \
             --version "$RELEASE_VERSION" \
             --title "$RELEASE_TITLE" \
-            --notes "$RELEASE_NOTES"
+            --notes "$RELEASE_NOTES" \
+            --evidence-out "${RUNNER_TEMP}/release-evidence.md"
+          # The release body names the exact commit and the checked runs.
+          cat "${RUNNER_TEMP}/release-evidence.md" >> "$RELEASE_NOTES"
           # Create the tag ref pinned to the exact checked SHA first. The ref
           # API fails if the tag already exists, so the release can never
           # attach to a commit other than the one the gate just checked.

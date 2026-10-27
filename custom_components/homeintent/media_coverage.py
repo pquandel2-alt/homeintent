@@ -38,6 +38,7 @@ from .media import (
 from .nlu.coordination import opens_clause
 from .nlu.device_ontology import GENERA
 from .nlu.language_frontend import LanguageToken, tokenize_language
+from .nlu.normalize import DISCOURSE_FILLERS
 from .nlu.self_correction import utterance_fields
 
 __all__ = ("MediaCoverage", "MediaSpan", "analyse_media_coverage")
@@ -51,7 +52,7 @@ _MEDIA_DEVICE_GENERA = frozenset(
 _MEDIA_GENERA = _MEDIA_DEVICE_GENERA | frozenset({"music"})
 _ARTICLES = frozenset({"der", "die", "das", "den", "dem", "des"})
 # Politeness and discourse fillers that never change a media operation.
-_FILLERS = frozenset({
+_FILLERS = DISCOURSE_FILLERS | frozenset({
     "bitte", "mal", "eben", "doch", "halt", "ja", "danke", "gleich", "jetzt",
     "gerade", "noch", "etwas", "bisschen", "wieder", "kurz", "schnell",
     "einmal", "mir", "uns", "schon", "bitteschoen", "dort", "da", "hier",

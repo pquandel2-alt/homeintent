@@ -6,7 +6,29 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 27. Oktober 2026
+Stand: 27. Oktober 2026 (7.13.1)
+
+## Release Candidate 7.13.1
+
+- [x] vollständige Satzverbrauchsprüfung für schreibende Medienbefehle
+  (`media_coverage`); Koordinationen, Rest und Konflikte übergeben den ganzen
+  Satz an die atomare Mehrbefehls-Pipeline
+- [x] keine leere koordinierte Klausel, kein koordinierter Ort und kein
+  koordiniertes Ziel ohne geplantes Ziel (`nlu/clause_completeness`)
+- [x] Nightly-Gegenbeispiel von 7.13.0 und weitere gefundene Fälle fest in
+  `REGRESSIONS` (normale CI) sowie Property-/Metamorphietests
+- [x] settle-fähige Batch-Struktur (`PendingBatchExecution` → finales
+  `BatchExecutionResult`); Antwort, Audit pro Ziel und Undo aus demselben
+  Ergebnis
+- [x] Batch-Eignung getrennt von der Risikoklasse; Standard-Rollläden pro Ziel,
+  Garagentore/Tore/unklassifizierte Cover atomar; Garagentor-Position `CRITICAL`
+- [x] Release-Gate verlangt grüne `ci.yml` **und** `nightly-live.yml` für den
+  exakten SHA; fehlgeschlagener Sicherheitsjob blockiert dauerhaft
+- [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – bewusst nicht
+  behauptet; manuelle Matrix in [Umsetzung 7.13.1](umsetzung-7.13.1.md)
+- [ ] CI und Nightly für den exakten Release-Commit, Tag und GitHub-Release:
+  wird vom Release-Workflow erzwungen; die Lauf-Links stehen im GitHub-Release
+  und werden nach Veröffentlichung hier eingetragen
 
 ## Release Candidate 7.13.0
 
@@ -17,12 +39,18 @@ Stand: 27. Oktober 2026
 - [x] gemeinsames Ortsmodell für Haus, innen/außen, Bereiche, Etagen, Aliase,
   Satellitenbezug und harte ortsgebundene Zielmengen
 - [x] kompositionelle Komposita-, Skript-, LIST- und elliptische Gerätesprache
-- [x] typisierte Skriptausgänge und sichere partielle Licht-/Cover-Batches
+- [x] typisierte Skriptausgänge und sichere partielle Licht-Batches
+- [ ] partielle Cover-Batches – in 7.13.0 **nicht** aktiv (Cover `MEDIUM`
+  fielen auf den gemeinsamen Call zurück); umgesetzt in 7.13.1
 - [x] capability- und quellengebundene Medien-/Sonos-/Music-Assistant-Semantik
 - [x] Regressionen und Invarianten zu Issue #38, Event-Loop-I/O,
   Proaktivautorisierung, Skriptausgang, Teilfehlern und Medienquellen
-- [ ] vollständige CI für den exakten finalen Commit, Tag und GitHub Release
-  (wird durch den Release-Workflow vor Veröffentlichung erzwungen)
+- [x] normale CI für den exakten Release-Commit `324cfb8` grün:
+  [Lauf 40457654872](https://github.com/pquandel2-alt/homeintent/actions/runs/40457654872);
+  Tag und Release `v7.13.0` erstellt
+- [ ] Nightly-Sicherheitslauf desselben Commits **fehlgeschlagen**
+  ([Lauf 40470216752](https://github.com/pquandel2-alt/homeintent/actions/runs/40470216752));
+  das damalige Gate prüfte ihn nicht – behoben in 7.13.1
 
 ## Release Candidate 7.12.0
 

@@ -39,7 +39,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.13.0.json
+          --check docs/perf/corpus-signatures-7.13.1.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
@@ -93,6 +93,13 @@ jobs:
           python scripts/benchmark_music_assistant.py
           --registry-size 5000
           --iterations 300
+          --max-p95-ms 100
+      - name: Satzverbrauchs- und Klauselprüfung bei großer Registry (7.13.1)
+        if: matrix.python-version == '3.12'
+        run: >-
+          python scripts/benchmark_media_coverage.py
+          --registry-size 5000
+          --iterations 30
           --max-p95-ms 100
       - name: V10 Goal-/Planungsbudgets prüfen
         if: matrix.python-version == '3.12'

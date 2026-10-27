@@ -5,6 +5,9 @@ Aktuelle, veröffentlichte Stände stehen zusätzlich unter
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases); technische
 Umsetzungsberichte liegen im übergeordneten Verzeichnis `docs/`.
 
+Ab 7.9.9 hat jede Version eigenständige Release Notes, zuletzt
+[7.13.1](../release-notes-7.13.1.md) mit [Umsetzungsbericht](../umsetzung-7.13.1.md).
+
 Version 7.9.9 ist in den eigenständigen
 [Release Notes](../release-notes-7.9.9.md) dokumentiert. Dieses Archiv beginnt
 mit 7.9.8, damit die aktuelle Release-Beschreibung nicht doppelt gepflegt wird.

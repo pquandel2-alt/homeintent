@@ -1001,6 +1001,8 @@ REGRESSIONS: list[str] = [
     # coordinated place without target ran the understood first half.
     "Mach das Licht im Büro aus und dann das.",
     "Pausiere das Radio in der Küche und im Wohnzimmer.",
+    # A coordinated garage door was silently dropped while the shutters ran.
+    "Öffne die Rollläden im Wohnzimmer und das Garagentor.",
 ]
 
 

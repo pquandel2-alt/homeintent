@@ -316,3 +316,31 @@ def test_cover_batch_with_one_unreachable_cover_and_undo(monkeypatch):
     devices.behaviour = {LIVING[0]: Behaviour("open", attributes={"current_position": 100})}
     house.say("Mach das rückgängig.")
     assert [entity_id for _d, _s, entity_id in devices.calls] == [LIVING[0]]
+
+
+# ------------------------------------------------------------ coordinated target sets
+@pytest.mark.parametrize("text", [
+    # 7.13.0 opened both shutters and silently dropped the garage door.
+    "Öffne die Rollläden im Wohnzimmer und das Garagentor.",
+    "Fahr die Rollläden im Wohnzimmer hoch und das Garagentor.",
+    "Mach das Licht im Büro und das Quirlomat aus.",
+])
+def test_a_coordinated_target_is_never_dropped(monkeypatch, text):
+    house = HouseConversation(monkeypatch)
+    turn = house.say(text)
+    writes = [call for call in turn.calls if call[0] not in {"recorder", "persistent_notification"}]
+    assert writes == [], (text, turn.speech)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Öffne die Rollläden im Wohnzimmer.", set(LIVING)),
+    ("Schalte die Stehlampe und das Bürolicht aus.", {"light.stehlampe", "light.buerolicht"}),
+])
+def test_fully_covered_coordinated_targets_still_run(monkeypatch, text, expected):
+    entities = with_states(house_entities(), cover__wohnzimmer_rollladen_links="closed",
+                           cover__wohnzimmer_rollladen_rechts="closed",
+                           light__stehlampe="on", light__buerolicht="on")
+    house = HouseConversation(monkeypatch, entities=entities)
+    turn = house.say(text)
+    called = {call[2]["entity_id"] for call in turn.calls}
+    assert called == expected, (text, turn.speech)

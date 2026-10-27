@@ -7,7 +7,10 @@ reflected in it.  Two structural gaps were silently dropped before:
   das.") - an unfinished clause, never a reason to run the first one;
 * a coordinated place that none of the planned targets lies in ("Pausiere
   das Radio in der Küche und im Wohnzimmer") - the named target set would
-  silently shrink.
+  silently shrink;
+* a coordinated target phrase no planned target covers ("Öffne die
+  Rollläden im Wohnzimmer und das Garagentor" opened the shutters and
+  dropped the garage door).
 
 Both are read from word classes (joiners, fillers, references, the place
 lexicon, registry names); there is no sentence template.  The check never
@@ -19,10 +22,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from ..entities import EntitySnapshot
+from ..entities import EntitySnapshot, normalize_for_compare
+from .device_ontology import entity_genera
 from .language_frontend import tokenize_language
 from .place_model import PlaceKind
-from .self_correction import utterance_fields
+from .self_correction import registry_name_table, utterance_fields
+from .semantic_utterance import SpeechAct, analyse_utterance
+from .semantic_exclusion import split_exclusion
 
 __all__ = ("SentenceCompleteness", "analyse_write_completeness")
 
@@ -43,14 +49,15 @@ _COURTESY = frozenset({"bitte", "danke", "bitteschoen", "dankeschoen"})
 class SentenceCompleteness:
     dangling: tuple[str, ...] = ()
     unbound_places: tuple[str, ...] = ()
+    unbound_targets: tuple[str, ...] = ()
 
     @property
     def complete(self) -> bool:
-        return not self.dangling and not self.unbound_places
+        return not self.dangling and not self.unbound_places and not self.unbound_targets
 
     @property
     def parts(self) -> tuple[str, ...]:
-        return self.dangling + self.unbound_places
+        return self.dangling + self.unbound_places + self.unbound_targets
 
 
 def analyse_write_completeness(
@@ -69,6 +76,10 @@ def analyse_write_completeness(
     tokens = [token for token in tokenize_language(text) if token.is_word or token.is_number]
     joiners = [index for index, token in enumerate(tokens) if token.canonical in _JOINERS]
     if not joiners:
+        return SentenceCompleteness()
+    if analyse_utterance(text).speech_act is SpeechAct.AUTOMATION:
+        # Trigger and condition clauses name entities that are observed, not
+        # acted on; the automation reader validates its own clauses.
         return SentenceCompleteness()
     dangling: list[str] = []
     # Parts after a joiner run up to the next joiner; "und dann" is one joiner.
@@ -92,9 +103,38 @@ def analyse_write_completeness(
             last = tokens[index - 1]
             dangling.append(text[tokens[first_joiner].start:last.end])
     unbound: list[str] = []
-    located = [entity for entity in targets if entity.area_id or entity.floor_id]
+    # Places of an exception ("… außer im Flur") restrict, they bind nothing;
+    # a place whose named members were all excepted ("in Küche und Flur …
+    # außer dem Flurlicht") was considered by the reading, not dropped.
+    positive, exceptions = split_exclusion(text)
+    names = registry_name_table(entities)
+    excepted = [
+        entity
+        for exception in exceptions
+        for entity in names.by_words.get(
+            tuple(normalize_for_compare(exception).replace("-", " ").split()), []
+        )
+    ]
+    located = [
+        entity for entity in (*targets, *excepted) if entity.area_id or entity.floor_id
+    ]
+    fields, _rest = utterance_fields(positive, list(entities))
+    # A coordinated target phrase ("… und das Garagentor") must be covered
+    # by a planned target: by one of its registry entities, or for a genus
+    # noun by a target of that genus.  Otherwise the named set silently
+    # shrank.
+    unbound_targets: list[str] = []
+    target_ids = {entity.entity_id for entity in targets}
+    target_genera = {genus for entity in targets for genus in entity_genera(entity)}
+    for item in fields:
+        if item.kind != "target":
+            continue
+        if item.registry_ids:
+            if not target_ids & set(item.registry_ids):
+                unbound_targets.append(item.text)
+        elif item.genera and not target_genera & set(item.genera):
+            unbound_targets.append(item.text)
     if located:
-        fields, _rest = utterance_fields(text, list(entities))
         for item in fields:
             place = item.place
             if item.kind != "place" or place is None:
@@ -105,4 +145,4 @@ def analyse_write_completeness(
                 continue
             if not any(place.contains(entity) for entity in located):
                 unbound.append(item.text)
-    return SentenceCompleteness(tuple(dangling), tuple(unbound))
+    return SentenceCompleteness(tuple(dangling), tuple(unbound), tuple(unbound_targets))

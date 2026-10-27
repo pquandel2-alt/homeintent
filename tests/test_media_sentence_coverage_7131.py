@@ -322,3 +322,12 @@ def test_property_politeness_does_not_change_meaning(command, polite, at_end):
 def test_reordering_does_not_create_a_new_target_set(base, reordered):
     expected = writes(say(base))
     assert expected and writes(say(reordered)) == expected
+
+
+def test_discourse_fillers_match_the_normalizer():
+    from homeintent.nlu import normalize
+
+    assert {
+        word for word in ("mal", "ma", "doch", "kurz", "bitte", "eben")
+        if normalize._FILLER_RE.fullmatch(word)  # noqa: SLF001 - one shared lexicon
+    } == normalize.DISCOURSE_FILLERS

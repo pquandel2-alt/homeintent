@@ -348,6 +348,22 @@ def validate_release(
     return validate_required_runs(sha, runs_by_workflow, jobs_for_run)
 
 
+def render_evidence(repository: str, sha: str, checked: Sequence[CheckedRun]) -> str:
+    """Markdown block naming the exact commit and every checked run."""
+    lines = [
+        "",
+        "## Geprüfte Freigabe (vom Release-Gate erzeugt)",
+        "",
+        f"- Commit: [`{sha}`](https://github.com/{repository}/commit/{sha})",
+    ]
+    for run in checked:
+        lines.append(
+            f"- `{run.workflow}`: [Lauf {run.run_id}]({run.url}) "
+            f"(#{run.run_number}, Versuch {run.run_attempt}, SHA `{run.head_sha}`)"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", required=True)
@@ -355,6 +371,11 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--title", required=True)
     parser.add_argument("--notes", type=Path, required=True)
+    parser.add_argument(
+        "--evidence-out",
+        type=Path,
+        help="write the checked commit and run links as Markdown (release body)",
+    )
     args = parser.parse_args()
     print(f"Release gate: repository {args.repository}, requested SHA {args.sha}")
     try:
@@ -370,6 +391,10 @@ def main() -> int:
         return 1
     for run in checked:
         print(f"  checked {run.describe()}")
+    if args.evidence_out is not None:
+        args.evidence_out.write_text(
+            render_evidence(args.repository, args.sha, checked), encoding="utf-8"
+        )
     print(
         f"RELEASE GATE PASSED: SHA {args.sha}, "
         + ", ".join(f"{run.workflow} run {run.run_id}" for run in checked)
