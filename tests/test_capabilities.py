@@ -127,6 +127,19 @@ def test_extended_domain_capabilities_are_derived_from_concrete_attributes():
     ) == {Capability.START, Capability.PAUSE, Capability.DOCK}
 
 
+def test_media_player_capabilities_come_only_from_supported_features():
+    assert derive_capabilities("media_player", None, {}) == set()
+    caps = derive_capabilities(
+        "media_player", None, {"supported_features": 1 | 128 | 4096 | 16384}
+    )
+    assert caps == {
+        Capability.PAUSE,
+        Capability.TURN_ON,
+        Capability.STOP,
+        Capability.PLAY,
+    }
+
+
 def test_required_capability_for_property_covers_every_property_with_a_capability_counterpart():
     assert required_capability_for_property(SemanticProperty.BRIGHTNESS) is Capability.BRIGHTNESS
     assert required_capability_for_property(SemanticProperty.COLOR) is Capability.COLOR

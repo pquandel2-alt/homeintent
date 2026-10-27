@@ -40,6 +40,12 @@ def _player(
         state,
         area_id="living",
         area_name=area,
+        attributes={"supported_features": 24509},
+        capabilities=frozenset({
+            "PAUSE", "PLAY", "STOP", "VOLUME_MUTE", "VOLUME_SET",
+            "VOLUME_STEP", "SELECT_SOURCE", "NEXT_TRACK", "PREVIOUS_TRACK",
+            "TURN_ON", "TURN_OFF",
+        }),
         integration=integration,
         config_entry_id=config_entry_id,
     )

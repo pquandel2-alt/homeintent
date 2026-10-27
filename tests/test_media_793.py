@@ -43,7 +43,7 @@ _PLAIN = {
     "off": ("Mach die Musik aus.", "Musik aus.", "Schalte die Musik aus."),
 }
 _SERVICES = {"pause": "media_pause", "resume": "media_play", "next": "media_next_track",
-             "previous": "media_previous_track", "louder": "volume_up", "quieter": "volume_down", "off": "turn_off"}
+             "previous": "media_previous_track", "louder": "volume_up", "quieter": "volume_down", "off": "media_pause"}
 
 
 @pytest.mark.parametrize("op,text", [(op, text) for op, texts in _PLAIN.items() for text in texts])
@@ -191,3 +191,42 @@ def test_resume_with_two_paused_asks(monkeypatch, tmp_path):
                            media_player__lautsprecher_schlafzimmer="paused")
     turn = _house(monkeypatch, tmp_path, entities=entities).say("Weiter.")
     assert turn.speech.startswith("Welches Gerät meinst du: ") and _media_calls(turn) == [], turn.speech
+
+
+@pytest.mark.parametrize(
+    ("text", "service"),
+    [
+        ("Musik in der Küche an", "media_play"),
+        ("Radio in der Küche an", "media_play"),
+        ("Schalte das Radio in der Küche ein", "media_play"),
+        ("Radio in der Küche aus", "media_pause"),
+        ("Musik in der Küche aus", "media_pause"),
+        ("Pause in der Küche", "media_pause"),
+        ("Stoppe das Radio in der Küche", "media_stop"),
+    ],
+)
+def test_issue_38_media_forms_use_the_same_room_target(
+    monkeypatch, tmp_path, text, service
+):
+    state = "paused" if service == "media_play" else "playing"
+    entities = with_states(house_entities(), media_player__kuechenradio=state)
+
+    turn = _house(monkeypatch, tmp_path, entities=entities).say(text)
+
+    assert _media_calls(turn) == [(service, {"entity_id": RADIO})], turn.speech
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Angenommen, du würdest das Radio in der Küche ausmachen.",
+        "Vielleicht das Radio in der Küche ausmachen.",
+        "Mach das Radio in der Küche nicht aus.",
+    ],
+)
+def test_non_executable_media_modality_never_reaches_the_write_route(
+    monkeypatch, tmp_path, text
+):
+    turn = _house(monkeypatch, tmp_path).say(text)
+
+    assert _media_calls(turn) == []

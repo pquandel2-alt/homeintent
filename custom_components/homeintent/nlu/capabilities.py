@@ -44,6 +44,14 @@ class Capability(Enum):
     CLOSE = auto()
     START = auto()
     PAUSE = auto()
+    PLAY = auto()
+    STOP = auto()
+    VOLUME_SET = auto()
+    VOLUME_MUTE = auto()
+    VOLUME_STEP = auto()
+    SELECT_SOURCE = auto()
+    NEXT_TRACK = auto()
+    PREVIOUS_TRACK = auto()
     DOCK = auto()
 
 
@@ -64,6 +72,20 @@ _COVER_SET_POSITION_FEATURE = 4
 _CALENDAR_CREATE_EVENT_FEATURE = 1
 _CALENDAR_DELETE_EVENT_FEATURE = 2
 _CALENDAR_UPDATE_EVENT_FEATURE = 4
+
+_MEDIA_FEATURES = {
+    1: Capability.PAUSE,
+    4: Capability.VOLUME_SET,
+    8: Capability.VOLUME_MUTE,
+    16: Capability.PREVIOUS_TRACK,
+    32: Capability.NEXT_TRACK,
+    128: Capability.TURN_ON,
+    256: Capability.TURN_OFF,
+    1024: Capability.VOLUME_STEP,
+    2048: Capability.SELECT_SOURCE,
+    4096: Capability.STOP,
+    16384: Capability.PLAY,
+}
 
 
 def derive_capabilities(
@@ -114,6 +136,17 @@ def derive_capabilities(
 
     if domain == "fan" and "percentage" in attributes:
         caps.add(Capability.FAN_SPEED)
+
+    if domain == "media_player":
+        try:
+            supported_features = int(attributes.get("supported_features", 0))
+        except (TypeError, ValueError):
+            supported_features = 0
+        caps.update(
+            capability
+            for bit, capability in _MEDIA_FEATURES.items()
+            if supported_features & bit
+        )
 
     if domain == "sensor":
         if device_class == "temperature":

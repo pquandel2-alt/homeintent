@@ -23,6 +23,10 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from .entities import EntitySnapshot, normalize_for_compare
+from .media_semantics import MediaCapability, supports_media
+from .nlu.device_ontology import entity_genera
+from .nlu.place_model import PlaceKind
+from .nlu.semantic_location import resolve_semantic_place
 from .service_call import ServiceCallPlan
 
 __all__ = (
@@ -49,6 +53,10 @@ _LOUDER = frozenset({"lauter"})
 _QUIETER = frozenset({"leiser"})
 _VOLUME_WORDS = frozenset({"lautstaerke", "volume"})
 _QUERY_WORDS = frozenset({"laeuft", "spielt", "singt", "hoere", "hoeren", "kommt"})
+_POWER_ACTION_WORDS = frozenset({
+    "mach", "mache", "schalte", "schalt", "stell", "stelle",
+    "anmachen", "einschalten", "ausmachen", "ausschalten",
+})
 _MEDIA_DOMAIN = "media_player"
 QUEUE_MODES = frozenset({"replace", "next", "add"})
 
@@ -92,6 +100,15 @@ def _short(words: list[str], allowed: frozenset[str], extra: frozenset[str] = fr
     # Before a room phrase ("… im Wohnzimmer") only command words and fillers.
     cut = next((index for index, word in enumerate(words) if word in {"im", "in", "am", "auf"}), len(words))
     return all(word in allowed | extra | fillers | _MUSIC_WORDS for word in words[:cut])
+
+
+def _has_media_power_form(words: Sequence[str], present: set[str]) -> bool:
+    """An action lexeme or a bounded verbless media request, never a query."""
+    if present & _POWER_ACTION_WORDS:
+        return True
+    return bool(words) and words[0] in {"musik", "radio", "bitte"} and not (
+        present & {"ist", "sind", "war", "waren", "welche", "welcher", "welches"}
+    )
 
 
 def _queue_directive(words: list[str]) -> tuple[list[str], str]:
@@ -174,10 +191,18 @@ def parse_media_request(text: str) -> MediaRequest | None:
         words, frozenset({"weiter"}), frozenset({"mach", "mache", "mit"})
     ):
         return MediaRequest("resume", text=text)
-    if words[0] in {"mach", "mache", "schalte", "schalt", "stell", "stelle"} and "musik" in present and "aus" in present:
+    if (
+        present & {"musik", "radio"}
+        and (present & {"aus", "stopp", "stop", "ausmachen", "ausschalten"})
+        and _has_media_power_form(words, present)
+    ):
         return MediaRequest("off", text=text)
-    if present & {"musik"} and present & {"aus", "stopp", "stop"} and len(words) <= 4:
-        return MediaRequest("off", text=text)
+    if present & {"musik", "radio"} and (
+        present & {"an", "ein", "anmachen", "einschalten"}
+    ) and (
+        _has_media_power_form(words, present)
+    ):
+        return MediaRequest("on", text=text)
     if words[0] in _RESUME_WORDS and len(words) <= 5 and (len(words) == 1 or present & _MUSIC_WORDS or present & {
         "im", "in", "am", "auf", "spielen"
     }):
@@ -241,28 +266,41 @@ def _named_players(text: str, players: Sequence[EntitySnapshot]) -> list[EntityS
     return found
 
 
-def _room_players(text: str, players: Sequence[EntitySnapshot]) -> tuple[bool, list[EntitySnapshot]]:
-    """(a room was named, its players)."""
-    words = set(_words(text))
-    rooms: dict[str, list[EntitySnapshot]] = {}
-    for player in players:
-        if player.area_name:
-            rooms.setdefault(player.area_name, []).append(player)
-            for alias in player.area_aliases:
-                rooms.setdefault(alias, []).append(player)
-    for room, members in rooms.items():
-        room_words = set(_words(room))
-        if room_words and room_words <= words:
-            return True, members
-    return False, []
+def _room_players(
+    text: str,
+    entities: Sequence[EntitySnapshot],
+    players: Sequence[EntitySnapshot],
+) -> tuple[str | None, list[EntitySnapshot]]:
+    """Return the grounded place label and players constrained by it."""
+    resolved = resolve_semantic_place(text, list(entities))
+    if resolved is None:
+        return None, []
+    _, place = resolved
+    # ``hier`` is bound by ``resolve_media_player`` to the satellite area.
+    if place.kind is PlaceKind.HERE:
+        return None, []
+    return place.label, [player for player in players if place.contains(player)]
 
 
 def _match_source(words: Sequence[str], sources: Sequence[str]) -> str | None:
-    wanted = " ".join(words)
-    exact = [source for source in sources if " ".join(_words(source)) == wanted]
+    wanted = _source_keys(words)
+    exact = [source for source in sources if wanted & _source_keys(_words(source))]
     if len(exact) == 1:
         return exact[0]
     return None
+
+
+_NUMBER_WORDS = {
+    "null": "0", "eins": "1", "ein": "1", "eine": "1", "zwei": "2",
+    "drei": "3", "vier": "4", "fuenf": "5", "sechs": "6", "sieben": "7",
+    "acht": "8", "neun": "9", "zehn": "10", "elf": "11", "zwoelf": "12",
+}
+
+
+def _source_keys(words: Sequence[str]) -> frozenset[str]:
+    """Exact orthographic keys; joins and number words never add fuzziness."""
+    normalized = tuple(_NUMBER_WORDS.get(word, word) for word in words)
+    return frozenset({" ".join(normalized), "".join(normalized)})
 
 
 def _listed(names: Sequence[str]) -> str:
@@ -285,8 +323,27 @@ def resolve_media_player(
     players = _players(entities)
     if not players:
         return MediaPlayerResolution(None, "Ich finde kein Mediengerät.")
-    named = _named_players(request.text, players)
-    room_named, in_room = _room_players(request.text, players)
+    if request.op != "play" and "radio" in _words(request.text):
+        # A generic device genus remains typed.  A speaker in the local room
+        # is not automatically a radio merely because it could play audio;
+        # registry evidence must establish the requested kind.
+        radios = [player for player in players if "radio" in entity_genera(player)]
+        if not radios:
+            return MediaPlayerResolution(
+                None,
+                "Ich finde kein als Radio freigegebenes Mediengerät. "
+                "Ich habe nichts ausgeführt.",
+            )
+        players = radios
+    place_label, in_room = _room_players(request.text, entities, players)
+    room_named = place_label is not None
+    scoped = in_room if room_named else players
+    named = _named_players(request.text, scoped)
+    if room_named and not in_room:
+        genus = "Radio" if "radio" in _words(request.text) else "Mediengerät"
+        return MediaPlayerResolution(
+            None, f"Im Bereich {place_label} finde ich kein {genus}."
+        )
     if named:
         candidates = named
     elif room_named:
@@ -295,10 +352,26 @@ def resolve_media_player(
             return MediaPlayerResolution(None, "In diesem Raum finde ich kein Mediengerät.")
     else:
         candidates = []
-        if match_source_lists and request.op == "play" and request.source_words:
-            candidates = [p for p in players if _match_source(request.source_words, _sources(p)) is not None]
-        if not candidates and satellite_area_id is not None:
-            candidates = [player for player in players if player.area_id == satellite_area_id]
+        if satellite_area_id is not None:
+            # The voice satellite supplies the implicit place.  It is the
+            # same hard constraint as a spoken room: an active player or a
+            # matching source elsewhere must never make the resolver leave
+            # that room silently.
+            candidates = [
+                player for player in players
+                if player.area_id == satellite_area_id
+            ]
+            if not candidates:
+                return MediaPlayerResolution(
+                    None,
+                    "Im Raum des Sprachsatelliten finde ich kein Mediengerät. "
+                    "Ich habe nichts ausgeführt.",
+                )
+        elif match_source_lists and request.op == "play" and request.source_words:
+            candidates = [
+                player for player in players
+                if _match_source(request.source_words, _sources(player)) is not None
+            ]
         if not candidates and request.op == "resume":
             candidates = [player for player in players if player.state == "paused"]
         if not candidates:
@@ -337,56 +410,124 @@ def resolve_media(
     player = target.player
     name = player.friendly_name
     if request.op == "pause":
+        if not supports_media(player, MediaCapability.PAUSE):
+            return MediaResolution(None, f"{name} unterstützt Pause nicht.")
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_pause", player.entity_id), f"{name} pausiert.")
     if request.op == "stop":
+        if not supports_media(player, MediaCapability.STOP):
+            return MediaResolution(None, f"{name} unterstützt Stoppen nicht.")
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_stop", player.entity_id), f"{name} gestoppt.")
     if request.op in {"mute", "unmute"}:
+        if not supports_media(player, MediaCapability.VOLUME_MUTE):
+            return MediaResolution(None, f"{name} unterstützt Stummschalten nicht.")
         muted = request.op == "mute"
         return MediaResolution(
             ServiceCallPlan(_MEDIA_DOMAIN, "volume_mute", player.entity_id, {"is_volume_muted": muted}),
             f"{name} ist {'stumm' if muted else 'nicht mehr stumm'}.",
         )
     if request.op == "off":
-        # "Musik aus" switches the player off, like every "aus" command
-        # before 7.9.3 (dev benchmark 7.7, line 235); "Pause" pauses.
-        return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "turn_off", player.entity_id), f"{name} ausgeschaltet.")
+        if player.state in {"off", "standby"}:
+            return MediaResolution(None, f"{name} ist bereits aus.")
+        if supports_media(player, MediaCapability.PAUSE):
+            return MediaResolution(
+                ServiceCallPlan(_MEDIA_DOMAIN, "media_pause", player.entity_id),
+                f"{name} pausiert.",
+            )
+        if supports_media(player, MediaCapability.STOP):
+            return MediaResolution(
+                ServiceCallPlan(_MEDIA_DOMAIN, "media_stop", player.entity_id),
+                f"{name} gestoppt.",
+            )
+        if supports_media(player, MediaCapability.TURN_OFF):
+            return MediaResolution(
+                ServiceCallPlan(_MEDIA_DOMAIN, "turn_off", player.entity_id),
+                f"{name} ausgeschaltet.",
+            )
+        return MediaResolution(None, f"{name} unterstützt weder Pause, Stoppen noch Ausschalten.")
+    if request.op == "on":
+        if player.state == "playing":
+            return MediaResolution(None, f"{name} spielt bereits.")
+        if player.state == "off" and supports_media(player, MediaCapability.TURN_ON):
+            return MediaResolution(
+                ServiceCallPlan(_MEDIA_DOMAIN, "turn_on", player.entity_id),
+                f"{name} eingeschaltet.",
+            )
+        if player.state in {"paused", "idle", "on", "standby"} and supports_media(
+            player, MediaCapability.PLAY
+        ):
+            return MediaResolution(
+                ServiceCallPlan(_MEDIA_DOMAIN, "media_play", player.entity_id),
+                f"{name} spielt weiter.",
+            )
+        return MediaResolution(None, f"{name} kann so nicht eingeschaltet oder fortgesetzt werden.")
     if request.op == "resume":
+        if not supports_media(player, MediaCapability.PLAY):
+            return MediaResolution(None, f"{name} unterstützt Fortsetzen nicht.")
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_play", player.entity_id), f"{name} spielt weiter.")
     if request.op == "next":
+        if not supports_media(player, MediaCapability.NEXT_TRACK):
+            return MediaResolution(None, f"{name} unterstützt den nächsten Titel nicht.")
         return MediaResolution(
             ServiceCallPlan(_MEDIA_DOMAIN, "media_next_track", player.entity_id), f"{name}: nächster Titel."
         )
     if request.op == "previous":
+        if not supports_media(player, MediaCapability.PREVIOUS_TRACK):
+            return MediaResolution(None, f"{name} unterstützt den vorherigen Titel nicht.")
         return MediaResolution(
             ServiceCallPlan(_MEDIA_DOMAIN, "media_previous_track", player.entity_id), f"{name}: vorheriger Titel."
         )
     if request.op == "louder":
+        if not supports_media(player, MediaCapability.VOLUME_STEP):
+            return MediaResolution(None, f"{name} unterstützt Lautstärkeschritte nicht.")
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "volume_up", player.entity_id), f"{name} lauter.")
     if request.op == "quieter":
+        if not supports_media(player, MediaCapability.VOLUME_STEP):
+            return MediaResolution(None, f"{name} unterstützt Lautstärkeschritte nicht.")
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "volume_down", player.entity_id), f"{name} leiser.")
     if request.op == "volume":
         assert request.volume is not None
+        if not supports_media(player, MediaCapability.VOLUME_SET):
+            return MediaResolution(None, f"{name} unterstützt keine genaue Lautstärke.")
         return MediaResolution(
             ServiceCallPlan(_MEDIA_DOMAIN, "volume_set", player.entity_id, {"volume_level": request.volume / 100}),
             f"{name}: Lautstärke {request.volume} Prozent.",
         )
     sources = _sources(player)
     if request.source_words:
+        # "Starte Radio Küche" can name this exact player; an exposed script
+        # of that exact name has already had priority before this resolver.
+        if (
+            _source_keys(request.source_words) & _source_keys(_words(name))
+            and _words(request.text)[:1] in (["starte"], ["start"])
+        ):
+            return resolve_media(
+                MediaRequest("on", text=request.text), [player],
+                satellite_area_id=player.area_id,
+            )
         source = _match_source(request.source_words, sources)
         if source is None:
             spoken = _as_said(request.text, request.source_words)
             listed = f" Verfügbar: {_listed(sources)}." if sources else ""
             return MediaResolution(None, f"„{spoken}“ finde ich bei {name} nicht.{listed}")
+        if not supports_media(player, MediaCapability.SELECT_SOURCE):
+            return MediaResolution(None, f"{name} bietet {source} an, unterstützt aber keine Quellenwahl.")
         return MediaResolution(
             ServiceCallPlan(_MEDIA_DOMAIN, "select_source", player.entity_id, {"source": source}),
             f"{name} spielt {source}.",
         )
     last = player.attributes.get("source")
     if player.state in {"paused", "idle", "on", "standby"} and isinstance(last, str) and last:
+        if last not in sources or not supports_media(player, MediaCapability.PLAY):
+            return MediaResolution(
+                None, f"Was soll {name} spielen? Die letzte Quelle ist nicht sicher fortsetzbar.",
+                question=True,
+            )
         return MediaResolution(ServiceCallPlan(_MEDIA_DOMAIN, "media_play", player.entity_id), f"{name} spielt {last}.")
     if player.state == "playing":
         return MediaResolution(None, f"{name} spielt schon {last or ''}".rstrip() + ".")
     if isinstance(last, str) and last in sources:
+        if not supports_media(player, MediaCapability.SELECT_SOURCE):
+            return MediaResolution(None, f"{name} unterstützt keine Quellenwahl.")
         return MediaResolution(
             ServiceCallPlan(_MEDIA_DOMAIN, "select_source", player.entity_id, {"source": last}),
             f"{name} spielt {last}.",
@@ -414,7 +555,7 @@ def now_playing(request: MediaRequest, entities: Sequence[EntitySnapshot], satel
     """"Was läuft gerade?" - title and artist, only what the attributes say."""
     players = _players(entities)
     named = _named_players(request.text, players)
-    room_named, in_room = _room_players(request.text, players)
+    room_named, in_room = _room_players(request.text, entities, players)
     pool = named or (in_room if room_named else [p for p in players if p.state == "playing"])
     if not pool and satellite_area_id is not None:
         pool = [p for p in players if p.area_id == satellite_area_id and p.state == "playing"]

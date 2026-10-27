@@ -75,6 +75,8 @@ from ..nlu.action_model import ActionModel, ActionType
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..nlu.automation_model import AutomationModel, TriggerModel, TriggerTarget, TriggerType, render_automation_tree
 from ..nlu.condition_model import ConditionModel, ConditionNode, ConditionType
+from ..nlu.language_frontend import analyse_language
+from ..nlu.semantic_utterance import analyse_utterance
 from ..nlu.action_model import NotificationRecipientKind
 from ..nlu.automation_validator import validate_automation
 from ..notification_target import NotificationTargetResolver
@@ -457,8 +459,18 @@ class InsightsController:
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult | None:
         request = parse_media_request(user_input.text)
-        if request is None or self.devices is None or (
+        if request is None:
+            return None
+        document = analyse_language(user_input.text, entities)
+        utterance = analyse_utterance(user_input.text)
+        has_temporal_scope = bool(document.temporal)
+        if self.devices is None or (
             request.op != "query" and claims_other_target(user_input.text, entities, request)
+        ) or (
+            request.op != "query" and has_temporal_scope
+        ) or (
+            request.op != "query"
+            and not utterance.allows_bounded_parser_action
         ):
             return None
         if request.op == "query":

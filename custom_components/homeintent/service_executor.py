@@ -612,6 +612,20 @@ def _state_is_unreliable(entity: EntitySnapshot) -> bool:
 
 
 def _required_capabilities(plan: ServiceCallPlan) -> frozenset[str]:
+    media = {
+        "media_play": "PLAY",
+        "media_pause": "PAUSE",
+        "media_stop": "STOP",
+        "volume_set": "VOLUME_SET",
+        "volume_mute": "VOLUME_MUTE",
+        "volume_up": "VOLUME_STEP",
+        "volume_down": "VOLUME_STEP",
+        "select_source": "SELECT_SOURCE",
+        "media_next_track": "NEXT_TRACK",
+        "media_previous_track": "PREVIOUS_TRACK",
+    }
+    if plan.domain == "media_player" and plan.service in media:
+        return frozenset({media[plan.service]})
     if plan.service == "turn_on":
         return frozenset(
             {"TURN_ON", "BRIGHTNESS"}

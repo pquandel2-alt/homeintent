@@ -132,12 +132,59 @@ class HouseConversation:
         from homeintent.areas import AreaSnapshot
         from homeintent.conversation import NluConversationEntity
         from homeassistant.config_entries import ConfigEntry
-        from homeassistant.core import HomeAssistant
+        from homeassistant.core import HomeAssistant, State
 
         self.entities = entities if entities is not None else house_entities()
         self.tmp_path = tmp_path
         self.entity = NluConversationEntity(ConfigEntry(options=options or {}))
         self.entity.hass = HomeAssistant()
+        service_mock = self.entity.hass.services.async_call
+
+        async def apply_service_effect(
+            domain: str,
+            service: str,
+            data: dict[str, Any] | None = None,
+            **_kwargs: Any,
+        ) -> object:
+            # A bare service double can model immediate device end states,
+            # but it cannot model HA's script task lifecycle.  In particular
+            # ``script.turn_on`` must not leave a script permanently "on".
+            payload = data or {}
+            target = payload.get("entity_id")
+            target_ids = [target] if isinstance(target, str) else list(target or ())
+            end_state = {
+                "turn_on": "on",
+                "turn_off": "off",
+                "open_cover": "open",
+                "close_cover": "closed",
+            }.get(service)
+            if end_state is not None:
+                for entity_id in target_ids:
+                    # Home Assistant's generic turn service keeps its own domain,
+                    # so authority/effect type comes from the already resolved
+                    # entity id.  Scripts and every other lifecycle-bearing domain
+                    # intentionally remain recorder-only.
+                    target_domain = entity_id.partition(".")[0]
+                    if target_domain not in {"light", "cover"}:
+                        continue
+                    old = self.entity.hass.states.get(entity_id)
+                    snapshot = next(
+                        (item for item in self.entities if item.entity_id == entity_id),
+                        None,
+                    )
+                    attributes = dict(
+                        getattr(old, "attributes", {})
+                        or (snapshot.attributes if snapshot is not None else {})
+                    )
+                    self.entity.hass.states._states[entity_id] = State(
+                        entity_id, end_state, attributes
+                    )
+            # Preserve ServiceMock's configured ``return_value`` behavior;
+            # Music Assistant and calendar tests depend on structured service
+            # responses while still using the same recorder.
+            return service_mock._ha_response(domain, service, data, **_kwargs)
+
+        service_mock.side_effect = apply_service_effect
         # Real script/scene configuration for the EffectGraph (7.3.1).
         _ha_stub.register_sim_config(self.entity.hass, self.entities)
         self.sink = None

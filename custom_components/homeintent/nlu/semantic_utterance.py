@@ -140,6 +140,23 @@ class SemanticUtterance:
         )
 
     @property
+    def allows_bounded_parser_action(self) -> bool:
+        """Whether a fully bounded domain parser may supply command evidence.
+
+        Elliptical utterances such as ``Pause`` or ``Lautstärke 30`` can be
+        statements at this registry-free layer. A domain parser may promote
+        them only after it has validated their complete residue, target and
+        capability. Irrealis, uncertainty, negation, questions and automation
+        clauses remain non-executable regardless of that parser evidence.
+        """
+
+        return (
+            self.speech_act in {SpeechAct.COMMAND, SpeechAct.STATEMENT}
+            and self.modality not in NON_EXECUTABLE_MODALITIES
+            and self.polarity is Polarity.POSITIVE
+        )
+
+    @property
     def pragmatic_disposition(self) -> PragmaticDisposition:
         if self.safe_to_execute_directly:
             return PragmaticDisposition.EXECUTABLE_REQUEST
