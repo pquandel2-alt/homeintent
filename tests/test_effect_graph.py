@@ -555,8 +555,11 @@ def test_schlafen_explicit_runs_exactly_that_script(monkeypatch):
     turn = house.say("Aktiviere Schlafen.")
     assert turn.targets == {"script.schlafen"}, turn.speech
     assert turn.calls == [("script", "turn_on", {"entity_id": "script.schlafen"})]
-    # Short summary of the verified effect graph after the run (1.5).
+    # The graph is validated, but the background script outcome stays
+    # explicitly unverified; the reply labels these as planned effects.
     assert "2 Rollläden" in turn.speech and "2 Lichter" in turn.speech, turn.speech
+    assert "geplante Ablauf" in turn.speech
+    assert "nicht verifizieren" in turn.speech
 
 
 @pytest.mark.parametrize("sentence", [

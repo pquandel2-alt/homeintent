@@ -74,6 +74,42 @@ def test_frontend_proposes_unique_semantic_spelling_correction():
     )
 
 
+def test_spelling_variant_never_promotes_descriptive_copula_to_command():
+    entities = [
+        EntitySnapshot(
+            "cover.wohnzimmer",
+            "Wohnzimmer Rollladen",
+            "cover",
+            "open",
+            area_id="wohnzimmer",
+            area_name="Wohnzimmer",
+        )
+    ]
+
+    document = analyse_language(
+        "Die Rolllade im Wohnzimmer ist halb offen.", entities
+    )
+
+    assert document.utterance.speech_act is SpeechAct.STATEMENT
+    assert not document.utterance.safe_to_execute_directly
+
+
+def test_copular_question_with_action_homonym_remains_a_query():
+    document = analyse_language("Sind die Lichter nicht an?", [])
+
+    assert document.utterance.speech_act is SpeechAct.QUERY
+
+
+def test_imperative_is_not_downgraded_by_copula_inside_message_payload():
+    entities = [EntitySnapshot("notify.handys", "Familienhandys", "notify", "unknown")]
+
+    document = analyse_language(
+        "Sende über Familienhandys die Nachricht Essen ist fertig", entities
+    )
+
+    assert document.utterance.speech_act is SpeechAct.COMMAND
+
+
 def test_registry_name_near_negation_is_not_treated_as_negated_command():
     entities = [EntitySnapshot("script.gute_nacht", "Gute Nacht", "script", "off")]
 

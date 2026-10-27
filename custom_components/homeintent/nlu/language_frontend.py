@@ -28,6 +28,7 @@ from .semantic_utterance import (
     Modality,
     SpeechAct,
     analyse_utterance,
+    has_explicit_command_form,
 )
 from .temporal_semantics import TemporalKind, TemporalExpression, analyse_temporal_semantics
 from .utterance_meaning import MaintainFrame, ReleaseFrame, maintain_frames, release_frame
@@ -41,6 +42,12 @@ _ELLIPTICAL_DIRECTIVE_RE = re.compile(
     r"\b(?:bitte|soll(?:st|en|t)?|möchte|moechte|will|gern|gerne)\b", re.I
 )
 _COPULA_RE = re.compile(r"\b(?:ist|sind|war|waren|bleibt|bleiben)\b", re.I)
+_ELLIPTICAL_ENTITY_VALUE_RE = re.compile(
+    r"(?:\b\d{1,3}\s*(?:prozent|%)\b|"
+    r"\b(?:rot|grün|blau|gelb|orange|lila|violett|weiß|weiss|pink|rosa|"
+    r"türkis|cyan|warmweiß|warmweiss|kaltweiß|kaltweiss)\b)\s*[.!?]*$",
+    re.I,
+)
 _SPELLING_FORMS = {
     normalize_for_compare(item): item
     for item in sorted(CANONICAL_SPELLING_FORMS, key=lambda value: ("ae" in value or "oe" in value or "ue" in value, value))
@@ -385,6 +392,7 @@ def analyse_language(
     *,
     include_phonetic: bool = False,
     include_registry_compounds: bool = True,
+    script_verbs: tuple[tuple[str, ...], ...] = (),
 ) -> LanguageDocument:
     """Build one immutable language document without discarding input."""
     entity_tuple = tuple(entities)
@@ -417,6 +425,37 @@ def analyse_language(
     semantics = analyse_semantics(utterance.normalized_text)
     if (
         utterance.speech_act is SpeechAct.COMMAND
+        and _COPULA_RE.search(utterance.normalized_text)
+        and not has_explicit_command_form(utterance.normalized_text)
+        and not semantics.values(SemanticKind.COMMAND_MARKER)
+        and _ELLIPTICAL_DIRECTIVE_RE.search(utterance.normalized_text) is None
+    ):
+        # State adjectives at sentence end overlap with action lexemes
+        # ("offen"/"aus"). A copular observation is not an instruction
+        # unless it also contains explicit directive evidence.
+        utterance = replace(
+            utterance,
+            speech_act=(
+                SpeechAct.QUERY
+                if utterance.normalized_text.rstrip().endswith("?")
+                else SpeechAct.STATEMENT
+            ),
+        )
+    if (
+        utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
+        and not utterance.normalized_text.rstrip().endswith("?")
+    ):
+        from .script_semantics import compile_script_request
+
+        if compile_script_request(
+            text, entity_tuple, custom_verbs=script_verbs
+        ) is not None:
+            # The wrapper contributes RUN_SCRIPT meaning only because its
+            # remainder exactly equals an exposed script name. It therefore
+            # cannot promote the same colloquial verb for arbitrary devices.
+            utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act is SpeechAct.COMMAND
         and utterance.normalized_text.rstrip().endswith("?")
         and "locations" in semantics.values(SemanticKind.QUERY_SCOPE)
         and semantics.values(SemanticKind.DEVICE_CLASS)
@@ -445,7 +484,10 @@ def analyse_language(
     # A unique one-edit operation correction may reveal an otherwise hidden
     # imperative. It changes only the discourse classification; compilation
     # still has to succeed on that recorded variant below the frontend.
-    if utterance.speech_act is SpeechAct.STATEMENT:
+    if (
+        utterance.speech_act is SpeechAct.STATEMENT
+        and _COPULA_RE.search(utterance.normalized_text) is None
+    ):
         corrected_command = next(
             (
                 analyse_utterance(variant.text)
@@ -543,6 +585,17 @@ def analyse_language(
             # Verbless settings ("Saugroboter bitte auf leise", "Rollladen
             # auf 40"): a target followed by "auf <value>" is a directive.
             utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
+    if (
+        utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
+        and not utterance.normalized_text.rstrip().endswith("?")
+        and _COPULA_RE.search(utterance.normalized_text) is None
+        and _ELLIPTICAL_ENTITY_VALUE_RE.search(utterance.normalized_text)
+        and _has_registry_mention(utterance.normalized_text, entity_tuple)
+    ):
+        # A real exposed name followed by one typed value is an elliptical
+        # setting. Compilation still requires an exact single entity, its
+        # matching capability and zero unexplained residue.
+        utterance = replace(utterance, speech_act=SpeechAct.COMMAND)
     if (
         utterance.speech_act in {SpeechAct.STATEMENT, SpeechAct.QUERY}
         and not utterance.normalized_text.rstrip().endswith("?")

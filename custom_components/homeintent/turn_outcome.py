@@ -3,8 +3,8 @@
 The response style ("spoken" or "tone") is decided once, at the end of the
 turn, from these typed facts - never from the reply text:
 
-* ``EXECUTED``    - a write ran and its effect is confirmed (or, for scenes,
-  scripts, automations and monitors, the write itself is the effect);
+* ``EXECUTED``    - a write ran and its effect is confirmed; a script earns
+  this status only after its public direct action completed successfully;
 * ``UNCONFIRMED`` - a write ran, but the device has not reached the target
   state yet (a cover still moving, a device that did not follow);
 * ``NOT_DONE``    - a planned write did not run (refused, failed, needs a

@@ -22,6 +22,7 @@
           "admin_only_entities": "Nur von Administratoren steuerbare Entitäten",
           "control_user_ids": "Zur Steuerung berechtigte Benutzer (leer: alle)",
           "custom_aliases": "Zusätzliche Sprach-Aliase (Alias = entity.id, eine Regel pro Zeile)",
+          "script_verbs": "Eigene Skriptverben (kommagetrennte kurze Verbphrasen; nur für exakt benannte Skripte)",
           "confirmation_level": "Ab welcher Risikostufe bestätigen",
           "max_action_targets": "Maximale Ziele pro Aktion",
           "effect_graph_unknown": "Skript-/Szenenschritt, dessen Wirkung nicht prüfbar ist (deny: ablehnen, confirm: nur mit Bestätigung)",
@@ -92,6 +93,7 @@
     },
     "error": {
       "invalid_alias_rules": "Die Aliasregeln sind ungültig oder ein Alias verweist auf mehrere Ziele.",
+      "invalid_script_verbs": "Die Skriptverben sind ungültig, zu lang oder kollidieren mit Sicherheits- und Aktionswörtern.",
       "invalid_house_relations": "Die Hausbeziehungen sind ungültig.",
       "invalid_agent_options": "Ruhezeit, Ereigniskategorien oder Dokumentverzeichnis sind ungültig."
     }

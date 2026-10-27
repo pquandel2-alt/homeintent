@@ -27,6 +27,18 @@ from .risk import RiskLevel
 from .service_call import ServiceCallPlan
 from .effect_wait import PendingEffect, expectations_for, judge_now
 from .turn_outcome import TurnOutcomeKind, defer_outcome, report_outcome
+from .const import CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS
+from .script_execution_observer import (
+    ScriptExecutionResult,
+    ScriptExecutionStatus,
+    async_run_and_observe_script,
+    script_execution_speech,
+)
+from .batch_execution import (
+    BatchExecutionResult,
+    BatchTargetResult,
+    BatchTargetStatus,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +102,8 @@ class ExecutionResult:
     error: str | None = None
     # The HA ``Context.id`` of the call (= execution id, 7.3.2).
     execution_id: str | None = None
+    script_outcome: ScriptExecutionResult | None = None
+    batch_result: BatchExecutionResult | None = None
 
 
 async def async_execute_service_plan(
@@ -128,6 +142,13 @@ async def async_execute_service_plan(
     )
     if not result.executed:
         report_outcome(TurnOutcomeKind.NOT_DONE)
+        return result
+    if result.script_outcome is not None:
+        report_outcome(
+            TurnOutcomeKind.EXECUTED
+            if result.script_outcome.status is ScriptExecutionStatus.COMPLETED
+            else TurnOutcomeKind.UNCONFIRMED
+        )
         return result
     pending = PendingEffect(expectations)
     judge_now(hass, pending)
@@ -175,6 +196,7 @@ async def _async_execute_service_plan(
     (undo, agent, proactive), or a fresh one with the speaking user. With a
     ``user_id`` HA additionally applies that user's entity permissions.
     """
+    names = {entity.entity_id: entity.friendly_name for entity in entities}
     effects = build_plan_effects(hass, plan)
     decision = evaluate_service_plan(
         plan,
@@ -224,14 +246,52 @@ async def _async_execute_service_plan(
         new_execution_context(user_id)
     )
     execution = str(call_context.id)
+    script_outcome: ScriptExecutionResult | None = None
     try:
-        await hass.services.async_call(
-            plan.domain,
-            plan.service,
-            {**plan.data, "entity_id": plan.entity_id},
-            blocking=True,
-            context=call_context,
-        )
+        if (
+            plan.domain == "script"
+            and plan.service == "turn_on"
+            and isinstance(plan.entity_id, str)
+        ):
+            configured_wait = options.get(
+                CONF_EFFECT_WAIT_SECONDS, DEFAULT_EFFECT_WAIT_SECONDS
+            )
+            wait_seconds = (
+                float(configured_wait)
+                if isinstance(configured_wait, (int, float))
+                and not isinstance(configured_wait, bool)
+                else DEFAULT_EFFECT_WAIT_SECONDS
+            )
+            script_outcome = await async_run_and_observe_script(
+                hass,
+                plan.entity_id,
+                plan.data,
+                context=call_context,
+                wait_seconds=wait_seconds,
+                service_runner=lambda domain, service, data, script_context: (
+                    hass.services.async_call(
+                        domain,
+                        service,
+                        dict(data),
+                        blocking=True,
+                        context=script_context,
+                    )
+                ),
+            )
+            if not script_outcome.accepted:
+                name = names.get(plan.entity_id, plan.entity_id)
+                error = script_execution_speech(name, script_outcome)
+                return ExecutionResult(
+                    False, decision, error, execution, script_outcome
+                )
+        else:
+            await hass.services.async_call(
+                plan.domain,
+                plan.service,
+                {**plan.data, "entity_id": plan.entity_id},
+                blocking=True,
+                context=call_context,
+            )
     except Exception as err:  # noqa: BLE001 - HA service failures are heterogeneous
         if is_unauthorized(err):
             return ExecutionResult(False, decision, UNAUTHORIZED_TEXT, execution)
@@ -247,7 +307,10 @@ async def _async_execute_service_plan(
     now = dt_util.now()
     if audit_trail is not None:
         audit_trail.record(now, audit_actor_id, plan)
-    if effect_monitor is not None:
+    if effect_monitor is not None and (
+        script_outcome is None
+        or script_outcome.status is ScriptExecutionStatus.COMPLETED
+    ):
         effect_monitor.register(plan)
     record_execution(
         hass,
@@ -261,7 +324,9 @@ async def _async_execute_service_plan(
         now=now,
         entity_names={entity.entity_id: entity.friendly_name for entity in entities},
     )
-    return ExecutionResult(True, decision, None, execution)
+    return ExecutionResult(
+        True, decision, None, execution, script_outcome
+    )
 
 
 def _state_is_unreliable(entity: EntitySnapshot) -> bool:

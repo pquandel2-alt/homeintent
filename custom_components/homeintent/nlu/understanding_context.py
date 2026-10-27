@@ -17,3 +17,4 @@ class UnderstandingContext:
     """
 
     source_area: AreaSnapshot | None = None
+    script_verbs: tuple[tuple[str, ...], ...] = ()

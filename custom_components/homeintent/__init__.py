@@ -33,6 +33,7 @@ from .const import (
     CONF_PROACTIVE_SUGGESTIONS_ENABLED,
     CONF_LEARNING_RETENTION_COUNT,
     CONF_MINIMUM_PREDICTION_CONFIDENCE,
+    CONF_SCRIPT_VERBS,
     DOMAIN,
 )
 from .memory import MemoryKind, MemoryStore
@@ -66,6 +67,7 @@ from .thermal_deadline import (
     ThermalDeadlineCheckpoint,
     async_process_thermal_checkpoint,
 )
+from .nlu.script_semantics import validate_script_verbs
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -98,9 +100,9 @@ SELF_DELETE_GRACE_SECONDS = 0.1
 SELF_DELETE_RETRY_SECONDS = (1.0, 5.0)
 
 
-def _build_engine() -> NluEngine:
+def _build_engine(script_verbs: tuple[tuple[str, ...], ...] = ()) -> NluEngine:
     """Load all grammar files off the event loop and warm hassil's number rules."""
-    engine = NluEngine()
+    engine = NluEngine(script_verbs=script_verbs)
     engine.warm_up()
     return engine
 
@@ -186,7 +188,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     thermal_checkpoints = PendingThermalCheckpointStore(
         storage_paths.thermal_checkpoints
     )
-    engine = await hass.async_add_executor_job(_build_engine)
+    script_verbs = validate_script_verbs(entry.options.get(CONF_SCRIPT_VERBS))
+    engine = await hass.async_add_executor_job(_build_engine, script_verbs)
     entry.runtime_data = HomeIntentRuntimeData(
         engine=engine,
         context_store=ConversationContextStore(ttl_seconds=context_ttl),

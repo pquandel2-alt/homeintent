@@ -228,6 +228,14 @@ _COMMAND_RE = re.compile(
     r"möchte|moechte)\b",
     re.I,
 )
+
+
+def has_explicit_command_form(text: str) -> bool:
+    """Whether ``text`` contains a bounded imperative/request lexeme."""
+
+    return _COMMAND_RE.search(normalize(text)) is not None
+
+
 def _elliptical_command_expression() -> str:
     """Build only executable domain/action pairs, once at import time.
 

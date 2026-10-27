@@ -44,6 +44,16 @@ def with_effect_summary(text: str, execution: Any) -> str:
     return f"{text.rstrip().rstrip('.')}: {summary}."
 
 
+def with_planned_effect_summary(text: str, execution: Any) -> str:
+    """Describe a validated script graph without claiming its effects occurred."""
+
+    effects = getattr(getattr(execution, "decision", None), "effects", None)
+    summary = summarize_effects(effects) if effects is not None else None
+    if not summary or not text:
+        return text
+    return f"{text.rstrip()} Der geplante Ablauf betrifft {summary}."
+
+
 def confirmation_question(response_text: str, note: str | None = None) -> str:
     """Turn a device response text into a grammatical safety question.
 
@@ -74,6 +84,8 @@ def ambiguous_reading_text(decision: Any) -> str:
 def execution_failure_text(execution: Any) -> str:
     """A refusal of the policy is said as it is; a technical error gets a prefix."""
     error = str(execution.error or "")
+    if getattr(execution, "script_outcome", None) is not None:
+        return error
     decision = getattr(execution, "decision", None)
     if error == CHANGED_SINCE_CONFIRMATION or (
         decision is not None and decision.outcome is PolicyOutcome.DENY

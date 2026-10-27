@@ -123,12 +123,14 @@ from .const import (
     CONF_PERSONA_STYLE,
     CONF_READ_ONLY_ENTITIES,
     CONF_SELECTED_ENTITIES,
+    CONF_SCRIPT_VERBS,
     CONF_ROUTINE_DETECTION_ENABLED,
     CONF_ROUTINE_MIN_OBSERVATIONS,
     DOMAIN,
     SELECTABLE_DOMAINS,
 )
 from .customization import parse_custom_aliases
+from .nlu.script_semantics import validate_script_verbs
 from .house_graph import parse_relation_specs
 from .agent_config_validation import (
     MAX_LONG_RUNNING_MINUTES,
@@ -207,6 +209,14 @@ class HomeIntentOptionsFlow(OptionsFlow):
                     step_id="init",
                     data_schema=await self._async_schema(user_input),
                     errors={CONF_CUSTOM_ALIASES: "invalid_alias_rules"},
+                )
+            try:
+                validate_script_verbs(user_input.get(CONF_SCRIPT_VERBS))
+            except ValueError:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=await self._async_schema(user_input),
+                    errors={CONF_SCRIPT_VERBS: "invalid_script_verbs"},
                 )
             try:
                 parse_relation_specs(user_input.get(CONF_HOUSE_RELATIONS))
@@ -301,6 +311,10 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_CUSTOM_ALIASES,
                         default=defaults.get(CONF_CUSTOM_ALIASES, ""),
                     ): TextSelector(TextSelectorConfig(multiline=True)),
+                    vol.Optional(
+                        CONF_SCRIPT_VERBS,
+                        default=defaults.get(CONF_SCRIPT_VERBS, ""),
+                    ): TextSelector(TextSelectorConfig()),
                     vol.Optional(
                         CONF_CONFIRMATION_LEVEL,
                         default=defaults.get(CONF_CONFIRMATION_LEVEL, "high"),

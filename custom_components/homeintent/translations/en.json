@@ -22,6 +22,7 @@
           "admin_only_entities": "Admin-only control entities",
           "control_user_ids": "Users allowed to control devices (empty: all)",
           "custom_aliases": "Additional spoken aliases (Alias = entity.id, one per line)",
+          "script_verbs": "Custom script verbs (comma-separated short verb phrases; exact named scripts only)",
           "confirmation_level": "Confirmation risk threshold",
           "max_action_targets": "Maximum targets per action",
           "effect_graph_unknown": "Script/scene step whose effect cannot be verified (deny: refuse, confirm: only with confirmation)",
@@ -89,6 +90,7 @@
     },
     "error": {
       "invalid_alias_rules": "The alias rules are invalid or one alias points to multiple targets.",
+      "invalid_script_verbs": "Script verbs are invalid, too long, or conflict with safety and action words.",
       "invalid_house_relations": "The configured house relations are invalid.",
       "invalid_agent_options": "Quiet hours, event categories, or the document directory are invalid."
     }

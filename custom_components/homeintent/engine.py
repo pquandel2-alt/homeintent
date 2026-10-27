@@ -843,7 +843,10 @@ class NluEngine:
         automation_delete_dir: Path = AUTOMATION_DELETE_DIR,
         automation_toggle_dir: Path = AUTOMATION_TOGGLE_DIR,
         relative_time_dir: Path = RELATIVE_TIME_DIR,
+        script_verbs: tuple[tuple[str, ...], ...] = (),
     ) -> None:
+
+        self._script_verbs = script_verbs
 
         automation_trigger_yaml_files = sorted(automation_trigger_dir.glob("*.yaml"))
         if not automation_trigger_yaml_files:
@@ -981,8 +984,15 @@ class NluEngine:
         measured without being able to create a production service plan.
         """
         supplied_document = document is not None
+        if self._script_verbs:
+            context = replace(
+                context or UnderstandingContext(), script_verbs=self._script_verbs
+            )
         document = document or analyse_language(
-            text, entities, include_registry_compounds=False
+            text,
+            entities,
+            include_registry_compounds=False,
+            script_verbs=self._script_verbs,
         )
         interpreted = SemanticInterpreter.interpret(
             document,
@@ -999,7 +1009,9 @@ class NluEngine:
         )
         v7_result = self._interpreted_match_result(interpreted, entities)
         if v7_result is None and not supplied_document and has_locative_cue(text):
-            expanded_document = analyse_language(text, entities)
+            expanded_document = analyse_language(
+                text, entities, script_verbs=self._script_verbs
+            )
             if any(
                 variant.source == "registry_compound"
                 for variant in expanded_document.variants

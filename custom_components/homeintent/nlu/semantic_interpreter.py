@@ -61,6 +61,7 @@ from .semantic_projection import (
 from .temporal_semantics import analyse_temporal_semantics
 from .validator import ValidationError, validate_command
 from .understanding_context import UnderstandingContext
+from .script_semantics import compile_script_request
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,9 @@ SEMANTIC_AMBIGUITY_MARGIN = 5.0
 
 def _world_model_boundary(value: object) -> WorldModel | None:
     """Narrow the optional cross-module model at the interpreter boundary."""
-    if value is None or isinstance(value, WorldModel):
+    if value is None:
+        return None
+    if isinstance(value, WorldModel):
         return value
     raise TypeError("world_model must be a WorldModel or None")
 
@@ -657,6 +660,14 @@ class SemanticInterpreter:
                     else None
                 )
                 if parse_result is None and compositional_plan is None and not has_structured_modifier:
+                    parse_result = compile_script_request(
+                        variant.text,
+                        entities,
+                        custom_verbs=(
+                            context.script_verbs if context is not None else ()
+                        ),
+                    )
+                if parse_result is None and compositional_plan is None and not has_structured_modifier:
                     parse_result = compile_registered_operation(
                         variant.text,
                         entities,
@@ -758,7 +769,7 @@ class SemanticInterpreter:
                 for spoken, area_id, floor_id in grounded_locations
                 if area_id is not None or floor_id is not None
             )
-            if world_model is not None:
+            if typed_world_model is not None:
                 evidence += tuple(
                     UnderstandingEvidence(
                         EvidenceKind.WORLD_MODEL,
@@ -768,7 +779,7 @@ class SemanticInterpreter:
                         source_id="world_model",
                     )
                     for entity in semantic_targets
-                    if entity.entity_id in world_model.entities_by_id
+                    if entity.entity_id in typed_world_model.entities_by_id
                 )
             if (
                 isinstance(parse_result, ParseResult)
