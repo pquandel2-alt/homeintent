@@ -93,8 +93,13 @@ def test_some_devices_requires_explicit_names(monkeypatch, tmp_path):
 
     completed = _run(entity, "Küchenlicht und Flurlicht")
     assert "2 Geräte" in completed.response.speech
-    entity.hass.services.async_call.assert_awaited_once_with(
-        "homeassistant", "turn_on",
-        {"entity_id": ["light.kueche", "light.flur"]},
-        blocking=True,
-    )
+    calls = entity.hass.services.async_call.await_args_list
+    assert [item.args[:2] for item in calls] == [
+        ("homeassistant", "turn_on"),
+        ("homeassistant", "turn_on"),
+    ]
+    assert {item.args[2]["entity_id"] for item in calls} == {
+        "light.kueche",
+        "light.flur",
+    }
+    assert all(item.kwargs["blocking"] is True for item in calls)

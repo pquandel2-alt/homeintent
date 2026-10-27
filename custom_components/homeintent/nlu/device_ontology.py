@@ -395,6 +395,7 @@ def _detector_genus(normalized: str) -> str | None:
     return None
 
 
+@lru_cache(maxsize=4096)
 def analyse_word(word: str) -> WordAnalysis | None:
     """Analyse one word as genus word, compound of a genus word, or neither."""
     normalized = normalize_for_compare(word).replace("-", "")
@@ -556,5 +557,4 @@ def negative_phrase(key: str, *, plural: bool = False) -> str:
         return f"keine {item.plural}"
     article = {Gender.MASCULINE: "keinen", Gender.FEMININE: "keine", Gender.NEUTER: "kein"}[item.gender]
     return f"{article} {item.singular}"
-
 

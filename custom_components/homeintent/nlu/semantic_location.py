@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING
 
 from ..areas import AreaResolutionStatus, resolve_area_scored
 from ..entities import EntitySnapshot, generate_aliases, normalize_for_compare
-from .place_model import level_for_keyword, level_is_position
+from .place_model import (
+    Place,
+    PlaceKind,
+    build_place_lexicon,
+    level_for_keyword,
+    level_is_position,
+)
 from ..floors import (
     FloorResolutionStatus,
     FloorResolveStatus,
@@ -110,9 +116,38 @@ def has_explicit_location_cue(text: str, entities: list[EntitySnapshot]) -> bool
 
 _WHOLE_HOME_RE = re.compile(
     r"\b(?:(?:im|in\s+dem)\s+)?(?:ganzen|gesamten)\s+(?:haus|gebäude|wohnung)\b"
-    r"|\bin\s+allen\s+(?:räumen|zimmern)\b|\büberall\b",
+    r"|\bin\s+allen\s+(?:räumen|zimmern)\b|\büberall\b|\bzu\s+hause\b|\bzuhause\b",
     re.I,
 )
+_PRESENCE_HOME_RE = re.compile(
+    r"\b(?:jemand|niemand|keiner|irgendjemand|irgendwer|wer)\b"
+    r"[^,.!?;]{0,24}\b(?:zu\s+hause|zuhause)\b",
+    re.I,
+)
+
+
+def resolve_semantic_place(
+    text: str,
+    entities: list[EntitySnapshot],
+) -> tuple[str, Place] | None:
+    """Resolve one place through the shared registry-backed place lexicon."""
+
+    whole_home = whole_home_phrase(text, entities)
+    if whole_home is not None:
+        return whole_home, Place(PlaceKind.HOUSE, "Haus")
+    raw_words = re.findall(r"[\wäöüß-]+", text, re.I)
+    words = [normalize_for_compare(word) for word in raw_words]
+    mentions = build_place_lexicon(entities).scan(words)
+    if not mentions:
+        return None
+    places = {mention.place for mention in mentions}
+    if len(places) != 1:
+        return None
+    mention = max(
+        mentions, key=lambda item: item.token_end - item.token_start
+    )
+    spoken = " ".join(raw_words[mention.token_start:mention.token_end])
+    return spoken, mention.place
 _BARE_HOUSE_RE = re.compile(r"\b(?:im|in\s+dem)\s+haus\b", re.I)
 
 
@@ -127,7 +162,7 @@ def whole_home_phrase(
     itself called ``Haus`` (F21); a real area of that name keeps its meaning.
     """
     match = _WHOLE_HOME_RE.search(text)
-    if match is not None:
+    if match is not None and _PRESENCE_HOME_RE.search(text) is None:
         return match.group(0)
     bare = _BARE_HOUSE_RE.search(text)
     if bare is None:

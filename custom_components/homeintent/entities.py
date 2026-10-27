@@ -327,7 +327,7 @@ def is_outdoor_entity(entity: EntitySnapshot) -> bool:
     """Whether a device is outdoors by its name, area or floor ("Außentemperatur")."""
     names = (
         entity.friendly_name, entity.area_name or "", entity.floor_name or "",
-        *entity.area_aliases,
+        *entity.area_aliases, *entity.floor_aliases,
     )
     return any(
         marker in normalize_for_compare(name)

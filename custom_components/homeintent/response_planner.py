@@ -78,6 +78,7 @@ class QueryResponsePlan:
     considered_count: int = 0
     exception_names: tuple[str, ...] = ()
     subject_name: str | None = None
+    spoken_name_limit: int = 3
 
 
 CRITICAL_CATEGORIES = frozenset(
@@ -228,10 +229,13 @@ class GermanResponseRealizer:
                 return f"Es sind keine {noun} {state}."
             if query.pronoun is not None and query.deictic_location:
                 return f"Da ist {query.pronoun} {state}."
-            if len(names) > 4:
+            limit = max(1, min(10, query.spoken_name_limit))
+            if len(names) > limit:
+                spoken = _join_names(names[:limit])
+                remaining = len(names) - limit
                 return (
-                    f"{len(names)} {noun} sind {state}. "
-                    "Weitere Details sind in Home Assistant sichtbar."
+                    f"{sentence_initial(state or 'Passend')} sind {spoken}. "
+                    f"Weitere {remaining} findest du in Home Assistant."
                 )
             verb = "ist" if len(names) == 1 else "sind"
             return f"{_join_names(names)} {verb} {state}."

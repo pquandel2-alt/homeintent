@@ -32,6 +32,7 @@ from .degree_semantics import (
     ZERO_POSITION_RE,
     extract_degree,
     percent_value,
+    relative_amount,
     temperature_value,
 )
 from .constraint_resolver import Constraints, resolve_candidates
@@ -86,8 +87,12 @@ from .semantic_location import (
     has_explicit_location_cue,
     resolve_coordinated_locations,
     resolve_semantic_location,
+    resolve_semantic_place,
     whole_home_phrase,
 )
+from .place_model import PlaceKind
+from .script_semantics import compile_script_request
+from .target_resolution import filter_spoken_name_modifiers
 from .semantic_state import (
     QUERYABLE_STATE_DOMAINS,
     SemanticState,
@@ -263,7 +268,20 @@ def _compile_entity_state_query(
     candidates = list(mentioned)
     if not candidates:
         targets = _device_class_targets(analysis)
+        semantic_place = resolve_semantic_place(text, entities)
         location = resolve_semantic_location(text, entities, world_model)
+        if semantic_place is not None:
+            spoken_place, place = semantic_place
+            if place.kind is PlaceKind.AREA and len(place.area_ids) == 1:
+                location = (spoken_place, next(iter(place.area_ids)), None)
+            elif place.kind is PlaceKind.FLOOR and len(place.floor_ids) == 1:
+                location = (spoken_place, None, next(iter(place.floor_ids)))
+            elif place.kind in {
+                PlaceKind.HOUSE,
+                PlaceKind.INDOOR,
+                PlaceKind.OUTDOOR,
+            }:
+                location = (spoken_place, None, None)
         if len(targets) != 1:
             return None
         domain, device_class = targets[0]
@@ -864,12 +882,18 @@ def _compile_relative_light(
     decrease = has_word(text, "dunkler")
     if bool(increase) == bool(decrease):
         return None
+    semantic_place = resolve_semantic_place(text, entities)
     location = resolve_semantic_location(text, entities, world_model)
+    scoped_entities = (
+        [entity for entity in entities if semantic_place[1].contains(entity)]
+        if semantic_place is not None
+        else entities
+    )
     named = [
         entity
         for entity in mentioned_entities(
             text,
-            entities,
+            scoped_entities,
             index=world_model.entity_index if world_model is not None else None,
         )
         if entity.domain == "light"
@@ -885,7 +909,7 @@ def _compile_relative_light(
             )
             if world_model is not None
             else resolve_candidates(
-                entities,
+                scoped_entities,
                 Constraints(
                     domain="light",
                     area_id=location[1] if location else None,
@@ -1081,14 +1105,24 @@ def _compile_light_color(
     if temperature is not None and color_matches:
         return None
     capability = "COLOR_TEMPERATURE" if temperature is not None else "COLOR"
+    semantic_place = resolve_semantic_place(text, entities)
+    scoped_entities = (
+        [entity for entity in entities if semantic_place[1].contains(entity)]
+        if semantic_place is not None
+        else entities
+    )
     entity = _single_named_capable_entity(
-        text, entities, "light", capability, world_model
+        text, scoped_entities, "light", capability, world_model
     )
     if entity is None:
         return None
     if _has_unexplained_meaning(
         analyse_semantics(text),
-        (entity.friendly_name, *entity.aliases),
+        (
+            entity.friendly_name,
+            *entity.aliases,
+            *(semantic_place[:1] if semantic_place is not None else ()),
+        ),
     ):
         return None
     if temperature is not None:
@@ -1356,6 +1390,13 @@ class SemanticCommandCompiler:
     ) -> ParseResult | ClarificationRequest | None:
         if _QUESTION_RE.search(text):
             return None
+        script_request = compile_script_request(
+            text,
+            entities,
+            custom_verbs=context.script_verbs if context is not None else (),
+        )
+        if script_request is not None:
+            return script_request
         temporal = _temporal_expression(text)
         if temporal is not None:
             stripped, expression = temporal
@@ -1462,6 +1503,24 @@ class SemanticCommandCompiler:
             if coordinated_locations
             else resolve_semantic_location(positive_text, entities, world_model)
         )
+        if (
+            location is not None
+            and domains
+            and explicit
+            and has_locative_cue(positive_text, followed=True)
+            and all(
+                normalize_for_compare(entity.friendly_name)
+                == normalize_for_compare(location[0])
+                for entity in explicit
+            )
+        ):
+            # In "Rollladen im Büro" the noun before the locative phrase
+            # supplies the target kind and "Büro" supplies the place. An
+            # unrelated entity whose complete name is also "Büro" must not
+            # steal that place span. Without a locative cue an exact complete
+            # entity name retains its normal precedence.
+            explicit = ()
+            distinctive_explicit_target = False
         # A room-like word can legitimately be part of an exact registry
         # name (``Heizung Wohnzimmer``, ``Rollladen Schlafzimmer``). Without
         # an explicit location preposition it describes that entity, not an
@@ -1475,6 +1534,21 @@ class SemanticCommandCompiler:
         ):
             location = None
         locations = coordinated_locations or ((location,) if location else ())
+        if (
+            quantity is None
+            and locations
+            and not explicit
+            and any(
+                (word_analysis := analyse_word(word)) is not None
+                and word_analysis.plural
+                for word in _TOKEN_RE.findall(positive_text)
+            )
+        ):
+            # Plural is a quantity feature of the device genus. Once a
+            # place is grounded, "Rollläden im Büro" denotes all matching
+            # members of that place. This is word morphology, not a sentence
+            # template, and never widens beyond the place constraint.
+            quantity = Quantifier("all")
         source_area = context.source_area if context is not None else None
         source_area_applied = (
             source_area is not None
@@ -1540,6 +1614,23 @@ class SemanticCommandCompiler:
             analysis,
             location_text=location[0] if location else None,
         )
+        if (
+            not intents
+            and percent is not None
+            and (
+                len(explicit) == 1
+                and explicit[0].domain in {"cover", "light"}
+                or quantity is not None
+                and bool(locations)
+                and domains <= {"cover", "light"}
+            )
+        ):
+            # A grounded registry name plus a bounded percentage is an
+            # unambiguous property assignment even without an imperative
+            # verb ("Küchenlicht 50 Prozent").  Residue and capability
+            # checks below remain authoritative; the numeric value alone
+            # can never select a target.
+            intents = frozenset({"HassSetPercentage"})
         facts = SemanticFacts(
             intents=intents,
             domains=domains,
@@ -1607,9 +1698,14 @@ class SemanticCommandCompiler:
         else:
             if exclusion_names or len(locations) > 1:
                 return None
+            resolution_entities = (
+                _scoped_candidates(entities, domain, locations, world_model)
+                if locations
+                else entities
+            )
             ranked_candidates = rank_semantic_targets(
                 resolution_text,
-                entities,
+                resolution_entities,
                 domains=facts.domains,
                 area_id=facts.area_id,
                 floor_id=facts.floor_id,
@@ -1625,6 +1721,25 @@ class SemanticCommandCompiler:
                 ]
                 selected_ranked = _prefer_complete_name(selected_ranked)
                 candidates = [item.entity for item in selected_ranked]
+            elif (
+                locations
+                and not explicit
+                and relative_amount(positive_text) is None
+            ):
+                selected_ranked = []
+                candidates = _scoped_candidates(
+                    entities, domain, locations, world_model
+                )
+                candidates = filter_spoken_name_modifiers(
+                    positive_text, candidates
+                )
+                if percent is not None:
+                    capability = "POSITION" if domain == "cover" else "BRIGHTNESS"
+                    candidates = [
+                        entity
+                        for entity in candidates
+                        if capability in entity.capabilities
+                    ]
             elif source_area_applied:
                 selected_ranked = []
                 candidates = list(
@@ -2008,7 +2123,20 @@ class SemanticQueryCompiler:
             if isinstance(span.value, SemanticState)
             and not (exists_question and span.text.casefold() in {"ein", "eine"})
         ]
+        semantic_place = resolve_semantic_place(text, entities)
         location = resolve_semantic_location(text, entities, world_model)
+        if semantic_place is not None:
+            spoken_place, place = semantic_place
+            if place.kind is PlaceKind.AREA and len(place.area_ids) == 1:
+                location = (spoken_place, next(iter(place.area_ids)), None)
+            elif place.kind is PlaceKind.FLOOR and len(place.floor_ids) == 1:
+                location = (spoken_place, None, next(iter(place.floor_ids)))
+            elif place.kind in {
+                PlaceKind.HOUSE,
+                PlaceKind.INDOOR,
+                PlaceKind.OUTDOOR,
+            }:
+                location = (spoken_place, None, None)
         if not targets and len(states) == 1 and location is not None:
             requested = states[0]
             eligible = [
@@ -2082,6 +2210,10 @@ class SemanticQueryCompiler:
             for entity in named_mentions
             if entity.domain == domain
             and (device_class is None or entity.device_class == device_class)
+            and (
+                semantic_place is None
+                or semantic_place[1].contains(entity)
+            )
         ]
         if named_candidates:
             candidates = named_candidates
@@ -2106,6 +2238,12 @@ class SemanticQueryCompiler:
                     floor_id=floor_id,
                 ),
             )
+        if semantic_place is not None:
+            candidates = [
+                entity
+                for entity in candidates
+                if semantic_place[1].contains(entity)
+            ]
         # The target category itself must exist. An empty *state match* is a
         # valid answer, but inventing an answer for a home with no such
         # selected entities would hide configuration errors.
@@ -2138,14 +2276,14 @@ class SemanticQueryCompiler:
             if requested_state is None:
                 return None
             scope = QueryScope.NONE
+        elif "count" in scopes:
+            scope = QueryScope.COUNT
         elif "all" in quantities or "both" in quantities:
             if requested_state is None:
                 return None
             if "both" in quantities and len(candidates) != 2:
                 return None
             scope = QueryScope.ALL
-        elif "count" in scopes:
-            scope = QueryScope.COUNT
         elif "locations" in scopes:
             scope = QueryScope.LOCATIONS
         elif exists_question:

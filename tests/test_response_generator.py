@@ -103,6 +103,26 @@ def test_list_multiple_matches_lists_names():
     assert respond(result) == "Küchenfenster und Badfenster sind geöffnet."
 
 
+def test_long_list_speaks_a_bounded_grounded_prefix_and_remaining_count():
+    command = _list_command(QueryScope.LIST)
+    entities = tuple(
+        _window(f"binary_sensor.{index}", name, "on")
+        for index, name in enumerate(
+            ("Büro rechts", "Esszimmer", "Schlafzimmer", "Küche", "Garage")
+        )
+    )
+    result = QueryResult(
+        status=QueryResultStatus.MATCHED,
+        entities=entities,
+        command=command,
+    )
+
+    assert respond(result) == (
+        "Geöffnet sind Büro rechts, Esszimmer und Schlafzimmer. "
+        "Weitere 2 findest du in Home Assistant."
+    )
+
+
 def test_complete_candidate_set_is_aggregated_without_listing_names():
     command = QueryCommand(
         intent="HassStateQuery",
@@ -181,8 +201,8 @@ def test_long_list_is_capped_for_tts():
     )
 
     assert respond(result) == (
-        "5 Fenster sind geöffnet. "
-        "Weitere Details sind in Home Assistant sichtbar."
+        "Geöffnet sind Fenster 0, Fenster 1 und Fenster 2. "
+        "Weitere 2 findest du in Home Assistant."
     )
 
 

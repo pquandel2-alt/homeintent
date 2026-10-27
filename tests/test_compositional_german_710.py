@@ -22,10 +22,12 @@ def test_room_light_degree_and_pronoun_compose_across_turns(monkeypatch):
         "light.wohnzimmer_led_streifen",
     }
     assert brighter.speech == "3 Lichter um 5 Prozent heller gestellt."
-    assert set(brighter.calls[0][2]["entity_id"]) == expected
-    assert brighter.calls[0][2]["brightness_step_pct"] == 5
+    # Independent low-risk targets are deliberately called separately so a
+    # runtime failure of one lamp cannot abort the other prevalidated lamps.
+    assert {call[2]["entity_id"] for call in brighter.calls} == expected
+    assert all(call[2]["brightness_step_pct"] == 5 for call in brighter.calls)
     assert off.speech == "3 Lichter ausgeschaltet."
-    assert set(off.calls[0][2]["entity_id"]) == expected
+    assert {call[2]["entity_id"] for call in off.calls} == expected
 
 
 def test_cover_step_with_weiter_is_relative_to_observed_position(monkeypatch):

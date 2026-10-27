@@ -122,6 +122,11 @@ LEXEMES: tuple[Lexeme, ...] = (
 
 
 _WORD_RE = re.compile(r"[\wäöüß]+", re.I)
+# ``zu`` is also the lexical state/action "closed/close".  Inside the fixed
+# locative unit ``zu Hause`` it has no device meaning, and ``Hause`` must not
+# become unexplained residue.  Keep this at the lexical-span layer so every
+# command/query compiler sees the same compositional distinction.
+_FUNCTIONAL_PLACE_RE = re.compile(r"\bzu\s+hause\b", re.I)
 _FILLERS = frozenset(
     normalize_for_compare(word)
     for word in (
@@ -182,8 +187,19 @@ def _level_role(text: str, start: int) -> str:
 def analyse_semantics(text: str) -> SemanticAnalysis:
     """Scan ``text`` once and return order-independent semantic evidence."""
     found: list[SemanticSpan] = []
+    functional_place_spans = tuple(
+        (match.start(), match.end()) for match in _FUNCTIONAL_PLACE_RE.finditer(text)
+    )
     for lexeme, pattern in _compiled():
         for match in pattern.finditer(text):
+            if (
+                lexeme.kind in {SemanticKind.STATE, SemanticKind.ACTION}
+                and any(
+                    start <= match.start() and match.end() <= end
+                    for start, end in functional_place_spans
+                )
+            ):
+                continue
             if (
                 lexeme.kind in {SemanticKind.STATE, SemanticKind.ACTION}
                 and normalize_for_compare(match.group(0)) in {"oben", "unten"}
@@ -202,6 +218,9 @@ def analyse_semantics(text: str) -> SemanticAnalysis:
             ))
     spans = _remove_shadowed(found)
     covered = [False] * len(text)
+    for start, end in functional_place_spans:
+        for position in range(start, end):
+            covered[position] = True
     for span in spans:
         for position in range(span.start, span.end):
             covered[position] = True

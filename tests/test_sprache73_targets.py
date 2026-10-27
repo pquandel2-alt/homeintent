@@ -109,8 +109,20 @@ def test_singular_genus_at_place(monkeypatch, shell, case):
     members = case[-1]
     text, turn = _say(monkeypatch, shell, case, plural=False)
     if len(members) == 1:
+        if case[0] == "radio" and case[4] == "an":
+            # The test-house radio is already playing. Capability-aware
+            # transport truthfully reports that state and makes no redundant
+            # physical call, regardless of word order.
+            assert turn.calls == [], (text, turn.speech)
+            assert "spielt bereits" in turn.speech
+            return
         assert turn.targets == set(members), (text, turn.speech)
-        assert all(service == case[5] or service.endswith(case[5].split("_")[-1]) for _, service, _ in turn.calls), text
+        expected_service = "media_pause" if case[0] == "radio" else case[5]
+        assert all(
+            service == expected_service
+            or service.endswith(expected_service.split("_")[-1])
+            for _, service, _ in turn.calls
+        ), text
     else:
         assert turn.calls == [], (text, turn.speech)
         assert "?" in turn.speech, (text, turn.speech)

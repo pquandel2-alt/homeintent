@@ -49,6 +49,7 @@ __all__ = (
     "TargetDescription",
     "TargetResolution",
     "describe_targets",
+    "filter_spoken_name_modifiers",
     "resolve_description",
     "resolve_text_target",
 )
@@ -524,6 +525,23 @@ def _name_matches(entity: EntitySnapshot, filters: Sequence[str]) -> bool:
         ):
             return False
     return True
+
+
+def filter_spoken_name_modifiers(
+    text: str, entities: Sequence[EntitySnapshot]
+) -> list[EntitySnapshot]:
+    """Narrow candidates by grounded positional adjectives in *text*.
+
+    This is deliberately a small lexical operation, not a sentence pattern.
+    It is used when a genus plus a hard place constraint yields several
+    candidates but the ordinary registry-name ranker cannot inflect a word
+    such as ``linken`` to the stored name fragment ``links``.
+    """
+    words = normalize_for_compare(text).replace("-", " ").split()
+    filters = tuple(dict.fromkeys(_SIDE_WORDS[word] for word in words if word in _SIDE_WORDS))
+    if not filters:
+        return list(entities)
+    return [entity for entity in entities if _name_matches(entity, filters)]
 
 
 def genus_members(
@@ -1003,6 +1021,10 @@ def hidden_name_mentions(
             if key:
                 exposed_keys.add(key)
     covered = [False] * len(words)
+    place_covered = [False] * len(words)
+    for mention in build_place_lexicon(exposed).scan(words):
+        for index in range(mention.token_start, mention.token_end):
+            place_covered[index] = True
     for key in exposed_keys:
         width = len(key)
         for start in range(len(words) - width + 1):
@@ -1025,6 +1047,7 @@ def hidden_name_mentions(
         if any(
             tuple(words[start:start + width]) == key
             and not any(covered[start:start + width])
+            and not all(place_covered[start:start + width])
             for start in range(len(words) - width + 1)
         ):
             found.append(name)

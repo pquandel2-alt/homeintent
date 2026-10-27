@@ -141,6 +141,13 @@ _STATE_COPULA = frozenset({"ist", "sind", "steht", "stehen"})
 _INVENTORY_WORDS = frozenset({
     "gibt", "viele", "wieviele", "welche", "welcher", "welches", "welchen", "hat", "haben",
 })
+_PRESENCE_SUBJECTS = frozenset({"jemand", "niemand", "keiner", "irgendjemand", "irgendwer", "wer"})
+
+
+def _home_phrase_is_presence(words: Sequence[str], start: int) -> bool:
+    """Keep ``jemand zuhause`` a presence predicate, not a place scope."""
+
+    return bool(set(words[max(0, start - 3):start]) & _PRESENCE_SUBJECTS)
 
 
 def level_for_keyword(kind: str, levels: Iterable[int]) -> int | None:
@@ -240,6 +247,14 @@ class PlaceLexicon:
                 if place is None:
                     continue
                 if phrase in {"oben", "unten"} and level_word_role(words, start) != "floor":
+                    continue
+                if phrase in {"zu hause", "zuhause"} and (
+                    _home_phrase_is_presence(words, start)
+                    or (
+                        start + size < len(words)
+                        and words[start + size] in _STATE_COPULA
+                    )
+                ):
                     continue
                 before = start - 1
                 while before >= 0 and words[before] in _ARTICLES:
@@ -377,7 +392,12 @@ def outdoor_area_ids(entities: Iterable[EntitySnapshot]) -> frozenset[str]:
     for entity in entities:
         if entity.area_id is None or entity.area_id in found:
             continue
-        names = (entity.area_name or "", entity.floor_name or "", *entity.area_aliases)
+        names = (
+            entity.area_name or "",
+            entity.floor_name or "",
+            *entity.area_aliases,
+            *entity.floor_aliases,
+        )
         if any(
             marker in normalize_for_compare(name)
             for name in names
