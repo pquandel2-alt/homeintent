@@ -4,6 +4,12 @@
   "pythonVersion": "3.12",
   "typeCheckingMode": "basic",
   "strict": [
+    "custom_components/homeintent/storage_paths.py",
+    "custom_components/homeintent/proactive_authority.py",
+    "custom_components/homeintent/script_execution_observer.py",
+    "custom_components/homeintent/batch_execution.py",
+    "custom_components/homeintent/media_semantics.py",
+    "custom_components/homeintent/nlu/script_semantics.py",
     "custom_components/homeintent/agent_event.py",
     "custom_components/homeintent/entity_scope.py",
     "custom_components/homeintent/risk.py",

@@ -21,6 +21,9 @@ REQUIRED_CATEGORIES = {
     "befehl", "frage", "beduerfnis", "automation", "benachrichtigung", "kalender_timer",
     "mehrturn", "ellipse", "umgangssprache", "stt", "negation", "vergangenheit",
     "hypothetisch", "hoeflichkeit", "mehrfach", "mehrdeutig", "adversarial", "selbstkorrektur",
+    "colloquial_script", "place_alias", "scope_non_widening", "compound_target",
+    "media_capability", "media_source", "script_outcome", "batch_partial_failure",
+    "proactive_authority",
 }
 
 

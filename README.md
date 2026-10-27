@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.12.0**
+- Aktuelle Version: **7.13.0**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -147,26 +147,25 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-## Version 7.12.0
+## Version 7.13.0
 
-7.12.0 vervollständigt den typisierten Mehrturn-Dialog für unvollständige
-zeitliche Automationswünsche: Slots werden benutzer-, Gesprächs- und
-Satelliten-gebunden ergänzt, korrigiert oder verworfen; erst ein vollständiger
-validierter Entwurf erreicht Vorschau und Bestätigung. Der Automationsverlauf
-speichert neue Änderungen als Schema-3-Zieldeltas und kann Pause/Fortsetzen
-atomar über Ziel und Helper zurücknehmen. Medienaliase lösen mehrere
-Music-Assistant-Instanzen anhand ausdrücklicher Player-/Raumevidenz auf oder
-fragen gezielt nach. Details und ehrlich ausgewiesene Testgrenzen stehen in den
-[Release Notes](docs/release-notes-7.12.0.md).
+7.13.0 löst Speicherpfade einmalig und außerhalb des Event-Loops auf, bindet
+proaktive Aktionen kryptografisch an ihre HomeIntent-Automation und zeigt in
+ASK-Nachrichten stets die tatsächliche Aktion. Ein gemeinsames Orts- und
+Zielmodell trägt nun auch Umgangssprache, Komposita, Skriptanforderungen und
+capability-basierte Medienbefehle. Skript- und Sammelausführungen melden
+typisierte, überprüfbare Teilergebnisse statt pauschal „Erledigt“. Details und
+ehrlich ausgewiesene Hardwaregrenzen stehen in den
+[Release Notes](docs/release-notes-7.13.0.md).
 
-Geprüfter Release-Stand von Version 7.12.0: Die verpflichtenden GitHub-Prüfungen
+Geprüfter Release-Stand von Version 7.13.0: Die verpflichtenden GitHub-Prüfungen
 müssen für den exakten Release-Commit erfolgreich abgeschlossen sein, bevor
 das Tag und der GitHub-Release erstellt werden.
 
 Die versionierte Korpusbaseline ist
-[`corpus-signatures-7.12.0.json`](docs/perf/corpus-signatures-7.12.0.json).
+[`corpus-signatures-7.13.0.json`](docs/perf/corpus-signatures-7.13.0.json).
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.12.0.md), im
+in den [Release Notes](docs/release-notes-7.13.0.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 

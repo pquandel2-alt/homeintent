@@ -83,6 +83,11 @@ _LOGGER = logging.getLogger(__name__)
 # priority decides what goes first (7.9.7): coalescible, category, protected,
 # then critical. Equal-priority overload keeps the already queued FIFO work.
 MAX_PENDING_EVENTS = 4096
+# Once the sole worker has demonstrably made progress, one additional bounded
+# window absorbs a cooperative startup burst.  This avoids making lossless
+# delivery depend on scheduler speed while a no-yield producer remains capped
+# at ``MAX_PENDING_EVENTS`` and cannot grow memory without bound.
+MAX_DRAINING_PENDING_EVENTS = 2 * MAX_PENDING_EVENTS
 # Exact rewind information is useful only while older live work exists. It is
 # separately bounded because limiting the queue alone did not limit 7.9.6's
 # ``gaps``/``carry_previous`` dictionaries. Queue records plus auxiliary
@@ -392,7 +397,12 @@ class SituationRuntime:
             metrics.coalesced += 1
             return
         entry = _Entry(seq, raw_event, entity_id, old_state, new_state, priority)
-        if gen.live >= MAX_PENDING_EVENTS and not self._make_room(gen, priority):
+        pending_limit = (
+            MAX_DRAINING_PENDING_EVENTS
+            if metrics.processed > 0
+            else MAX_PENDING_EVENTS
+        )
+        if gen.live >= pending_limit and not self._make_room(gen, priority):
             self._reject(gen, entry)
             return
         if mergeable and latest is not None:

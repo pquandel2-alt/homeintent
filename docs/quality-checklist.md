@@ -6,7 +6,23 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 25. Oktober 2026
+Stand: 27. Oktober 2026
+
+## Release Candidate 7.13.0
+
+- [x] einmalige, executor-gebundene Legacy-/HomeIntent-Pfadauflösung; keine
+  Dateisystemprüfung in Store-Konstruktoren oder beanstandeten Requestpfaden
+- [x] `proactive_message` mit Admin-Grenze, gebundenem internem Nachweis,
+  unveränderlicher Aktion/Zielmenge, Ablauf-/Replay-Schutz und sichtbarer Aktion
+- [x] gemeinsames Ortsmodell für Haus, innen/außen, Bereiche, Etagen, Aliase,
+  Satellitenbezug und harte ortsgebundene Zielmengen
+- [x] kompositionelle Komposita-, Skript-, LIST- und elliptische Gerätesprache
+- [x] typisierte Skriptausgänge und sichere partielle Licht-/Cover-Batches
+- [x] capability- und quellengebundene Medien-/Sonos-/Music-Assistant-Semantik
+- [x] Regressionen und Invarianten zu Issue #38, Event-Loop-I/O,
+  Proaktivautorisierung, Skriptausgang, Teilfehlern und Medienquellen
+- [ ] vollständige CI für den exakten finalen Commit, Tag und GitHub Release
+  (wird durch den Release-Workflow vor Veröffentlichung erzwungen)
 
 ## Release Candidate 7.12.0
 

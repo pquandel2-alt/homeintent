@@ -9,7 +9,8 @@
   "7.7.0": 173,
   "7.7.1": 173,
   "7.8.0": 173,
-  "7.10.0": 171
+  "7.10.0": 171,
+  "7.13.0": 171
  },
  "eintraege": [
   {
@@ -3177,6 +3178,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/language_frontend.py::_ELLIPTICAL_ENTITY_VALUE_RE::103ee32102",
+   "datei": "custom_components/homeintent/nlu/language_frontend.py",
+   "bereich": "_ELLIPTICAL_ENTITY_VALUE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/language_frontend.py::_has_place_mention::cf839aab74",
    "datei": "custom_components/homeintent/nlu/language_frontend.py",
    "bereich": "_has_place_mention",
@@ -3758,6 +3766,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/script_semantics.py::_WORD_RE::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/script_semantics.py",
+   "bereich": "_WORD_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/self_correction.py::_TOKEN_RE::ee5879c938",
    "datei": "custom_components/homeintent/nlu/self_correction.py",
    "bereich": "_TOKEN_RE",
@@ -4213,6 +4228,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/semantic_lexicon.py::_FUNCTIONAL_PLACE_RE::5960681a94",
+   "datei": "custom_components/homeintent/nlu/semantic_lexicon.py",
+   "bereich": "_FUNCTIONAL_PLACE_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/semantic_lexicon.py::_compiled::fcea5773dc",
    "datei": "custom_components/homeintent/nlu/semantic_lexicon.py",
    "bereich": "_compiled",
@@ -4234,10 +4256,24 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/semantic_location.py::_WHOLE_HOME_RE::c9d2c396f4",
+   "id": "custom_components/homeintent/nlu/semantic_location.py::_WHOLE_HOME_RE::58057748b0",
    "datei": "custom_components/homeintent/nlu/semantic_location.py",
    "bereich": "_WHOLE_HOME_RE",
    "klasse": "SEMANTIC_SENTENCE_PATTERN",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_location.py::_PRESENCE_HOME_RE::16bdb35d03",
+   "datei": "custom_components/homeintent/nlu/semantic_location.py",
+   "bereich": "_PRESENCE_HOME_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_location.py::resolve_semantic_place::e943e6fc3e",
+   "datei": "custom_components/homeintent/nlu/semantic_location.py",
+   "bereich": "resolve_semantic_place",
+   "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
   {
@@ -5348,7 +5384,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 404,
+  "LEXICAL": 409,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 150,
   "SEMANTIC_SENTENCE_PATTERN": 171
