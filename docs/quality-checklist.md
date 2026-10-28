@@ -26,9 +26,13 @@ Stand: 27. Oktober 2026 (7.13.1)
   exakten SHA; fehlgeschlagener Sicherheitsjob blockiert dauerhaft
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – bewusst nicht
   behauptet; manuelle Matrix in [Umsetzung 7.13.1](umsetzung-7.13.1.md)
-- [ ] CI und Nightly für den exakten Release-Commit, Tag und GitHub-Release:
-  wird vom Release-Workflow erzwungen; die Lauf-Links stehen im GitHub-Release
-  und werden nach Veröffentlichung hier eingetragen
+- [x] Release-Commit `0f1e63d02fb97e23d626e924c62e9b3491147650`: CI
+  [Lauf 40605416517](https://github.com/pquandel2-alt/homeintent/actions/runs/40605416517)
+  und Nightly-Sicherheitslauf
+  [Lauf 40605390788](https://github.com/pquandel2-alt/homeintent/actions/runs/40605390788)
+  mit allen Pflichtjobs grün; Release-Gate im
+  [Release-Workflow 40610331432](https://github.com/pquandel2-alt/homeintent/actions/runs/40610331432)
+  bestanden; [Tag und GitHub-Release v7.13.1](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.1)
 
 ## Release Candidate 7.13.0
 
