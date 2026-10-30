@@ -6,7 +6,41 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 27. Oktober 2026 (7.13.1)
+Stand: 30. Oktober 2026 (7.13.2 RC)
+
+## Release Candidate 7.13.2
+
+- [x] typisierte `ClauseBinding`-Grenze für koordinierte schreibende
+  Prädikate: Operation, Ziel, Ort, Quelle/Wert, Token-Spans, Rest und Plan
+  bleiben klausellokal
+- [x] bekannte, unbekannte und mehrdeutige Quellenklauseln in Mehrbefehlen
+  vollständig vor Vorschau/Bestätigung/Write abgelehnt; einzelne sichere
+  Quellenbefehle unverändert
+- [x] `door`, `window`, `awning`, `damper`, fehlende/unbekannte Klassen und
+  gemischte Cover-Mengen atomar und mindestens `HIGH`; Garage/Tor
+  `CRITICAL`; Standard-Beschattung weiter `MEDIUM` und partiell
+- [x] Confirmation Scope bindet Domain, Service, exakte Zielmenge und alle
+  Plandaten (einschließlich Quelle/Position/Wert)
+- [x] vorhandenes `LanguageDocument` wiederverwendet; einfacher Einzelbefehl
+  nimmt keinen Mehrklauselpfad; begrenzter Namenscache hält keine
+  Entity-Snapshots und invalidiert bei Registry-Namensänderung
+- [x] absolutes 5.000-Entitäten-Gate um relatives Koordinationsgate ergänzt;
+  isolierte Sicherheitschecks besitzen Warmups und ausreichende Iterationen
+- [x] reale HA-2026.9.2-`CoverDeviceClass`-Werte automatisiert gegen die
+  zentrale Home-Assistant-Enum geprüft
+- [x] vollständige lokale Suite unter Python 3.12 und 3.13: jeweils 10.418
+  bestanden, 12 übersprungen, RuntimeWarning und unraisable exceptions als Fehler
+- [x] Safety-Property-Suite im CI-Profil sowie im Nightly-Profil mit den Seeds
+  7132, 424242 und 99991: jeweils 126 bestanden, kein Gegenbeispiel
+- [x] Korpusbaseline 7.13.2 mit 4.295 Satzsignaturen erzeugt; CI prüft exakt
+  diese versionierte Datei
+- [x] reale HA-2026.9.2-Komponententests lokal: 23 bestanden; Music-Assistant-
+  Komponentenvertrag gegen HA 2026.4.0 und 2026.9.2 jeweils mit dem von HA
+  deklarierten Client und echtem Komponentenschema bestanden
+- [ ] vollständige lokale/CI-/Nightly-Verifikation und Release für exakt
+  denselben finalen SHA – vor Veröffentlichung zwingend offen
+- [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – weiterhin
+  nicht geprüft und nicht behauptet
 
 ## Release Candidate 7.13.1
 
@@ -22,6 +56,11 @@ Stand: 27. Oktober 2026 (7.13.1)
   Ergebnis
 - [x] Batch-Eignung getrennt von der Risikoklasse; Standard-Rollläden pro Ziel,
   Garagentore/Tore/unklassifizierte Cover atomar; Garagentor-Position `CRITICAL`
+- [!] Nachprüfung: Die 7.13.1-Risikoklassifizierung ließ `door`, `window` und
+  weitere nicht unabhängige Cover trotz atomarem Pfad als `MEDIUM` ohne
+  Bestätigung zu; korrigiert in 7.13.2.
+- [!] Nachprüfung: Zusammengesetzte Quellenbefehle waren nicht durchgängig
+  fail-closed; korrigiert in 7.13.2.
 - [x] Release-Gate verlangt grüne `ci.yml` **und** `nightly-live.yml` für den
   exakten SHA; fehlgeschlagener Sicherheitsjob blockiert dauerhaft
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – bewusst nicht

@@ -5,6 +5,11 @@ from __future__ import annotations
 from enum import IntEnum
 
 from .entities import EntitySnapshot
+from .cover_safety import (
+    COVER_MOVEMENT_SERVICES,
+    CRITICAL_COVER_CLASSES,
+    INDEPENDENT_COVER_CLASSES,
+)
 from .service_call import ServiceCallPlan
 
 
@@ -32,11 +37,19 @@ def classify_service_plan(
         level = RiskLevel.CRITICAL
     elif "lock" in domains and plan.service == "unlock":
         level = RiskLevel.CRITICAL
-    elif device_classes & {"garage", "garage_door", "gate"} and (
-        plan.service.startswith(("open", "close")) or plan.service == "set_cover_position"
-    ):
+    elif device_classes & CRITICAL_COVER_CLASSES and plan.service in COVER_MOVEMENT_SERVICES:
         # Moving an entrance to a position is as critical as opening it.
         level = RiskLevel.CRITICAL
+    elif "cover" in domains and plan.service in COVER_MOVEMENT_SERVICES and (
+        not targets
+        or not device_classes
+        or "" in device_classes
+        or not device_classes <= INDEPENDENT_COVER_CLASSES
+    ):
+        # Doors/windows and every other non-standard or unknown moving cover
+        # are atomic and confirmation-gated. Unknown classification is never
+        # evidence that physical movement is harmless.
+        level = RiskLevel.HIGH
     elif domains & _HIGH_RISK_DOMAINS:
         level = RiskLevel.HIGH
     elif domains & _MEDIUM_RISK_DOMAINS:

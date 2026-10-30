@@ -56,6 +56,7 @@ from .nlu.entity_resolution import (
     resolve_mentioned_target,
 )
 from .nlu.entity_clarification import render_candidate_question
+from .nlu.clause_binding import analyse_clause_bindings
 from .nlu.clause_completeness import analyse_write_completeness
 from .nlu.composition import independent_predicate_clauses
 from .nlu.command import SemanticCommand, build_semantic_command
@@ -985,10 +986,25 @@ class NluEngine:
         context: UnderstandingContext | None = None,
     ) -> UnderstandingOutcome[MatchResult | CommandPlan]:
         """Canonical result of one direct turn, with the plan's origin set."""
+        supplied_document = document is not None
+        document = document or analyse_language(
+            text,
+            entities,
+            include_registry_compounds=False,
+            script_verbs=self._script_verbs,
+        )
         outcome = self._understand(
-            text, entities, world_model, document, context=context
+            text,
+            entities,
+            world_model,
+            document,
+            context=context,
+            allow_registry_expansion=not supplied_document,
         )
         payload = outcome.payload
+        bindings = analyse_clause_bindings(document, entities, payload)
+        if bindings.coordinated:
+            outcome = replace(outcome, clause_bindings=bindings)
         repeated = _repetition_count(text) if _writes(payload) else None
         if repeated is not None:
             # "Schalte das Licht 1000 Mal ein": the count is an instruction
@@ -1000,7 +1016,24 @@ class NluEngine:
                     "Ich habe nichts ausgeführt."
                 ),
             ))
-        if _writes(payload):
+        if _writes(payload) and bindings.coordinated and not bindings.complete:
+            rejected = [
+                binding.text.strip(" ,.")
+                for binding in bindings.bindings
+                if not binding.complete
+            ]
+            detail = " und ".join(f"„{item}“" for item in rejected) or "die Klauselbindung"
+            refusal = (
+                f"Den Teil {detail} habe ich nicht verstanden. "
+                "Ich habe deshalb nichts ausgeführt."
+            )
+            return replace(outcome, payload=MatchResult(
+                plan=None, response_text=refusal, failure_text=refusal,
+            ))
+        if _writes(payload) and not bindings.coordinated:
+            # Compatibility fallback for unusual surface coordinators that
+            # are not independent predicate clauses. Simple commands return
+            # before the registry-dependent part of this check.
             completeness = analyse_write_completeness(
                 text, entities, _payload_entities(payload, entities),
                 _payload_scoped_places(payload),
@@ -1030,6 +1063,7 @@ class NluEngine:
         document: LanguageDocument | None = None,
         *,
         context: UnderstandingContext | None = None,
+        allow_registry_expansion: bool = True,
     ) -> UnderstandingOutcome[MatchResult | CommandPlan]:
         """Return a canonical, reason-carrying result for one direct turn.
 
@@ -1038,7 +1072,7 @@ class NluEngine:
         explicit, read-only shadow comparison so historical grammars can be
         measured without being able to create a production service plan.
         """
-        supplied_document = document is not None
+        supplied_document = not allow_registry_expansion
         if self._script_verbs:
             context = replace(
                 context or UnderstandingContext(), script_verbs=self._script_verbs

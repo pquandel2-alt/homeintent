@@ -54,6 +54,21 @@ nie zurückgestellt. Ein angenommener Service Call allein gilt nicht als
 Erfolg. Garagentore und Tore sind auch beim Setzen einer Position
 `CRITICAL`.
 
+Koordinierte unmittelbare Schreibbefehle (7.13.2) passieren vor jeder
+Vorschau eine typisierte Klauselbindung. Operation, Quelle/Wert, Ziel und Ort
+einer Klausel dürfen nicht aus einer anderen Klausel ergänzt werden. Ein
+unbekannter Rest oder eine nicht sicher materialisierbare Quellenwahl verwirft
+den vollständigen Turn. Ein ausdrücklich genannter Ort ist eine harte
+Zielgrenze. Der Bestätigungsnachweis bindet Domain, Service, exakte Zielmenge
+und sämtliche Plandaten; Änderungen an Quelle, Wert, Aktion oder Zielmenge
+führen nach „Ja“ zu keinem Service Call.
+
+Für bewegliche Cover werden Risikoklasse und partielle Batch-Eignung getrennt
+bewertet. Nur `shutter`, `blind`, `shade` und `curtain` gelten als unabhängig.
+`door` und `window` sind mindestens `HIGH`; `garage` und `gate` bleiben
+`CRITICAL`. `awning`, `damper`, fehlende oder unbekannte Klassen sind kein
+Nachweis für Harmlosigkeit: Sie laufen atomar und erst nach Bestätigung.
+
 Offene Automations- und MA-Instanzdialoge sind flüchtiger RAM-Zustand. Ihr
 Schlüssel bindet Conversation-ID, authentifizierten Benutzer sowie vorhandene
 Satelliten- und Geräte-ID; ein Administrator erbt dadurch keinen fremden

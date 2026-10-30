@@ -146,6 +146,9 @@ class UnderstandingOutcome(Generic[T]):
     route: str | None = None
     margin: float | None = None
     authority: UnderstandingAuthority = UnderstandingAuthority.NONE
+    # Populated only for structurally coordinated command clauses. Kept
+    # opaque so this parser-free boundary does not depend on ClauseBinding.
+    clause_bindings: object | None = None
 
     @property
     def actionable(self) -> bool:

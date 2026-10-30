@@ -39,7 +39,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/corpus_shadow.py
-          --check docs/perf/corpus-signatures-7.13.1.json
+          --check docs/perf/corpus-signatures-7.13.2.json
       - name: Shadow-Vergleich (SAFETY_DRIFT blockiert)
         if: matrix.python-version == '3.12'
         run: python scripts/shadow_compare.py --candidate identity --check
@@ -81,6 +81,7 @@ jobs:
           --iterations 20
           --warmup 3
           --max-p95-ms 100
+          --max-coordination-ratio 6.5
       - name: Automationssprache-Latenzbudget bei großer Registry prüfen
         if: matrix.python-version == '3.12'
         run: >-
@@ -94,12 +95,13 @@ jobs:
           --registry-size 5000
           --iterations 300
           --max-p95-ms 100
-      - name: Satzverbrauchs- und Klauselprüfung bei großer Registry (7.13.1)
+      - name: Satzverbrauchs- und Klauselprüfung bei großer Registry (7.13.2)
         if: matrix.python-version == '3.12'
         run: >-
           python scripts/benchmark_media_coverage.py
           --registry-size 5000
           --iterations 30
+          --warmup 5
           --max-p95-ms 100
       - name: V10 Goal-/Planungsbudgets prüfen
         if: matrix.python-version == '3.12'
@@ -185,6 +187,8 @@ jobs:
           custom_components/homeintent/batch_execution.py
           custom_components/homeintent/media_semantics.py
           custom_components/homeintent/media_coverage.py
+          custom_components/homeintent/cover_safety.py
+          custom_components/homeintent/nlu/clause_binding.py
           custom_components/homeintent/nlu/clause_completeness.py
           custom_components/homeintent/nlu/script_semantics.py
           custom_components/homeintent/agent_action_policy.py

@@ -1,5 +1,15 @@
 # Umsetzung 7.13.1 – Satzverbrauch, finalisierte Batches, Cover, Release-Gate
 
+> Nachprüfung vom 28. Oktober 2026: Die damalige globale
+> Vollständigkeitsprüfung band Quellen, Operationen, Ziele und Orte nicht
+> zuverlässig pro Klausel. Zusammengesetzte Quellenbefehle konnten deshalb
+> einen falschen Restplan erzeugen. Außerdem blieben `door`, `window` und
+> andere nicht unabhängige Cover risikoseitig `MEDIUM`, obwohl der
+> Batch-Selektor sie atomar behandelte. Die Performanceaussage „keine
+> Verschlechterung“ war angesichts der gemessenen p95-Werte falsch. 7.13.2
+> korrigiert diese Punkte; dieser Bericht bleibt ansonsten historische
+> Dokumentation des damaligen Implementierungsstands.
+
 Ausgangsstand: v7.13.0, Commit `324cfb8aaf7dc7ef7254cd4a9f0f810b9d2eb94a`
 (normale CI grün in [Lauf 40457654872](https://github.com/pquandel2-alt/homeintent/actions/runs/40457654872),
 Nightly-Sicherheitslauf desselben Commits fehlgeschlagen in
@@ -114,8 +124,10 @@ voneinander unabhängig sind:
   `blind`, `shade`, `curtain` (`open_cover`, `close_cover`,
   `set_cover_position`) sind geeignet.
 * `garage`, `gate`, `door`, `window`, `damper`, `awning`, fehlende Klasse,
-  nicht freigegebene Ziele, gemischte Domänen und andere Dienste behalten den
-  bisherigen atomaren, bestätigungspflichtigen Pfad.
+  nicht freigegebene Ziele, gemischte Domänen und andere Dienste behielten den
+  atomaren Pfad. Die damalige Risikoklassifizierung verlangte jedoch nur für
+  Garage/Garagentor/Tor zuverlässig eine Bestätigung; `door`, `window` und
+  weitere Klassen konnten als `MEDIUM` ohne Rückfrage laufen.
 * Ein Ziel, das für sich `HIGH` oder `CRITICAL` ist, läuft nie pro Ziel.
 * Die Gesamt-Risikoklasse (inklusive Breitenstufe ab sechs Zielen) entscheidet
   weiterhin über Bestätigung und Autorität für den ganzen Batch vor dem ersten
@@ -137,10 +149,10 @@ Release mit `--verify-tag` und prüft danach, dass das Tag auf den SHA zeigt.
 
 ## 4. Grenzen
 
-* Ein Play-Befehl mit Quellenwahl in einem *zusammengesetzten* Satz
-  („Spiel Bayern 3 in der Küche und mach das Licht aus“) wird abgelehnt, weil
-  die gemeinsame Mehrbefehls-Pipeline keine Quellenwahl kompiliert. Das ist
-  fail-closed, aber eine Funktionslücke.
+* Ein Play-Befehl mit Quellenwahl in einem *zusammengesetzten* Satz sollte
+  abgelehnt werden, weil die gemeinsame Mehrbefehls-Pipeline keine Quellenwahl
+  kompiliert. Die Nachprüfung zeigte, dass die Conversation-/Goal-Pipeline
+  diese Grenze umgehen und einen semantisch falschen Restplan erzeugen konnte.
 * „Mach das Radio aus“ wird allein als `media_pause` (fähigkeitsbasiert), in
   einem zusammengesetzten Satz über die Engine als `media_player.turn_off`
   ausgeführt. Beides schreibt nur das genannte Gerät; die Operation

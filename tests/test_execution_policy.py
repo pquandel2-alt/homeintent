@@ -53,7 +53,9 @@ def test_authenticated_non_admin_critical_is_denied_by_default():
 
 
 def test_confirmation_threshold_is_configurable():
-    cover = EntitySnapshot("cover.office", "Bürorollo", "cover", "closed")
+    cover = EntitySnapshot(
+        "cover.office", "Bürorollo", "cover", "closed", device_class="shutter"
+    )
     plan = ServiceCallPlan("cover", "open_cover", cover.entity_id)
 
     assert evaluate_service_plan(

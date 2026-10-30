@@ -6,7 +6,7 @@ Aktuelle, veröffentlichte Stände stehen zusätzlich unter
 Umsetzungsberichte liegen im übergeordneten Verzeichnis `docs/`.
 
 Ab 7.9.9 hat jede Version eigenständige Release Notes, zuletzt
-[7.13.1](../release-notes-7.13.1.md) mit [Umsetzungsbericht](../umsetzung-7.13.1.md).
+[7.13.2](../release-notes-7.13.2.md) mit [Umsetzungsbericht](../umsetzung-7.13.2.md).
 
 Version 7.9.9 ist in den eigenständigen
 [Release Notes](../release-notes-7.9.9.md) dokumentiert. Dieses Archiv beginnt

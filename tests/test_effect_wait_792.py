@@ -174,6 +174,13 @@ _KINDS: dict[str, tuple[str, str, str, Report, Report | None, Report | None]] = 
 def _speak_or_tone(house, devices, text):
     devices.tones.clear()
     speech, elapsed = _say(house, text)
+    if speech.startswith("Soll ich wirklich"):
+        # Non-independent covers (the awning in this matrix) are intentionally
+        # confirmation-gated.  Effect timing starts only with the confirmed
+        # service turn; the preview itself must emit neither action nor tone.
+        assert devices.tones == []
+        devices.tones.clear()
+        speech, elapsed = _say(house, "Ja")
     return speech, elapsed, list(devices.tones)
 
 

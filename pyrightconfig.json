@@ -9,6 +9,8 @@
     "custom_components/homeintent/script_execution_observer.py",
     "custom_components/homeintent/batch_execution.py",
     "custom_components/homeintent/media_semantics.py",
+    "custom_components/homeintent/cover_safety.py",
+    "custom_components/homeintent/nlu/clause_binding.py",
     "custom_components/homeintent/nlu/script_semantics.py",
     "custom_components/homeintent/agent_event.py",
     "custom_components/homeintent/entity_scope.py",

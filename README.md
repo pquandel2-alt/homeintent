@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.13.1**
+- Aktuelle Quellstand-Version: **7.13.2**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -147,39 +147,54 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-## Version 7.13.1
+Der Quellstand trägt Version 7.13.2. Die zugehörige versionierte
+Korpusbaseline ist
+[`corpus-signatures-7.13.2.json`](docs/perf/corpus-signatures-7.13.2.json).
+Tag und GitHub-Release folgen erst, nachdem CI und Nightly für exakt denselben
+finalen Commit vollständig grün sind.
 
-7.13.1 schließt die Lücken aus der unabhängigen Prüfung von 7.13.0:
+## Version 7.13.2
 
-- **Vollständiger Satzverbrauch:** Ein schreibender Medienbefehl wird nur
-  ausgeführt, wenn jedes Wort des Satzes erklärt ist. Zusammengesetzte Sätze
-  werden von der gemeinsamen Mehrbefehls-Pipeline vollständig kompiliert;
-  ist ein Teil unverstanden, unvollständig oder nennt er einen Ort oder ein
-  Ziel, das der Plan nicht abdeckt, wird nichts ausgeführt.
+7.13.2 schließt die in der unabhängigen Nachprüfung von 7.13.1 verbliebenen
+Lücken:
+
+- **Klauselspezifische Bindung:** Operation, Ziel, Ort, Quelle/Wert, belegte
+  Tokens und Rest werden für jede schreibende Klausel getrennt gebunden. Ein
+  unverständlicher Teil verwirft den ganzen Satz vor Vorschau und Service Call;
+  Operationen und Zielmengen dürfen nicht zwischen Räumen wandern.
+- **Zusammengesetzte Quellenbefehle:** Die gemeinsame Mehrbefehls-Pipeline
+  materialisiert Quellenwahl noch nicht sicher. Deshalb werden bekannte,
+  unbekannte und mehrdeutige Quellen in einem zusammengesetzten Satz als
+  Ganzes abgelehnt (sichere Variante B). Einzelne, exakt aufgelöste
+  Quellenbefehle bleiben unterstützt.
 - **Finalisierte Sammelergebnisse:** Licht- und Rollladen-Sammelaktionen
   beobachten alle angenommenen Ziele gemeinsam in einem begrenzten,
   ereignisbasierten Zeitfenster. Antwort, Audit (pro Ziel) und Undo entstehen
   erst danach aus demselben unveränderlichen Ergebnis.
-- **Rollläden wirklich pro Ziel:** Batch-Eignung ist von der Risikoklasse
-  getrennt. Standard-Rollläden bleiben `MEDIUM` und laufen pro Ziel;
-  Garagentore, Tore und unklassifizierte Cover bleiben atomar und
-  bestätigungspflichtig.
+- **Cover-Risiko vollständig:** `shutter`, `blind`, `shade` und `curtain`
+  bleiben `MEDIUM` und können pro Ziel laufen. Physische Zugänge
+  (`garage`, `gate`, `door`, `window`) sowie sonstige oder unbekannte
+  bewegliche Cover sind atomar und mindestens bestätigungspflichtig;
+  Garage/Tor bleiben `CRITICAL`.
+- **Performance ohne globalen Turn-Cache:** Das vorhandene
+  `LanguageDocument` und seine Klauselgrenzen werden wiederverwendet. Der
+  begrenzte Registry-Namenscache hält nur IDs/normalisierte Namen, keine
+  Entity-Snapshots oder Conversation-Zustände. Ein relatives CI-Gate schützt
+  koordinierte Writes zusätzlich zum absoluten p95-Budget.
 - **Strengeres Release-Gate:** Ein Release verlangt für den exakten Commit
   sowohl die grüne CI als auch den grünen Nightly-Sicherheitslauf.
 
 Details, Root Causes, Testergebnisse und eine manuelle Testmatrix für echte
-Hardware stehen in den [Release Notes](docs/release-notes-7.13.1.md) und im
-[Umsetzungsbericht](docs/umsetzung-7.13.1.md).
+Hardware stehen in den [Release Notes](docs/release-notes-7.13.2.md) und im
+[Umsetzungsbericht](docs/umsetzung-7.13.2.md).
 
-Geprüfter Release-Stand von Version 7.13.1: Die verpflichtenden GitHub-Prüfungen
+Für Version 7.13.2 gilt: Die verpflichtenden GitHub-Prüfungen
 (`ci.yml` und `nightly-live.yml`) müssen für den exakten Release-Commit
 erfolgreich abgeschlossen sein, bevor Tag und GitHub-Release erstellt werden;
 die geprüften Lauf-Links stehen im GitHub-Release.
 
-Die versionierte Korpusbaseline ist
-[`corpus-signatures-7.13.1.json`](docs/perf/corpus-signatures-7.13.1.json).
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.13.1.md), im
+in den [Release Notes](docs/release-notes-7.13.2.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 

@@ -136,20 +136,31 @@ become a Bewegungsmelder.
    ("lass … an"), past and counterfactual need statements.
 6. **Time-bound language never runs immediately.** Clock times, delays and
    wake requests become previewed automations.
-7. **A bounded parser writes only with complete coverage (7.13.1).** The
+7. **A bounded parser writes only with complete coverage (7.13.1/7.13.2).** The
    media fast path takes a write only when `media_coverage` explains every
    word of the sentence (operation lexemes of exactly that operation, media
    target, one place, play name, value, queue directive, fillers). Residue,
    conflicts or a coordination hand the whole sentence to the shared
-   multi-command pipeline, which compiles every clause before the first
-   write. `nlu/clause_completeness` refuses a write plan with an unfinished
-   coordinated clause, or a coordinated place or target phrase that no
-   planned target covers.
+   multi-command pipeline. For real coordinated write predicates,
+   `nlu/clause_binding` then binds operation, target expression and exact
+   target IDs, place expression and exact place IDs, source/value, consumed
+   spans, residue and generated plans per clause. Every binding must be
+   complete and its plan targets must equal that clause's targets before the
+   first write. A source-selection clause in a compound is rejected as a
+   whole until the common compiler can materialize it safely. Nominal
+   coordination such as a compound duration is not misclassified as a write
+   compound. `nlu/clause_completeness` remains the compatibility fallback.
 8. **Batch outcomes are final only after the effect wait (7.13.1).** An
    eligible batch (`batch_execution.batch_eligibility`, independent of risk)
    preflights every target, calls the allowed ones, observes every accepted
    call in one bounded event-driven window and only then builds the
    immutable `BatchExecutionResult`; reply, audit and Undo come from it.
+9. **Cover risk and independence remain orthogonal (7.13.2).** Independent
+   shading (`shutter`, `blind`, `shade`, `curtain`) is `MEDIUM` and may settle
+   per target. Physical access (`garage`, `gate`, `door`, `window`) and every
+   other, missing or unknown moving-cover class is atomic and confirmation
+   gated; garage/gate movement remains `CRITICAL`. Confirmation binds the
+   complete plan signature, not only its targets.
 
 Every capability has a generated productivity test (`tests/test_sprache73_*`)
 that combines its building blocks freely against the test house; the live

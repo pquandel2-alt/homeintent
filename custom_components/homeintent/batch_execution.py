@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import Mapping
 
 from .service_call import ServiceCallPlan
+from .cover_safety import COVER_MOVEMENT_SERVICES, INDEPENDENT_COVER_CLASSES
 
 
 class BatchTargetStatus(StrEnum):
@@ -164,10 +165,9 @@ class BatchEligibility(StrEnum):
 # Covers that only shade or darken one opening and move independently of
 # each other.  Every other or missing device class keeps the established
 # all-or-nothing path.
-INDEPENDENT_COVER_CLASSES = frozenset({"shutter", "blind", "shade", "curtain"})
 BATCH_SERVICES: Mapping[str, frozenset[str]] = {
     "light": frozenset({"turn_on", "turn_off"}),
-    "cover": frozenset({"open_cover", "close_cover", "set_cover_position"}),
+    "cover": COVER_MOVEMENT_SERVICES,
 }
 
 

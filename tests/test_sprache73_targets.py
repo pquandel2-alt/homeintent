@@ -263,7 +263,11 @@ def test_colloquial_particle_verbs(monkeypatch, sentence, target, service):
         house_entities(), media_player__kuechenradio="playing", cover__markise="closed",
         cover__kuechenrollladen="closed", cover__badezimmer_rollladen="open",
     )
-    turn = HouseConversation(monkeypatch, entities).say(sentence)
+    house = HouseConversation(monkeypatch, entities)
+    turn = house.say(sentence)
+    if target == "cover.markise":
+        assert turn.calls == [] and "Soll ich" in turn.speech
+        turn = house.say("Ja")
     assert turn.targets == {target}, turn.speech
     assert turn.calls[0][1] == service
 

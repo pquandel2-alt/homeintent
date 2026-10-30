@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import Enum, auto
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Iterator, Mapping, Sequence
 
 from .capabilities import describe_abilities
 from ..entities import EntitySnapshot, ResolutionResult, normalize_for_compare
@@ -175,36 +175,48 @@ class _NameIndex:
     max_words: int
 
 
-_NAME_INDEX_CACHE: dict[int, tuple[tuple[object, ...], "_NameIndex"]] = {}
+class _CurrentNamePhrases(Mapping[str, tuple[EntitySnapshot, ...]]):
+    """Resolve a cached ID-only name table against this turn's snapshots.
+
+    The shared structural cache must never retain ``EntitySnapshot`` objects:
+    state, area, device class and exposure can change while names stay equal.
+    This lightweight view owns only the current call's lookup and therefore
+    cannot return an older turn's entity.
+    """
+
+    def __init__(
+        self,
+        by_words: Mapping[tuple[str, ...], tuple[str, ...]],
+        entities: Sequence[EntitySnapshot],
+    ) -> None:
+        self._by_words = by_words
+        self._entities = {entity.entity_id: entity for entity in entities}
+
+    def __getitem__(self, phrase: str) -> tuple[EntitySnapshot, ...]:
+        entity_ids = self._by_words[tuple(phrase.split())]
+        return tuple(
+            entity
+            for entity_id in entity_ids
+            if (entity := self._entities.get(entity_id)) is not None
+        )
+
+    def __iter__(self) -> Iterator[str]:
+        return (" ".join(words) for words in self._by_words)
+
+    def __len__(self) -> int:
+        return len(self._by_words)
 
 
 def name_index(entities: Sequence[EntitySnapshot]) -> _NameIndex:
-    """Registry name/alias phrase index, cached per exact name content."""
-    signature = tuple((entity.entity_id, entity.friendly_name, entity.aliases) for entity in entities)
-    key = hash(signature)
-    cached = _NAME_INDEX_CACHE.get(key)
-    if cached is not None and cached[0] == signature:
-        return cached[1]
-    index = _build_name_index(entities)
-    if len(_NAME_INDEX_CACHE) > 8:
-        _NAME_INDEX_CACHE.clear()
-    _NAME_INDEX_CACHE[key] = (signature, index)
-    return index
+    """Current snapshots over the bounded shared ID/name structure."""
+    # Local import avoids making the foundational field reader part of this
+    # module's import cycle. Its cache stores names and IDs only.
+    from .self_correction import registry_name_table
 
-
-def _build_name_index(entities: Sequence[EntitySnapshot]) -> _NameIndex:
-    phrases: dict[str, list[EntitySnapshot]] = {}
-    for entity in entities:
-        for name in (entity.friendly_name, *entity.aliases):
-            key = " ".join(normalize_for_compare(name).replace("-", " ").split())
-            if not key:
-                continue
-            bucket = phrases.setdefault(key, [])
-            if entity not in bucket:
-                bucket.append(entity)
+    table = registry_name_table(entities)
     return _NameIndex(
-        {key: tuple(value) for key, value in phrases.items()},
-        max((len(key.split()) for key in phrases), default=1),
+        _CurrentNamePhrases(table.by_words, entities),
+        table.max_words,
     )
 
 

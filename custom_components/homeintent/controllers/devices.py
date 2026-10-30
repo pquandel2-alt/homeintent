@@ -790,6 +790,35 @@ class DeviceController:
                 )
             else:
                 spoken = with_effect_summary(confirmation.success_text, execution)
+                if execution.script_outcome is not None:
+                    target_ids = (
+                        (confirmation.plan.entity_id,)
+                        if isinstance(confirmation.plan.entity_id, str)
+                        else tuple(confirmation.plan.entity_id)
+                    )
+                    target = next(
+                        (
+                            entity
+                            for entity in entities
+                            if entity.entity_id in target_ids
+                        ),
+                        None,
+                    )
+                    script_name = (
+                        target.friendly_name
+                        if target is not None
+                        else target_ids[0] if target_ids else "Skript"
+                    )
+                    spoken = script_execution_speech(
+                        script_name, execution.script_outcome
+                    )
+                    if (
+                        execution.script_outcome.status
+                        is ScriptExecutionStatus.COMPLETED
+                    ):
+                        spoken = with_effect_summary(spoken, execution)
+                    else:
+                        spoken = with_planned_effect_summary(spoken, execution)
                 if confirmation.binding_offer is not None:
                     spoken = f"{spoken} " + await self._async_store_routine_binding(
                         *confirmation.binding_offer, current_user_id

@@ -37,7 +37,7 @@ befehl heldout :: Mach alle Lampen im Schlafzimmer an :: call=turn.turn_on:light
 befehl :: Schalte den LED-Streifen im Wohnzimmer ein :: call=turn.turn_on:light.wohnzimmer_led_streifen
 befehl :: Mach die Schreibtischlampe an :: call=turn.turn_on:light.schreibtischlampe
 befehl :: Schalte den Deckenfluter aus :: call=turn.turn_off:light.deckenfluter_buero
-befehl :: Fahr die Markise ein :: call=cover.close_cover:cover.markise
+befehl :: Fahr die Markise ein :: confirm
 befehl heldout :: Fahr den Raffstore im Büro runter :: call=cover.close_cover:cover.buero_raffstore
 befehl :: Schalte das Flurlicht oben ein :: call=turn.turn_on:light.flurlicht_oben
 befehl :: Mach das Waschküchenlicht an :: call=turn.turn_on:light.waschkuechenlicht
@@ -220,7 +220,7 @@ ellipse :: Schalte das Bürolicht an || Wieder aus :: call=turn.turn_on:light.bu
 ellipse :: Mach das Nachtlicht an || Etwas dunkler :: call=turn.turn_on:light.nachtlicht || call=light.turn_on:light.nachtlicht
 ellipse :: Welche Fenster sind offen? || Und im Obergeschoss? :: answer || answer
 ellipse heldout :: Schalte die Kücheninsel ein || Die auch aus :: call=turn.turn_on:light.kuecheninsel || -
-ellipse :: Fahr die Markise ein || Und wieder aus :: call=cover.close_cover:cover.markise || call=cover.open_cover:cover.markise
+ellipse :: Fahr die Markise ein || Ja :: confirm || call=cover.close_cover:cover.markise
 ellipse :: Wie warm ist es im Büro? || Und draußen? :: answer || answer say=12,3
 ellipse :: Schalte den Badlüfter ein || Und das Licht dort auch :: call=turn.turn_on:fan.badluefter || call=turn.turn_on:light.badezimmerlicht,light.spiegelschrank
 ellipse heldout :: Mach die Außenbeleuchtung an || Das Terrassenlicht auch :: call=turn.turn_on:light.aussenbeleuchtung || call=turn.turn_on:light.terrassenlicht
@@ -366,7 +366,7 @@ hoeflichkeit heldout :: Dürfte ich dich bitten, den Badlüfter anzumachen? :: c
 hoeflichkeit :: Bitte dimm das Schlafzimmerlicht auf 25 Prozent, danke :: call=light.turn_on:light.schlafzimmerlicht brightness_pct=25
 hoeflichkeit :: Danke, mach jetzt bitte das Küchenlicht aus :: call=turn.turn_off:light.kuechenlicht
 hoeflichkeit :: Hättest du Lust, das Terrassenlicht anzumachen? :: call=turn.turn_on:light.terrassenlicht
-hoeflichkeit heldout :: Könntest du freundlicherweise die Markise einfahren? :: call=cover.close_cover:cover.markise
+hoeflichkeit heldout :: Könntest du freundlicherweise die Markise einfahren? :: confirm
 
 # ---------------------------------------------------------------- Mehrfachbefehle
 mehrfach :: Schalte das Küchenlicht ein und das Bürolicht aus :: call=turn.turn_on:light.kuechenlicht call=turn.turn_off:light.buerolicht
@@ -498,7 +498,7 @@ stt heldout :: schalte das nacht licht aus :: call=turn.turn_off:light.nachtlich
 stt :: mach bitte die steh lampe an :: call=turn.turn_on:light.stehlampe
 stt :: äh ähm schalte das bürolicht aus :: call=turn.turn_off:light.buerolicht
 stt :: schalte den decken ventilator an :: call=turn.turn_on:fan.deckenventilator
-stt heldout :: fahr die markise aus :: call=cover.open_cover:cover.markise
+stt heldout :: fahr die markise aus :: confirm
 stt :: dimme die stehlampe auf zwanzig prozent :: call=light.turn_on:light.stehlampe brightness_pct=20
 stt :: schalte das kinderzimmer licht aus :: call=turn.turn_off:light.kinderzimmerlicht
 stt :: mach das licht im gäste wc aus :: call=turn.turn_off:light.gaeste_wc_licht

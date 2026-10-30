@@ -18,7 +18,13 @@ def test_unlock_and_garage_are_critical():
 
 def test_large_physical_group_is_escalated():
     covers = [
-        EntitySnapshot(f"cover.c{index}", f"Rollladen {index}", "cover", "closed")
+        EntitySnapshot(
+            f"cover.c{index}",
+            f"Rollladen {index}",
+            "cover",
+            "closed",
+            device_class="shutter",
+        )
         for index in range(6)
     ]
     plan = ServiceCallPlan("cover", "open_cover", [item.entity_id for item in covers])

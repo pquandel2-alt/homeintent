@@ -19,11 +19,15 @@ that the ordinary pipeline reads.
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import TYPE_CHECKING, Iterable, Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
 from .device_ontology import GENERA, Gender, analyse_word
 from .language_frontend import LanguageToken, tokenize_language
+
+if TYPE_CHECKING:
+    from .place_model import PlaceLexicon
+    from .self_correction import RegistryNameTable
 
 __all__ = ("expand_coordination", "opens_clause")
 
@@ -69,21 +73,26 @@ def _expand_hyphen(text: str) -> str:
     return text
 
 
-def _place_mentions(words: Sequence[str], entities: Sequence[EntitySnapshot]):
-    from .place_model import PlaceKind, build_place_lexicon
+def _place_mentions(words: Sequence[str], places: PlaceLexicon):
+    from .place_model import PlaceKind
 
     return [
-        mention for mention in build_place_lexicon(entities).scan(words)
+        mention for mention in places.scan(words)
         if mention.place.kind in {PlaceKind.AREA, PlaceKind.FLOOR}
     ]
 
 
-def _expand_shared_head(text: str, entities: Sequence[EntitySnapshot]) -> str:
+def _expand_shared_head(
+    text: str,
+    entities: Sequence[EntitySnapshot],
+    names: RegistryNameTable,
+    places: PlaceLexicon,
+) -> str:
     """"Küche und Esszimmer Rollladen" -> both places with their own object."""
     tokens = [token for token in tokenize_language(text) if token.is_word]
     words = [token.canonical for token in tokens]
-    mentions = _place_mentions(words, entities)
-    covered = _registry_covered(words, entities)
+    mentions = _place_mentions(words, places)
+    covered = _registry_covered(words, names)
     for left, right in zip(mentions, mentions[1:]):
         if any(index in covered for index in range(left.token_start, left.token_end)):
             # "Flurlicht oben und Gäste-WC Licht": registry names, not places.
@@ -111,11 +120,8 @@ def _expand_shared_head(text: str, entities: Sequence[EntitySnapshot]) -> str:
     return text
 
 
-def _registry_covered(words: Sequence[str], entities: Sequence[EntitySnapshot]) -> set[int]:
+def _registry_covered(words: Sequence[str], table: RegistryNameTable) -> set[int]:
     """Word positions inside an exactly spoken registry name or alias."""
-    from .self_correction import registry_name_table
-
-    table = registry_name_table(entities)
     covered: set[int] = set()
     for size in range(min(table.max_words, len(words)), 0, -1):
         for start in range(len(words) - size + 1):
@@ -161,7 +167,12 @@ def _segments(tokens: Sequence[LanguageToken]) -> list[tuple[int, int]]:
     return ranges
 
 
-def _carry_place(text: str, entities: Sequence[EntitySnapshot]) -> str:
+def _carry_place(
+    text: str,
+    entities: Sequence[EntitySnapshot],
+    names: RegistryNameTable,
+    place_lexicon: PlaceLexicon,
+) -> str:
     """The place of the first part holds for later parts (and places-only
     parts repeat the first part's object and operation)."""
     from .self_correction import utterance_fields
@@ -171,7 +182,9 @@ def _carry_place(text: str, entities: Sequence[EntitySnapshot]) -> str:
     if len(ranges) < 2:
         return text
     pieces = [text[tokens[start].start:tokens[end - 1].end] for start, end in ranges]
-    first_fields, _rest = utterance_fields(pieces[0], entities)
+    first_fields, _rest = utterance_fields(
+        pieces[0], entities, names=names, places=place_lexicon
+    )
     # Only a place with its preposition ("im Wohnzimmer") frames the whole
     # sentence; "Rollladen Schlafzimmer" is part of one noun phrase.
     places = [
@@ -183,7 +196,9 @@ def _carry_place(text: str, entities: Sequence[EntitySnapshot]) -> str:
     particle = next((item.text for item in first_fields if item.kind == "particle"), None)
     edits: list[tuple[int, int, str]] = []
     for (start, end), piece in zip(ranges[1:], pieces[1:]):
-        fields, rest = utterance_fields(piece, entities)
+        fields, rest = utterance_fields(
+            piece, entities, names=names, places=place_lexicon
+        )
         offset = tokens[start].start
         kinds = {item.kind for item in fields}
         own_places = [item for item in fields if item.kind == "place"]
@@ -222,12 +237,17 @@ def expand_coordination(text: str, entities: Iterable[EntitySnapshot]) -> str:
     if "-" not in text and " und " not in lowered and "," not in text and " dann " not in lowered:
         return text
     entity_list = entities if isinstance(entities, list) else list(entities)
+    from .place_model import build_place_lexicon
+    from .self_correction import registry_name_table
+
+    names = registry_name_table(entity_list)
+    places = build_place_lexicon(entity_list)
     if "-" in text:
         text = _expand_hyphen(text)
     if " und " in lowered or " oder " in lowered:
-        text = _expand_shared_head(text, entity_list)
+        text = _expand_shared_head(text, entity_list, names, places)
     if any(token.canonical in _TRIGGERS for token in tokenize_language(text)):
         # Trigger and action are separate parts of an automation; the
         # automation reader owns them.
         return text
-    return _carry_place(text, entity_list)
+    return _carry_place(text, entity_list, names, places)

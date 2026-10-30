@@ -108,17 +108,19 @@ def analyse_write_completeness(
     # außer dem Flurlicht") was considered by the reading, not dropped.
     positive, exceptions = split_exclusion(text)
     names = registry_name_table(entities)
+    entities_by_id = {entity.entity_id: entity for entity in entities}
     excepted = [
         entity
         for exception in exceptions
-        for entity in names.by_words.get(
+        for entity_id in names.by_words.get(
             tuple(normalize_for_compare(exception).replace("-", " ").split()), []
         )
+        if (entity := entities_by_id.get(entity_id)) is not None
     ]
     located = [
         entity for entity in (*targets, *excepted) if entity.area_id or entity.floor_id
     ]
-    fields, _rest = utterance_fields(positive, list(entities))
+    fields, _rest = utterance_fields(positive, entities, names=names)
     # A coordinated target phrase ("… und das Garagentor") must be covered
     # by a planned target: by one of its registry entities, or for a genus
     # noun by a target of that genus.  Otherwise the named set silently

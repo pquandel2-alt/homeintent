@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import lru_cache
 from typing import Iterable, Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
@@ -35,6 +36,7 @@ __all__ = (
     "IMPERATIVE_VERBS",
     "utterance_fields",
     "registry_name_table",
+    "RegistryNameTable",
     "CorrectionKind",
     "SelfCorrection",
     "analyse_self_correction",
@@ -173,34 +175,50 @@ class _Field:
     place: Place | None = None
 
 
-_NAMES_CACHE: list[tuple[object, "_Names"]] = []
+def _name_signature(
+    entities: Sequence[EntitySnapshot],
+) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """Only the registry fields that can change exact name resolution."""
+    return tuple(
+        (entity.entity_id, entity.friendly_name, tuple(entity.aliases))
+        for entity in entities
+    )
 
 
-def _names_for(entities: Sequence[EntitySnapshot]) -> "_Names":
-    """One name table per entity list object (the list of the turn)."""
-    for owner, names in _NAMES_CACHE:
-        if owner is entities:
-            return names
-    names = _Names(entities)
-    _NAMES_CACHE[:] = [(entities, names), *_NAMES_CACHE[:3]]
-    return names
+@lru_cache(maxsize=8)
+def _cached_names(
+    signature: tuple[tuple[str, str, tuple[str, ...]], ...],
+) -> "RegistryNameTable":
+    """Bounded structural cache; never retains snapshots or turn lists."""
+    return RegistryNameTable(signature)
 
 
-def registry_name_table(entities: Sequence[EntitySnapshot]) -> "_Names":
+def _names_for(entities: Sequence[EntitySnapshot]) -> "RegistryNameTable":
+    return _cached_names(_name_signature(entities))
+
+
+def registry_name_table(entities: Sequence[EntitySnapshot]) -> "RegistryNameTable":
     """Registry names and aliases as word tuples (shared with coordination)."""
-    return _names_for(entities if isinstance(entities, list) else list(entities))
+    return _names_for(entities)
 
 
-class _Names:
-    """Registry names and aliases as word tuples (built once per turn)."""
+class RegistryNameTable:
+    """Registry names as word tuples mapped to ids, not live snapshots."""
 
-    def __init__(self, entities: Sequence[EntitySnapshot]) -> None:
-        self.by_words: dict[tuple[str, ...], list[EntitySnapshot]] = {}
-        for entity in entities:
-            for name in (entity.friendly_name, *entity.aliases):
+    def __init__(
+        self, signature: tuple[tuple[str, str, tuple[str, ...]], ...]
+    ) -> None:
+        self.by_words: dict[tuple[str, ...], tuple[str, ...]] = {}
+        mutable: dict[tuple[str, ...], list[str]] = {}
+        for entity_id, friendly_name, aliases in signature:
+            for name in (friendly_name, *aliases):
                 words = tuple(normalize_for_compare(name).replace("-", " ").split())
                 if words:
-                    self.by_words.setdefault(words, []).append(entity)
+                    mutable.setdefault(words, []).append(entity_id)
+        self.by_words = {
+            words: tuple(dict.fromkeys(entity_ids))
+            for words, entity_ids in mutable.items()
+        }
         self.max_words = max((len(words) for words in self.by_words), default=1)
 
 
@@ -210,13 +228,19 @@ def _is_number(token: _Token) -> bool:
     )
 
 
-def _fields(text: str, entities: Sequence[EntitySnapshot], names: _Names, places) -> tuple[list[_Field], list[_Token]]:
+def _fields(
+    text: str,
+    entities: Sequence[EntitySnapshot],
+    names: RegistryNameTable,
+    places,
+) -> tuple[list[_Field], list[_Token]]:
     """Typed fields of one segment and the words no field explains."""
     tokens = _tokens(text)
     words = [index for index, token in enumerate(tokens) if token.is_word]
     keys = [tokens[index].key for index in words]
     used = [False] * len(words)
     fields: list[_Field] = []
+    entities_by_id = {entity.entity_id: entity for entity in entities}
 
     def span(first: int, last: int) -> tuple[int, int]:
         return tokens[words[first]].start, tokens[words[last]].end
@@ -235,7 +259,13 @@ def _fields(text: str, entities: Sequence[EntitySnapshot], names: _Names, places
         for first in range(0, len(keys) - size + 1):
             if any(used[first:first + size]):
                 continue
-            found = names.by_words.get(tuple(keys[first:first + size]))
+            found_ids = names.by_words.get(tuple(keys[first:first + size]))
+            if not found_ids:
+                continue
+            found = tuple(
+                entity for entity_id in found_ids
+                if (entity := entities_by_id.get(entity_id)) is not None
+            )
             if not found:
                 continue
             start_word = left_extend(first, _ARTICLES)
@@ -344,7 +374,13 @@ def _fields(text: str, entities: Sequence[EntitySnapshot], names: _Names, places
     return sorted(fields, key=lambda item: item.start), residue
 
 
-def utterance_fields(text: str, entities: Sequence[EntitySnapshot]) -> tuple[list[_Field], list[_Token]]:
+def utterance_fields(
+    text: str,
+    entities: Sequence[EntitySnapshot],
+    *,
+    names: RegistryNameTable | None = None,
+    places: object | None = None,
+) -> tuple[list[_Field], list[_Token]]:
     """Typed fields (target, side, place, value, operation, time) of a turn.
 
     Shared by the self correction and the ellipsis contract (7.7.1 A3): both
@@ -352,8 +388,12 @@ def utterance_fields(text: str, entities: Sequence[EntitySnapshot]) -> tuple[lis
     """
     from .place_model import build_place_lexicon
 
-    entity_list = entities if isinstance(entities, list) else list(entities)
-    return _fields(text, entity_list, _names_for(entity_list), build_place_lexicon(entity_list))
+    return _fields(
+        text,
+        entities,
+        names or _names_for(entities),
+        places or build_place_lexicon(entities),
+    )
 
 
 # --------------------------------------------------------------- markers

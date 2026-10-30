@@ -81,15 +81,19 @@ def test_first_segment_failing_also_fails_entire_plan(engine):
 
 
 def test_action_and_read_only_query_form_one_validated_plan(engine):
-    result = engine.match(
+    outcome = engine.understand(
         "mach die Wohnzimmerlampe an und ist das Badezimmer Fenster geschlossen?",
         ENTITIES,
     )
+    result = outcome.payload
 
     assert isinstance(result, CommandPlan)
     assert result.commands[0].plan.service == "turn_on"
     assert result.commands[1].plan is None
     assert "geschlossen" in result.commands[1].response_text
+    assert outcome.clause_bindings is not None
+    assert outcome.clause_bindings.complete
+    assert outcome.clause_bindings.bindings[1].operation == "query:HassCheckState"
 
 
 def test_action_and_query_on_same_entity_are_refused_as_stale(engine):

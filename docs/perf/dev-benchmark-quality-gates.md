@@ -1,11 +1,12 @@
 # Versionierte Qualitätsgrenzen des Entwicklungsbenchmarks
 
 `scripts/dev_benchmark.py --check` liest die zum Release gehörende Datei
-`dev-benchmark-quality-gates-7.12.0.json`. Die Grenzen wurden nach Reparatur
-des Conversation-Scope-Lookups aus vollständigen Läufen übernommen. Im
-Standardkorpus blieben alle bestehenden Fälle unverändert; vier neue
-Mehrturnfälle kamen hinzu. Die Grenzen wurden gegenüber 7.10.1 nicht
-abgesenkt. Das Skript besitzt
+`dev-benchmark-quality-gates-7.13.2.json`. Die Grenzen wurden nach der
+Cover-Sicherheitskorrektur aus vollständigen Läufen übernommen. Die vier
+Markisenfälle im Standardkorpus und die zwei Markisenfälle im 7.8-Korpus
+erwarten nun die tatsächlich vorgeschriebene Bestätigung statt eines direkten
+Writes. Dadurch bleiben 478/516 beziehungsweise 103/107 Fälle bestanden und
+alle Safety-Zähler exakt null. Das Skript besitzt
 absichtlich keinen Schalter, der diese Datei aus einem aktuellen,
 möglicherweise schlechteren Lauf erzeugt.
 
@@ -31,3 +32,10 @@ falsches Ziel, die zusammengefasste Unsafe-Zahl und die Fehlerklasse
 
 Die Baseline ist damit ein geprüftes Eingabedokument, kein automatisch
 aktualisiertes Testergebnis.
+
+Die einzige numerisch niedrigere Nicht-Safety-Grenze ist
+`dimensions.no_write.passed` im 7.8-Korpus (94 → 93). Das ist keine
+Produktverschlechterung: Zwei zuvor als direkte Writes gezählte Fälle wurden
+in die separate Bestätigungsdimension verschoben, wodurch der Nenner von 96
+auf 94 sank. Die fallgenaue Begründung steht in
+[`7.13.2-cover-confirmation.md`](regression-justifications/7.13.2-cover-confirmation.md).

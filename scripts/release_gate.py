@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Block a release unless one exact main commit passed every required workflow.
 
-Required for exactly the release SHA (7.13.1):
+Required for exactly the release SHA (7.13.2):
 
 * the newest run of ``ci.yml`` is completed and successful, with every job in
   ``REQUIRED_CI_JOBS`` successful;

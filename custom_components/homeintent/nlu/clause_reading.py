@@ -19,7 +19,7 @@ from .device_ontology import analyse_word
 from .german_structure import ClauseKind
 from .language_frontend import tokenize_language
 from .normalize import normalize
-from .place_model import build_place_lexicon
+from .place_model import PlaceLexicon, build_place_lexicon
 from .semantic_catalog import DEGREE_WORDS
 from .semantic_lexicon import SemanticKind, analyse_semantics
 from .target_resolution import TargetDescription, describe_with_residue, name_index
@@ -91,7 +91,10 @@ _NON_COORDINATE_CLAUSES = frozenset({
 
 
 def read_clauses(
-    document: object, entities: Sequence[EntitySnapshot]
+    document: object,
+    entities: Sequence[EntitySnapshot],
+    *,
+    lexicon: PlaceLexicon | None = None,
 ) -> tuple[ClauseMeaning, ...]:
     structure = getattr(document, "structure")
     if any(clause.kind in _NON_COORDINATE_CLAUSES for clause in structure.clauses):
@@ -109,7 +112,7 @@ def read_clauses(
         # clauses ("…, wo ein Fenster offen steht") and exceptions ("mit
         # Ausnahme von") belong to their dedicated compilers.
         return ()
-    lexicon = build_place_lexicon(entities)
+    lexicon = lexicon or build_place_lexicon(entities)
     names = name_index(entities)
     meanings: list[ClauseMeaning] = []
     ranges: list[tuple[int, int]] = []

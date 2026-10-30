@@ -552,7 +552,10 @@ def _started(turn) -> set[str]:
 
 def test_schlafen_explicit_runs_exactly_that_script(monkeypatch):
     house = _owner_house(monkeypatch)
-    turn = house.say("Aktiviere Schlafen.")
+    preview = house.say("Aktiviere Schlafen.")
+    assert preview.calls == []
+    assert "Soll ich wirklich Schlafen ausführen?" in preview.speech
+    turn = house.say("Ja")
     assert turn.targets == {"script.schlafen"}, turn.speech
     assert turn.calls == [("script", "turn_on", {"entity_id": "script.schlafen"})]
     # The graph is validated, but the background script outcome stays

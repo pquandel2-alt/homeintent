@@ -46,8 +46,8 @@ kurz :: Küche aus :: call=turn.turn_off:light.kuecheninsel,light.kuechenlicht
 kurz heldout :: Flur an :: call=turn.turn_on:light.flurlicht
 kurz :: Kaffeemaschine an :: call=turn.turn_on:switch.kaffeemaschine
 kurz :: Stehlampe aus :: call=turn.turn_off:light.stehlampe
-kurz :: Markise rein :: call=cover.close_cover:cover.markise
-kurz heldout :: Markise raus :: call=cover.open_cover:cover.markise
+kurz :: Markise rein :: confirm
+kurz heldout :: Markise raus :: confirm
 kurz :: Garagentor zu :: confirm
 kurz :: Saugroboter los :: call=vacuum.start:vacuum.saugroboter
 kurz heldout :: Den Staubsauger losschicken :: call=vacuum.start:vacuum.saugroboter

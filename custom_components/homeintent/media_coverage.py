@@ -179,7 +179,7 @@ def analyse_media_coverage(
             mark(index, "filler" if words[index] in PLAY_NAME_FILLERS else "source")
 
     # Registry names, places and genus nouns from the shared field reader.
-    fields, _rest = utterance_fields(text, list(entities))
+    fields, _rest = utterance_fields(text, entities)
     targets = 0
     places = 0
     for item in fields:

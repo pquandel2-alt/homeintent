@@ -61,6 +61,7 @@ class ConfirmedPlanScope:
 
     risk: RiskLevel
     targets: frozenset[str]
+    signature: tuple[object, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,28 @@ def _effective_targets(plan: ServiceCallPlan, effects: object) -> frozenset[str]
     return frozenset(found)
 
 
+def _freeze_plan_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return tuple(sorted(
+            (str(key), _freeze_plan_value(item)) for key, item in value.items()
+        ))
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_plan_value(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted((_freeze_plan_value(item) for item in value), key=repr))
+    return value
+
+
+def _plan_signature(plan: ServiceCallPlan) -> tuple[object, ...]:
+    targets = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
+    return (
+        plan.domain,
+        plan.service,
+        tuple(sorted(targets)),
+        _freeze_plan_value(plan.data),
+    )
+
+
 def confirmed_scope(
     hass: HomeAssistant,
     plans: Sequence[ServiceCallPlan],
@@ -114,11 +137,14 @@ def confirmed_scope(
         risk = max(risk, decision.risk)
         effective = _effective_targets(plan, effects)
         targets |= effective
-        bindings.append(ConfirmedPlanScope(decision.risk, effective))
+        bindings.append(ConfirmedPlanScope(
+            decision.risk, effective, _plan_signature(plan)
+        ))
     return ConfirmedScope(risk, frozenset(targets), tuple(bindings))
 
 
 def _confirmation_scope_changed(
+    plan: ServiceCallPlan,
     decision: PolicyDecision,
     effective_targets: frozenset[str],
     scope: ConfirmedScope,
@@ -127,6 +153,10 @@ def _confirmation_scope_changed(
     if scope.plans:
         return not any(
             effective_targets == item.targets and decision.risk <= item.risk
+            and (
+                item.signature is None
+                or item.signature == _plan_signature(plan)
+            )
             for item in scope.plans
         )
     # Compatibility for persisted/tests scopes created before per-plan
@@ -324,7 +354,7 @@ async def _async_execute_independent_batch(
         confirmed
         and scope is not None
         and _confirmation_scope_changed(
-            overall_decision, _effective_targets(plan, overall_effects), scope
+            plan, overall_decision, _effective_targets(plan, overall_effects), scope
         )
     )
     for entity_id in target_ids:
@@ -521,7 +551,7 @@ async def _async_execute_service_plan(
     if decision.outcome is PolicyOutcome.CONFIRM and not confirmed:
         return ExecutionResult(False, decision, "Die Aktion benötigt eine Bestätigung.")
     if confirmed and scope is not None and _confirmation_scope_changed(
-        decision, _effective_targets(plan, effects), scope
+        plan, decision, _effective_targets(plan, effects), scope
     ):
         # The "Ja" answered a different question (7.7, B7).
         return ExecutionResult(False, decision, CHANGED_SINCE_CONFIRMATION)

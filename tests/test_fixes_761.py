@@ -320,10 +320,16 @@ def test_a8_softening_particles_keep_the_request(monkeypatch, sentence):
     from homeintent.nlu.semantic_utterance import SpeechAct, analyse_utterance
 
     assert analyse_utterance(sentence).speech_act is SpeechAct.COMMAND
-    reference = HouseConversation(monkeypatch).say("Fahr die Markise ein.")
-    house = HouseConversation(monkeypatch)
-    assert _writes(house.say(sentence)) == _writes(reference)
-    assert _writes(reference)
+    reference_house = HouseConversation(monkeypatch)
+    reference = reference_house.say("Fahr die Markise ein.")
+    variant_house = HouseConversation(monkeypatch)
+    variant = variant_house.say(sentence)
+    assert _writes(reference) == _writes(variant) == []
+    assert "Soll ich" in reference.speech and variant.speech == reference.speech
+    reference_confirmed = reference_house.say("Ja")
+    variant_confirmed = variant_house.say("Ja")
+    assert _writes(variant_confirmed) == _writes(reference_confirmed)
+    assert _writes(reference_confirmed)
 
 
 def test_a8_embedded_questions_stay_questions(monkeypatch):

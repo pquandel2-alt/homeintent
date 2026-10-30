@@ -205,6 +205,7 @@ def test_source_area_resolves_roomless_percentage_command_locally(monkeypatch):
             "closed",
             area_id="wohnzimmer",
             area_name="Wohnzimmer",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
         EntitySnapshot(
@@ -214,6 +215,7 @@ def test_source_area_resolves_roomless_percentage_command_locally(monkeypatch):
             "closed",
             area_id="gaeste_wc",
             area_name="Gäste-WC",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
     ]
@@ -244,6 +246,7 @@ def test_explicit_remote_entity_name_overrides_source_area(monkeypatch):
             "closed",
             area_id="wohnzimmer",
             area_name="Wohnzimmer",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
         EntitySnapshot(
@@ -253,6 +256,7 @@ def test_explicit_remote_entity_name_overrides_source_area(monkeypatch):
             "closed",
             area_id="gaeste_wc",
             area_name="Gäste-WC",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
     ]
@@ -289,6 +293,7 @@ def test_fresh_roomless_command_uses_source_area_not_previous_area(monkeypatch):
             "closed",
             area_id="wohnzimmer",
             area_name="Wohnzimmer",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
         EntitySnapshot(
@@ -298,6 +303,7 @@ def test_fresh_roomless_command_uses_source_area_not_previous_area(monkeypatch):
             "closed",
             area_id="gaeste_wc",
             area_name="Gäste-WC",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
     ]
@@ -564,6 +570,8 @@ def test_complete_group_command_supersedes_pending_cover_clarification(monkeypat
         "Fahre alle Rolladen im Esszimmer hoch",
         conversation_id="cover-replacement",
     )
+    calls_before_confirmation = entity.hass.services.async_call.await_count
+    confirmed = _run(entity, "Ja", conversation_id="cover-replacement")
 
     assert ambiguous.response.speech == (
         "Ich habe mehrere passende Rollläden gefunden: "
@@ -571,7 +579,9 @@ def test_complete_group_command_supersedes_pending_cover_clarification(monkeypat
         "2. Rollladen Esszimmer im Bereich Esszimmer (cover.rechts). "
         "Welchen meinst du?"
     )
-    assert replacement.response.speech == "2 Rollläden geöffnet."
+    assert replacement.response.speech == "Soll ich wirklich 2 Rollläden öffnen?"
+    assert calls_before_confirmation == 0
+    assert confirmed.response.speech == "2 Rollläden geöffnet."
     entity.hass.services.async_call.assert_awaited_once_with(
         "cover",
         "open_cover",
@@ -757,11 +767,13 @@ def test_live_cover_percentage_asr_correction_never_becomes_heating_dialog(
         EntitySnapshot(
             "cover.left", "Rolllade Poleraum links", "cover", "open",
             area_id="pole_raum", area_name="Pole Raum",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
         EntitySnapshot(
             "cover.right", "Rolllade Poleraum rechts", "cover", "open",
             area_id="pole_raum", area_name="Pole Raum",
+            device_class="shutter",
             capabilities=frozenset({"POSITION"}),
         ),
         EntitySnapshot(
@@ -791,11 +803,13 @@ def test_live_cover_percentage_asr_correction_never_becomes_heating_dialog(
     assert "Meintest du" in correction.response.speech
     assert "poleraum" in correction.response.speech.casefold()
     assert confirmed.response.speech == "2 Rollläden auf 30 Prozent gefahren."
-    entity.hass.services.async_call.assert_awaited_once_with(
-        "cover",
-        "set_cover_position",
-        {"entity_id": ["cover.left", "cover.right"], "position": 30},
-        blocking=True,
+    assert [item.args[:3] for item in entity.hass.services.async_call.await_args_list] == [
+        ("cover", "set_cover_position", {"entity_id": "cover.left", "position": 30}),
+        ("cover", "set_cover_position", {"entity_id": "cover.right", "position": 30}),
+    ]
+    assert all(
+        item.kwargs == {"blocking": True}
+        for item in entity.hass.services.async_call.await_args_list
     )
 
 
@@ -828,9 +842,15 @@ def test_complete_cover_command_supersedes_pending_temperature_dialog(monkeypatc
         "Fahre die Rollläden im Poleraum auf 30 Prozent",
         "dialog-switch",
     )
+    calls_before_confirmation = entity.hass.services.async_call.await_count
+    confirmed = _run(entity, "Ja", "dialog-switch")
 
     assert pending.response.speech == "Welche Heizung meinst du?"
-    assert replacement.response.speech == "2 Rollläden auf 30 Prozent gefahren."
+    assert replacement.response.speech == (
+        "Soll ich wirklich 2 Rollläden auf 30 Prozent gefahren?"
+    )
+    assert calls_before_confirmation == 0
+    assert confirmed.response.speech == "2 Rollläden auf 30 Prozent gefahren."
     entity.hass.services.async_call.assert_awaited_once_with(
         "cover",
         "set_cover_position",

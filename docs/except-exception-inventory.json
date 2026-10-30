@@ -479,7 +479,7 @@
     {
       "id": "custom_components/homeintent/controllers/devices.py::DeviceController.async_handle_undo_request::1",
       "path": "custom_components/homeintent/controllers/devices.py",
-      "line": 1149,
+      "line": 1178,
       "scope": "DeviceController.async_handle_undo_request",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -489,7 +489,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::1",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 878,
+      "line": 880,
       "scope": "GoalController.async_handle_goal_turn.schedule",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -499,7 +499,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::2",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 884,
+      "line": 886,
       "scope": "GoalController.async_handle_goal_turn.schedule",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -509,7 +509,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_report_background_plan::1",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 1377,
+      "line": 1418,
       "scope": "GoalController.async_report_background_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -519,7 +519,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_report_background_plan::2",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 1407,
+      "line": 1448,
       "scope": "GoalController.async_report_background_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -1199,7 +1199,7 @@
     {
       "id": "custom_components/homeintent/service_executor.py::_async_execute_service_plan::1",
       "path": "custom_components/homeintent/service_executor.py",
-      "line": 602,
+      "line": 632,
       "scope": "_async_execute_service_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",

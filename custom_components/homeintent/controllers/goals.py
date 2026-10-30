@@ -68,7 +68,9 @@ from ..nlu.automation_model import (
 from ..nlu.automation_validator import validate_automation
 from ..nlu.ha_automation_generator import generate_ha_automation_config
 from ..nlu.language_frontend import analyse_language, LanguageDocument
+from ..nlu.clause_binding import ClauseBindingAnalysis, analyse_clause_bindings
 from ..nlu.primitives import SemanticProperty
+from ..nlu.semantic_utterance import SpeechAct
 from ..nlu.temporal_semantics import resolve_history_window, resolve_scheduled_datetime
 from ..nlu.unit_reasoning import normalize_measurement
 from ..plan_modification import apply_plan_modification
@@ -1000,6 +1002,45 @@ class GoalController:
             return conversation.ConversationResult(response=response, conversation_id=conversation_id)
 
         actor_id = conversation_user_id(user_input)
+        clause_bindings = (
+            getattr(direct_understanding, "clause_bindings", None)
+            if language_document.utterance.speech_act is SpeechAct.COMMAND
+            else None
+        )
+        if (
+            language_document.utterance.speech_act is SpeechAct.COMMAND
+            and clause_bindings is None
+        ):
+            clause_bindings = analyse_clause_bindings(
+                language_document,
+                entities,
+                getattr(direct_understanding, "payload", None),
+            )
+        if (
+            language_document.utterance.speech_act is SpeechAct.COMMAND
+            and isinstance(clause_bindings, ClauseBindingAnalysis)
+            and clause_bindings.coordinated
+            and any(binding.source is not None for binding in clause_bindings.bindings)
+        ):
+            if not clause_bindings.complete:
+                rejected = [
+                    binding.text.strip(" ,.")
+                    for binding in clause_bindings.bindings
+                    if not binding.complete
+                ]
+                detail = " und ".join(f"„{item}“" for item in rejected) or "mindestens eine Klausel"
+                response.async_set_speech(
+                    f"Den Teil {detail} habe ich nicht verstanden. "
+                    "Ich habe deshalb keinen Plan erstellt und nichts ausgeführt."
+                )
+                return conversation.ConversationResult(
+                    response=response, conversation_id=conversation_id
+                )
+            # The canonical compiler owns coordinated predicate plans. The
+            # goal interpreter must never reinterpret their global action
+            # and place union into a different plan, even when the direct
+            # reading is calculated later in conversation routing.
+            return None
         person_id = None
         user_contexts = self._runtime.user_contexts
         if user_contexts is not None:

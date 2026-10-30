@@ -187,8 +187,8 @@ def test_a_cover_without_device_class_keeps_the_atomic_path():
     plan = ServiceCallPlan("cover", "close_cover", [LEFT.entity_id, unclassified.entity_id])
     result, _outcomes, _elapsed = _run(hass, plan, entities)
     assert result.batch_result is None
-    # One shared call, exactly like before 7.13.1.
-    assert len(hass.services.async_call.await_args_list) == 1
+    assert not result.executed
+    hass.services.async_call.assert_not_awaited()
 
 
 def test_a_not_exposed_cover_is_unauthorized_and_never_called():

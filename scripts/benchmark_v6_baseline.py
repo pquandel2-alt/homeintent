@@ -45,6 +45,8 @@ from homeintent.nlu.discourse import (  # noqa: E402
 )
 from homeintent.world_model import build_world_model  # noqa: E402
 
+MAX_COORDINATION_REGRESSION_RATIO = 6.5
+
 # ---------------------------------------------------------------------------
 # Synthetic entity generation
 # ---------------------------------------------------------------------------
@@ -309,6 +311,34 @@ class Stats:
     max_ms: float
 
 
+def coordination_regression_ratios(
+    results: list[Stats],
+) -> dict[str, float]:
+    """Relative coordinated-write cost on the same runner and registry.
+
+    The ordinary light commands are an in-process control for host speed.
+    A ratio catches the 7.13.1-style order-of-magnitude regression even when
+    a faster runner happens to keep the absolute 100 ms gate green.
+    """
+    scale = max((item.scale for item in results), default=0)
+    by_label = {
+        item.label: item for item in results if item.scale == scale
+    }
+    controls = [
+        by_label[label].p95_ms
+        for label in ("light_on", "light_off")
+        if label in by_label
+    ]
+    if not controls:
+        return {}
+    control = max(max(controls), 0.001)
+    return {
+        label: by_label[label].p95_ms / control
+        for label in ("multi_target", "multi_clause_command")
+        if label in by_label
+    }
+
+
 def _percentile(sorted_values: list[float], pct: float) -> float:
     """Nearest-rank percentile - no numpy/statistics-percentile dependency
     needed (Python's ``statistics`` module only gained ``quantiles`` cleanly
@@ -457,16 +487,25 @@ if __name__ == "__main__":
         "--max-p95-ms", type=float, default=None,
         help="Exit non-zero if any steady-state p95 exceeds this device-specific budget.",
     )
+    parser.add_argument(
+        "--max-coordination-ratio", type=float, default=None,
+        help=(
+            "Exit non-zero when a coordinated-write p95 exceeds this multiple "
+            "of the slower light_on/light_off p95 on the same runner."
+        ),
+    )
     args = parser.parse_args()
     SCALES[:] = [int(value) for value in args.scales.split(",") if value]
     ITERATIONS = max(1, args.iterations)
     WARMUP_ITERATIONS = max(0, args.warmup)
     PIPELINE = args.pipeline
     construction_stats, results = run_all()
+    coordination_ratios = coordination_regression_ratios(results)
     if args.as_json:
         print(json.dumps({
             "engine_construction": construction_stats.__dict__,
             "utterances": [item.__dict__ for item in results],
+            "coordination_ratios": coordination_ratios,
         }, ensure_ascii=False, indent=2))
     else:
         print("Engine construction (one-time, hassil YAML compile):")
@@ -479,11 +518,17 @@ if __name__ == "__main__":
                 if stats.scale == scale:
                     _print_stats(stats)
     if args.max_p95_ms is not None:
+        p95_limit = float(args.max_p95_ms)
         over_budget = tuple(
             item
             for item in results
             if item.p95_ms
-            > V9_COMPLEX_P95_BUDGET_MS.get(item.label, args.max_p95_ms)
+            > V9_COMPLEX_P95_BUDGET_MS.get(item.label, p95_limit)
         )
         if over_budget:
+            raise SystemExit(1)
+    coordination_limit = args.max_coordination_ratio
+    if coordination_limit is not None:
+        limit = float(coordination_limit)
+        if any(ratio > limit for ratio in coordination_ratios.values()):
             raise SystemExit(1)

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "release": "7.13.2",
+  "source_commit": "0f97bbfd33ec914d5fe21073adde9a4baec666e6",
+  "policy": {
+    "automatic_updates": false,
+    "regression_justification_directory": "docs/perf/regression-justifications",
+    "safety_regressions_allowed": false
+  },
+  "corpora": {
+    "tests/eval/dev_benchmark_77.txt": {
+      "exact": {
+        "unsafe_execution_count": 0,
+        "safety_violations.wrong_target": 0,
+        "safety_violations.wrong_operation": 0,
+        "safety_violations.unexpected_write": 0,
+        "safety_violations.executed_without_confirmation": 0,
+        "error_classes.SAFETY": 0
+      },
+      "minimum": {
+        "passed": 478,
+        "splits.dev.passed": 369,
+        "splits.heldout.passed": 109,
+        "categories.automation.passed": 30,
+        "categories.mehrturn.passed": 33,
+        "dimensions.confirmation.passed": 69,
+        "dimensions.clarification.passed": 26,
+        "dimensions.no_write.passed": 443
+      },
+      "maximum": {
+        "error_classes.DIALOG": 4
+      }
+    },
+    "tests/eval/dev_benchmark_78.txt": {
+      "exact": {
+        "unsafe_execution_count": 0,
+        "safety_violations.wrong_target": 0,
+        "safety_violations.wrong_operation": 0,
+        "safety_violations.unexpected_write": 0,
+        "error_classes.SAFETY": 0
+      },
+      "minimum": {
+        "passed": 103,
+        "splits.dev.passed": 70,
+        "splits.heldout.passed": 33,
+        "categories.auto.passed": 12,
+        "categories.dialog.passed": 12,
+        "dimensions.confirmation.passed": 30,
+        "dimensions.no_write.passed": 93
+      },
+      "maximum": {
+        "error_classes.DIALOG": 0
+      }
+    }
+  }
+}
