@@ -933,7 +933,8 @@ S("s78-b2-frames", L78, "B2: Höflichkeit, Dank und Begründung sind Rahmen",
   say("Mach das Kellerlicht an, danke.", calls=["light.kellerlicht:turn_on"], only_calls=True),
   say("Mach das Kellerlicht aus, wir essen gleich.", calls=["light.kellerlicht:turn_off"], only_calls=True))
 S("s78-b3-short", L78, "B3: Kurzbefehle und Werte ohne Einheit",
-  say("Markise raus.", settle=4, calls=["cover.markise:open_cover"], only_calls=True),
+  say("Markise raus.", no_calls=True, any=["wirklich", "markise öffnen"]),
+  say(YES, settle=4, calls=["cover.markise:open_cover"], only_calls=True),
   say("Heizung Schlafzimmer 18 Grad.", calls=["climate.heizung_schlafzimmer:set_temperature"], only_calls=True),
   say("Stell die Heizung im Bad auf 23.", calls=["climate.heizung_badezimmer:set_temperature"], only_calls=True))
 S("s78-b4-ellipsis", L78, "B4: Ellipse übernimmt die Operation",

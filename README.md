@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Quellstand-Version: **7.13.2**
+- Aktuelle Version: **7.13.2**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS Custom Repository
@@ -147,11 +147,11 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-Der Quellstand trägt Version 7.13.2. Die zugehörige versionierte
-Korpusbaseline ist
+Geprüfter Release-Stand von Version 7.13.2 wird dieser Quellstand erst, wenn
+CI und Nightly für exakt denselben finalen Commit vollständig grün sind. Die
+zugehörige versionierte Korpusbaseline ist
 [`corpus-signatures-7.13.2.json`](docs/perf/corpus-signatures-7.13.2.json).
-Tag und GitHub-Release folgen erst, nachdem CI und Nightly für exakt denselben
-finalen Commit vollständig grün sind.
+Tag und GitHub-Release folgen erst danach.
 
 ## Version 7.13.2
 
