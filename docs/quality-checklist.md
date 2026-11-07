@@ -6,9 +6,9 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 7. November 2026 (7.13.3 RC)
+Stand: 7. November 2026 (7.13.3)
 
-## Release Candidate 7.13.3
+## Release 7.13.3
 
 - [x] gemeinsame Clause-Coverage für additive, zeitliche und orthografische
   Befehlsgrenzen; unvollständige Bindung blockiert Goal-Router, Vorschau,
@@ -32,8 +32,11 @@ Stand: 7. November 2026 (7.13.3 RC)
 - [x] vollständige lokale Suite auf dem letzten Arbeitsstand: 10.555
   bestanden, 12 übersprungen; Korpusbaseline 4.310/4.310 unverändert und
   Abschlussbenchmarks innerhalb der unveränderten Gates
-- [ ] CI und Pflicht-Nightly für exakt denselben finalen Commit – vor
-  Veröffentlichung zwingend offen
+- [x] Release-Commit `0fb881c9e00959bedeb97ce0e3733887b3b8235e`:
+  [CI 42357216342](https://github.com/pquandel2-alt/homeintent/actions/runs/42357216342),
+  [Nightly 42357252381](https://github.com/pquandel2-alt/homeintent/actions/runs/42357252381)
+  und [Release-Workflow 42360490968](https://github.com/pquandel2-alt/homeintent/actions/runs/42360490968)
+  erfolgreich; [Tag und GitHub-Release v7.13.3](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.3)
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – nicht geprüft
   und nicht behauptet
 

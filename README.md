@@ -150,11 +150,12 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-Geprüfter Release-Stand von Version 7.13.3 wird dieser Quellstand erst, wenn
-CI und Nightly für exakt denselben finalen Commit vollständig grün sind. Die
-zugehörige versionierte Korpusbaseline ist
+Geprüfter Release-Stand von Version 7.13.3 ist der commitfest geprüfte Stand
+`0fb881c9e00959bedeb97ce0e3733887b3b8235e`. CI und Nightly waren für exakt
+diesen Commit vollständig grün. Die zugehörige versionierte Korpusbaseline ist
 [`corpus-signatures-7.13.3.json`](docs/perf/corpus-signatures-7.13.3.json).
-Tag und GitHub-Release folgen erst danach.
+Tag und [GitHub-Release v7.13.3](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.3)
+zeigen auf diesen Commit.
 
 ## Version 7.13.3
 
@@ -185,9 +186,8 @@ Details, Root Causes, Testergebnisse und eine manuelle Testmatrix für echte
 Hardware stehen in den [Release Notes](docs/release-notes-7.13.3.md) und im
 [Umsetzungsbericht](docs/umsetzung-7.13.3.md).
 
-Für Version 7.13.3 gilt: Die verpflichtenden GitHub-Prüfungen
-(`ci.yml` und `nightly-live.yml`) müssen für den exakten Release-Commit
-erfolgreich abgeschlossen sein, bevor Tag und GitHub-Release erstellt werden;
+Für Version 7.13.3 sind die verpflichtenden GitHub-Prüfungen (`ci.yml` und
+`nightly-live.yml`) für den exakten Release-Commit erfolgreich abgeschlossen;
 die geprüften Lauf-Links stehen im GitHub-Release.
 
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich

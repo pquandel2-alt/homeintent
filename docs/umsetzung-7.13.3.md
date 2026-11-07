@@ -193,6 +193,10 @@ Das separate 5.000-Entitäten-Gate ergab bei 30 Iterationen und 5 Warmups:
   muss den Teilzustand benennen.
 - Unbekannte, mehrdeutige und nicht vollständig gebundene Quellen bleiben
   sicher abgelehnt; sie werden nicht geraten.
-- 7.13.3 ist vorbereitet, aber noch nicht veröffentlicht. Ein finaler Commit,
-  Tag oder GitHub-Release wird erst nach grüner CI und grünen Pflicht-Nightly-
-  Jobs für exakt diesen Commit eingetragen.
+- 7.13.3 wurde aus Commit
+  `0fb881c9e00959bedeb97ce0e3733887b3b8235e` veröffentlicht. Für genau diesen
+  SHA bestanden [CI 42357216342](https://github.com/pquandel2-alt/homeintent/actions/runs/42357216342)
+  und [Nightly 42357252381](https://github.com/pquandel2-alt/homeintent/actions/runs/42357252381).
+  Der [Release-Workflow 42360490968](https://github.com/pquandel2-alt/homeintent/actions/runs/42360490968)
+  erstellte [Tag und GitHub-Release v7.13.3](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.3)
+  auf demselben Commit.

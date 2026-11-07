@@ -1,9 +1,8 @@
 # HomeIntent 7.13.3
 
-7.13.3 ist der vorbereitete Patch für die unabhängige Nachprüfung von 7.13.2.
-Er wird erst veröffentlicht, wenn CI und die erforderlichen Nightly-Jobs für
-exakt denselben finalen Commit grün sind. Der aktuelle Arbeitsstand ist daher
-noch kein veröffentlichter Release-Nachweis.
+7.13.3 ist der veröffentlichte Patch für die unabhängige Nachprüfung von
+7.13.2. Der Release basiert auf dem commitfest geprüften Stand
+`0fb881c9e00959bedeb97ce0e3733887b3b8235e`.
 
 ## Vollständige Schreibabdeckung
 
@@ -90,3 +89,10 @@ Music-Assistant-Hardware und hörbare Audiowiedergabe wurden nicht automatisiert
 geprüft; dafür bleibt die [manuelle Matrix](music-assistant.md#e2e-status-und-manuelle-matrix)
 verbindlich.
 
+## Geprüfte Freigabe
+
+- Commit: [`0fb881c9e00959bedeb97ce0e3733887b3b8235e`](https://github.com/pquandel2-alt/homeintent/commit/0fb881c9e00959bedeb97ce0e3733887b3b8235e)
+- CI: [Lauf 42357216342](https://github.com/pquandel2-alt/homeintent/actions/runs/42357216342)
+- Nightly: [Lauf 42357252381](https://github.com/pquandel2-alt/homeintent/actions/runs/42357252381)
+- Release-Gate: [Lauf 42360490968](https://github.com/pquandel2-alt/homeintent/actions/runs/42360490968)
+- [Tag und GitHub-Release v7.13.3](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.3)
