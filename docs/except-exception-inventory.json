@@ -479,7 +479,7 @@
     {
       "id": "custom_components/homeintent/controllers/devices.py::DeviceController.async_handle_undo_request::1",
       "path": "custom_components/homeintent/controllers/devices.py",
-      "line": 1178,
+      "line": 1231,
       "scope": "DeviceController.async_handle_undo_request",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -489,7 +489,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::1",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 880,
+      "line": 884,
       "scope": "GoalController.async_handle_goal_turn.schedule",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -499,7 +499,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::2",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 886,
+      "line": 890,
       "scope": "GoalController.async_handle_goal_turn.schedule",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -509,7 +509,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_report_background_plan::1",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 1418,
+      "line": 1426,
       "scope": "GoalController.async_report_background_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -519,7 +519,7 @@
     {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_report_background_plan::2",
       "path": "custom_components/homeintent/controllers/goals.py",
-      "line": 1448,
+      "line": 1456,
       "scope": "GoalController.async_report_background_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -529,7 +529,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_report_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 963,
+      "line": 991,
       "scope": "InsightsController._async_report_answer",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
@@ -539,7 +539,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::1",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 1134,
+      "line": 1162,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -549,7 +549,7 @@
     {
       "id": "custom_components/homeintent/controllers/insights.py::InsightsController._async_vacation_answer::2",
       "path": "custom_components/homeintent/controllers/insights.py",
-      "line": 1138,
+      "line": 1166,
       "scope": "InsightsController._async_vacation_answer",
       "caught": "Exception",
       "classification": "ROLLBACK",
@@ -639,7 +639,7 @@
     {
       "id": "custom_components/homeintent/effect_graph.py::HassEffectSources._state::1",
       "path": "custom_components/homeintent/effect_graph.py",
-      "line": 913,
+      "line": 990,
       "scope": "HassEffectSources._state",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -649,7 +649,7 @@
     {
       "id": "custom_components/homeintent/effect_graph.py::HassEffectSources._component_entity::1",
       "path": "custom_components/homeintent/effect_graph.py",
-      "line": 924,
+      "line": 1001,
       "scope": "HassEffectSources._component_entity",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -659,7 +659,7 @@
     {
       "id": "custom_components/homeintent/effect_graph.py::HassEffectSources.resolve_target::1",
       "path": "custom_components/homeintent/effect_graph.py",
-      "line": 986,
+      "line": 1063,
       "scope": "HassEffectSources.resolve_target",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -669,7 +669,7 @@
     {
       "id": "custom_components/homeintent/effect_graph.py::HassEffectSources.resolve_registry_id::1",
       "path": "custom_components/homeintent/effect_graph.py",
-      "line": 995,
+      "line": 1072,
       "scope": "HassEffectSources.resolve_registry_id",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -679,7 +679,7 @@
     {
       "id": "custom_components/homeintent/effect_graph.py::HassEffectSources.followups::1",
       "path": "custom_components/homeintent/effect_graph.py",
-      "line": 1020,
+      "line": 1097,
       "scope": "HassEffectSources.followups",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -689,7 +689,7 @@
     {
       "id": "custom_components/homeintent/effect_graph.py::HassEffectSources.name::1",
       "path": "custom_components/homeintent/effect_graph.py",
-      "line": 1052,
+      "line": 1129,
       "scope": "HassEffectSources.name",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -1199,7 +1199,7 @@
     {
       "id": "custom_components/homeintent/service_executor.py::_async_execute_service_plan::1",
       "path": "custom_components/homeintent/service_executor.py",
-      "line": 632,
+      "line": 655,
       "scope": "_async_execute_service_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
