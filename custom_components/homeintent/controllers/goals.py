@@ -68,7 +68,11 @@ from ..nlu.automation_model import (
 from ..nlu.automation_validator import validate_automation
 from ..nlu.ha_automation_generator import generate_ha_automation_config
 from ..nlu.language_frontend import analyse_language, LanguageDocument
-from ..nlu.clause_binding import ClauseBindingAnalysis, analyse_clause_bindings
+from ..nlu.clause_binding import (
+    ClauseBindingAnalysis,
+    ClauseCoverageStatus,
+    analyse_clause_bindings,
+)
 from ..nlu.primitives import SemanticProperty
 from ..nlu.semantic_utterance import SpeechAct
 from ..nlu.temporal_semantics import resolve_history_window, resolve_scheduled_datetime
@@ -1020,9 +1024,13 @@ class GoalController:
             language_document.utterance.speech_act is SpeechAct.COMMAND
             and isinstance(clause_bindings, ClauseBindingAnalysis)
             and clause_bindings.coordinated
-            and any(binding.source is not None for binding in clause_bindings.bindings)
         ):
-            if not clause_bindings.complete:
+            if clause_bindings.status is ClauseCoverageStatus.DELEGATED:
+                # A typed automation/reminder cue explicitly hands this turn
+                # to the domain interpreters below.  Merely having no direct
+                # result never reaches this branch.
+                pass
+            elif not clause_bindings.complete:
                 rejected = [
                     binding.text.strip(" ,.")
                     for binding in clause_bindings.bindings
@@ -1036,11 +1044,11 @@ class GoalController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=conversation_id
                 )
-            # The canonical compiler owns coordinated predicate plans. The
-            # goal interpreter must never reinterpret their global action
-            # and place union into a different plan, even when the direct
-            # reading is calculated later in conversation routing.
-            return None
+            else:
+                # The canonical compiler owns coordinated predicate plans.
+                # The goal interpreter must never reinterpret their global
+                # action and place union into a different plan.
+                return None
         person_id = None
         user_contexts = self._runtime.user_contexts
         if user_contexts is not None:

@@ -58,7 +58,10 @@ _TRAILING_DISCOURSE = frozenset({"bitte", "einfach", "ruhig", "so", "mal"})
 # Words that join two predicates.  Coordinated maintenance clauses are
 # evaluated separately so "Lass das Licht an und mach die Heizung aus"
 # keeps the first object and still executes the second clause.
-_CLAUSE_JOINERS = frozenset({"und", "aber", "sondern"})
+_CLAUSE_JOINERS = frozenset({
+    "und", "aber", "sondern", "sowie", "ausserdem", "zudem", "dann",
+    "danach", "anschliessend",
+})
 _COMPOUND_MAINTAIN_SUFFIX = "lassen"
 
 
@@ -82,7 +85,19 @@ def segment_clauses(tokens: Sequence[_Token]) -> tuple[tuple[int, int], ...]:
     ranges: list[tuple[int, int]] = []
     start = 0
     for index, token in enumerate(tokens):
-        if token.canonical in {",", ";"} or (
+        embedded_period = (
+            token.canonical == "."
+            and index > 0
+            and index + 1 < len(tokens)
+            and tokens[index - 1].end == token.start
+            and token.end == tokens[index + 1].start
+            and tokens[index - 1].is_word
+            and tokens[index + 1].is_word
+        )
+        if (
+            token.canonical in {",", ";", ".", "!", "?"}
+            and not embedded_period
+        ) or (
             token.is_word and token.canonical in _CLAUSE_JOINERS and index > start
         ):
             if index > start:

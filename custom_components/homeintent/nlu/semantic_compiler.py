@@ -120,6 +120,23 @@ def _device_class_targets(
     return targets
 
 
+def _spoken_device_genera(text: str) -> frozenset[str]:
+    """Return the concrete device kinds named by the speaker.
+
+    A Home Assistant domain is deliberately broader than a German device
+    noun: shutters, awnings and garage doors all live in ``cover``.  A
+    quantifier may widen the number of matching shutters, but must never
+    erase that spoken kind and thereby select every cover in the scope.
+    """
+
+    return frozenset(
+        key
+        for word in re.findall(r"[\wäöüß]+", text)
+        if (spoken := analyse_word(word)) is not None and not spoken.universal
+        for key in spoken.genera
+    )
+
+
 @dataclass(frozen=True)
 class SemanticFacts:
     """Observable facts extracted without committing to an execution."""
@@ -1606,6 +1623,29 @@ class SemanticCommandCompiler:
             if preliminary:
                 domains = frozenset(entity.domain for entity in preliminary)
 
+        # Contact classes such as ``Fenster`` are read-only in
+        # ``binary_sensor`` but may also have a movable ``cover`` entity.
+        # An explicit movement plus a spoken kind may select only matching
+        # movable covers; it must neither write to contacts nor widen to all
+        # covers merely because they share the same HA domain.
+        spoken_genera = _spoken_device_genera(positive_text)
+        actions = {
+            value
+            for value in analysis.values(SemanticKind.ACTION)
+            if isinstance(value, str)
+        }
+        if (
+            quantity is not None
+            and actions & {"open", "close"}
+            and spoken_genera
+            and any(
+                entity.domain == "cover"
+                and entity_genera(entity) & spoken_genera
+                for entity in entities
+            )
+        ):
+            domains = frozenset({"cover"})
+
         intents = _intents(
             positive_text,
             domains,
@@ -1672,6 +1712,13 @@ class SemanticCommandCompiler:
                 # after exclusion). Refuse instead of choosing one silently.
                 return None
             matches = _scoped_candidates(entities, domain, locations, world_model)
+            spoken_genera = _spoken_device_genera(positive_text)
+            if spoken_genera:
+                matches = [
+                    entity
+                    for entity in matches
+                    if entity_genera(entity) & spoken_genera
+                ]
             if percent is not None:
                 capability = "POSITION" if domain == "cover" else "BRIGHTNESS"
                 matches = [entity for entity in matches if capability in entity.capabilities]
@@ -1762,12 +1809,7 @@ class SemanticCommandCompiler:
                 # The speaker's room narrows the spoken kind; it never swaps
                 # it for another device of the same domain ("die Steckdose"
                 # is no garden pump, 7.7.1 A5).
-                spoken_genera = {
-                    key
-                    for word in re.findall(r"[\wäöüß]+", positive_text)
-                    if (spoken_word := analyse_word(word)) is not None and not spoken_word.universal
-                    for key in spoken_word.genera
-                }
+                spoken_genera = _spoken_device_genera(positive_text)
                 if spoken_genera:
                     candidates = [
                         entity for entity in candidates if entity_genera(entity) & spoken_genera

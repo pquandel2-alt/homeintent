@@ -3878,6 +3878,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/nlu/semantic_compiler.py::_spoken_device_genera::cf839aab74",
+   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
+   "bereich": "_spoken_device_genera",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/nlu/semantic_compiler.py::_QUESTION_RE::3bd641104e",
    "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
    "bereich": "_QUESTION_RE",
@@ -4158,13 +4165,6 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/semantic_compiler.py::SemanticCommandCompiler.compile::cf839aab74",
-   "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
-   "bereich": "SemanticCommandCompiler.compile",
-   "klasse": "LEXICAL",
-   "quelle": "heuristik"
-  },
-  {
    "id": "custom_components/homeintent/nlu/semantic_compiler.py::SemanticQueryCompiler.compile::9e39edbc73",
    "datei": "custom_components/homeintent/nlu/semantic_compiler.py",
    "bereich": "SemanticQueryCompiler.compile",
@@ -4266,6 +4266,13 @@
    "id": "custom_components/homeintent/nlu/semantic_location.py::_PRESENCE_HOME_RE::16bdb35d03",
    "datei": "custom_components/homeintent/nlu/semantic_location.py",
    "bereich": "_PRESENCE_HOME_RE",
+   "klasse": "LEXICAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/nlu/semantic_location.py::_PERSONAL_PRESENCE_HOME_RE::c147d33c4e",
+   "datei": "custom_components/homeintent/nlu/semantic_location.py",
+   "bereich": "_PERSONAL_PRESENCE_HOME_RE",
    "klasse": "LEXICAL",
    "quelle": "heuristik"
   },
@@ -5384,7 +5391,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 409,
+  "LEXICAL": 410,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 150,
   "SEMANTIC_SENTENCE_PATTERN": 171

@@ -41,6 +41,7 @@ from ..entities import EntitySnapshot
 from ..execution_context import user_facing_error
 from ..execution_policy import evaluate_service_plan, PolicyOutcome
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
+from ..nlu.clause_binding import analyse_clause_bindings
 from ..nlu.context import (
     ConversationContext,
     ConversationContextStore,
@@ -49,6 +50,7 @@ from ..nlu.context import (
     PendingServiceConfirmation,
 )
 from ..nlu.dialog_focus import derive_dialog_focus, DialogFocus
+from ..nlu.language_frontend import analyse_language
 from ..nlu.discourse import DiscourseRole, remember_entities, remember_query_group
 from ..nlu.query_command import QueryResult
 from ..nlu.semantic_utterance import analyse_utterance, SpeechAct
@@ -144,6 +146,33 @@ class DeviceController:
     def _world_model(self) -> WorldModel | None:
         return self._world_model_of()
 
+    def _incomplete_write_coverage(
+        self,
+        user_input: conversation.ConversationInput,
+        entities: list[EntitySnapshot],
+        payload: MatchResult | CommandPlan,
+    ) -> str | None:
+        """Final common boundary before any device-route preview or write."""
+
+        document = analyse_language(
+            user_input.text,
+            entities,
+            include_registry_compounds=False,
+        )
+        coverage = analyse_clause_bindings(document, entities, payload)
+        if not coverage.coordinated or coverage.complete:
+            return None
+        rejected = [
+            binding.text.strip(" ,.!?")
+            for binding in coverage.bindings
+            if not binding.complete
+        ]
+        detail = " und ".join(f"„{part}“" for part in rejected)
+        return (
+            f"Den Teil {detail or 'mindestens eine Klausel'} habe ich nicht "
+            "vollständig verstanden. Ich habe deshalb nichts ausgeführt."
+        )
+
     async def async_handle_match_result(
         self,
         user_input: conversation.ConversationInput,
@@ -152,6 +181,18 @@ class DeviceController:
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         """Authorize, execute and remember one regular engine match."""
+        if result.plan is not None and (
+            failure := self._incomplete_write_coverage(
+                user_input, entities, result
+            )
+        ) is not None:
+            self._context_store.clear(user_input.conversation_id)
+            response.async_set_error(
+                intent.IntentResponseErrorCode.NO_VALID_TARGETS, failure
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         self._runtime.shadow.observe(self.entry.options, user_input.text, entities, result)
         if (
             result.plan is not None
@@ -388,6 +429,18 @@ class DeviceController:
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         """Authorize and execute an already validated multi-command plan."""
+        if (
+            failure := self._incomplete_write_coverage(
+                user_input, entities, result
+            )
+        ) is not None:
+            self._context_store.clear(user_input.conversation_id)
+            response.async_set_error(
+                intent.IntentResponseErrorCode.NO_VALID_TARGETS, failure
+            )
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id
+            )
         self._runtime.shadow.observe(self.entry.options, user_input.text, entities, result)
         if (
             analyse_utterance(user_input.text).speech_act is SpeechAct.QUERY

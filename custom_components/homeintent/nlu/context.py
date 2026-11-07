@@ -115,6 +115,10 @@ class DialogTurnMemory:
     predicate: str | None = None
     explanation: str | None = None
     command: SemanticCommand | None = None
+    # A media continuation keeps the already resolved operation/source as a
+    # typed object in the canonical conversation context.  It is not a
+    # second dialog store and never contains an executable plan.
+    media_request: object | None = None
 
 
 @dataclass(frozen=True)

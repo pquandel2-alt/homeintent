@@ -124,6 +124,12 @@ _PRESENCE_HOME_RE = re.compile(
     r"[^,.!?;]{0,24}\b(?:zu\s+hause|zuhause)\b",
     re.I,
 )
+_PERSONAL_PRESENCE_HOME_RE = re.compile(
+    r"\b(?:ich|wir)\b"
+    r"(?=[^,.!?;]{0,40}\b(?:bin|sind|war|waren|bleibe|bleiben)\b)"
+    r"[^,.!?;]{0,40}\b(?:zu\s+hause|zuhause)\b",
+    re.I,
+)
 
 
 def resolve_semantic_place(
@@ -162,7 +168,11 @@ def whole_home_phrase(
     itself called ``Haus`` (F21); a real area of that name keeps its meaning.
     """
     match = _WHOLE_HOME_RE.search(text)
-    if match is not None and _PRESENCE_HOME_RE.search(text) is None:
+    if (
+        match is not None
+        and _PRESENCE_HOME_RE.search(text) is None
+        and _PERSONAL_PRESENCE_HOME_RE.search(text) is None
+    ):
         return match.group(0)
     bare = _BARE_HOUSE_RE.search(text)
     if bare is None:

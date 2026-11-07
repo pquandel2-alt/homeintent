@@ -17,7 +17,9 @@ from typing import Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..media import parse_media_request
+from ..media_coverage import analyse_media_coverage
 from ..service_call import ServiceCallPlan
+from .automation_turn_router import AutomationRouteKind, route_automation_turn
 from .clause_reading import ClauseMeaning, read_clauses
 from .composition import independent_predicate_clauses
 from .german_structure import ClauseKind, StructuralRelationKind
@@ -30,6 +32,7 @@ from .target_resolution import ResolutionOutcome, resolve_description
 __all__ = (
     "ClauseBinding",
     "ClauseBindingAnalysis",
+    "ClauseCoverageStatus",
     "SourceResolution",
     "analyse_clause_bindings",
 )
@@ -41,6 +44,10 @@ _DEDICATED_CLAUSE_KINDS = frozenset({
     ClauseKind.CONDITION,
     ClauseKind.TEMPORAL,
 })
+_DOMAIN_HANDOFF_WORDS = frozenset({
+    "benachrichtige", "erinnere", "erinner", "erinnerung", "meldung",
+    "nachricht", "bescheid", "melde", "meld", "warne",
+})
 
 
 class SourceResolution(StrEnum):
@@ -51,6 +58,16 @@ class SourceResolution(StrEnum):
     AMBIGUOUS = "ambiguous"
     UNKNOWN = "unknown"
     UNSUPPORTED = "unsupported"
+
+
+class ClauseCoverageStatus(StrEnum):
+    """Whether the shared write boundary owns and accepts the utterance."""
+
+    NOT_APPLICABLE = "not_applicable"
+    COMPLETE = "complete"
+    DELEGATED = "delegated"
+    CLARIFICATION = "clarification"
+    REJECTED = "rejected"
 
 
 @dataclass(frozen=True)
@@ -102,6 +119,7 @@ class ClauseBindingAnalysis:
     coordinated: bool
     bindings: tuple[ClauseBinding, ...] = ()
     rejection_reason: str | None = None
+    status: ClauseCoverageStatus = ClauseCoverageStatus.NOT_APPLICABLE
 
     @property
     def complete(self) -> bool:
@@ -145,6 +163,30 @@ def _plan_matches_operation(
         return False
     if operation == "pause":
         return plan.service == "media_pause"
+    if operation == "next":
+        return plan.service == "media_next_track"
+    if operation == "previous":
+        return plan.service == "media_previous_track"
+    if operation == "resume":
+        return plan.service == "media_play"
+    if operation == "louder":
+        return plan.service == "volume_up"
+    if operation == "quieter":
+        return plan.service == "volume_down"
+    if operation == "mute":
+        return plan.service == "volume_mute" and plan.data.get("is_volume_muted") is True
+    if operation == "unmute":
+        return plan.service == "volume_mute" and plan.data.get("is_volume_muted") is False
+    if operation == "media_off":
+        return plan.service in {"media_pause", "media_stop", "turn_off"}
+    if operation == "media_on":
+        return plan.service in {"turn_on", "media_play"}
+    if operation == "volume":
+        return (
+            isinstance(value, (int, float))
+            and plan.service == "volume_set"
+            and _number_matches(plan.data.get("volume_level"), float(value) / 100)
+        )
     if operation == "stop":
         return plan.service in {"media_stop", "stop"}
     if operation == "play":
@@ -250,16 +292,21 @@ def _operation(meaning: ClauseMeaning) -> tuple[str | None, float | int | str | 
 
 
 def _selected_clauses(document: LanguageDocument) -> tuple[object, ...]:
+    command_relations = {
+        StructuralRelationKind.AND,
+        StructuralRelationKind.THEN,
+        StructuralRelationKind.AFTER,
+        StructuralRelationKind.SEQUENCE,
+    }
     if not any(
-        relation.kind is StructuralRelationKind.AND
+        relation.kind in command_relations
         for relation in document.structure.relations
     ):
         return ()
-    # A comma can coordinate preceding predicates without receiving its own
-    # StructuralRelation.  Once an explicit AND proves a predicate chain,
-    # every MAIN/COORDINATE clause belongs to the all-or-nothing turn.  Using
-    # only the two relation endpoints would silently drop an earlier comma
-    # member ("A an, B an und C aus").
+    # Once the shared structure records a possible command chain, every
+    # MAIN/COORDINATE span belongs to the all-or-nothing coverage check.
+    # Semantic reading below still distinguishes predicates from coordinated
+    # objects, durations, conditions, names and source-internal conjunctions.
     return tuple(
         clause
         for clause in document.structure.clauses
@@ -436,20 +483,80 @@ def _source_binding(
     meaning: ClauseMeaning,
     entities: Sequence[EntitySnapshot],
     lexicon: PlaceLexicon,
+    plans: Sequence[ServiceCallPlan],
 ) -> ClauseBinding | None:
     request = parse_media_request(meaning.text)
-    if request is None or request.op != "play" or not request.source_words:
+    if request is None:
         return None
+    if request.op != "play" or not request.source_words:
+        if not plans:
+            return None
+        operation = {
+            "off": "media_off",
+            "on": "media_on",
+        }.get(request.op, request.op)
+        value = request.volume if request.op == "volume" else None
+        local_plans = tuple(
+            plan
+            for plan in plans
+            if _plan_matches_operation(plan, operation, value)
+        )
+        start = int(getattr(clause, "char_start"))
+        end = int(getattr(clause, "char_end"))
+        places = _places(meaning) or _clause_places(document, clause, lexicon)
+        coverage = analyse_media_coverage(meaning.text, entities, request)
+        return ClauseBinding(
+            clause_id=str(getattr(clause, "clause_id")),
+            char_start=start,
+            char_end=end,
+            text=meaning.text,
+            operation=operation,
+            target_expression=("media_player",),
+            resolved_target_ids=tuple(sorted({
+                entity_id for plan in local_plans for entity_id in _plan_ids(plan)
+            })),
+            place_expression=tuple(place.label for place in places),
+            resolved_place_ids=_place_ids(places),
+            value=value,
+            consumed_token_spans=_spans(document, start, end, coverage.residue),
+            residue=coverage.residue,
+            plans=local_plans,
+            rejection_reason=(
+                "unexplained_residue" if not coverage.complete
+                else "plan_not_bound" if len(local_plans) != 1
+                else None
+            ),
+        )
     requested_source = " ".join(request.source_words)
     places = _places(meaning) or _clause_places(document, clause, lexicon)
     candidates = _source_candidates(entities, places)
     resolution, exact_source = _source_resolution(requested_source, candidates)
     source = exact_source or requested_source
+    candidate_ids = {entity.entity_id for entity in candidates}
+    local_plans = tuple(
+        plan
+        for plan in plans
+        if set(_plan_ids(plan))
+        and set(_plan_ids(plan)) <= candidate_ids
+        and _plan_matches_operation(plan, "play", source)
+        and (
+            plan.service != "select_source"
+            or normalize_for_compare(str(plan.data.get("source", "")))
+            == normalize_for_compare(source)
+        )
+    )
+    # A source-list match, personal alias or exact Music Assistant result is
+    # complete only after its resolver has materialized the clause's own
+    # typed plan.  Merely finding words in a source list is not executable
+    # coverage and cannot authorize a router fallback.
+    materialized = len(local_plans) == 1
+    bound_ids = (
+        tuple(sorted(_plan_ids(local_plans[0])))
+        if materialized
+        else tuple(sorted(candidate_ids))
+    )
     start = int(getattr(clause, "char_start"))
     end = int(getattr(clause, "char_end"))
-    # The common multi-command compiler has no source-selection operator.
-    # Known, unknown and ambiguous source clauses therefore all reject the
-    # entire coordinated write before a preview is possible (safe option B).
     return ClauseBinding(
         clause_id=str(getattr(clause, "clause_id")),
         char_start=start,
@@ -457,18 +564,20 @@ def _source_binding(
         text=meaning.text,
         operation="play",
         target_expression=("media_player",),
-        resolved_target_ids=tuple(sorted(entity.entity_id for entity in candidates)),
+        resolved_target_ids=bound_ids,
         place_expression=tuple(place.label for place in places),
         resolved_place_ids=_place_ids(places),
         source=source,
-        source_resolution=resolution,
         consumed_token_spans=_spans(document, start, end, ()),
         residue=(),
+        plans=local_plans,
         rejection_reason=(
-            "unknown_source" if resolution is SourceResolution.UNKNOWN
+            None if materialized
+            else "unknown_source" if resolution is SourceResolution.UNKNOWN
             else "ambiguous_source" if resolution is SourceResolution.AMBIGUOUS
-            else "compound_source_not_supported"
+            else "source_not_materialized"
         ),
+        source_resolution=(SourceResolution.EXACT if materialized else resolution),
     )
 
 
@@ -479,6 +588,37 @@ def _validated_read_item(item: object) -> bool:
     frame = getattr(command, "source_frame", None)
     action = getattr(frame, "action", None)
     return getattr(action, "name", "") == "QUERY"
+
+
+def _contains_media_source(document: LanguageDocument) -> bool:
+    clauses = independent_predicate_clauses(document) or (document.source_text,)
+    return any(
+        bool(request.source_words)
+        for text in clauses
+        if (request := parse_media_request(text)) is not None
+    )
+
+
+def _allows_domain_handoff(
+    document: LanguageDocument,
+    entities: Sequence[EntitySnapshot],
+) -> bool:
+    """Prove that another typed interpreter owns this compound.
+
+    A missing direct result is deliberately insufficient.  The utterance
+    must carry automation/reminder structure, and a media-source clause can
+    never use this escape hatch because it is owned by the source binder.
+    """
+
+    if _contains_media_source(document):
+        return False
+    decision = route_automation_turn(document, entities)
+    if decision.kind is not AutomationRouteKind.NOT_APPLICABLE:
+        return True
+    words = {
+        token.canonical for token in document.tokens if token.is_word
+    }
+    return bool(words & _DOMAIN_HANDOFF_WORDS)
 
 
 def _read_binding(
@@ -533,10 +673,19 @@ def analyse_clause_bindings(
     clauses = _selected_clauses(document)
     if len(clauses) < 2:
         return ClauseBindingAnalysis(False)
+    if payload is None and _allows_domain_handoff(document, entities):
+        return ClauseBindingAnalysis(
+            True,
+            status=ClauseCoverageStatus.DELEGATED,
+        )
     place_lexicon = build_place_lexicon(entities)
     meanings = read_clauses(document, entities, lexicon=place_lexicon)
     if not meanings:
-        return ClauseBindingAnalysis(True, rejection_reason="clauses_not_readable")
+        return ClauseBindingAnalysis(
+            True,
+            rejection_reason="clauses_not_readable",
+            status=ClauseCoverageStatus.REJECTED,
+        )
     source_clause = any(
         request.op == "play" and bool(request.source_words)
         for meaning in meanings
@@ -565,14 +714,15 @@ def analyse_clause_bindings(
         previous: ClauseBinding | None = None
         for index, (clause, meaning) in enumerate(zip(clauses, meanings, strict=True)):
             payload_item = payload_items[index] if len(payload_items) == len(clauses) else None
+            item_plans = _plans(payload_item) if payload_item is not None else plans
             source = _source_binding(
-                document, clause, meaning, entities, place_lexicon
+                document, clause, meaning, entities, place_lexicon, item_plans
             )
             binding = (
                 _read_binding(document, clause, meaning, payload_item)
                 if payload_item is not None and _validated_read_item(payload_item)
                 else source or _binding(
-                    document, clause, meaning, entities, plans, inherited=previous
+                    document, clause, meaning, entities, item_plans, inherited=previous
                 )
             )
             rendered.append(binding)
@@ -585,9 +735,23 @@ def analyse_clause_bindings(
             )
         bindings = tuple(rendered)
     else:
-        return ClauseBindingAnalysis(True, rejection_reason="clause_count_mismatch")
+        return ClauseBindingAnalysis(
+            True,
+            rejection_reason="clause_count_mismatch",
+            status=ClauseCoverageStatus.REJECTED,
+        )
     rejected = next(
         (binding.rejection_reason for binding in bindings if not binding.complete),
         None,
     )
-    return ClauseBindingAnalysis(True, bindings, rejected)
+    status = (
+        ClauseCoverageStatus.COMPLETE
+        if rejected is None
+        else ClauseCoverageStatus.CLARIFICATION
+        if any(
+            binding.rejection_reason in {"ambiguous_source", "ambiguous_target"}
+            for binding in bindings
+        )
+        else ClauseCoverageStatus.REJECTED
+    )
+    return ClauseBindingAnalysis(True, bindings, rejected, status)

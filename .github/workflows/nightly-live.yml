@@ -58,8 +58,8 @@ jobs:
           if-no-files-found: warn
 
   safety-properties:
-    # Property-based safety invariants with changing seeds (7.3.4).
-    # Counterexamples are pinned in tests/test_safety_properties.py.
+    # Property-based safety invariants with a changing, logged and therefore
+    # reproducible seed (7.3.4). Counterexamples remain pinned as regressions.
     name: Sicherheitsinvarianten mit wechselnden Seeds
     runs-on: ubuntu-latest
     steps:
@@ -73,10 +73,19 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - name: Testabhängigkeiten installieren
         run: python -m pip install --requirement requirements-dev.txt
+      - name: Reproduzierbaren Nightly-Seed festhalten
+        run: |
+          echo "HOMEINTENT_HYPOTHESIS_SEED=${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "Hypothesis-Seed: ${GITHUB_RUN_ID} (GitHub run ${GITHUB_RUN_ID}, SHA ${GITHUB_SHA})"
       - name: Property-Suite (nightly-Profil)
         env:
           HOMEINTENT_HYPOTHESIS_PROFILE: nightly
         run: >-
           python -m pytest -q
+          --hypothesis-seed=${HOMEINTENT_HYPOTHESIS_SEED}
           tests/test_safety_properties.py
           tests/test_media_sentence_coverage_7131.py
+          tests/test_clause_binding_7132.py
+          tests/test_cover_safety_7132.py
+          tests/test_issue_38_place_and_targets.py
+          tests/test_media_793.py

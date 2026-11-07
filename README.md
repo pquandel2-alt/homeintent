@@ -2,10 +2,10 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.13.2**
+- Aktuelle Version: **7.13.3**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
-- Installation: HACS Custom Repository
+- Installation: HACS
 - Verarbeitung: lokal in Home Assistant
 - Lizenz: [MIT](LICENSE)
 
@@ -36,12 +36,15 @@ erforderlich.
 
 ## Installation und Update
 
-1. In **HACS → Integrationen → Benutzerdefinierte Repositories** öffnen.
-2. `https://github.com/pquandel2-alt/homeintent` als Typ **Integration** hinzufügen.
-3. HomeIntent installieren und Home Assistant neu starten.
-4. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen**
+1. In **HACS → Integrationen** nach HomeIntent suchen.
+2. HomeIntent installieren und Home Assistant neu starten.
+3. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen**
    HomeIntent hinzufügen.
-5. In der gewünschten Assist-Pipeline HomeIntent als Conversation Agent wählen.
+4. In der gewünschten Assist-Pipeline HomeIntent als Conversation Agent wählen.
+
+HomeIntent gehört seit dem 4. November 2026 zur HACS-Standardliste. Nur bei
+einem noch nicht aktualisierten HACS-Katalog ist vorübergehend das manuelle
+Repository `https://github.com/pquandel2-alt/homeintent` nötig.
 
 Bei Updates über HACS anschließend Home Assistant neu starten. Hinweise für
 alte Installationen mit der Domain `ha_nlu` stehen in der
@@ -147,54 +150,48 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
-Geprüfter Release-Stand von Version 7.13.2 wird dieser Quellstand erst, wenn
+Geprüfter Release-Stand von Version 7.13.3 wird dieser Quellstand erst, wenn
 CI und Nightly für exakt denselben finalen Commit vollständig grün sind. Die
 zugehörige versionierte Korpusbaseline ist
-[`corpus-signatures-7.13.2.json`](docs/perf/corpus-signatures-7.13.2.json).
+[`corpus-signatures-7.13.3.json`](docs/perf/corpus-signatures-7.13.3.json).
 Tag und GitHub-Release folgen erst danach.
 
-## Version 7.13.2
+## Version 7.13.3
 
-7.13.2 schließt die in der unabhängigen Nachprüfung von 7.13.1 verbliebenen
+7.13.3 schließt die in der unabhängigen Nachprüfung von 7.13.2 verbliebenen
 Lücken:
 
-- **Klauselspezifische Bindung:** Operation, Ziel, Ort, Quelle/Wert, belegte
-  Tokens und Rest werden für jede schreibende Klausel getrennt gebunden. Ein
-  unverständlicher Teil verwirft den ganzen Satz vor Vorschau und Service Call;
-  Operationen und Zielmengen dürfen nicht zwischen Räumen wandern.
-- **Zusammengesetzte Quellenbefehle:** Die gemeinsame Mehrbefehls-Pipeline
-  materialisiert Quellenwahl noch nicht sicher. Deshalb werden bekannte,
-  unbekannte und mehrdeutige Quellen in einem zusammengesetzten Satz als
-  Ganzes abgelehnt (sichere Variante B). Einzelne, exakt aufgelöste
-  Quellenbefehle bleiben unterstützt.
-- **Finalisierte Sammelergebnisse:** Licht- und Rollladen-Sammelaktionen
-  beobachten alle angenommenen Ziele gemeinsam in einem begrenzten,
-  ereignisbasierten Zeitfenster. Antwort, Audit (pro Ziel) und Undo entstehen
-  erst danach aus demselben unveränderlichen Ergebnis.
-- **Cover-Risiko vollständig:** `shutter`, `blind`, `shade` und `curtain`
-  bleiben `MEDIUM` und können pro Ziel laufen. Physische Zugänge
-  (`garage`, `gate`, `door`, `window`) sowie sonstige oder unbekannte
-  bewegliche Cover sind atomar und mindestens bestätigungspflichtig;
-  Garage/Tor bleiben `CRITICAL`.
-- **Performance ohne globalen Turn-Cache:** Das vorhandene
-  `LanguageDocument` und seine Klauselgrenzen werden wiederverwendet. Der
-  begrenzte Registry-Namenscache hält nur IDs/normalisierte Namen, keine
-  Entity-Snapshots oder Conversation-Zustände. Ein relatives CI-Gate schützt
-  koordinierte Writes zusätzlich zum absoluten p95-Budget.
-- **Strengeres Release-Gate:** Ein Release verlangt für den exakten Commit
-  sowohl die grüne CI als auch den grünen Nightly-Sicherheitslauf.
+- **Verbindliche Klauselabdeckung:** `und`, zeitliche Fortsetzungen,
+  `sowie`/`außerdem`, Komma, Semikolon und Satzgrenzen verwenden dasselbe
+  Strukturmodell. Kein nachgelagerter Router darf einen abgelehnten Rest als
+  globale Ersatzaktion neu auslegen.
+- **Exakte Medien-Mehrbefehle:** Eine bekannte `source_list`-Quelle wird mit
+  Operation, Player und Raum klausellokal materialisiert. Erst nach der
+  vollständigen Vorprüfung aller Klauseln laufen die Service Calls in
+  gesprochener Reihenfolge. Unbekannte oder mehrdeutige Quellen verwerfen den
+  gesamten Auftrag.
+- **Cover-Pflichtbestätigung:** Die Pflicht für nicht unabhängige bewegliche
+  Covers ist unabhängig von `confirmation_level`. Sie gilt auch hinter
+  Gruppen, Szenen und Skripten; nach „Ja“ werden effektive Dienste, Ziele und
+  Parameter erneut gebunden.
+- **Anwesenheit ist kein Haus-Scope:** „Ich/Wir bin/sind zu Hause“ bleibt eine
+  Anwesenheitsaussage. Echte Hausquantoren erweitern nur innerhalb des
+  gesprochenen Gerätetyps; Fenster, Garagentore und Rollläden bleiben getrennt.
+- **Nightly-Sicherheitslauf:** Die neuen Clause-, Cover-, Orts- und
+  Mediendialogregressionen laufen mit größerem Profil und einem protokollierten,
+  reproduzierbaren Seed.
 
 Details, Root Causes, Testergebnisse und eine manuelle Testmatrix für echte
-Hardware stehen in den [Release Notes](docs/release-notes-7.13.2.md) und im
-[Umsetzungsbericht](docs/umsetzung-7.13.2.md).
+Hardware stehen in den [Release Notes](docs/release-notes-7.13.3.md) und im
+[Umsetzungsbericht](docs/umsetzung-7.13.3.md).
 
-Für Version 7.13.2 gilt: Die verpflichtenden GitHub-Prüfungen
+Für Version 7.13.3 gilt: Die verpflichtenden GitHub-Prüfungen
 (`ci.yml` und `nightly-live.yml`) müssen für den exakten Release-Commit
 erfolgreich abgeschlossen sein, bevor Tag und GitHub-Release erstellt werden;
 die geprüften Lauf-Links stehen im GitHub-Release.
 
 Die vollständigen Prüfergebnisse und historischen Details stehen ausschließlich
-in den [Release Notes](docs/release-notes-7.13.2.md), im
+in den [Release Notes](docs/release-notes-7.13.3.md), im
 [Versionsarchiv](docs/releases/README.md) und bei
 [GitHub Releases](https://github.com/pquandel2-alt/homeintent/releases).
 

@@ -12,6 +12,8 @@ _ha_stub.install()
 
 from homeintent.cover_safety import HA_COVER_DEVICE_CLASSES  # noqa: E402
 from homeintent.execution_policy import PolicyOutcome  # noqa: E402
+from homeintent.effect_graph import Effect, EffectGraph, PlanEffects  # noqa: E402
+from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeintent.risk import RiskLevel, classify_service_plan  # noqa: E402
 from homeintent.service_call import ServiceCallPlan  # noqa: E402
 from homeintent.service_executor import (  # noqa: E402
@@ -55,8 +57,9 @@ def test_garages_and_gates_remain_critical(device_class, service, data):
 
 @pytest.mark.parametrize("device_class", sorted(NON_INDEPENDENT, key=str))
 @pytest.mark.parametrize("service,data", SERVICES)
+@pytest.mark.parametrize("confirmation_level", ["medium", "high", "critical"])
 def test_non_independent_moving_covers_never_write_without_confirmation(
-    device_class, service, data
+    device_class, service, data, confirmation_level
 ):
     covers = [
         _cover("cover.front", "Front", device_class=device_class),
@@ -65,7 +68,13 @@ def test_non_independent_moving_covers_never_write_without_confirmation(
     plan = ServiceCallPlan("cover", service, [item.entity_id for item in covers], data)
     hass, _devices = _hass(covers, {})
     result = asyncio.run(async_execute_service_plan(
-        hass, plan, covers, {}, is_admin=True, user_id="admin", confirmed=False,
+        hass,
+        plan,
+        covers,
+        {"confirmation_level": confirmation_level},
+        is_admin=True,
+        user_id="admin",
+        confirmed=False,
     ))
     assert classify_service_plan(plan, covers) >= RiskLevel.HIGH
     assert result.decision.outcome is PolicyOutcome.CONFIRM
@@ -74,8 +83,11 @@ def test_non_independent_moving_covers_never_write_without_confirmation(
 
 
 @pytest.mark.parametrize("device_class", sorted(NON_INDEPENDENT, key=str))
+@pytest.mark.parametrize("confirmation_level", ["medium", "high", "critical"])
 @pytest.mark.parametrize("service,data", SERVICES)
-def test_confirmation_executes_only_the_exact_atomic_cover_plan(device_class, service, data):
+def test_confirmation_executes_only_the_exact_atomic_cover_plan(
+    device_class, service, data, confirmation_level
+):
     covers = [
         _cover("cover.front", "Front", device_class=device_class),
         _cover("cover.back", "Back", device_class=device_class),
@@ -83,9 +95,10 @@ def test_confirmation_executes_only_the_exact_atomic_cover_plan(device_class, se
     plan = ServiceCallPlan("cover", service, [item.entity_id for item in covers], data)
     hass, _devices = _hass(covers, {})
     hass.services.async_call.side_effect = None
-    scope = confirmed_scope(hass, (plan,), covers, {})
+    options = {"confirmation_level": confirmation_level}
+    scope = confirmed_scope(hass, (plan,), covers, options)
     result = asyncio.run(async_execute_service_plan(
-        hass, plan, covers, {}, is_admin=True, user_id="admin", confirmed=True,
+        hass, plan, covers, options, is_admin=True, user_id="admin", confirmed=True,
         scope=scope,
     ))
     assert result.executed and result.batch_result is None
@@ -203,5 +216,170 @@ def test_confirmed_atomic_cover_set_fails_closed_when_target_is_no_longer_expose
         hass, plan, shown[:1], {}, is_admin=True, user_id="admin", confirmed=True,
         scope=scope,
     ))
+    assert not result.executed
+    hass.services.async_call.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "root_plan,root_entity",
+    [
+        (
+            ServiceCallPlan("script", "turn_on", "script.cover_move"),
+            _cover("script.cover_move", "Cover-Skript", device_class=None),
+        ),
+        (
+            ServiceCallPlan("scene", "turn_on", "scene.cover_move"),
+            _cover("scene.cover_move", "Cover-Szene", device_class=None),
+        ),
+        (
+            ServiceCallPlan("homeassistant", "turn_on", "group.cover_move"),
+            _cover("group.cover_move", "Cover-Gruppe", device_class=None),
+        ),
+    ],
+)
+def test_transitive_cover_movement_requires_confirmation_at_critical_threshold(
+    monkeypatch, root_plan, root_entity
+):
+    root_entity = EntitySnapshot(
+        root_plan.entity_id,
+        root_entity.friendly_name,
+        root_plan.entity_id.split(".", 1)[0],
+        "off",
+    )
+    shutter = _cover("cover.shutter", "Rollladen", device_class="shutter")
+    door = _cover("cover.door", "Terrassentür", device_class="door")
+    entities = [root_entity, shutter, door]
+    effects = PlanEffects(
+        (root_plan.entity_id,),
+        (
+            EffectGraph(
+                root_plan.entity_id,
+                effects=(
+                    Effect(
+                        "cover",
+                        "open_cover",
+                        (shutter.entity_id, door.entity_id),
+                    ),
+                ),
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "homeintent.service_executor.build_plan_effects",
+        lambda _hass, _plan: effects,
+    )
+    hass, _devices = _hass(entities, {})
+    result = asyncio.run(async_execute_service_plan(
+        hass,
+        root_plan,
+        entities,
+        {"confirmation_level": "critical"},
+        is_admin=True,
+        user_id="admin",
+        confirmed=False,
+    ))
+    assert result.decision.mandatory_confirmation
+    assert result.decision.outcome is PolicyOutcome.CONFIRM
+    assert not result.executed
+    hass.services.async_call.assert_not_awaited()
+
+
+def test_transitive_cover_confirmation_rechecks_service_targets_and_parameters(
+    monkeypatch,
+):
+    root = EntitySnapshot("scene.cover_move", "Cover-Szene", "scene", "off")
+    door = _cover("cover.door", "Terrassentür", device_class="door")
+    other = _cover("cover.window", "Fenster", device_class="window")
+    entities = [root, door, other]
+    plan = ServiceCallPlan("scene", "turn_on", root.entity_id)
+    current = {
+        "effects": PlanEffects(
+            (root.entity_id,),
+            (
+                EffectGraph(
+                    root.entity_id,
+                    effects=(
+                        Effect(
+                            "cover",
+                            "set_cover_position",
+                            (door.entity_id,),
+                            data={"position": 40},
+                        ),
+                    ),
+                ),
+            ),
+        )
+    }
+    monkeypatch.setattr(
+        "homeintent.service_executor.build_plan_effects",
+        lambda _hass, _plan: current["effects"],
+    )
+    options = {"confirmation_level": "critical"}
+    scope_hass, _devices = _hass(entities, {})
+    scope = confirmed_scope(scope_hass, (plan,), entities, options)
+
+    changed_effects = (
+        Effect("cover", "set_cover_position", (door.entity_id,), data={"position": 60}),
+        Effect("cover", "open_cover", (door.entity_id,)),
+        Effect("cover", "set_cover_position", (other.entity_id,), data={"position": 40}),
+    )
+    for effect in changed_effects:
+        current["effects"] = PlanEffects(
+            (root.entity_id,),
+            (EffectGraph(root.entity_id, effects=(effect,)),),
+        )
+        hass, _devices = _hass(entities, {})
+        result = asyncio.run(async_execute_service_plan(
+            hass,
+            plan,
+            entities,
+            options,
+            is_admin=True,
+            user_id="admin",
+            confirmed=True,
+            scope=scope,
+        ))
+        assert not result.executed and result.error == CHANGED_SINCE_CONFIRMATION
+        hass.services.async_call.assert_not_awaited()
+
+
+def test_cover_movement_permission_denial_precedes_mandatory_confirmation():
+    cover = _cover("cover.window", "Fenster", device_class="window")
+    plan = ServiceCallPlan("cover", "open_cover", cover.entity_id)
+    hass, _devices = _hass([cover], {})
+    result = asyncio.run(async_execute_service_plan(
+        hass,
+        plan,
+        [cover],
+        {
+            "confirmation_level": "critical",
+            "control_user_ids": ["owner"],
+        },
+        is_admin=False,
+        user_id="guest",
+        confirmed=False,
+    ))
+    assert result.decision.outcome is PolicyOutcome.DENY
+    assert not result.executed
+    hass.services.async_call.assert_not_awaited()
+
+
+@pytest.mark.parametrize("service", ["turn_on", "turn_off", "toggle"])
+def test_generic_homeassistant_cover_helpers_keep_mandatory_confirmation(service):
+    cover = _cover("cover.window", "Fenster", device_class="window")
+    plan = ServiceCallPlan("homeassistant", service, cover.entity_id)
+    hass, _devices = _hass([cover], {})
+    result = asyncio.run(async_execute_service_plan(
+        hass,
+        plan,
+        [cover],
+        {"confirmation_level": "critical"},
+        is_admin=True,
+        user_id="admin",
+        confirmed=False,
+    ))
+    assert result.decision.risk is RiskLevel.HIGH
+    assert result.decision.mandatory_confirmation
+    assert result.decision.outcome is PolicyOutcome.CONFIRM
     assert not result.executed
     hass.services.async_call.assert_not_awaited()

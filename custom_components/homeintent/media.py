@@ -33,6 +33,7 @@ __all__ = (
     "QUEUE_MODES",
     "MediaRequest",
     "MediaPlayerResolution",
+    "PendingMediaCommand",
     "claims_other_target",
     "MediaResolution",
     "now_playing",
@@ -311,6 +312,14 @@ class MediaPlayerResolution:
     candidates: tuple[EntitySnapshot, ...] = ()
 
 
+@dataclass(frozen=True)
+class PendingMediaCommand:
+    """A typed missing-player continuation stored by the dialog manager."""
+
+    request: MediaRequest
+    player_ids: tuple[str, ...]
+
+
 def _players(entities: Sequence[EntitySnapshot]) -> list[EntitySnapshot]:
     return [entity for entity in entities if entity.domain == _MEDIA_DOMAIN]
 
@@ -427,13 +436,14 @@ def resolve_media_player(
                     "Ich habe nichts ausgeführt.",
                 )
         elif match_source_lists and request.op == "play" and request.source_words:
-            candidates = [
-                player for player in players
-                if _match_source(request.source_words, _sources(player)) is not None
-            ]
+            # A source is not a player selector.  Keep operation and source
+            # in a typed dialog draft and ask for the missing place/player;
+            # silently choosing whichever player happens to list that source
+            # makes registry state override the spoken target structure.
+            candidates = list(players) if len(players) == 1 else []
         if not candidates and request.op == "resume":
             candidates = [player for player in players if player.state == "paused"]
-        if not candidates:
+        if not candidates and request.op != "play":
             candidates = [player for player in players if player.state == "playing"]
             if not candidates and request.op in {
                 "pause", "stop", "mute", "unmute", "next", "previous", "louder", "quieter", "off", "volume"

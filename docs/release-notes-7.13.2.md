@@ -107,6 +107,8 @@ Konkrete neue Regressionen:
 - Echte Sonos-, Music-Assistant-, Licht- und Rollladenhardware wurde nicht
   geprüft. Automatisierte HA-Vertrags-, Komponenten- und Live-Testbettläufe
   ersetzen keinen Hardwaretest.
-- Der HACS-PR bleibt bis zu einer tatsächlichen neuen Review-Entscheidung
-  `CHANGES_REQUESTED`; diese Release Notes behaupten keine Freigabe durch HACS
-  oder Frenck.
+- Nach Veröffentlichung von 7.13.2 wurde der
+  [HACS-PR #10191](https://github.com/hacs/default/pull/10191) am 4. November
+  2026 von Frenck genehmigt und in die HACS-Standardliste gemergt. Der
+  abschließende Hinweis zu „zu Hause“ und zur Gerätetypbindung wird in 7.13.3
+  bearbeitet.

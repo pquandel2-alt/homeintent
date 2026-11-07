@@ -31,6 +31,7 @@ from .effect_graph import (
     is_composite_entity,
 )
 from .entities import EntitySnapshot
+from .cover_safety import cover_movement_requires_confirmation
 from .plan_origin import UNATTENDED_ORIGINS, PlanOrigin
 from .risk import RiskLevel, classify_service_plan
 from .service_call import ServiceCallPlan
@@ -80,6 +81,9 @@ class PolicyDecision:
     # follow-up automations or an unverifiable step that needs confirming.
     effects: PlanEffects | None = None
     note: str | None = None
+    # An invariant of the concrete action/effective device classes, not a
+    # configurable risk-threshold decision.
+    mandatory_confirmation: bool = False
 
 
 _RISK_BY_OPTION = {
@@ -185,18 +189,25 @@ def evaluate_service_plan(
         effects = PlanEffects.unchecked(target_ids)
     outer_risk = classify_service_plan(plan, entities)
     risk = outer_risk
+    mandatory_confirmation = cover_movement_requires_confirmation(plan, entities)
     effect_targets: frozenset[str] = frozenset()
     if effects is not None:
         effect_targets = effects.effective_targets
         for effect in effects.effects:
             effect_plan = ServiceCallPlan(effect.domain, effect.service, list(effect.entity_ids))
             risk = max(risk, classify_service_plan(effect_plan, entities))
+            mandatory_confirmation = (
+                mandatory_confirmation
+                or cover_movement_requires_confirmation(effect_plan, entities)
+            )
     roots = set(effects.roots) if effects is not None else set()
     effective_ids = {entity_id for entity_id in target_ids if entity_id not in roots} | set(effect_targets)
     all_ids = set(target_ids) | effective_ids
 
     def decide(outcome: PolicyOutcome, reason: str | None = None, note: str | None = None) -> PolicyDecision:
-        return PolicyDecision(outcome, risk, reason, effects, note)
+        return PolicyDecision(
+            outcome, risk, reason, effects, note, mandatory_confirmation
+        )
 
     allowed_users = _id_set(options, CONF_CONTROL_USER_IDS)
     if allowed_users and user_id not in allowed_users:
@@ -308,7 +319,12 @@ def evaluate_service_plan(
         )
     configured_level = options.get(CONF_CONFIRMATION_LEVEL, "high")
     confirmation_level = _RISK_BY_OPTION.get(str(configured_level), RiskLevel.HIGH)
-    if risk >= confirmation_level or unknown_needs_confirmation or unexposed_needs_confirmation:
+    if (
+        mandatory_confirmation
+        or risk >= confirmation_level
+        or unknown_needs_confirmation
+        or unexposed_needs_confirmation
+    ):
         return decide(PolicyOutcome.CONFIRM, note=note)
     # Implicit Action Policy (7.3.3): a non-explicit origin is never looser
     # than the same explicit command; everything below only adds confirmations.

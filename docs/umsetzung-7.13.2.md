@@ -21,10 +21,10 @@ Code-Baseline angelegt, bevor die Korrekturen für 7.13.2 begonnen wurden.
   ([Lauf 40610331432](https://github.com/pquandel2-alt/homeintent/actions/runs/40610331432))
 - CI des nachfolgenden Dokumentationscommits `0f97bbf`: erfolgreich
   ([Lauf 40610441892](https://github.com/pquandel2-alt/homeintent/actions/runs/40610441892))
-- HACS-PR
-  [hacs/default#10191](https://github.com/hacs/default/pull/10191): offen,
-  `CHANGES_REQUESTED`; die automatischen HACS-Prüfungen sind grün. Es wurde
-  kein weiterer Kommentar hinterlassen.
+- Der HACS-PR
+  [hacs/default#10191](https://github.com/hacs/default/pull/10191) war zu
+  diesem historischen Baseline-Zeitpunkt noch offen. Nach Veröffentlichung
+  wurde er am 4. November 2026 von Frenck genehmigt und gemergt.
 
 Die vorhandenen Medien-, Cover-, Batch- und Release-Gate-Regressionstests
 waren auf dieser Baseline grün: 124 bestanden. Sie deckten die folgenden
@@ -316,5 +316,8 @@ GitHub-Runner für den finalen SHA entschieden, nicht durch gelockerte Budgets.
 
 Finaler Commit, CI, Nightly, Release-Gate und Tag werden erst nach der
 vollständig grünen SHA-genauen Prüfung eingetragen. Reale Sonos-,
-Music-Assistant-, Licht- und Rollladenhardware bleibt ausdrücklich offen. Der
-HACS-PR bleibt ohne neue Review-Entscheidung `CHANGES_REQUESTED`.
+Music-Assistant-, Licht- und Rollladenhardware bleibt ausdrücklich offen.
+
+Nachtrag vom 6. November 2026: Der HACS-PR ist seit dem 4. November genehmigt
+und gemergt. Frencks nicht blockierender Abschlusshinweis zu Anwesenheit und
+hausweitem Scope wird in 7.13.3 umgesetzt.

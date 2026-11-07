@@ -91,10 +91,25 @@ def test_play_a_source_in_a_room(monkeypatch, tmp_path, verb, source, room, play
     assert _media_calls(turn) == [("select_source", {"source": source, "entity_id": player})], turn.speech
 
 
-@pytest.mark.parametrize("source,player", [("Bayern 3", RADIO), ("Einschlafgeräusche", SPEAKER), ("Netflix", TV)])
-def test_a_source_without_room_finds_its_player(monkeypatch, tmp_path, source, player):
-    turn = _house(monkeypatch, tmp_path).say(f"Spiel {source}.")
-    assert _media_calls(turn) == [("select_source", {"source": source, "entity_id": player})], turn.speech
+@pytest.mark.parametrize(
+    "source,room,player",
+    [
+        ("Bayern 3", "In der Küche.", RADIO),
+        ("Einschlafgeräusche", "Im Schlafzimmer.", SPEAKER),
+        ("Netflix", "Im Wohnzimmer.", TV),
+    ],
+)
+def test_a_source_without_room_asks_and_keeps_the_source(
+    monkeypatch, tmp_path, source, room, player
+):
+    house = _house(monkeypatch, tmp_path)
+    first = house.say(f"Spiel {source}.")
+    second = house.say(room)
+    assert first.speech.startswith("Welches Gerät meinst du:")
+    assert _media_calls(first) == []
+    assert _media_calls(second) == [
+        ("select_source", {"source": source, "entity_id": player})
+    ], second.speech
 
 
 @pytest.mark.parametrize("text", ["Spiel Antenne 1 in der Küche.", "Spiel Radio Gaga im Schlafzimmer."])

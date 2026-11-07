@@ -833,22 +833,19 @@ zu finden, bevor eine konkrete Formulierung getestet wird.
 
 ## Installation über HACS
 
-HomeIntent wird derzeit als benutzerdefiniertes HACS-Repository installiert.
+HomeIntent gehört seit dem 4. November 2026 zur HACS-Standardliste.
 Voraussetzung ist Home Assistant **2026.4.0** oder neuer.
 
 1. Öffne **HACS → Integrationen**.
-2. Öffne oben rechts **Benutzerdefinierte Repositories**.
-3. Trage ein:
+2. Suche nach **HomeIntent** und installiere die aktuelle Version.
+3. Starte Home Assistant neu.
+4. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**.
+5. Füge **HomeIntent** hinzu.
 
-   ```text
-   https://github.com/pquandel2-alt/homeintent
-   ```
-
-4. Wähle den Typ **Integration**.
-5. Suche nach **HomeIntent** und installiere die aktuelle Version.
-6. Starte Home Assistant neu.
-7. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**.
-8. Füge **HomeIntent** hinzu.
+Wenn ein noch nicht aktualisierter HACS-Katalog HomeIntent nicht zeigt, kann
+vorübergehend unter **Benutzerdefinierte Repositories**
+`https://github.com/pquandel2-alt/homeintent` als Typ **Integration** ergänzt
+werden.
 
 Danach erscheint in der Seitenleiste **🧠 HomeIntent** – das Learning Center
 (Wissen & Autonomie). Eingerichtet wird HomeIntent weiterhin unter

@@ -142,12 +142,20 @@ _INVENTORY_WORDS = frozenset({
     "gibt", "viele", "wieviele", "welche", "welcher", "welches", "welchen", "hat", "haben",
 })
 _PRESENCE_SUBJECTS = frozenset({"jemand", "niemand", "keiner", "irgendjemand", "irgendwer", "wer"})
+_PERSONAL_PRESENCE_SUBJECTS = frozenset({"ich", "wir"})
+_PRESENCE_COPULA = frozenset({"bin", "sind", "war", "waren", "bleibe", "bleiben"})
 
 
 def _home_phrase_is_presence(words: Sequence[str], start: int) -> bool:
-    """Keep ``jemand zuhause`` a presence predicate, not a place scope."""
+    """Keep presence predicates separate from whole-home place scopes."""
 
-    return bool(set(words[max(0, start - 3):start]) & _PRESENCE_SUBJECTS)
+    before = set(words[max(0, start - 5):start])
+    if before & _PRESENCE_SUBJECTS:
+        return True
+    if not before & _PERSONAL_PRESENCE_SUBJECTS:
+        return False
+    around = set(words[max(0, start - 5):start + 4])
+    return bool(around & _PRESENCE_COPULA)
 
 
 def level_for_keyword(kind: str, levels: Iterable[int]) -> int | None:

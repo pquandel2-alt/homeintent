@@ -36,21 +36,25 @@ from ..house_report import (
     validate_report_config,
 )
 from ..const import CONF_SHARE_HOUSEHOLD_LOCATION
-from ..media import claims_other_target, now_playing, parse_media_request, resolve_media
+from ..media import (
+    PendingMediaCommand,
+    claims_other_target,
+    now_playing,
+    parse_media_request,
+    resolve_media_player,
+)
 from ..media_coverage import analyse_media_coverage
-from ..music_assistant import PendingMusicAssistant, async_resolve_music_assistant
+from ..music_assistant import PendingMusicAssistant
 from ..music_assistant import DOMAIN as MUSIC_ASSISTANT_DOMAIN
 from ..music_assistant import async_search_exact_music_assistant
 from ..music_aliases import (
     MediaAliasStore,
     PendingMediaAlias,
     PendingMediaAliasInstanceSelection,
-    async_resolve_media_alias,
     media_alias_conflicts,
     new_media_alias,
     parse_media_alias_request,
     resolve_music_assistant_instance,
-    select_music_assistant_instance,
 )
 from ..presence_query import HABIT_DAYS, PersonState, answer_presence, arrivals, parse_presence_query
 from ..report_runtime import async_report_store, async_summary_text, async_weekly_facts
@@ -76,7 +80,8 @@ from ..nlu.action_model import ActionModel, ActionType
 from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmation_reply
 from ..nlu.automation_model import AutomationModel, TriggerModel, TriggerTarget, TriggerType, render_automation_tree
 from ..nlu.condition_model import ConditionModel, ConditionNode, ConditionType
-from ..nlu.language_frontend import analyse_language
+from ..nlu.context import ConversationContext, DialogTurnMemory
+from ..nlu.language_frontend import LanguageDocument, analyse_language
 from ..nlu.semantic_utterance import analyse_utterance
 from ..nlu.action_model import NotificationRecipientKind
 from ..nlu.automation_validator import validate_automation
@@ -104,6 +109,7 @@ from ..energy_query import (
     samples_reader,
 )
 from ..entities import EntitySnapshot, normalize_for_compare
+from .media_commands import MediaCommandSupport, words_of as _words_of
 from ..weather import (
     WeatherClause,
     WeatherGuard,
@@ -121,7 +127,7 @@ from ..weather import (
 )
 
 
-class InsightsController:
+class InsightsController(MediaCommandSupport):
     """Health reports (B3), consumption (B5), summaries (B1), vacation (B4)
     and habit suggestions (B2)."""
 
@@ -183,6 +189,7 @@ class InsightsController:
         rerun: Callable[[conversation.ConversationInput], Awaitable[conversation.ConversationResult]] | None = None,
         open_task: bool = False,
         area_id: str | None = None,
+        language_document: LanguageDocument | None = None,
     ) -> conversation.ConversationResult | None:
         """Read-only answers - before the situation view, which would answer
         "während ich weg war" with the current state."""
@@ -201,7 +208,9 @@ class InsightsController:
             weather = await self._async_weather(user_input, response, entities)
             if weather is not None:
                 return weather
-            return await self._async_reading(user_input, response, entities)
+            return await self._async_reading(
+                user_input, response, entities, language_document
+            )
         finally:
             await self._async_flush_habits()
 
@@ -333,6 +342,7 @@ class InsightsController:
         user_input: conversation.ConversationInput,
         response: intent.IntentResponse,
         entities: list[EntitySnapshot],
+        language_document: LanguageDocument | None = None,
     ) -> conversation.ConversationResult | None:
         rest = self._rest.pop(user_input.conversation_id or "", ())
         if rest and _asks_more(user_input.text):  # "Was noch?" after a summary (B1)
@@ -394,7 +404,9 @@ class InsightsController:
         )
         if media_alias is not None:
             return media_alias
-        media = await self._async_media(user_input, response, entities)
+        media = await self._async_media(
+            user_input, response, entities, language_document
+        )
         if media is not None:  # "Pause", "Spiel Bayern 3 in der Küche", "Was läuft gerade?" (7.9.3 B3)
             return media
         presence = await self._async_presence(user_input, response, entities)
@@ -458,11 +470,36 @@ class InsightsController:
     async def _async_media(
         self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
         entities: list[EntitySnapshot],
+        language_document: LanguageDocument | None = None,
     ) -> conversation.ConversationResult | None:
+        document = language_document or analyse_language(user_input.text, entities)
+        correction = self._media_location_correction(user_input, entities)
+        if correction is not None:
+            resolved = await self._async_resolve_media_request(
+                replace(user_input, text=correction.text), correction, entities
+            )
+            resolved = replace(
+                resolved,
+                spoken=(
+                    "Die erste Wiedergabe war bereits gestartet. "
+                    + resolved.spoken
+                ),
+            )
+            return await self._async_finish_media(
+                user_input,
+                response,
+                resolved,
+                entities,
+                request=correction,
+            )
+        compound = await self._async_compound_media(
+            user_input, response, entities, document
+        )
+        if compound is not None:
+            return compound
         request = parse_media_request(user_input.text)
         if request is None:
             return None
-        document = analyse_language(user_input.text, entities)
         utterance = analyse_utterance(user_input.text)
         has_temporal_scope = bool(document.temporal)
         if self.devices is None or (
@@ -488,22 +525,12 @@ class InsightsController:
             return None
         if request.op == "query":
             return self._answer(user_input, response, now_playing(request, entities, self._area_id))
-        resolved = await async_resolve_media_alias(
-            self.hass,
-            request,
-            entities,
-            owner_user_id=conversation_user_id(user_input),
-            satellite_area_id=self._area_id,
-            context=getattr(user_input, "context", None),
+        resolved = await self._async_resolve_media_request(
+            user_input, request, entities
         )
-        if resolved is None:
-            resolved = await async_resolve_music_assistant(
-                self.hass, request, entities, satellite_area_id=self._area_id,
-                context=getattr(user_input, "context", None),
-            )
-        if resolved is None:
-            resolved = resolve_media(request, entities, satellite_area_id=self._area_id)
-        return await self._async_finish_media(user_input, response, resolved, entities)
+        return await self._async_finish_media(
+            user_input, response, resolved, entities, request=request
+        )
 
     async def _async_media_alias_management(
         self,
@@ -741,6 +768,8 @@ class InsightsController:
     async def _async_finish_media(
         self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
         resolved: Any, entities: list[EntitySnapshot],
+        *,
+        request: Any = None,
     ) -> conversation.ConversationResult:
         pending = getattr(resolved, "pending", None)
         if isinstance(pending, PendingMusicAssistant):
@@ -753,6 +782,31 @@ class InsightsController:
                 requested_by_user_id=conversation_user_id(user_input),
                 payload=pending,
             )
+        elif (
+            request is not None
+            and resolved.plan is None
+            and resolved.question
+        ):
+            target = resolve_media_player(
+                request,
+                entities,
+                satellite_area_id=self._area_id,
+                match_source_lists=False,
+            )
+            if target.candidates:
+                self._runtime.dialog_manager.create(
+                    user_input.conversation_id,
+                    "media-player-selection",
+                    DialogTaskKind.MEDIA_SELECTION,
+                    DialogPriority.SELECTION,
+                    candidates=tuple(item.entity_id for item in target.candidates),
+                    reason="Der Medienbefehl benötigt einen eindeutigen Player oder Raum.",
+                    requested_by_user_id=conversation_user_id(user_input),
+                    payload=PendingMediaCommand(
+                        request,
+                        tuple(item.entity_id for item in target.candidates),
+                    ),
+                )
         if resolved.plan is None:
             if resolved.question:
                 return self._result(user_input, response, resolved.spoken)
@@ -760,72 +814,46 @@ class InsightsController:
         # The one write path: policy, service_executor, tone and effect wait.
         from ..engine import MatchResult
 
-        return await self.devices.async_handle_match_result(
+        result = await self.devices.async_handle_match_result(
             user_input, response, MatchResult(plan=resolved.plan, response_text=resolved.spoken), entities
         )
-
-    async def _async_media_selection(
-        self, user_input: conversation.ConversationInput, response: intent.IntentResponse,
-        task: Any, entities: list[EntitySnapshot],
-    ) -> conversation.ConversationResult | None:
-        pending = getattr(task, "payload", None)
-        if isinstance(pending, PendingMediaAliasInstanceSelection):
-            actor = conversation_user_id(user_input)
-            if actor is None or pending.requesting_user_id != actor:
-                return self._result(
-                    user_input, response, "Diese Rückfrage gehört zu einem anderen Benutzer."
+        if request is not None:
+            ids = (
+                (resolved.plan.entity_id,)
+                if isinstance(resolved.plan.entity_id, str)
+                else tuple(resolved.plan.entity_id)
+            )
+            remembered = tuple(entity for entity in entities if entity.entity_id in ids)
+            store = getattr(self.devices, "_context_store", None)
+            if store is not None:
+                current = store.get(user_input.conversation_id)
+                memory = DialogTurnMemory(
+                    source_text=user_input.text,
+                    entities=remembered,
+                    predicate="media:" + str(getattr(request, "op", "")),
+                    media_request=request,
                 )
-            resolution = select_music_assistant_instance(
-                user_input.text, pending, entities
-            )
-            if resolution.config_entry_id is None:
-                return self._result(
-                    user_input,
-                    response,
-                    "Die Auswahl ist noch nicht eindeutig; ich habe nichts gespeichert. "
-                    "Bitte nenne genau einen der angebotenen Player oder Räume.",
-                )
-            self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
-            return await self._async_prepare_media_alias_create(
-                user_input,
-                response,
-                pending.request,
-                actor,
-                resolution.config_entry_id,
-                resolution.player_entity_id,
-            )
-        if not isinstance(pending, PendingMusicAssistant):
-            return None
-        if task.requested_by_user_id not in {None, conversation_user_id(user_input)}:
-            return self._result(user_input, response, "Diese Rückfrage gehört zu einem anderen Benutzer.")
-        chosen: EntitySnapshot | None = None
-        request = pending.request
-        if pending.stage == "player":
-            candidates = [entity for entity in entities if entity.entity_id in pending.player_ids]
-            matches = [entity for entity in candidates if _media_selection_matches(user_input.text, entity)]
-            if len(matches) == 1:
-                chosen = matches[0]
-        elif pending.stage == "media_type" and pending.player_id is not None:
-            media_type = _selected_media_type(user_input.text, pending.media_types)
-            if media_type is not None:
-                request = replace(request, media_type=media_type)
-                chosen = next((entity for entity in entities if entity.entity_id == pending.player_id), None)
-        if chosen is None:
-            return self._result(
-                user_input,
-                response,
-                "Die Auswahl ist noch nicht eindeutig; ich habe nichts gestartet. Bitte nenne den Player oder Medientyp.",
-            )
-        self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
-        resolved = await async_resolve_music_assistant(
-            self.hass, request, [chosen], satellite_area_id=chosen.area_id,
-            context=getattr(user_input, "context", None),
-        )
-        if resolved is None:
-            return self._answer(
-                user_input, response, "Music Assistant ist nicht mehr verfügbar; ich habe nichts gestartet."
-            )
-        return await self._async_finish_media(user_input, response, resolved, entities)
+                if current is not None:
+                    store.set(
+                        user_input.conversation_id,
+                        replace(
+                            current,
+                            last_entities=remembered,
+                            memory=memory,
+                        ),
+                    )
+                else:
+                    store.set(
+                        user_input.conversation_id,
+                        ConversationContext(
+                            last_command=None,
+                            last_entities=remembered,
+                            last_area=None,
+                            pending_clarification=None,
+                            memory=memory,
+                        ),
+                    )
+        return result
 
     # --- 7.9.3 B2 where is someone ----------------------------------------------
 
@@ -1353,34 +1381,6 @@ _SCHEDULE_WORDS = frozenset({
     "montags", "dienstags", "mittwochs", "donnerstags", "freitags", "samstags", "sonntags", "immer", "wenn",
     "sobald", "sonnenaufgang", "sonnenuntergang", "uhr",
 })
-
-
-def _words_of(text: str) -> list[str]:
-    return "".join(char if char.isalnum() else " " for char in normalize_for_compare(text)).split()
-
-
-_MEDIA_TYPE_SELECTIONS = {
-    "artist": frozenset({"kuenstler", "kuenstlerin", "interpret", "interpretin"}),
-    "album": frozenset({"album"}),
-    "playlist": frozenset({"playlist", "wiedergabeliste"}),
-    "track": frozenset({"titel", "lied", "song", "track", "stueck"}),
-    "radio": frozenset({"radio", "sender", "radiosender", "station"}),
-}
-
-
-def _selected_media_type(text: str, allowed: tuple[str, ...]) -> str | None:
-    words = set(_words_of(text))
-    matches = [kind for kind in allowed if words & _MEDIA_TYPE_SELECTIONS.get(kind, frozenset())]
-    return matches[0] if len(matches) == 1 else None
-
-
-def _media_selection_matches(text: str, entity: EntitySnapshot) -> bool:
-    words = set(_words_of(text))
-    names = (entity.friendly_name, *entity.aliases)
-    if any(set(_words_of(name)) <= words for name in names if name):
-        return True
-    place_names = (entity.area_name or "", *entity.area_aliases)
-    return any(set(_words_of(name)) <= words for name in place_names if name)
 
 
 def _notifies(text: str) -> bool:

@@ -95,16 +95,22 @@ def build_document_compositional_plan(
 def independent_predicate_clauses(
     document: LanguageDocument,
 ) -> tuple[str, ...]:
-    """Return source clauses only when ``AND`` joins complete predicates.
+    """Return source clauses only when a command relation joins predicates.
 
     Clause spans are sliced verbatim from the original input.  No connector,
     target or action is invented.  An incomplete operand returns an empty
     tuple so the caller can reject the whole compound atomically.
     """
+    command_relations = {
+        StructuralRelationKind.AND,
+        StructuralRelationKind.THEN,
+        StructuralRelationKind.AFTER,
+        StructuralRelationKind.SEQUENCE,
+    }
     relations = tuple(
         relation
         for relation in document.structure.relations
-        if relation.kind is StructuralRelationKind.AND
+        if relation.kind in command_relations
     )
     if not relations:
         return ()
@@ -117,7 +123,13 @@ def independent_predicate_clauses(
             ordered_ids.append(relation.source_clause)
         if relation.target_clause not in ordered_ids:
             ordered_ids.append(relation.target_clause)
-    clauses = tuple(clause_by_id[item] for item in ordered_ids if item in clause_by_id)
+    # Relation discovery follows connector priority (an explicit ``und`` may
+    # be recorded before an earlier comma boundary).  Execution and payload
+    # binding must instead retain the utterance's source order.
+    clauses = tuple(sorted(
+        (clause_by_id[item] for item in ordered_ids if item in clause_by_id),
+        key=lambda clause: (clause.token_start, clause.token_end),
+    ))
     if len(clauses) != len(ordered_ids):
         return ()
     actions = document.semantics.matching(SemanticKind.ACTION)

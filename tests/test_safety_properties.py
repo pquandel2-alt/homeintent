@@ -9,8 +9,9 @@ taken from a fixed sentence list. Every invariant is its own test.
 "Write" means any service call that changes something (reads such as
 ``recorder.get_statistics`` or ``todo.get_items`` are not writes).
 
-The suite runs in CI with a fixed seed set (profile ``ci``); the nightly
-workflow runs it with changing seeds (``HOMEINTENT_HYPOTHESIS_PROFILE=nightly``).
+The suite runs in CI with a deterministic profile; the nightly workflow uses
+more examples and passes its logged GitHub run id as a reproducible Hypothesis
+seed (``HOMEINTENT_HYPOTHESIS_PROFILE=nightly``).
 Counterexamples found there are added as fixed regression cases below
 (``REGRESSIONS``).
 """

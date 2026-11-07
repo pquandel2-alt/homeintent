@@ -146,10 +146,12 @@ become a Bewegungsmelder.
    target IDs, place expression and exact place IDs, source/value, consumed
    spans, residue and generated plans per clause. Every binding must be
    complete and its plan targets must equal that clause's targets before the
-   first write. A source-selection clause in a compound is rejected as a
-   whole until the common compiler can materialize it safely. Nominal
-   coordination such as a compound duration is not misclassified as a write
-   compound. `nlu/clause_completeness` remains the compatibility fallback.
+   first write. Since 7.13.3 the common plan can materialize an exact
+   `source_list` or uniquely resolved Music-Assistant source together with
+   its player and place; an unknown or ambiguous source still rejects the
+   entire compound. Nominal coordination such as a compound duration is not
+   misclassified as a write compound. `nlu/clause_completeness` remains the
+   compatibility fallback.
 8. **Batch outcomes are final only after the effect wait (7.13.1).** An
    eligible batch (`batch_execution.batch_eligibility`, independent of risk)
    preflights every target, calls the allowed ones, observes every accepted
@@ -159,8 +161,10 @@ become a Bewegungsmelder.
    shading (`shutter`, `blind`, `shade`, `curtain`) is `MEDIUM` and may settle
    per target. Physical access (`garage`, `gate`, `door`, `window`) and every
    other, missing or unknown moving-cover class is atomic and confirmation
-   gated; garage/gate movement remains `CRITICAL`. Confirmation binds the
-   complete plan signature, not only its targets.
+   gated independently of the configured risk threshold; garage/gate
+   movement remains `CRITICAL`. The same invariant applies to statically
+   determined effects behind scripts, scenes and groups. Confirmation binds
+   outer and transitive service, parameters and targets, not only root IDs.
 
 Every capability has a generated productivity test (`tests/test_sprache73_*`)
 that combines its building blocks freely against the test house; the live

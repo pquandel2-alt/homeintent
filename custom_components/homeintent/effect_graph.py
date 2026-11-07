@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 
+from .cover_safety import COVER_MOVEMENT_SERVICES
 from .entities import normalize_for_compare
 
 MAX_DEPTH = 8
@@ -68,6 +69,10 @@ class Effect:
     path: tuple[str, ...] = ()
     # How the step selected its targets, e.g. (("floor_id", "erdgeschoss"),).
     selector: tuple[tuple[str, str], ...] = ()
+    # Static non-target service parameters are confirmation-bound together
+    # with service and targets. Templates are rejected before an Effect is
+    # created.
+    data: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -187,6 +192,18 @@ def is_template(value: object) -> bool:
     return hasattr(value, "async_render") or type(value).__name__ == "Template"
 
 
+def _contains_template(value: object) -> bool:
+    """Recursively reject dynamic values in non-target service data."""
+    if isinstance(value, Mapping):
+        return any(
+            _contains_template(key) or _contains_template(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_contains_template(item) for item in value)
+    return is_template(value)
+
+
 def _as_list(value: object) -> list[str]:
     if value is None:
         return []
@@ -264,13 +281,16 @@ class _Builder:
         alias: str | None,
         path: tuple[str, ...],
         selector: tuple[tuple[str, str], ...] = (),
+        data: Mapping[str, object] | None = None,
     ) -> None:
         ids = tuple(dict.fromkeys(entity_ids))
         if not ids:
             return
         for entity_id in ids:
             self._name("entity", entity_id)
-        self.effects.append(Effect(domain, service, ids, kind, alias, path, selector))
+        self.effects.append(
+            Effect(domain, service, ids, kind, alias, path, selector, dict(data or {}))
+        )
 
     # ------------------------------------------------------------- entities
     def activate(
@@ -369,10 +389,25 @@ class _Builder:
             member_domain = member.split(".", 1)[0]
             if isinstance(wanted, Mapping):
                 target_state = str(wanted.get("state", ""))
+                state_data = dict(wanted)
             else:
                 target_state = str(getattr(wanted, "state", wanted))
+                attributes = getattr(wanted, "attributes", {})
+                state_data = {
+                    "state": target_state,
+                    **(dict(attributes) if isinstance(attributes, Mapping) else {}),
+                }
+            if _contains_template(state_data):
+                self._unknown(
+                    f"Der Zustand von {member} ist nicht statisch bestimmbar.",
+                    alias,
+                    path,
+                )
+                continue
             service = _scene_state_service(member_domain, target_state)
-            self.apply_to((member,), service, path, depth, alias, kind=kind)
+            self.apply_to(
+                (member,), service, path, depth, alias, kind=kind, data=state_data
+            )
 
     def is_container(self, entity_id: str, service: str) -> bool:
         domain = entity_id.split(".", 1)[0]
@@ -393,6 +428,7 @@ class _Builder:
         kind: str,
         call_domain: str | None = None,
         selector: tuple[tuple[str, str], ...] = (),
+        data: Mapping[str, object] | None = None,
     ) -> None:
         """Record plain targets as effects and expand containers."""
         plain: list[str] = []
@@ -407,7 +443,14 @@ class _Builder:
             by_domain.setdefault(effect_domain, []).append(entity_id)
         for effect_domain, ids in by_domain.items():
             self._add_effect(
-                effect_domain, service, ids, kind=kind, alias=alias, path=path, selector=selector
+                effect_domain,
+                service,
+                ids,
+                kind=kind,
+                alias=alias,
+                path=path,
+                selector=selector,
+                data=data,
             )
 
     # -------------------------------------------------------------- actions
@@ -532,9 +575,22 @@ class _Builder:
             if not entity_ids:
                 self._unknown("Eine Geräte-Aktion wirkt ohne bestimmbare Entität.", alias, path)
                 return
+        effect_data = {
+            str(key): value
+            for key, value in action.items()
+            if key not in {"domain", "type", "device_id", "entity_id", "alias", "enabled"}
+        }
+        effective_service = _device_action_service(action_type)
+        if (
+            domain == "cover"
+            and effective_service in COVER_MOVEMENT_SERVICES
+            and _contains_template(effect_data)
+        ):
+            self._unknown("Die Parameter der Geräte-Aktion sind nicht statisch bestimmbar.", alias, path)
+            return
         self._add_effect(
-            domain, _device_action_service(action_type), entity_ids,
-            kind="device_action", alias=alias, path=path,
+            domain, effective_service, entity_ids,
+            kind="device_action", alias=alias, path=path, data=effect_data,
         )
 
     def _service_step(
@@ -619,6 +675,25 @@ class _Builder:
             self._apply_states(entities, path, depth, alias, kind="scene")
             return
 
+        effect_data: dict[str, object] = {}
+        for data_map in data_maps:
+            effect_data.update(
+                (str(key), value)
+                for key, value in data_map.items()
+                if key not in TARGET_KEYS and key not in _DATA_TARGETS
+            )
+        if (
+            domain == "cover"
+            and service in COVER_MOVEMENT_SERVICES
+            and _contains_template(effect_data)
+        ):
+            self._unknown(
+                f"Die Dienstdaten von {name} sind nicht statisch bestimmbar.",
+                alias,
+                path,
+            )
+            return
+
         entity_ids = [item for item in selector.get("entity_id", []) if item.casefold() != "none"]
         resolved: list[str] = []
         for entity_id in entity_ids:
@@ -659,7 +734,9 @@ class _Builder:
         resolved = list(dict.fromkeys(resolved))
         self.apply_to(
             resolved, service, path, depth, alias, kind="service",
-            call_domain=None if domain == "homeassistant" else domain, selector=selector_label,
+            call_domain=None if domain == "homeassistant" else domain,
+            selector=selector_label,
+            data=effect_data,
         )
 
 

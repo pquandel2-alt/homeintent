@@ -141,6 +141,57 @@ def test_scene_apply_with_entities_in_data_is_an_effect():
     assert [(effect.domain, effect.service) for effect in graph.effects] == [("lock", "unlock")]
 
 
+def test_scene_and_script_effect_parameters_are_confirmation_bound():
+    graph = _graph([
+        {
+            "action": "scene.apply",
+            "data": {
+                "entities": {
+                    "cover.window": {"state": "open", "current_position": 40}
+                }
+            },
+        },
+        {
+            "action": "cover.set_cover_position",
+            "target": {"entity_id": "cover.window"},
+            "data": {"position": 55},
+        },
+    ])
+    assert [effect.data for effect in graph.effects] == [
+        {"state": "open", "current_position": 40},
+        {"position": 55},
+    ]
+
+
+def test_device_action_parameters_are_confirmation_bound():
+    sources = FakeSources(
+        scripts={
+            "script.routine": [
+                {
+                    "domain": "cover",
+                    "type": "set_cover_position",
+                    "device_id": "door-device",
+                    "position": 35,
+                }
+            ]
+        },
+        targets={("device_id", "door-device"): {"cover.window"}},
+    )
+    graph = build_effect_graph("script.routine", sources)
+    assert graph.effects[0].data == {"position": 35}
+
+
+def test_nested_template_in_effect_parameters_is_incomplete():
+    graph = _graph([
+        {
+            "action": "cover.set_cover_position",
+            "target": {"entity_id": "cover.window"},
+            "data": {"position": {"value": "{{ position }}"}},
+        }
+    ])
+    assert not graph.complete and graph.effects == ()
+
+
 def test_scene_apply_with_template_states_is_incomplete():
     graph = _graph([{"action": "scene.apply", "data": {"entities": "{{ states }}"}}])
     assert graph.complete is False

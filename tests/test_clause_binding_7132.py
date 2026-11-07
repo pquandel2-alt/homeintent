@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ from _testhaus import HouseConversation, house_entities, with_states  # noqa: E4
 from homeintent.engine import NluEngine  # noqa: E402
 from homeintent.nlu.clause_binding import (  # noqa: E402
     ClauseBindingAnalysis,
+    ClauseCoverageStatus,
     SourceResolution,
     analyse_clause_bindings,
 )
@@ -79,18 +81,218 @@ def assert_full_refusal(turn):
     assert "nichts ausgeführt" in turn.speech
 
 
+def media_calls(turn):
+    return [
+        (service, data.get("entity_id"), data.get("source"))
+        for domain, service, data in turn.calls
+        if domain in {"media_player", "music_assistant"}
+    ]
+
+
 @pytest.mark.parametrize("text", [
     "Spiel Quirlomat in der Küche und pausiere die Musik im Schlafzimmer.",
-    "Spiel WDR 2 in der Küche und pausiere die Musik im Schlafzimmer.",
-    "Spiel Bayern 3 in der Küche und stoppe die Musik im Schlafzimmer.",
-    "Spiel Bayern 3 in der Küche und dann pausiere die Musik im Schlafzimmer.",
-    "Spiel One in der Küche und mach die Musik im Schlafzimmer aus.",
-    "Pausiere die Musik im Schlafzimmer und spiel WDR 2 in der Küche.",
     "Pausiere die Musik im Schlafzimmer und spiel Quirlomat in der Küche.",
     "Spiel meinen Music Assistant Favoriten Entspannen in der Küche und pausiere die Musik im Schlafzimmer.",
 ])
-def test_source_clause_compounds_are_rejected_as_one_unit(monkeypatch, text):
+def test_unresolved_source_clause_compounds_are_rejected_as_one_unit(monkeypatch, text):
     assert_full_refusal(run(monkeypatch, text))
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    (
+        "Spiel WDR 2 in der Küche und pausiere die Musik im Schlafzimmer.",
+        [("select_source", RADIO), ("media_pause", SPEAKER)],
+    ),
+    (
+        "Spiel Bayern 3 in der Küche und stoppe die Musik im Schlafzimmer.",
+        [("select_source", RADIO), ("media_stop", SPEAKER)],
+    ),
+    (
+        "Spiel Bayern 3 in der Küche und dann pausiere die Musik im Schlafzimmer.",
+        [("select_source", RADIO), ("media_pause", SPEAKER)],
+    ),
+    (
+        "Spiel One in der Küche und mach die Musik im Schlafzimmer aus.",
+        [("select_source", RADIO), ("media_pause", SPEAKER)],
+    ),
+    (
+        "Pausiere die Musik im Schlafzimmer und spiel WDR 2 in der Küche.",
+        [("media_pause", SPEAKER), ("select_source", RADIO)],
+    ),
+])
+def test_exact_source_compounds_execute_only_the_bound_operations(
+    monkeypatch, text, expected
+):
+    turn = run(monkeypatch, text)
+    assert [(service, data["entity_id"]) for _domain, service, data in turn.calls] == expected
+    assert turn.targets == {RADIO, SPEAKER}
+    assert TV not in turn.targets
+
+
+@pytest.mark.parametrize("joiner", [",", ";", ".", "sowie", "danach", "anschließend", "außerdem"])
+def test_equivalent_clause_boundaries_keep_source_operation_and_order(
+    monkeypatch, joiner
+):
+    turn = run(
+        monkeypatch,
+        f"Spiel bitte WDR 2 in der Küche {joiner} pausiere die Musik im Schlafzimmer.",
+    )
+    assert media_calls(turn) == [
+        ("select_source", RADIO, "WDR 2"),
+        ("media_pause", SPEAKER, None),
+    ]
+
+
+def test_three_media_clauses_are_preflighted_and_executed_in_spoken_order(monkeypatch):
+    turn = run(
+        monkeypatch,
+        "Spiel WDR 2 in der Küche; pausiere die Musik im Schlafzimmer; "
+        "stoppe die Musik im Wohnzimmer.",
+    )
+    assert media_calls(turn) == [
+        ("select_source", RADIO, "WDR 2"),
+        ("media_pause", SPEAKER, None),
+        ("media_stop", TV, None),
+    ]
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    (
+        "Schalte das Küchenlicht ein, mach die Stehlampe an und fahre den "
+        "Esszimmer Rollladen runter.",
+        [
+            ("homeassistant", "turn_on", "light.kuechenlicht"),
+            ("homeassistant", "turn_on", "light.stehlampe"),
+            ("cover", "close_cover", "cover.esszimmer_rollladen"),
+        ],
+    ),
+    (
+        "Mach die Kaffeemaschine an, das Küchenlicht aus und fahr den "
+        "Küchenrollladen runter.",
+        [
+            ("homeassistant", "turn_on", "switch.kaffeemaschine"),
+            ("homeassistant", "turn_off", "light.kuechenlicht"),
+            ("cover", "close_cover", "cover.kuechenrollladen"),
+        ],
+    ),
+])
+def test_comma_and_conjunction_keep_mixed_commands_in_source_order(
+    monkeypatch, text, expected
+):
+    turn = run(monkeypatch, text)
+    assert [
+        (domain, service, data["entity_id"])
+        for domain, service, data in turn.calls
+    ] == expected
+
+
+def test_unknown_source_discards_every_clause_and_yes_has_no_remainder(monkeypatch):
+    house = HouseConversation(
+        monkeypatch,
+        entities=source_entities(),
+        options={"implicit_action_level": "low_risk_auto"},
+    )
+    rejected = house.say(
+        "Spiel Quirlomat in der Küche, pausiere die Musik im Schlafzimmer."
+    )
+    confirmed = house.say("Ja")
+    assert_full_refusal(rejected)
+    assert confirmed.calls == [] and confirmed.targets == set()
+    assert "keine Frage offen" in confirmed.speech
+
+
+def test_domain_handoff_is_explicit_and_never_covers_an_unknown_media_source():
+    entities = source_entities()
+    automation = analyse_language(
+        "Bei Sonnenuntergang schalte das Wohnzimmerlicht ein und dann das Flurlicht.",
+        entities,
+    )
+    delegated = analyse_clause_bindings(automation, entities, None)
+    assert delegated.coordinated
+    assert delegated.status is ClauseCoverageStatus.DELEGATED
+
+    unknown = analyse_language(
+        "Spiel Quirlomat in der Küche und pausiere die Musik im Schlafzimmer.",
+        entities,
+    )
+    rejected = analyse_clause_bindings(unknown, entities, None)
+    assert rejected.coordinated
+    assert rejected.status is ClauseCoverageStatus.REJECTED
+
+
+def test_unrelated_player_never_changes_bound_targets(monkeypatch):
+    reference = run(
+        monkeypatch,
+        "Spiel WDR 2 in der Küche, pausiere die Musik im Schlafzimmer.",
+    )
+    extra = replace(
+        next(entity for entity in source_entities() if entity.entity_id == TV),
+        entity_id="media_player.bad_tv",
+        friendly_name="Bad TV",
+        area_id="bad",
+        area_name="Bad",
+    )
+    expanded = run(
+        monkeypatch,
+        "Spiel WDR 2 in der Küche, pausiere die Musik im Schlafzimmer.",
+        entities=[*source_entities(), extra],
+    )
+    assert media_calls(expanded) == media_calls(reference)
+    assert expanded.targets == {RADIO, SPEAKER}
+
+
+def test_media_source_dialog_keeps_slots_cancels_and_accepts_fresh_command(monkeypatch):
+    house = HouseConversation(monkeypatch, entities=source_entities())
+    first = house.say("Spiel WDR 2.")
+    completed = house.say("In der Küche.")
+    assert first.calls == [] and first.speech.startswith("Welches Gerät meinst du:")
+    assert media_calls(completed) == [("select_source", RADIO, "WDR 2")]
+
+    house = HouseConversation(monkeypatch, entities=source_entities())
+    house.say("Spiel WDR 2.")
+    cancelled = house.say("Nein, abbrechen.")
+    assert cancelled.calls == [] and "verworfen" in cancelled.speech
+
+    house = HouseConversation(monkeypatch, entities=source_entities())
+    house.say("Spiel WDR 2.")
+    fresh = house.say("Pausiere die Musik im Schlafzimmer.")
+    assert media_calls(fresh) == [("media_pause", SPEAKER, None)]
+
+
+def test_media_source_dialog_cannot_be_taken_over_by_another_user(monkeypatch):
+    house = HouseConversation(monkeypatch, entities=source_entities(), user="admin")
+    conversation_id = "shared-media-dialog"
+    opened = house.say_input(house.conversation_input(
+        "Spiel WDR 2.", user="admin", conversation_id=conversation_id
+    ))
+    foreign = house.say_input(house.conversation_input(
+        "In der Küche.", user="anna", conversation_id=conversation_id
+    ))
+    completed = house.say_input(house.conversation_input(
+        "In der Küche.", user="admin", conversation_id=conversation_id
+    ))
+
+    assert opened.calls == [] and opened.speech.startswith("Welches Gerät meinst du:")
+    assert foreign.calls == [] and foreign.targets == set()
+    assert "nicht verstanden" in foreign.speech
+    assert media_calls(completed) == [("select_source", RADIO, "WDR 2")]
+
+
+def test_completed_media_location_correction_never_builds_a_group(monkeypatch):
+    entities = []
+    for entity in source_entities():
+        if entity.entity_id == SPEAKER:
+            entity = replace(
+                entity,
+                attributes={**entity.attributes, "source_list": ["WDR 2"]},
+            )
+        entities.append(entity)
+    house = HouseConversation(monkeypatch, entities=entities)
+    first = house.say("Spiel WDR 2 in der Küche.")
+    corrected = house.say("Doch im Schlafzimmer.")
+    assert media_calls(first) == [("select_source", RADIO, "WDR 2")]
+    assert media_calls(corrected) == [("select_source", SPEAKER, "WDR 2")]
+    assert "bereits gestartet" in corrected.speech
 
 
 @pytest.mark.parametrize("tail", [
@@ -108,19 +310,23 @@ def test_unknown_source_never_leaves_any_following_write(monkeypatch, tail):
     assert_full_refusal(run(monkeypatch, f"Spiel Quirlomat in der Küche und {tail}."))
 
 
-@pytest.mark.parametrize("tail", [
-    "pausiere die Musik im Schlafzimmer",
-    "stoppe die Musik im Schlafzimmer",
-    "mach die Musik im Schlafzimmer aus",
-    "mach die Musik im Schlafzimmer lauter",
-    "mach die Musik im Schlafzimmer leiser",
-    "schalte die Musik im Schlafzimmer stumm",
-    "spiele den nächsten Titel im Schlafzimmer",
+@pytest.mark.parametrize(("tail", "service"), [
+    ("pausiere die Musik im Schlafzimmer", "media_pause"),
+    ("stoppe die Musik im Schlafzimmer", "media_stop"),
+    ("mach die Musik im Schlafzimmer aus", "media_pause"),
+    ("mach die Musik im Schlafzimmer lauter", "volume_up"),
+    ("mach die Musik im Schlafzimmer leiser", "volume_down"),
+    ("schalte die Musik im Schlafzimmer stumm", "volume_mute"),
+    ("spiele den nächsten Titel im Schlafzimmer", "media_next_track"),
 ])
-def test_known_source_never_degrades_into_a_different_following_operation(
-    monkeypatch, tail
+def test_known_source_keeps_the_exact_following_operation(
+    monkeypatch, tail, service
 ):
-    assert_full_refusal(run(monkeypatch, f"Spiel WDR 2 in der Küche und {tail}."))
+    turn = run(monkeypatch, f"Spiel WDR 2 in der Küche und {tail}.")
+    assert [(item[1], item[2]["entity_id"]) for item in turn.calls] == [
+        ("select_source", RADIO),
+        (service, SPEAKER),
+    ]
 
 
 def test_ambiguous_exact_source_is_rejected_without_question_or_write(monkeypatch):
@@ -211,18 +417,24 @@ def test_explicit_place_wins_over_satellite_area(monkeypatch):
         "Spiel WDR 2 in der Küche und pausiere die Musik im Schlafzimmer.",
         area="wohnzimmer",
     )
-    assert_full_refusal(turn)
+    assert [(service, data["entity_id"]) for _domain, service, data in turn.calls] == [
+        ("select_source", RADIO),
+        ("media_pause", SPEAKER),
+    ]
 
 
 @settings(
-    max_examples=20,
+    max_examples=300 if os.environ.get("HOMEINTENT_HYPOTHESIS_PROFILE") == "nightly" else 40,
     deadline=None,
+    derandomize=os.environ.get("HOMEINTENT_HYPOTHESIS_PROFILE") != "nightly",
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 @given(
     source=st.sampled_from(["Quirlomat", "Zappelding", "Blubberfix"]),
     polite=st.sampled_from(["", "bitte ", "doch mal "]),
-    joiner=st.sampled_from(["und", "und dann"]),
+    joiner=st.sampled_from([
+        "und", "und dann", "danach", "anschließend", "sowie", "außerdem", ",", ";", "."
+    ]),
 )
 def test_property_unknown_source_and_politeness_never_leave_a_partial_write(
     monkeypatch, source, polite, joiner

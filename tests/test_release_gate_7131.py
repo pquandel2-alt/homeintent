@@ -171,6 +171,15 @@ def test_workflows_wire_the_gate_and_the_nightly_dispatch():
     nightly = (root / ".github/workflows/nightly-live.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in nightly
     assert "tests/test_safety_properties.py" in nightly
+    assert "--hypothesis-seed=${HOMEINTENT_HYPOTHESIS_SEED}" in nightly
+    for safety_file in (
+        "tests/test_media_sentence_coverage_7131.py",
+        "tests/test_clause_binding_7132.py",
+        "tests/test_cover_safety_7132.py",
+        "tests/test_issue_38_place_and_targets.py",
+        "tests/test_media_793.py",
+    ):
+        assert safety_file in nightly
     # One release at a time; the tag is pinned to the checked SHA before the
     # release is created, and verified afterwards.
     assert "group: release\n" in release

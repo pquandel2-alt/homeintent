@@ -38,6 +38,23 @@ Bibliothek geprüft. Ein Player-Dialog ist pro Benutzer und Conversation
 isoliert; „Spiel es im Wohnzimmer“ kann nur einen eindeutig passenden Player
 aus dem offenen Auftrag auswählen.
 
+Eine eindeutig gebundene Quelle kann seit 7.13.3 Teil eines Mehrbefehls sein,
+zum Beispiel „Spiel WDR 2 in der Küche und pausiere die Musik im
+Schlafzimmer“. HomeIntent materialisiert Quellenwahl, Player und Raum als eine
+Klausel und die Pause als zweite Klausel. Alle Klauseln werden geprüft, bevor
+der erste Service Call beginnt. Ein unbekannter oder mehrdeutiger Teil verwirft
+den ganzen Auftrag und hinterlässt keinen Plan, den ein späteres „Ja“ ausführen
+könnte.
+
+Fehlt bei einem einzelnen Quellenauftrag nur der Player, bleibt der typisierte
+Entwurf im vorhandenen benutzer- und conversationsgebundenen Dialogzustand:
+„Spiel WDR 2.“ – „In der Küche.“ ergänzt ausschließlich den Ort. „Nein,
+abbrechen“ verwirft den Entwurf. Ein unabhängiger neuer Befehl ersetzt ihn.
+„Doch im Schlafzimmer“ nach bereits gestarteter Wiedergabe ist eine neue,
+ausdrücklich benannte Wiedergabe am korrigierten Player und keine dynamische
+Gruppenbildung; die Antwort weist darauf hin, dass der erste Call bereits
+erfolgt ist.
+
 ## Persönliche Medienaliase
 
 Ein angemeldeter Benutzer kann einen eindeutigen aktuellen Bibliothekstreffer
@@ -100,13 +117,22 @@ HomeIntent-Pfad mit Fakes geprüft.
 Für einen manuellen E2E-Test: Home Assistant 2026.4.0 und die im Stable-CI-Job
 angegebene aktuelle Version jeweils mit einer kompatiblen Music-Assistant-
 Version installieren, zwei MA-Config-Entries mit je einem freigegebenen Player
-anlegen und einen lokalen Testprovider mit einer lokalen Audiodatei verwenden.
-Dann (1) denselben Sendernamen in beiden Instanzen bereitstellen, (2) den Alias
-ohne Player anlegen und die Rückfrage prüfen, (3) einen Player wählen und beim
-Search-Aufruf dessen `config_entry_id` protokollieren, (4) Vorschau bestätigen
-und die zweite identische Suche prüfen, (5) den Alias auf genau diesem Player
-abspielen und `media_id`, `media_type`, `enqueue` sowie hörbare Wiedergabe
-prüfen, (6) den anderen Instanzplayer wählen und den fail-closed Abbruch prüfen.
+anlegen und einen lokalen Testprovider mit lokalen Testmedien verwenden. Dann:
+
+1. Einen gespeicherten Radiosender eindeutig in der Küche starten und hörbare
+   Wiedergabe sowie den tatsächlich verwendeten Player protokollieren.
+2. Einen eindeutigen MA-Treffer suchen und abspielen; `config_entry_id`,
+   `media_id`, `media_type` und `enqueue` gegen den Treffer prüfen.
+3. Pause und Stop auf dem ausdrücklich genannten Player prüfen.
+4. „Spiel WDR 2 in der Küche und pausiere die Musik im Schlafzimmer“ prüfen:
+   erst Start in der Küche, dann nur Pause im Schlafzimmer, kein Wohnzimmer.
+5. Unbekannte und doppelt vorhandene Quellen, einen nicht verfügbaren Player
+   und einen Fehler im zweiten Service Call prüfen; die protokollierte Antwort
+   muss bereits ausgeführte, gestoppte und nicht verifizierte Schritte
+   auseinanderhalten und darf keinen Rollback behaupten.
+6. Player-Rückfrage, Ortskorrektur, Abbruch und unabhängigen Themenwechsel wie
+   oben beschrieben prüfen.
+
 Private URLs, Tokens und vollständige Serviceantworten gehören nicht ins Log.
 
 Explizite Queue-Angaben werden als geschlossene Planwerte behandelt:

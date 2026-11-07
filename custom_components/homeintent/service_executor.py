@@ -62,6 +62,7 @@ class ConfirmedPlanScope:
     risk: RiskLevel
     targets: frozenset[str]
     signature: tuple[object, ...] | None = None
+    mandatory_confirmation: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,20 @@ def _plan_signature(plan: ServiceCallPlan) -> tuple[object, ...]:
     )
 
 
+def _effect_signature(effects: object) -> tuple[object, ...]:
+    """Exact transitive services, targets and static parameters."""
+
+    return tuple(
+        (
+            getattr(effect, "domain", None),
+            getattr(effect, "service", None),
+            tuple(sorted(getattr(effect, "entity_ids", ()))),
+            _freeze_plan_value(getattr(effect, "data", {})),
+        )
+        for effect in getattr(effects, "effects", ())
+    )
+
+
 def confirmed_scope(
     hass: HomeAssistant,
     plans: Sequence[ServiceCallPlan],
@@ -138,7 +153,10 @@ def confirmed_scope(
         effective = _effective_targets(plan, effects)
         targets |= effective
         bindings.append(ConfirmedPlanScope(
-            decision.risk, effective, _plan_signature(plan)
+            decision.risk,
+            effective,
+            (_plan_signature(plan), _effect_signature(effects)),
+            decision.mandatory_confirmation,
         ))
     return ConfirmedScope(risk, frozenset(targets), tuple(bindings))
 
@@ -154,8 +172,13 @@ def _confirmation_scope_changed(
         return not any(
             effective_targets == item.targets and decision.risk <= item.risk
             and (
+                not decision.mandatory_confirmation
+                or item.mandatory_confirmation
+            )
+            and (
                 item.signature is None
-                or item.signature == _plan_signature(plan)
+                or item.signature
+                == (_plan_signature(plan), _effect_signature(decision.effects))
             )
             for item in scope.plans
         )

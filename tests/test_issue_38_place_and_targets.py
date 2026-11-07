@@ -161,7 +161,75 @@ def test_home_scope_does_not_consume_a_presence_predicate():
     assert resolved is not None
     assert resolved[1].kind is PlaceKind.HOUSE
     assert whole_home_phrase("wenn jemand zuhause ist", entities) is None
+    assert whole_home_phrase("Ich bin zu Hause, mach das Licht an.", entities) is None
+    assert whole_home_phrase("Wir sind zuhause.", entities) is None
+    assert whole_home_phrase("Wenn ich zu Hause bin, mach das Licht an.", entities) is None
+    assert lexicon.scan("ich bin zu hause mach das licht an".split()) == ()
+    assert lexicon.scan("wenn wir zuhause sind mach das licht an".split()) == ()
     assert whole_home_phrase("Wie viele Lichter sind zu Hause an?", entities) == "zu Hause"
+    assert whole_home_phrase("Öffne zu Hause das Garagentor.", entities) == "zu Hause"
+
+
+def test_whole_home_quantifier_keeps_the_spoken_cover_kind(engine):
+    entities = [
+        EntitySnapshot(
+            "cover.rollladen",
+            "Rollladen Wohnzimmer",
+            "cover",
+            "closed",
+            device_class="shutter",
+            capabilities=frozenset({"OPEN", "CLOSE", "POSITION"}),
+        ),
+        EntitySnapshot(
+            "cover.garagentor",
+            "Garagentor",
+            "cover",
+            "closed",
+            device_class="garage",
+            capabilities=frozenset({"OPEN", "CLOSE", "POSITION"}),
+        ),
+        EntitySnapshot(
+            "cover.markise",
+            "Markise",
+            "cover",
+            "closed",
+            device_class="awning",
+            capabilities=frozenset({"OPEN", "CLOSE", "POSITION"}),
+        ),
+        EntitySnapshot(
+            "cover.fenster",
+            "Terrassenfenster",
+            "cover",
+            "closed",
+            device_class="window",
+            capabilities=frozenset({"OPEN", "CLOSE", "POSITION"}),
+        ),
+        EntitySnapshot("binary_sensor.fenster", "Fensterkontakt", "binary_sensor", "off"),
+    ]
+
+    cases = {
+        "Öffne zu Hause alle Rollläden.": {"cover.rollladen"},
+        "Öffne zu Hause alle Garagentore.": {"cover.garagentor"},
+        "Öffne zu Hause alle Markisen.": {"cover.markise"},
+        "Öffne zu Hause alle Fenster.": {"cover.fenster"},
+    }
+    for sentence, expected in cases.items():
+        assert _ids(engine.match(sentence, entities)) == expected, sentence
+
+
+def test_whole_home_unknown_typed_target_never_falls_back_to_domain(engine):
+    entities = [
+        EntitySnapshot(
+            "cover.garagentor",
+            "Garagentor",
+            "cover",
+            "closed",
+            device_class="garage",
+            capabilities=frozenset({"OPEN", "CLOSE"}),
+        )
+    ]
+
+    assert engine.match("Öffne zu Hause alle Rollläden.", entities) is None
 
 
 def test_locative_cover_genus_is_never_widened_outside_the_office(engine):

@@ -54,6 +54,10 @@ class StructuralRelationKind(Enum):
     WHILE = auto()
     MODIFIES = auto()
     REPLACES = auto()
+    # Orthographic command boundary without an explicit conjunction
+    # (comma, semicolon or sentence boundary).  Consumers must still prove
+    # that both sides are predicates before treating it as a write chain.
+    SEQUENCE = auto()
 
 
 class NegationKind(Enum):
@@ -182,6 +186,7 @@ class _Connector:
 
 
 _CONNECTORS = tuple(sorted((
+    _Connector(("und", "dann"), StructuralRelationKind.THEN, ClauseKind.COORDINATE),
     _Connector(("nur", "wenn"), StructuralRelationKind.IF, ClauseKind.CONDITION),
     _Connector(("immer", "wenn"), StructuralRelationKind.IF, ClauseKind.CONDITION),
     _Connector(("jedes", "mal", "wenn"), StructuralRelationKind.IF, ClauseKind.CONDITION),
@@ -198,11 +203,19 @@ _CONNECTORS = tuple(sorted((
     _Connector(("ausgenommen",), StructuralRelationKind.EXCEPT, ClauseKind.EXCLUSION),
     _Connector(("nur",), StructuralRelationKind.EXCEPT, ClauseKind.EXCLUSION),
     _Connector(("aber",), StructuralRelationKind.AND, ClauseKind.COORDINATE),
+    _Connector(("sowie",), StructuralRelationKind.AND, ClauseKind.COORDINATE),
+    _Connector(("ausserdem",), StructuralRelationKind.AND, ClauseKind.COORDINATE),
+    _Connector(("zudem",), StructuralRelationKind.AND, ClauseKind.COORDINATE),
+    _Connector(("danach",), StructuralRelationKind.AFTER, ClauseKind.COORDINATE),
+    _Connector(("anschliessend",), StructuralRelationKind.AFTER, ClauseKind.COORDINATE),
+    _Connector(("dann",), StructuralRelationKind.THEN, ClauseKind.COORDINATE),
     _Connector(("oder",), StructuralRelationKind.OR, ClauseKind.COORDINATE),
     _Connector(("und",), StructuralRelationKind.AND, ClauseKind.COORDINATE),
 ), key=lambda item: len(item.words), reverse=True))
 
-_RELATIVE_WORDS = frozenset({"der", "die", "das", "welcher", "welche", "welches"})
+_RELATIVE_WORDS = frozenset({
+    "der", "die", "das", "welcher", "welche", "welches", "wo",
+})
 _REPAIR_WORDS = frozenset({"nein", "sondern", "stattdessen", "aeh"})
 _NEGATION_WORDS = frozenset({"nicht", "nie", "niemals", "keinesfalls"})
 _NEGATIVE_QUANTIFIERS = frozenset({"kein", "keine", "keinen", "keinem", "keiner", "keines", "niemand"})
@@ -218,13 +231,36 @@ _DATIVE_ARTICLES = frozenset({"dem", "einem", "einer"})
 _ACCUSATIVE_ARTICLES = frozenset({"den", "einen"})
 _PARTICLES = frozenset({"an", "aus", "auf", "zu", "ein", "hoch", "runter", "ab", "weiter"})
 _SAFE_FILLERS = frozenset({
-    "also", "aeh", "eh", "ach", "mal", "eben", "bitte", "halt"
+    "also", "aeh", "aehm", "eh", "ach", "mal", "eben", "bitte", "halt"
+})
+_SUBORDINATE_OPENERS = frozenset({
+    "dass", "ob", "weil", "obwohl", "damit", "indem", "sodass", "zumal"
 })
 _CONJUNCTIONS = frozenset(word for connector in _CONNECTORS for word in connector.words)
 
 
 def _word_positions(tokens: Sequence[StructuralToken]) -> tuple[int, ...]:
     return tuple(index for index, token in enumerate(tokens) if token.is_word)
+
+
+def _is_clause_separator(
+    tokens: Sequence[StructuralToken], index: int
+) -> bool:
+    """Keep punctuation inside identifiers/names out of clause structure."""
+
+    mark = tokens[index].canonical
+    if mark not in {",", ";", ".", "!", "?"}:
+        return False
+    if mark != "." or index == 0 or index + 1 >= len(tokens):
+        return True
+    previous = tokens[index - 1]
+    following = tokens[index + 1]
+    return not (
+        previous.end == tokens[index].start
+        and tokens[index].end == following.start
+        and (previous.is_word or previous.canonical[:1].isdigit())
+        and (following.is_word or following.canonical[:1].isdigit())
+    )
 
 
 _VALUE_WORDS = frozenset({"halb", "die", "ein", "einen", "eine", "null", "voll"})
@@ -519,24 +555,30 @@ def analyse_german_structure(
     clauses: list[StructuralClause] = []
     pending: tuple[_Connector, tuple[int, ...]] | None = None
     connector_for_clause: dict[str, tuple[_Connector, tuple[int, ...]]] = {}
+    punctuation_for_clause: dict[str, int] = {}
     for start, end, connector, positions in boundaries:
         if connector is not None:
             pending = (connector, positions)
             continue
         if start >= end:
             continue
-        # A comma closes a dependent German clause.  Commas immediately
-        # before a connector were already consumed by ``_trim``; remaining
-        # commas therefore delimit the action/main clause that follows.
+        # Punctuation closes a clause.  A later semantic reader decides
+        # whether the adjacent spans are two commands, a subordinate clause,
+        # an enumeration or ordinary prose; the structure keeps the boundary
+        # losslessly instead of flattening both predicates into one clause.
         segment_starts = [start]
         segment_ends: list[int] = []
+        separators: list[int] = []
         for index in range(start, end):
-            if tokens[index].canonical == ",":
+            if _is_clause_separator(tokens, index):
                 segment_ends.append(index)
                 segment_starts.append(index + 1)
+                separators.append(index)
         segment_ends.append(end)
         segment_connector = pending
-        for segment_start, segment_end in zip(segment_starts, segment_ends):
+        for segment_index, (segment_start, segment_end) in enumerate(
+            zip(segment_starts, segment_ends)
+        ):
             segment_start, segment_end = _trim(tokens, segment_start, segment_end)
             if segment_start >= segment_end:
                 continue
@@ -567,6 +609,8 @@ def analyse_german_structure(
             clauses.append(clause)
             if segment_connector is not None:
                 connector_for_clause[clause_id] = segment_connector
+            elif segment_index > 0:
+                punctuation_for_clause[clause_id] = separators[segment_index - 1]
             segment_connector = None
         pending = None
 
@@ -580,7 +624,24 @@ def analyse_german_structure(
             # In a leading subordinate clause (``Wenn X, tue Y``) the
             # connector relates that condition to the following main clause.
             target = next(
+                (
+                    item
+                    for item in clauses[1:]
+                    if (
+                        connection := connector_for_clause.get(item.clause_id)
+                    ) is not None
+                    and connection[0].relation is StructuralRelationKind.THEN
+                ),
+                None,
+            ) or next(
                 (item for item in clauses[1:] if item.kind is ClauseKind.MAIN),
+                None,
+            ) or next(
+                (
+                    item
+                    for item in clauses[1:]
+                    if item.kind is ClauseKind.COORDINATE
+                ),
                 None,
             )
             if target is None:
@@ -612,6 +673,46 @@ def analyse_german_structure(
             target_clause=target_clause,
             connector_start=tokens[positions[0]].start,
             connector_end=tokens[positions[-1]].end,
+        ))
+
+    # Punctuation gets its own relation only between independent top-level
+    # spans.  A comma between a condition/relative clause and its main clause
+    # remains represented by IF/MODIFIES and is never promoted to a command
+    # sequence here.
+    related_pairs = {
+        (relation.source_clause, relation.target_clause) for relation in relations
+    }
+    for index, clause in enumerate(clauses[1:], start=1):
+        separator = punctuation_for_clause.get(clause.clause_id)
+        previous = clauses[index - 1]
+        clause_words = tuple(
+            token_index
+            for token_index in range(clause.token_start, clause.token_end)
+            if tokens[token_index].is_word
+        )
+        previous_words = tuple(
+            token_index
+            for token_index in range(previous.token_start, previous.token_end)
+            if tokens[token_index].is_word
+        )
+        if (
+            separator is None
+            or previous.kind not in {ClauseKind.MAIN, ClauseKind.COORDINATE}
+            or clause.kind not in {ClauseKind.MAIN, ClauseKind.COORDINATE}
+            or (previous.clause_id, clause.clause_id) in related_pairs
+            or not clause_words
+            or not previous_words
+            or tokens[clause_words[0]].canonical in _SUBORDINATE_OPENERS
+            or all(token_features[item].safe_filler for item in clause_words)
+            or all(token_features[item].safe_filler for item in previous_words)
+        ):
+            continue
+        relations.append(StructuralRelation(
+            kind=StructuralRelationKind.SEQUENCE,
+            source_clause=previous.clause_id,
+            target_clause=clause.clause_id,
+            connector_start=tokens[separator].start,
+            connector_end=tokens[separator].end,
         ))
 
     negations: list[NegationScope] = []

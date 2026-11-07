@@ -1056,7 +1056,8 @@ class NluConversationEntity(
         reading = await self._insights.async_handle_reading(
             user_input, response, entities, active_dialog, rerun=lambda again: self._async_handle_message_inner(
                 again, chat_log), open_task=active_task is not None,
-            area_id=conversation_area.area_id if conversation_area is not None else None)
+            area_id=conversation_area.area_id if conversation_area is not None else None,
+            language_document=language_document)
         if reading is not None:  # summaries, consumption, status questions (7.9.2 B)
             return reading
         if active_dialog is None:

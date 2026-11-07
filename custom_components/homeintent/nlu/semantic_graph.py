@@ -248,6 +248,7 @@ _RELATION_KIND = {
     StructuralRelationKind.WHILE: SemanticEdgeKind.WHILE,
     StructuralRelationKind.MODIFIES: SemanticEdgeKind.MODIFIES,
     StructuralRelationKind.REPLACES: SemanticEdgeKind.REPLACES,
+    StructuralRelationKind.SEQUENCE: SemanticEdgeKind.THEN,
 }
 
 

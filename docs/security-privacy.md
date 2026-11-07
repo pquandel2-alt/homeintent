@@ -54,20 +54,26 @@ nie zurückgestellt. Ein angenommener Service Call allein gilt nicht als
 Erfolg. Garagentore und Tore sind auch beim Setzen einer Position
 `CRITICAL`.
 
-Koordinierte unmittelbare Schreibbefehle (7.13.2) passieren vor jeder
+Koordinierte unmittelbare Schreibbefehle (7.13.2/7.13.3) passieren vor jeder
 Vorschau eine typisierte Klauselbindung. Operation, Quelle/Wert, Ziel und Ort
 einer Klausel dürfen nicht aus einer anderen Klausel ergänzt werden. Ein
-unbekannter Rest oder eine nicht sicher materialisierbare Quellenwahl verwirft
-den vollständigen Turn. Ein ausdrücklich genannter Ort ist eine harte
-Zielgrenze. Der Bestätigungsnachweis bindet Domain, Service, exakte Zielmenge
-und sämtliche Plandaten; Änderungen an Quelle, Wert, Aktion oder Zielmenge
-führen nach „Ja“ zu keinem Service Call.
+unbekannter Rest oder eine nicht eindeutig materialisierbare Quellenwahl
+verwirft den vollständigen Turn. Exakte Medienquellen können mit anderen
+Klauseln kombiniert werden, werden aber erst nach der gemeinsamen Vorprüfung
+ausgeführt. Ein ausdrücklich genannter Ort ist eine harte Zielgrenze. Der
+Bestätigungsnachweis bindet Domain, Service, exakte Zielmenge und sämtliche
+direkten sowie statisch bestimmten transitiven Plandaten; Änderungen an
+Quelle, Wert, Aktion, effektiver Aktion oder Zielmenge führen nach „Ja“ zu
+keinem Service Call.
 
 Für bewegliche Cover werden Risikoklasse und partielle Batch-Eignung getrennt
 bewertet. Nur `shutter`, `blind`, `shade` und `curtain` gelten als unabhängig.
 `door` und `window` sind mindestens `HIGH`; `garage` und `gate` bleiben
 `CRITICAL`. `awning`, `damper`, fehlende oder unbekannte Klassen sind kein
-Nachweis für Harmlosigkeit: Sie laufen atomar und erst nach Bestätigung.
+Nachweis für Harmlosigkeit: Sie laufen atomar und erst nach Bestätigung. Diese
+Pflicht ist eine eigene Policy-Eigenschaft und kann durch
+`confirmation_level: critical` nicht entfernt werden. Statisch erkennbare
+Bewegungen hinter Gruppen, Szenen und Skripten erben dieselbe Pflicht.
 
 Offene Automations- und MA-Instanzdialoge sind flüchtiger RAM-Zustand. Ihr
 Schlüssel bindet Conversation-ID, authentifizierten Benutzer sowie vorhandene

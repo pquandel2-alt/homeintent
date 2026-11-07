@@ -6,7 +6,36 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 30. Oktober 2026 (7.13.2 RC)
+Stand: 7. November 2026 (7.13.3 RC)
+
+## Release Candidate 7.13.3
+
+- [x] gemeinsame Clause-Coverage für additive, zeitliche und orthografische
+  Befehlsgrenzen; unvollständige Bindung blockiert Goal-Router, Vorschau,
+  Bestätigung und Write
+- [x] exakte Quellenoperationen in Mehrplänen klausellokal materialisiert;
+  unbekannte/mehrdeutige Quelle verwirft den gesamten Turn und jeden Restplan
+- [x] Cover-Pflichtbestätigung als Policy-Eigenschaft unabhängig von
+  `confirmation_level`, einschließlich statisch bestimmbarer Effekte hinter
+  Gruppen, Szenen und Skripten
+- [x] Bestätigungsscope bindet äußere und transitive Dienste, Ziele und
+  statische Parameter; dynamische Cover-Bewegungswerte fail-closed
+- [x] persönliche Anwesenheit von Haus-Scope getrennt; Hausquantor bleibt auf
+  den gesprochenen Gerätegenus beschränkt
+- [x] natürliche Quellenfortsetzung, Abbruch, Themenwechsel und transparente
+  Ortskorrektur im vorhandenen Dialogzustand
+- [x] Clause-, Cover-, Issue-#38- und Mediendialogsuiten in den speziellen
+  Nightly-Sicherheitsjob aufgenommen; größeres Profil und protokollierter Seed
+- [x] HACS-Status korrigiert: PR #10191 am 4. November 2026 genehmigt und
+  gemergt
+- [x] Pyflakes ohne Befund; Pyright 1.1.411 mit 0 Fehlern und 0 Warnungen
+- [x] vollständige lokale Suite auf dem letzten Arbeitsstand: 10.555
+  bestanden, 12 übersprungen; Korpusbaseline 4.310/4.310 unverändert und
+  Abschlussbenchmarks innerhalb der unveränderten Gates
+- [ ] CI und Pflicht-Nightly für exakt denselben finalen Commit – vor
+  Veröffentlichung zwingend offen
+- [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – nicht geprüft
+  und nicht behauptet
 
 ## Release Candidate 7.13.2
 
