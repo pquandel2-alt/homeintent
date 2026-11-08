@@ -188,7 +188,7 @@ _JUDGED_SERVICES = frozenset(
     | {"turn_on", "turn_off", "set_cover_position", "set_valve_position", "set_temperature",
        "set_hvac_mode", "volume_set", "volume_mute", "media_stop",
        # 7.9.3 B3: media commands wait for their effect, too.
-       "select_source", "volume_up", "volume_down"}
+       "select_source", "play_media", "volume_up", "volume_down"}
 )
 
 
@@ -275,6 +275,17 @@ def judge(expectation: EffectExpectation, state: str | None, attributes: Mapping
         return EffectVerdict.REACHED if attrs.get("is_volume_muted") is wanted_mute else EffectVerdict.PENDING
     if service == "media_stop":
         return EffectVerdict.PENDING if state == "playing" else EffectVerdict.REACHED
+    if service == "play_media":
+        # A currently playing track cannot prove a change to a future queue.
+        if data.get("enqueue") not in (None, "replace"):
+            return EffectVerdict.PENDING
+        wanted = data.get("media_id", data.get("media_content_id"))
+        return (
+            EffectVerdict.REACHED
+            if state == "playing" and isinstance(wanted, str)
+            and attrs.get("media_content_id") == wanted
+            else EffectVerdict.PENDING
+        )
     if service == "select_source":
         wanted_source = data.get("source")
         if not isinstance(wanted_source, str):

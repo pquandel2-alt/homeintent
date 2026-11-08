@@ -286,7 +286,8 @@ def build_world(
 ) -> World:
     by_id = {item.entity_id: item for item in states}
     sink = ServiceSink(by_id)
-    hass = SimpleNamespace(services=sink)
+    # Share the same current observations with the executor and the verifier.
+    hass = SimpleNamespace(services=sink, states=SimpleNamespace(get=by_id.get))
     ports = FakePorts(by_id, **ports_kwargs)
     policy = replace(LearningPolicy(
         learning_mode=LearningMode.ASK, predictive_models_enabled=True,

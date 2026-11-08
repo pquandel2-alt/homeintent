@@ -86,6 +86,8 @@ jobs:
           tests/test_safety_properties.py
           tests/test_media_sentence_coverage_7131.py
           tests/test_clause_binding_7132.py
+          tests/test_review_regressions_7133.py
+          tests/test_reliability_semantics.py
           tests/test_cover_safety_7132.py
           tests/test_issue_38_place_and_targets.py
           tests/test_media_793.py

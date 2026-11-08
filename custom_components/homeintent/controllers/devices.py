@@ -29,6 +29,7 @@ from ..audit_log import AuditTrail
 from ..const import NOT_UNDERSTOOD_TEXT
 from ..monitoring_management import names_managed_object
 from ..controllers.replies import (
+    media_execution_text,
     confirmation_question,
     execution_failure_text,
     with_effect_summary,
@@ -59,14 +60,20 @@ from ..phonetic_correction import phonetic_suggestions, PhoneticSuggestion
 from ..security_control import conversation_user_id, user_is_admin
 from ..semantic_dialog import continue_semantic_dialog, start_semantic_dialog
 from ..service_call import QUERY_INTENTS, ServiceCallPlan
-from ..service_executor import async_execute_service_plan, confirmed_scope
+from ..service_executor import (
+    ExecutionResult, ConfirmedScope, async_execute_service_plan, async_preflight_service_plan, confirmed_scope,
+)
 from ..script_execution_observer import (
     ScriptExecutionStatus,
     script_execution_speech,
 )
 from ..batch_execution import batch_execution_speech
-from ..undo import build_undo_plan, restrict_undo_plan, UndoPlan
+from ..undo import (
+    build_undo_plan, restrict_undo_plan, UndoPlan,
+    bind_undo_to_observed_states, undo_matches_observed_states,
+)
 from ..world_model import WorldModel
+from ..plan_origin import PlanOrigin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -179,6 +186,8 @@ class DeviceController:
         response: intent.IntentResponse,
         result: MatchResult,
         entities: list[EntitySnapshot],
+        *,
+        on_execution: Callable[[ExecutionResult], None] | None = None,
     ) -> conversation.ConversationResult:
         """Authorize, execute and remember one regular engine match."""
         if result.plan is not None and (
@@ -218,6 +227,8 @@ class DeviceController:
                 binding_confirmed=result.binding_confirmed,
             )
             if policy.outcome is PolicyOutcome.DENY:
+                if on_execution is not None:
+                    on_execution(ExecutionResult(False, policy, policy.reason))
                 self._context_store.clear(user_input.conversation_id)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
@@ -355,6 +366,8 @@ class DeviceController:
                 origin=result.origin,
                 binding_confirmed=result.binding_confirmed,
             )
+            if on_execution is not None:
+                on_execution(execution)
             if not execution.executed:
                 self._context_store.clear(user_input.conversation_id)
                 _LOGGER.error(
@@ -380,9 +393,10 @@ class DeviceController:
                         user_input.conversation_id,
                         replace(
                             stored,
-                            pending_undo=restrict_undo_plan(
-                                stored.pending_undo,
-                                execution.batch_result.succeeded_entity_ids,
+                            pending_undo=bind_undo_to_observed_states(
+                                restrict_undo_plan(stored.pending_undo,
+                                    execution.batch_result.succeeded_entity_ids),
+                                self.hass.states.get,
                             ),
                         ),
                     )
@@ -462,25 +476,20 @@ class DeviceController:
         for sub_result in result.commands:
             if sub_result.plan is None:
                 continue
-            policy = evaluate_service_plan(
-                sub_result.plan,
-                entities,
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=actor_id,
-                effects=build_plan_effects(self.hass, sub_result.plan),
-                origin=result.origin,
-                binding_confirmed=result.binding_confirmed,
+            preflight = await async_preflight_service_plan(
+                self.hass, sub_result.plan, entities, self.entry.options,
+                is_admin=is_admin, user_id=actor_id, check_confirmation=False,
+                origin=result.origin, binding_confirmed=result.binding_confirmed,
             )
-            if policy.outcome is PolicyOutcome.DENY:
+            policy = preflight.decision
+            if preflight.error is not None:
                 self._context_store.clear(user_input.conversation_id)
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    policy.reason or "Mindestens eine Aktion ist nicht erlaubt.",
+                    "Vorprüfung fehlgeschlagen; nichts ausgeführt. " + preflight.error,
                 )
                 return conversation.ConversationResult(
-                    response=response,
-                    conversation_id=user_input.conversation_id,
+                    response=response, conversation_id=user_input.conversation_id,
                 )
             if (
                 policy.outcome is PolicyOutcome.CONFIRM
@@ -527,6 +536,8 @@ class DeviceController:
                             actor_id,
                             None,
                             tuple(plans[1:]),
+                            action_texts=tuple(item.response_text for item in result.commands
+                                               if item.plan is not None),
                             origin=result.origin,
                             binding_confirmed=result.binding_confirmed,
                             binding_offer=(
@@ -543,90 +554,110 @@ class DeviceController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
+        return await self._async_execute_command_sequence(
+            user_input, response, result.commands, entities,
+            is_admin=is_admin, actor_id=actor_id, origin=result.origin,
+            binding_confirmed=result.binding_confirmed,
+        )
+
+    async def _async_execute_command_sequence(
+        self,
+        user_input: conversation.ConversationInput,
+        response: intent.IntentResponse,
+        commands: Sequence[MatchResult],
+        entities: list[EntitySnapshot],
+        *,
+        is_admin: bool,
+        actor_id: str | None,
+        origin: PlanOrigin,
+        binding_confirmed: bool = False,
+        confirmed: bool = False,
+        scope: ConfirmedScope | None = None,
+        binding_offer: tuple[str, str] | None = None,
+    ) -> conversation.ConversationResult:
+        """The same preflight, fail-fast and result reduction before/after Yes."""
         self._context_store.clear(user_input.conversation_id)
+        for command in commands:
+            if command.plan is None:
+                continue
+            checked = await async_preflight_service_plan(
+                self.hass, command.plan, entities, self.entry.options,
+                is_admin=is_admin, user_id=actor_id, confirmed=confirmed,
+                origin=origin, binding_confirmed=binding_confirmed, scope=scope,
+            )
+            if checked.error is not None:
+                response.async_set_error(
+                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                    "Vorprüfung fehlgeschlagen; nichts ausgeführt. " + checked.error,
+                )
+                return conversation.ConversationResult(response=response,
+                    conversation_id=user_input.conversation_id)
         response_parts: list[str] = []
-        multi_undo_parts: list[UndoPlan] = []
-        multi_undo_supported = True
+        undo_parts: list[UndoPlan] = []
+        undo_supported = True
         names = {entity.entity_id: entity.friendly_name for entity in entities}
 
         def plan_names(plan: ServiceCallPlan) -> str:
             ids = (plan.entity_id,) if isinstance(plan.entity_id, str) else tuple(plan.entity_id)
             return " und ".join(names.get(entity_id, entity_id) for entity_id in ids)
 
-        for index, sub_result in enumerate(result.commands):
-            if sub_result.plan is None:
-                response_parts.append(sub_result.response_text)
+        for index, command in enumerate(commands):
+            plan = command.plan
+            if plan is None:
+                response_parts.append(command.response_text)
                 continue
-            inverse = build_undo_plan(
-                sub_result.plan,
-                entities,
-                requested_by_user_id=actor_id,
-            )
-            if inverse is None:
-                multi_undo_supported = False
-            else:
-                multi_undo_parts.append(inverse)
+            entities = self._entities()
+            inverse = build_undo_plan(plan, entities, requested_by_user_id=actor_id)
             execution = await async_execute_service_plan(
-                self.hass,
-                sub_result.plan,
-                entities,
-                self.entry.options,
-                is_admin=is_admin,
-                user_id=actor_id,
-                confirmed=False,
-                audit_trail=self._audit_trail,
-                audit_actor_id=actor_id,
-                effect_monitor=self._runtime.effect_monitor,
-                origin=result.origin,
+                self.hass, plan, entities, self.entry.options,
+                is_admin=is_admin, user_id=actor_id, confirmed=confirmed,
+                audit_trail=self._audit_trail, audit_actor_id=actor_id,
+                effect_monitor=self._runtime.effect_monitor, origin=origin,
+                binding_confirmed=binding_confirmed, scope=scope,
             )
-            if not execution.executed:
-                error = execution.error or "Die Aktion konnte nicht ausgeführt werden."
-                _LOGGER.error(
-                    "Service call %s.%s on %s failed: %s",
-                    sub_result.plan.domain,
-                    sub_result.plan.service,
-                    sub_result.plan.entity_id,
-                    error,
-                )
-                # A partial result names what was not done (7.9.1 Teil B).
-                skipped = [
-                    plan_names(later.plan) for later in result.commands[index + 1:]
-                    if later.plan is not None
-                ]
-                failed = f"Nicht ausgeführt: {plan_names(sub_result.plan)} ({error})."
+            if execution.batch_result is not None:
+                spoken = batch_execution_speech(execution.batch_result)
+                inverse = restrict_undo_plan(inverse, execution.batch_result.succeeded_entity_ids)
+            elif not execution.executed:
+                spoken = f"Nicht ausgeführt: {plan_names(plan)}. " + execution_failure_text(execution)
+            elif execution.script_outcome is not None:
+                spoken = script_execution_speech(plan_names(plan), execution.script_outcome)
+            elif execution.failed:
+                spoken = (f"Aufruf für {plan_names(plan)} angenommen, aber das Gerät meldet "
+                          "einen abweichenden oder nicht verfügbaren Zustand.")
+                inverse = None
+            elif execution.effect is not None and execution.effect.confirmed:
+                spoken = media_execution_text(plan, execution) or with_effect_summary(command.response_text, execution)
+            else:
+                spoken = f"Aufruf für {plan_names(plan)} angenommen; Wirkung noch nicht bestätigt."
+                inverse = None
+            response_parts.append(spoken)
+            if execution.failed:
+                skipped = [plan_names(later.plan) for later in commands[index + 1:]
+                           if later.plan is not None]
                 if skipped:
-                    failed += f" Danach habe ich auch {' und '.join(skipped)} nicht mehr geschaltet."
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    " ".join([*response_parts, failed])
-                    if response_parts else f"Fehler beim Ausführen: {error} {failed}",
-                )
-                return conversation.ConversationResult(
-                    response=response, conversation_id=user_input.conversation_id
-                )
-            response_parts.append(sub_result.response_text)
-        if multi_undo_supported and multi_undo_parts:
-            self._context_store.set(
-                user_input.conversation_id,
-                ConversationContext(
-                    last_command=None,
-                    last_entities=(),
-                    last_area=None,
-                    pending_clarification=None,
-                    pending_undo=UndoPlan(
-                        tuple(
-                            plan
-                            for undo in reversed(multi_undo_parts)
-                            for plan in undo.plans
-                        ),
-                        actor_id,
-                    ),
-                ),
-            )
+                    response_parts.append("Danach nicht mehr ausgeführt: " + " und ".join(skipped) + ".")
+                # No speculative inverse for partially applied or unobserved effects.
+                # Previously executed hardware calls are not rolled back.
+                response.async_set_error(intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                    " ".join(response_parts))
+                return conversation.ConversationResult(response=response,
+                    conversation_id=user_input.conversation_id)
+            if inverse is None:
+                undo_supported = False
+            else:
+                undo_parts.append(inverse)
+        if undo_supported and undo_parts:
+            self._context_store.set(user_input.conversation_id, ConversationContext(
+                last_command=None, last_entities=(), last_area=None, pending_clarification=None,
+                pending_undo=UndoPlan(tuple(plan for undo in reversed(undo_parts)
+                                           for plan in undo.plans), actor_id),
+            ))
+        if binding_offer is not None:
+            response_parts.append(await self._async_store_routine_binding(*binding_offer, actor_id))
         response.async_set_speech(" ".join(response_parts))
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
-        )
+        return conversation.ConversationResult(response=response,
+            conversation_id=user_input.conversation_id)
 
     async def async_handle_device_control_result(
         self,
@@ -728,10 +759,21 @@ class DeviceController:
                 )
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Ausführen: {error}",
+                    batch_execution_speech(execution.batch_result)
+                    if execution.batch_result is not None else f"Fehler beim Ausführen: {error}",
                 )
             else:
-                response.async_set_speech(device_control.response_text)
+                undo = build_undo_plan(device_control.plan, resolved_entities,
+                                       requested_by_user_id=actor_id)
+                spoken = device_control.response_text
+                if execution.batch_result is not None:
+                    if not execution.batch_result.fully_successful:
+                        spoken = batch_execution_speech(execution.batch_result)
+                    undo = bind_undo_to_observed_states(
+                        restrict_undo_plan(undo, execution.batch_result.succeeded_entity_ids),
+                        self.hass.states.get,
+                    )
+                response.async_set_speech(spoken)
                 if resolved_entities:
                     controlled = resolved_entities[0]
                     self._context_store.set(
@@ -750,11 +792,7 @@ class DeviceController:
                                 ),
                                 source_intent="DeviceControl:" + device_control.plan.service,
                             ),
-                            pending_undo=build_undo_plan(
-                                device_control.plan,
-                                resolved_entities,
-                                requested_by_user_id=actor_id,
-                            ),
+                            pending_undo=undo,
                         ),
                     )
         return conversation.ConversationResult(
@@ -787,10 +825,27 @@ class DeviceController:
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+        previous = self._context_store.get(user_input.conversation_id)
+        media_memory = previous.memory if previous is not None else None
         self._context_store.clear(user_input.conversation_id)
         if reply is ConfirmationReply.NO:
             response.async_set_speech("Abgebrochen. Es wurde nichts ausgeführt.")
         else:
+            if confirmation.additional_plans:
+                plans = (confirmation.plan, *confirmation.additional_plans)
+                commands = tuple(MatchResult(plan=plan,
+                    response_text=(confirmation.action_texts[index]
+                        if index < len(confirmation.action_texts)
+                        else "Aktion ausgeführt."))
+                    for index, plan in enumerate(plans))
+                return await self._async_execute_command_sequence(
+                    user_input, response, commands, entities,
+                    is_admin=await user_is_admin(self.hass, user_input),
+                    actor_id=current_user_id, origin=confirmation.origin,
+                    binding_confirmed=confirmation.binding_confirmed,
+                    confirmed=True, scope=confirmation.scope,
+                    binding_offer=confirmation.binding_offer,
+                )
             undo = build_undo_plan(
                 confirmation.plan,
                 entities,
@@ -812,24 +867,16 @@ class DeviceController:
                 binding_confirmed=confirmation.binding_confirmed,
                 scope=confirmation.scope,
             )
-            for additional in confirmation.additional_plans:
-                if not execution.executed:
-                    break
-                execution = await async_execute_service_plan(
-                    self.hass,
-                    additional,
-                    entities,
-                    self.entry.options,
-                    is_admin=is_admin,
-                    user_id=current_user_id,
-                    confirmed=True,
-                    audit_trail=self._audit_trail,
-                    audit_actor_id=current_user_id,
-                    effect_monitor=self._runtime.effect_monitor,
-                    origin=confirmation.origin,
-                    scope=confirmation.scope,
+            if execution.batch_result is not None:
+                undo = bind_undo_to_observed_states(
+                    restrict_undo_plan(undo, execution.batch_result.succeeded_entity_ids),
+                    self.hass.states.get,
                 )
-            if not execution.executed:
+            if not execution.executed or (
+                execution.batch_result is not None and not execution.batch_result.fully_successful
+            ) or (
+                media_memory is not None and execution.failed
+            ):
                 _LOGGER.error(
                     "Confirmed service call %s.%s on %s failed: %s",
                     confirmation.plan.domain,
@@ -839,10 +886,16 @@ class DeviceController:
                 )
                 response.async_set_error(
                     intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    execution_failure_text(execution),
+                    batch_execution_speech(execution.batch_result)
+                    if execution.batch_result is not None else (
+                        media_execution_text(confirmation.plan, execution)
+                        or execution_failure_text(execution)
+                    ),
                 )
             else:
                 spoken = with_effect_summary(confirmation.success_text, execution)
+                if media_memory is not None and media_memory.media_request is not None:
+                    spoken = media_execution_text(confirmation.plan, execution) or spoken
                 if execution.script_outcome is not None:
                     target_ids = (
                         (confirmation.plan.entity_id,)
@@ -888,6 +941,14 @@ class DeviceController:
                             pending_undo=undo,
                         ),
                     )
+            if media_memory is not None and media_memory.media_request is not None:
+                current = self._context_store.get(user_input.conversation_id)
+                if current is None:
+                    current = ConversationContext(last_command=None, last_entities=(),
+                        last_area=None, pending_clarification=None)
+                self._context_store.set(user_input.conversation_id, replace(current,
+                    memory=replace(media_memory, media_execution=execution,
+                                   media_pending_confirmation=False)))
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
         )
@@ -1182,6 +1243,12 @@ class DeviceController:
                 intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
                 "Diese Rücknahme gehört zu einem anderen Benutzer.",
             )
+        elif not undo_matches_observed_states(undo, self.hass.states.get):
+            self._context_store.clear(user_input.conversation_id)
+            response.async_set_speech(
+                "Die Geräte wurden seit der Aktion verändert. "
+                "Ich habe deshalb nichts zurückgenommen."
+            )
         else:
             is_admin = await user_is_admin(self.hass, user_input)
             denial = next(
@@ -1214,6 +1281,10 @@ class DeviceController:
             self._context_store.clear(user_input.conversation_id)
             try:
                 for plan in undo.plans:
+                    target_ids = frozenset((plan.entity_id,) if isinstance(plan.entity_id, str) else plan.entity_id)
+                    guarded = restrict_undo_plan(undo, target_ids)
+                    if guarded is not None and not undo_matches_observed_states(guarded, self.hass.states.get):
+                        raise RuntimeError("Die Geräte wurden seit der Aktion verändert")
                     execution = await async_execute_service_plan(
                         self.hass,
                         plan,

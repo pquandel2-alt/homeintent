@@ -780,6 +780,21 @@ class NluConversationEntity(
             else None
         )
         if opening_decision is not None and opening_decision.kind is DecisionKind.SUPERSEDE_DIALOG:
+            if (
+                active_dialog is not None
+                and active_dialog.kind is PendingDialogKind.SERVICE_CONFIRMATION
+                and self._insights._media_location_correction(user_input, entities) is not None
+            ):
+                # Amend the existing media intent, retaining its execution history
+                # and confirmation boundary. The same reader checks every word.
+                self._runtime_data.dialog_manager.synchronize_context_task(
+                    user_input.conversation_id, kind=None
+                )
+                corrected_media = await self._insights._async_media(
+                    user_input, response, entities, language_document
+                )
+                if corrected_media is not None:
+                    return corrected_media
             if opening_decision.reason == "new_question_drops_question":
                 # Answer the question, say that the open one is gone (7.8 B7).
                 self._append_to_turn(

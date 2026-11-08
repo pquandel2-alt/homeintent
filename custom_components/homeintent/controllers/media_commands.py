@@ -14,6 +14,7 @@ from homeassistant.components import conversation
 from homeassistant.helpers import intent
 
 from ..entities import EntitySnapshot, normalize_for_compare
+from ..arbitration_candidates import complete_command_candidate
 from ..media import PendingMediaCommand, claims_other_target, parse_media_request, resolve_media
 from ..media_coverage import analyse_media_coverage
 from ..music_aliases import (
@@ -26,6 +27,7 @@ from ..nlu.automation_confirmation import ConfirmationReply, classify_confirmati
 from ..nlu.clause_binding import analyse_clause_bindings
 from ..nlu.composition import independent_predicate_clauses
 from ..nlu.language_frontend import LanguageDocument, analyse_language
+from ..nlu.semantic_utterance import analyse_utterance
 from ..security_control import conversation_user_id
 
 
@@ -65,6 +67,27 @@ def _media_selection_matches(text: str, entity: EntitySnapshot) -> bool:
     return any(set(words_of(name)) <= words for name in place_names if name)
 
 
+def media_reading_complete(text: str, request: Any, entities: list[EntitySnapshot],
+                           *, selection: bool = False,
+                           selection_words: frozenset[str] = frozenset()) -> bool:
+    """Bind all amendment words before choosing a target or changing a draft.
+
+    An elliptical selection has no free-text source slot: an unknown suffix
+    cannot become part of the previously resolved source name.
+    """
+    document = analyse_language(text, entities)
+    reading = replace(request, source_words=()) if selection else request
+    coverage = analyse_media_coverage(text, entities, reading)
+    residue = set(words_of(" ".join(coverage.residue)))
+    return (
+        not document.temporal
+        and (selection or analyse_utterance(text).allows_bounded_parser_action)
+        and not coverage.coordinations
+        and not coverage.conflicts
+        and not (residue - selection_words)
+    )
+
+
 class MediaCommandSupport:
     """Cohesive media preflight and continuation methods for Insights."""
 
@@ -90,6 +113,7 @@ class MediaCommandSupport:
         request = getattr(memory, "media_request", None)
         if (
             request is None
+            or getattr(memory, "media_owner", None) != conversation_user_id(user_input)
             or getattr(request, "op", None) != "play"
             or not getattr(request, "source_words", ())
         ):
@@ -246,6 +270,13 @@ class MediaCommandSupport:
                     response,
                     "Diese Rückfrage gehört zu einem anderen Benutzer.",
                 )
+            if not media_reading_complete(
+                user_input.text, parse_media_request("Spiel Musik"), entities,
+                selection=True,
+            ):
+                self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+                return self._result(user_input, response,
+                    "Die gesamte Auswahl ist nicht eindeutig verstanden. Der Entwurf wurde verworfen.")
             resolution = select_music_assistant_instance(
                 user_input.text, pending, entities
             )
@@ -306,6 +337,30 @@ class MediaCommandSupport:
                     entities,
                     analyse_language(user_input.text, entities),
                 )
+            if fresh_request is None:
+                understood = self.devices._engine.understand(
+                    user_input.text, entities, self.devices._world_model
+                )
+                if complete_command_candidate(understood.payload) is not None:
+                    self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+                    return await self._async_rerun(user_input)
+        if isinstance(pending, (PendingMusicAssistant, PendingMediaCommand)):
+            selection_words = frozenset({"es"})
+            if isinstance(pending, PendingMusicAssistant) and pending.stage == "media_type":
+                selection_words |= frozenset(
+                    word for kind in pending.media_types
+                    for word in _MEDIA_TYPE_SELECTIONS.get(kind, ())
+                )
+            if not media_reading_complete(
+                user_input.text, pending.request, entities, selection=True,
+                selection_words=selection_words,
+            ):
+                self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
+                self.devices._context_store.clear(user_input.conversation_id)
+                return self._result(user_input, response,
+                    "Die gesamte Ergänzung kann ich nicht sicher als sofortigen Medienauftrag "
+                    "verstehen. Ausschlüsse, Zeitbedingungen oder weitere Angaben benötigen "
+                    "einen vollständigen neuen Auftrag. Der offene Entwurf wurde verworfen.")
         if isinstance(pending, PendingMediaCommand):
             candidates = [
                 entity

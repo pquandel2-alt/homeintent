@@ -183,7 +183,9 @@ class Runner:
         # With a tmp path the test house has both phones as push targets and
         # each user bound to their own phone, like the live test bed.
         self._tmp = tempfile.TemporaryDirectory()
-        self.house = HouseConversation(pytest.MonkeyPatch(), tmp_path=Path(self._tmp.name))
+        self.house = HouseConversation(
+            pytest.MonkeyPatch(), tmp_path=Path(self._tmp.name), simulate_device_effects=True
+        )
         self.counter = 0
 
     def run_case(self, case: Case) -> list[Observed]:

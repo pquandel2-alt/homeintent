@@ -87,6 +87,8 @@ def test_missing_value_is_requested_and_completed(monkeypatch, tmp_path):
 
 def test_some_devices_requires_explicit_names(monkeypatch, tmp_path):
     entity = _entity(monkeypatch, tmp_path)
+    from test_conversation_integration import _report_requested_effects
+    _report_requested_effects(entity)
     question = _run(entity, "Mach ein paar Lichter an")
     assert "Welche Geräte" in question.response.speech
     entity.hass.services.async_call.assert_not_awaited()

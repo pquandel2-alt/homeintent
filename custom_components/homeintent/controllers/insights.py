@@ -109,7 +109,8 @@ from ..energy_query import (
     samples_reader,
 )
 from ..entities import EntitySnapshot, normalize_for_compare
-from .media_commands import MediaCommandSupport, words_of as _words_of
+from .media_commands import media_reading_complete, MediaCommandSupport, words_of as _words_of
+from .replies import media_execution_text
 from ..weather import (
     WeatherClause,
     WeatherGuard,
@@ -475,22 +476,33 @@ class InsightsController(MediaCommandSupport):
         document = language_document or analyse_language(user_input.text, entities)
         correction = self._media_location_correction(user_input, entities)
         if correction is not None:
+            if not media_reading_complete(correction.text, correction, entities):
+                self.devices._context_store.clear(user_input.conversation_id)
+                return self._result(user_input, response,
+                    "Die vollständige Korrektur ist kein sicher ausführbarer sofortiger "
+                    "Medienauftrag. Ich habe nichts gestartet und den Entwurf verworfen.")
+            previous = self.devices._context_store.get(user_input.conversation_id)
+            memory = getattr(previous, "memory", None)
+            execution = getattr(memory, "media_execution", None)
+            if execution is None:
+                history = "Die vorherige Wiedergabe wurde noch nicht ausgeführt. "
+            elif not execution.executed:
+                history = (
+                    "Der vorherige Wiedergabeversuch ist fehlgeschlagen. "
+                    if execution.execution_id is not None
+                    else "Der vorherige Medienauftrag wurde vor der Ausführung abgelehnt. "
+                )
+            elif execution.failed:
+                history = "Nach dem vorherigen Medienaufruf wurde ein Fehler beobachtet. "
+            elif execution.effect is not None and execution.effect.confirmed:
+                history = "Die Wirkung des vorherigen Medienaufrufs wurde bestätigt. "
+            else:
+                history = "Der vorherige Aufruf wurde angenommen. Ob die Wiedergabe bereits gestartet ist, ist noch nicht bestätigt. "
             resolved = await self._async_resolve_media_request(
                 replace(user_input, text=correction.text), correction, entities
             )
-            resolved = replace(
-                resolved,
-                spoken=(
-                    "Die erste Wiedergabe war bereits gestartet. "
-                    + resolved.spoken
-                ),
-            )
             return await self._async_finish_media(
-                user_input,
-                response,
-                resolved,
-                entities,
-                request=correction,
+                user_input, response, resolved, entities, request=correction, prior_status=history,
             )
         compound = await self._async_compound_media(
             user_input, response, entities, document
@@ -512,7 +524,10 @@ class InsightsController(MediaCommandSupport):
         ):
             return None
         coverage = analyse_media_coverage(user_input.text, entities, request)
-        if coverage.coordinations or (request.op != "query" and not coverage.complete):
+        if coverage.coordinations or (
+            request.op != "query"
+            and not media_reading_complete(user_input.text, request, entities)
+        ):
             # 7.13.1: the bounded media reading explains only part of the
             # sentence (a further clause, an unknown word, a second place or
             # target).  It never writes then; the shared multi-command
@@ -770,7 +785,10 @@ class InsightsController(MediaCommandSupport):
         resolved: Any, entities: list[EntitySnapshot],
         *,
         request: Any = None,
+        prior_status: str = "",
     ) -> conversation.ConversationResult:
+        if prior_status:
+            resolved = replace(resolved, spoken=prior_status + resolved.spoken)
         pending = getattr(resolved, "pending", None)
         if isinstance(pending, PendingMusicAssistant):
             self._runtime.dialog_manager.create(
@@ -814,8 +832,16 @@ class InsightsController(MediaCommandSupport):
         # The one write path: policy, service_executor, tone and effect wait.
         from ..engine import MatchResult
 
+        executions = []
+        match = MatchResult(plan=resolved.plan, response_text=resolved.spoken)
+        previous = self.devices._context_store.get(user_input.conversation_id)
+        confirmation = previous.pending_service_confirmation if previous is not None else None
+        if prior_status and confirmation is not None:
+            match = replace(match, origin=confirmation.origin,
+                            binding_confirmed=confirmation.binding_confirmed)
         result = await self.devices.async_handle_match_result(
-            user_input, response, MatchResult(plan=resolved.plan, response_text=resolved.spoken), entities
+            user_input, response, match, entities,
+            on_execution=executions.append,
         )
         if request is not None:
             ids = (
@@ -832,6 +858,12 @@ class InsightsController(MediaCommandSupport):
                     entities=remembered,
                     predicate="media:" + str(getattr(request, "op", "")),
                     media_request=request,
+                    media_owner=conversation_user_id(user_input),
+                    media_plan=resolved.plan,
+                    media_execution=executions[-1] if executions else None,
+                    media_pending_confirmation=bool(
+                        current is not None and current.pending_service_confirmation is not None
+                    ),
                 )
                 if current is not None:
                     store.set(
@@ -853,6 +885,14 @@ class InsightsController(MediaCommandSupport):
                             memory=memory,
                         ),
                     )
+        if executions:
+            spoken = media_execution_text(resolved.plan, executions[-1])
+            if spoken is not None:
+                if executions[-1].failed:
+                    response.async_set_error(intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                                             prior_status + spoken)
+                else:
+                    response.async_set_speech(prior_status + spoken)
         return result
 
     # --- 7.9.3 B2 where is someone ----------------------------------------------

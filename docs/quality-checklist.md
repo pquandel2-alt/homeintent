@@ -8,6 +8,14 @@ Selbstzertifizierung.
 
 Stand: 7. November 2026 (7.13.3)
 
+## Nachprüfung von 7.13.3
+
+Die damaligen grünen Tests deckten die später nachgewiesenen Fehler in
+Mehrturn-Semantik, gemeinsamer Vorprüfung und Teilfehlerauswertung nicht ab.
+Der [Nachprüfungsbericht](reliability-7133-review.md) trennt Reproduktion,
+lokale Korrekturen, Prüfresultate und verbleibende Grenzen. Die folgenden
+Release-Nachweise gelten ausschließlich für ihre historischen Commits.
+
 ## Release 7.13.3
 
 - [x] gemeinsame Clause-Coverage für additive, zeitliche und orthografische

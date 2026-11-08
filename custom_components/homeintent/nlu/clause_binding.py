@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Sequence
 
 from ..entities import EntitySnapshot, normalize_for_compare
-from ..media import parse_media_request
+from ..media import parse_media_request, resolve_media, resolve_media_player
 from ..media_coverage import analyse_media_coverage
 from ..service_call import ServiceCallPlan
 from .automation_turn_router import AutomationRouteKind, route_automation_turn
@@ -48,6 +48,16 @@ _DOMAIN_HANDOFF_WORDS = frozenset({
     "benachrichtige", "erinnere", "erinner", "erinnerung", "meldung",
     "nachricht", "bescheid", "melde", "meld", "warne",
 })
+
+
+_MEDIA_SERVICE_PARAMETERS: dict[str, frozenset[str]] = {
+    "media_play": frozenset(), "media_pause": frozenset(),
+    "media_stop": frozenset(), "media_next_track": frozenset(),
+    "media_previous_track": frozenset(), "volume_up": frozenset(),
+    "volume_down": frozenset(), "volume_mute": frozenset({"is_volume_muted"}),
+    "volume_set": frozenset({"volume_level"}), "select_source": frozenset({"source"}),
+}
+
 
 
 class SourceResolution(StrEnum):
@@ -160,6 +170,10 @@ def _plan_matches_operation(
     binding, which is exactly what this boundary exists to prevent.
     """
     if operation is None:
+        return False
+    if plan.service in _MEDIA_SERVICE_PARAMETERS and (
+        plan.domain != "media_player" or frozenset(plan.data) != _MEDIA_SERVICE_PARAMETERS[plan.service]
+    ):
         return False
     if operation == "pause":
         return plan.service == "media_pause"
@@ -496,11 +510,37 @@ def _source_binding(
             "on": "media_on",
         }.get(request.op, request.op)
         value = request.volume if request.op == "volume" else None
-        local_plans = tuple(
-            plan
-            for plan in plans
-            if _plan_matches_operation(plan, operation, value)
+        # Ground genus, quantity and place from the clause, independent of the
+        # proposed plan. The media resolver supplies the operation contract.
+        resolved_targets: dict[str, EntitySnapshot] = {}
+        for description in meaning.descriptions:
+            resolution = resolve_description(description, entities)
+            if resolution.outcome is not ResolutionOutcome.RESOLVED:
+                resolved_targets.clear()
+                break
+            resolved_targets.update((entity.entity_id, entity) for entity in resolution.entities)
+        if not meaning.descriptions:
+            target = resolve_media_player(request, entities, satellite_area_id=None)
+            if target.player is not None:
+                resolved_targets[target.player.entity_id] = target.player
+        expected_plans = tuple(
+            resolve_media(request, [entity], satellite_area_id=None).plan
+            for entity in resolved_targets.values()
         )
+        target_ids = set(resolved_targets)
+        local_plans = tuple(
+            plan for plan in plans
+            if set(_plan_ids(plan)) and set(_plan_ids(plan)) <= target_ids
+            and all(any(
+                expected is not None
+                and entity_id in _plan_ids(expected)
+                and plan.domain == expected.domain
+                and plan.service == expected.service
+                and dict(plan.data) == dict(expected.data)
+                for expected in expected_plans
+            ) for entity_id in _plan_ids(plan))
+        )
+        bound_ids = {entity_id for plan in local_plans for entity_id in _plan_ids(plan)}
         start = int(getattr(clause, "char_start"))
         end = int(getattr(clause, "char_end"))
         places = _places(meaning) or _clause_places(document, clause, lexicon)
@@ -512,9 +552,7 @@ def _source_binding(
             text=meaning.text,
             operation=operation,
             target_expression=("media_player",),
-            resolved_target_ids=tuple(sorted({
-                entity_id for plan in local_plans for entity_id in _plan_ids(plan)
-            })),
+            resolved_target_ids=tuple(sorted(target_ids)),
             place_expression=tuple(place.label for place in places),
             resolved_place_ids=_place_ids(places),
             value=value,
@@ -523,13 +561,17 @@ def _source_binding(
             plans=local_plans,
             rejection_reason=(
                 "unexplained_residue" if not coverage.complete
-                else "plan_not_bound" if len(local_plans) != 1
+                else "plan_not_bound" if not target_ids or bound_ids != target_ids
+                or len(local_plans) != len(plans)
                 else None
             ),
         )
     requested_source = " ".join(request.source_words)
     places = _places(meaning) or _clause_places(document, clause, lexicon)
     candidates = _source_candidates(entities, places)
+    target = resolve_media_player(request, entities, satellite_area_id=None, match_source_lists=False)
+    candidates = tuple(entity for entity in candidates
+                       if target.player is not None and entity.entity_id == target.player.entity_id)
     resolution, exact_source = _source_resolution(requested_source, candidates)
     source = exact_source or requested_source
     candidate_ids = {entity.entity_id for entity in candidates}
@@ -744,6 +786,9 @@ def analyse_clause_bindings(
         (binding.rejection_reason for binding in bindings if not binding.complete),
         None,
     )
+    if plans and any(plan not in tuple(p for binding in bindings for p in binding.plans)
+                     for plan in plans):
+        rejected = rejected or "unbound_plan"
     status = (
         ClauseCoverageStatus.COMPLETE
         if rejected is None

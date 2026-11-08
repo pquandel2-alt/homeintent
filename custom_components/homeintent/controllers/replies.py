@@ -11,7 +11,8 @@ from typing import Any
 
 from ..effect_graph import summarize_effects
 from ..execution_policy import PolicyOutcome
-from ..service_executor import CHANGED_SINCE_CONFIRMATION
+from ..service_executor import CHANGED_SINCE_CONFIRMATION, ExecutionResult
+from ..service_call import ServiceCallPlan
 
 # Past-tense or passive endings of service_call.py's response texts and the
 # infinitive a confirmation question needs ("Burgtor wird geöffnet" ->
@@ -33,6 +34,22 @@ _CONFIRMATION_INFINITIVES: tuple[tuple[str, str], ...] = (
     ("gestartet", "starten"),
     ("gestoppt", "stoppen"),
 )
+
+
+def media_execution_text(plan: ServiceCallPlan, execution: ExecutionResult) -> str | None:
+    """Describe observed media effects without upgrading source selection to playback."""
+    if not execution.executed or execution.batch_result is not None:
+        return None
+    if plan.domain not in {"media_player", "music_assistant"}:
+        return None
+    if execution.failed:
+        return ("Der Medienaufruf wurde angenommen, aber das Gerät meldet "
+                "einen abweichenden oder nicht verfügbaren Zustand.")
+    if execution.effect is None or not execution.effect.confirmed:
+        return "Der Medienaufruf wurde angenommen; seine Wirkung ist noch nicht bestätigt."
+    if plan.domain == "media_player" and plan.service == "select_source":
+        return f"Die Quelle {plan.data['source']} wurde ausgewählt."
+    return None
 
 
 def with_effect_summary(text: str, execution: Any) -> str:

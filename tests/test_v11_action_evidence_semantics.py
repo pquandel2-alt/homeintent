@@ -103,7 +103,9 @@ class Harness:
     ) -> None:
         self.entities = {item.entity_id: item for item in entities}
         self.sink = ServiceSink(fail=fail)
-        self.hass = SimpleNamespace(services=self.sink)
+        self.hass = SimpleNamespace(
+            services=self.sink, states=SimpleNamespace(get=self.entities.get)
+        )
         self.effect_applies = effect_applies
         self.monitor = EffectMonitor()
         self.observed_actions: list[ServiceCallPlan] = []

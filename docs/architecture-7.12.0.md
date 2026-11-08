@@ -64,3 +64,15 @@ Neue reine Fachlogik verwendet konkrete Rückgabewerte beziehungsweise
 bereits transaktionalen HA-Reload-/Rollback-Grenzen verwendet; `CancelledError`
 der Music-Assistant-Suche bleibt ungefangen. Sensible Lifecycle-Token werden
 nicht in Antworten oder Logs aufgenommen.
+
+## Ergänzung: Zuverlässigkeitskorrekturen nach 7.13.3
+
+Die bestehenden Grenzen bleiben erhalten. `service_executor` besitzt nun die
+schreibfreie gemeinsame Service-Vorprüfung und wiederholt sie direkt vor dem
+Write. `DeviceController` verwendet eine gemeinsame Sequenzmethode für direkte
+und bestätigte Mehrbefehle. Unabhängige Batch-Ziele und spätere Klauseln haben
+unterschiedliche Fortsetzungsregeln: Ein Teilfehler eines Batches stoppt die
+späteren Klauseln. Antworten verwenden Einzelresultate und Wirkungsevidenz.
+`DialogTurnMemory` trennt Medienabsicht, Plan, Bestätigung und Ausführungsresultat;
+`media_commands` wendet die bestehende Satzverbrauchsprüfung auch auf
+Dialogergänzungen an. Details: [Nachprüfung 7.13.3](reliability-7133-review.md).

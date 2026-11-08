@@ -61,11 +61,27 @@ class Cascade:
             original = module.evaluate_service_plan
 
             def recording(plan, *args, _original=original, **kwargs):
-                self.handed.append(plan)
+                self._record(plan)
                 return _original(plan, *args, **kwargs)
 
             module.evaluate_service_plan = recording
+        # Compound controllers now hand plans to the shared read-only
+        # preflight. Observe that same hand-over, including its policy check.
+        module = importlib.import_module("homeintent.controllers.devices")
+        original_preflight = module.async_preflight_service_plan
+
+        async def recording_preflight(hass, plan, *args, **kwargs):
+            self._record(plan)
+            return await original_preflight(hass, plan, *args, **kwargs)
+
+        module.async_preflight_service_plan = recording_preflight
         self.counter = 0
+
+    def _record(self, plan):
+        # Rechecking one plan is not another logical clause. Distinct plan
+        # objects remain distinct even when their service/data are identical.
+        if not any(existing is plan for existing in self.handed):
+            self.handed.append(plan)
 
     def run(self, text: str):
         self.handed = []

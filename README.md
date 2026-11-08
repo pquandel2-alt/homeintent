@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.13.3**
+- Aktuelle Version: **7.13.4**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS
@@ -157,6 +157,27 @@ diesen Commit vollständig grün. Die zugehörige versionierte Korpusbaseline is
 Tag und [GitHub-Release v7.13.3](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.3)
 zeigen auf diesen Commit.
 
+## Version 7.13.4 – Zuverlässigkeitskorrekturen
+
+Geprüfter Release-Stand von Version 7.13.4 ist ausschließlich der im
+[GitHub-Release v7.13.4](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.13.4)
+ausgewiesene Commit mit seinen erfolgreichen CI- und Nightly-Läufen. Bis das
+Release-Gate diese Nachweise bestätigt, ist der Stand ein Release-Kandidat.
+Die Korpusbaseline [corpus-signatures-7.13.4.json](docs/perf/corpus-signatures-7.13.4.json)
+übernimmt die unveränderten Vergleichssignaturen von 7.13.3; Qualitätsgrenzen
+wurden nicht gelockert. Änderungen und Grenzen stehen in den
+[Release Notes](docs/release-notes-7.13.4.md).
+
+Die unabhängige Nachprüfung hat Lücken in Medienfortsetzungen, gemeinsamer
+Vorprüfung, Batch-Teilergebnissen und Dialoggedächtnis nachgewiesen. Der aktuelle
+Arbeitsstand korrigiert diese Pfade; Details und Prüfgrenzen stehen im
+[Nachprüfungsbericht](docs/reliability-7133-review.md). Mehrbefehle prüfen alle
+Klauseln vorab und stoppen nach einem Ausführungsfehler weitere Klauseln.
+Bereits angenommene Geräteaktionen können dabei nicht atomar zurückgenommen
+werden. Angenommene Medienaufrufe ohne Wirkungsevidenz werden nicht als
+bestätigte Wiedergabe ausgegeben. Die automatisierten Serviceprüfungen belegen
+keine reale Audiowiedergabe oder Hardwarewirkung.
+
 ## Version 7.13.3
 
 7.13.3 schließt die in der unabhängigen Nachprüfung von 7.13.2 verbliebenen
@@ -168,8 +189,10 @@ Lücken:
   globale Ersatzaktion neu auslegen.
 - **Exakte Medien-Mehrbefehle:** Eine bekannte `source_list`-Quelle wird mit
   Operation, Player und Raum klausellokal materialisiert. Erst nach der
-  vollständigen Vorprüfung aller Klauseln laufen die Service Calls in
-  gesprochener Reihenfolge. Unbekannte oder mehrdeutige Quellen verwerfen den
+  semantischen Bindung und Policy-Prüfung laufen die Service Calls in
+  gesprochener Reihenfolge. Die darüber hinaus notwendige gemeinsame
+  Verfügbarkeits-/Executor-Vorprüfung und ehrliche Teilfehlerauswertung fehlten
+  in 7.13.3 noch; siehe die nachträgliche Korrektur oben. Unbekannte oder mehrdeutige Quellen verwerfen den
   gesamten Auftrag.
 - **Cover-Pflichtbestätigung:** Die Pflicht für nicht unabhängige bewegliche
   Covers ist unabhängig von `confirmation_level`. Sie gilt auch hinter

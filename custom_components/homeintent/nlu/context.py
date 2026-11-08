@@ -31,7 +31,7 @@ from .primitives import SemanticProperty
 from .semantic_state import SemanticState
 
 if TYPE_CHECKING:
-    from ..service_executor import ConfirmedScope
+    from ..service_executor import ConfirmedScope, ExecutionResult
     from ..alias_learning import AliasLearningDraft
     from ..automation_composition import EventClarification
     from ..automation_wizard import AutomationWizardState
@@ -119,6 +119,10 @@ class DialogTurnMemory:
     # typed object in the canonical conversation context.  It is not a
     # second dialog store and never contains an executable plan.
     media_request: object | None = None
+    media_owner: str | None = None
+    media_plan: ServiceCallPlan | None = None
+    media_execution: ExecutionResult | None = None
+    media_pending_confirmation: bool = False
 
 
 @dataclass(frozen=True)
@@ -189,6 +193,8 @@ class PendingServiceConfirmation:
     # Risk and effective targets the question covered (7.7): an edited
     # script is not confirmed by the earlier "Ja".
     scope: ConfirmedScope | None = None
+
+    action_texts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

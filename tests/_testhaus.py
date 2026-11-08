@@ -124,7 +124,8 @@ class HouseConversation:
 
     def __init__(self, monkeypatch, entities: list[EntitySnapshot] | None = None,
                  area: str | None = None, user: str | None = "admin",
-                 tmp_path: Path | None = None, options: dict | None = None) -> None:
+                 tmp_path: Path | None = None, options: dict | None = None,
+                 simulate_device_effects: bool | None = None) -> None:
         import _ha_stub
 
         _ha_stub.install()
@@ -184,7 +185,9 @@ class HouseConversation:
             # responses while still using the same recorder.
             return service_mock._ha_response(domain, service, data, **_kwargs)
 
-        service_mock.side_effect = apply_service_effect
+        service_mock.side_effect = (
+            apply_service_effect if simulate_device_effects is not False else service_mock._ha_response
+        )
         # Real script/scene configuration for the EffectGraph (7.3.1).
         _ha_stub.register_sim_config(self.entity.hass, self.entities)
         self.sink = None
@@ -200,6 +203,17 @@ class HouseConversation:
 
             self.entity.hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
             self.sink = NotifySink.install(self.entity.hass, PHONES)
+            sink_call = self.sink.async_call
+
+            async def notify_and_device_effect(domain, service, data=None, **kwargs):
+                # Installing push capture must not remove the simulated light/
+                # cover reports that this same test house provides without it.
+                await sink_call(domain, service, data, **kwargs)
+                if domain in {"homeassistant", "light", "cover"}:
+                    await apply_service_effect(domain, service, data, **kwargs)
+
+            if simulate_device_effects is True:
+                self.entity.hass.services.async_call = notify_and_device_effect
             store = UserContextStore(tmp_path / "users.json")
             for user_id, person, phone in (
                 ("admin", "person.philipp", PHONES[0]),

@@ -51,7 +51,7 @@ from homeintent.nlu.context import (  # noqa: E402
 from homeintent.service_call import ServiceCallPlan  # noqa: E402
 from homeassistant.components.conversation import ConversationInput  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
-from homeassistant.core import HomeAssistant  # noqa: E402
+from homeassistant.core import HomeAssistant, State  # noqa: E402
 from homeassistant.helpers import intent  # noqa: E402
 
 FLUR_LICHT_OFF = EntitySnapshot(
@@ -123,6 +123,29 @@ def _make_entity(monkeypatch, entities: list[EntitySnapshot]) -> NluConversation
         ha_conversation, "build_entity_snapshots", lambda hass, entry: entities
     )
     return entity
+
+
+def _report_requested_effects(entity: NluConversationEntity) -> None:
+    """These positive assertions require observed effects, not a recorder-only mock.
+
+    Keep the service executor/effect monitor intact and simulate only the HA
+    device reports for the requested light/cover action.
+    """
+    async def report(domain, service, data=None, **kwargs):
+        payload = data or {}
+        ids = payload.get("entity_id", ())
+        for entity_id in (ids,) if isinstance(ids, str) else ids:
+            if service == "set_cover_position":
+                position = payload["position"]
+                entity.hass.states._states[entity_id] = State(
+                    entity_id, "closed" if position == 0 else "open",
+                    {"current_position": position},
+                )
+            elif service in {"turn_on", "turn_off"}:
+                entity.hass.states._states[entity_id] = State(
+                    entity_id, "on" if service == "turn_on" else "off",
+                )
+    entity.hass.services.async_call.side_effect = report
 
 
 def _run(entity: NluConversationEntity, text: str, conversation_id: str = "conv-1"):
@@ -357,6 +380,7 @@ def test_multi_command_executes_all_validated_actions_and_stores_atomic_undo(
     monkeypatch,
 ):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF, KUECHE_LICHT])
+    _report_requested_effects(entity)
 
     result = _run(
         entity,
@@ -786,6 +810,7 @@ def test_live_cover_percentage_asr_correction_never_becomes_heating_dialog(
         ),
     ]
     entity = _make_entity(monkeypatch, entities)
+    _report_requested_effects(entity)
 
     typo = _run(
         entity,
