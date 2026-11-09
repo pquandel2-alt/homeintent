@@ -1199,7 +1199,7 @@
     {
       "id": "custom_components/homeintent/service_executor.py::_async_execute_service_plan::1",
       "path": "custom_components/homeintent/service_executor.py",
-      "line": 750,
+      "line": 757,
       "scope": "_async_execute_service_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",

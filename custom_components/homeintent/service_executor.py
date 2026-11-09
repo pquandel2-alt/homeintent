@@ -500,7 +500,14 @@ async def _async_execute_independent_batch(
         if item.status is BatchTargetStatus.SUCCESS:
             report_outcome(TurnOutcomeKind.EXECUTED)
         elif item.entity_id in pending_effects:
-            report_outcome(TurnOutcomeKind.UNCONFIRMED)
+            # This batch has already settled; forward the same typed facts
+            # used by async_settle_turn without waiting/reporting a second time.
+            silent = item.status in {BatchTargetStatus.TIMEOUT, BatchTargetStatus.UNVERIFIED}
+            report_outcome(
+                TurnOutcomeKind.UNCONFIRMED,
+                silent_name=item.name if silent else None,
+                contrary=not silent,
+            )
         else:
             report_outcome(TurnOutcomeKind.NOT_DONE)
     if audit_trail is not None and called:

@@ -96,9 +96,17 @@ def defer_outcome(pending: object) -> bool:
     return True
 
 
-def report_outcome(kind: TurnOutcomeKind) -> None:
+def report_outcome(
+    kind: TurnOutcomeKind,
+    *,
+    silent_name: str | None = None,
+    contrary: bool = False,
+) -> None:
     """Record one fact for the running turn; outside a turn it is dropped
     (proactive and agent writes have no reply to shape)."""
     outcomes = _OUTCOMES.get()
     if outcomes is not None:
         outcomes.kinds.append(kind)
+        if silent_name is not None:
+            outcomes.silent.append(silent_name)
+        outcomes.contrary = outcomes.contrary or contrary

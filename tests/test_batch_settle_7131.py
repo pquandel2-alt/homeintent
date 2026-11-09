@@ -414,3 +414,22 @@ def test_fully_delayed_light_batch_is_a_plain_success(monkeypatch, tmp_path):
     } == set(OFFICE)
     entry = house.entity._audit_trail._entries[-1]  # noqa: SLF001
     assert set(dict(entry.outcomes).values()) == {"success"}
+
+
+@pytest.mark.parametrize("first", ["success", "silent", "unavailable", "failed"])
+def test_batch_response_notice_keeps_missing_feedback_distinct_from_failure(first):
+    behaviour = {
+        "success": Behaviour("off"),
+        "silent": Behaviour(None),
+        "unavailable": Behaviour("unavailable"),
+        "failed": Behaviour(raises=True),
+    }
+    hass, _devices = _hass(FOUR[:2], {"light.a": behaviour[first]})
+    plan = ServiceCallPlan("light", "turn_off", ["light.a", "light.b"])
+    result, outcomes, _elapsed = _run(hass, plan, FOUR[:2], wait=0.01)
+    assert outcomes.pending == []  # No second wait or duplicate outcome.
+    assert len(outcomes.kinds) == 2
+    assert outcomes.silent == (["Licht A", "Licht B"] if first == "silent" else ["Licht B"])
+    assert outcomes.only_not_reported is (first in {"success", "silent"})
+    assert outcomes.contrary is (first == "unavailable")
+    assert not result.batch_result.fully_successful

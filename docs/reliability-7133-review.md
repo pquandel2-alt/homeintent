@@ -422,3 +422,53 @@ bestehen ebenfalls (unverändert 120 `Exception`-, zwei `BaseException`-Handler)
 Die Veröffentlichung erfordert erneut
 vollständig erfolgreiche CI- und Nightly-Läufe auf dem korrigierten Commit;
 die erfolgreichen Teilprüfungen von `98b0e69` ersetzen diese nicht.
+
+### Vollständige Nachprüfung von `418907a`
+
+Die Batch-Korrektur wurde als
+`418907afc6b14d8c60ba86b674a5e21b75163534` auf `main` gepusht.
+[CI 42566080852](https://github.com/pquandel2-alt/homeintent/actions/runs/42566080852)
+bestand nun das vollständige Live-Testbett.
+[Nightly 42566083657](https://github.com/pquandel2-alt/homeintent/actions/runs/42566083657)
+bestand beide Jobs einschließlich sämtlicher Live-Szenarien und der
+Sicherheitsinvarianten. Es wurde dennoch kein Release erstellt: Alle drei
+Vollsuite-Varianten meldeten denselben einzelnen Fehler bei jeweils
+10658 bestandenen und zwölf bereits vorhandenen übersprungenen Tests:
+`test_partial_confirmation_names_only_the_silent_device`.
+
+Der Batch-Executor hatte die angenommenen Serviceaufrufe korrekt als
+unbestätigt erfasst, aber die Namen stummer Geräte nicht an die bestehende
+Tonentscheidung weitergegeben. Dadurch wurde die ehrliche Teilantwort
+gesprochen, statt den vorgesehenen Hinweiston mit genau dem stummen Gerät
+auszugeben. `report_outcome` transportiert nun auch diesen Namen und den
+Gegenbefund bei widersprechendem oder nicht verfügbarem Gerätezustand.
+Ein Servicefehler bleibt `NOT_DONE`; die Fail-fast-Auswertung, Erfolgszählung
+und Undo-Erzeugung ändern sich nicht. Es gibt keinen zweiten Effect-Wait.
+
+Der unveränderte bestehende Conversation-Test scheiterte vor der Korrektur
+auch lokal. Vier zusätzlich angelegte Executor-Fälle scheiterten ebenfalls;
+sie unterscheiden bestätigte Wirkung, fehlende Rückmeldung, nachträgliche
+Nichtverfügbarkeit und Servicefehler. Die neuen Fälle prüfen insbesondere,
+dass eine gleichzeitig fehlende Rückmeldung keinen tatsächlichen Fehler
+zum Hinweiston umdeutet.
+
+Nach der Korrektur bestehen alle 776 Tests des folgenden Aufrufs. Die
+Typprüfung der geänderten Module meldet null Fehler und null Typwarnungen;
+Pyflakes und die aktualisierte Exception-Inventarprüfung bestehen ebenfalls.
+
+```bash
+# Vorher: 1 beziehungsweise 4 Fehler
+.venv/bin/python -m pytest -q tests/test_effect_wait_792.py::test_partial_confirmation_names_only_the_silent_device --tb=short
+.venv/bin/python -m pytest -q tests/test_batch_settle_7131.py -k response_notice --tb=short
+# Nachher:
+.venv/bin/python -m pytest -q tests/test_effect_wait_792.py tests/test_batch_settle_7131.py tests/test_tone_793.py tests/test_reliability_semantics.py tests/test_review_regressions_7133.py tests/test_cover_batch_7131.py tests/test_cover_safety_7132.py tests/test_undo.py -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning --tb=short
+.venv/bin/pyright custom_components/homeintent/turn_outcome.py custom_components/homeintent/service_executor.py
+.venv/bin/python -m pyflakes custom_components tests tests_ha scripts
+.venv/bin/python scripts/exception_inventory.py --refresh
+.venv/bin/python scripts/exception_inventory.py --check
+```
+
+Auch diese Nachkorrektur erfordert neue vollständige CI-/Nightly-Nachweise
+für ihren eigenen Commit. Geändert sind `service_executor.py`,
+`turn_outcome.py`, `tests/test_batch_settle_7131.py`, diese Dokumentation
+und ausschließlich eine verschobene Zeilennummer im Exception-Inventar.
