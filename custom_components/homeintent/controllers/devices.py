@@ -67,7 +67,9 @@ from ..script_execution_observer import (
     ScriptExecutionStatus,
     script_execution_speech,
 )
-from ..batch_execution import batch_execution_speech
+from ..batch_execution import (
+    BatchEligibility, BatchTarget, batch_eligibility, batch_execution_speech,
+)
 from ..undo import (
     build_undo_plan, restrict_undo_plan, UndoPlan,
     bind_undo_to_observed_states, undo_matches_observed_states,
@@ -468,6 +470,40 @@ class DeviceController:
             return conversation.ConversationResult(
                 response=response, conversation_id=user_input.conversation_id
             )
+        if result.shared_predicate and result.confirmation_text is None:
+            # A shared predicate is one batch, even though the compiler
+            # validated each named target separately. Retain the executor's
+            # established per-device preflight/outcomes for eligible devices.
+            # Independent predicates never enter this path.
+            plans = [item.plan for item in result.commands]
+            first = plans[0] if plans else None
+            if first is not None and all(
+                plan is not None and isinstance(plan.entity_id, str)
+                and (plan.domain, plan.service, plan.data)
+                == (first.domain, first.service, first.data)
+                for plan in plans
+            ):
+                ids = [plan.entity_id for plan in plans
+                       if plan is not None and isinstance(plan.entity_id, str)]
+                by_id = {entity.entity_id: entity for entity in entities}
+                targets = tuple(by_id[entity_id] for entity_id in ids if entity_id in by_id)
+                eligible = batch_eligibility(first.service, tuple(
+                    BatchTarget(entity.entity_id, entity.domain, entity.device_class, True)
+                    for entity in targets
+                ))
+                if len(targets) == len(ids) and eligible is BatchEligibility.ELIGIBLE:
+                    batch = replace(
+                        result.commands[0],
+                        plan=replace(first, entity_id=ids),
+                        response_text=" ".join(item.response_text for item in result.commands),
+                        frame=None, command=None, resolved_intent=None,
+                        context_entities=targets, origin=result.origin,
+                        binding_confirmed=result.binding_confirmed,
+                        proposal_text=result.proposal_text,
+                    )
+                    return await self.async_handle_match_result(
+                        user_input, response, batch, entities,
+                    )
         # Every sub-command was validated together before this point. A HA-side
         # runtime failure remains fail-fast because service calls are not
         # transactional and already executed calls cannot be rolled back safely.

@@ -347,3 +347,78 @@ Die Änderungen liegen lokal im Arbeitsbaum. Kein Commit, kein Push, keine
 externe Review-Anfrage, kein neuer Tag und keine Veröffentlichung. Für diesen
 Arbeitsstand gibt es keinen externen CI-/Nightly-Nachweis. Historische grüne
 Release-Läufe dürfen ihm nicht zugerechnet werden.
+
+## Nachprüfung während der freigegebenen Veröffentlichung
+
+Nach der ausdrücklichen Freigabe zum Push und Release wurde der Arbeitsstand
+als `98b0e69b286143f73fe2472c9385a01ff9dc7955` auf `main` gepusht. Die obigen
+Angaben zum noch uncommitteten Arbeitsbaum beschreiben die davor abgeschlossene
+lokale Prüfphase. Ein Release wurde auf diesem Commit **nicht** veröffentlicht:
+
+- [CI 42528577037](https://github.com/pquandel2-alt/homeintent/actions/runs/42528577037):
+  alle zehn übrigen Pflichtjobs erfolgreich, einschließlich vollständiger
+  Testsuiten, statischer Prüfungen und des unveränderten 100-ms-Latenzgates;
+  Live-Testbett 220/221 Szenarien.
+- [Nightly 42528485996](https://github.com/pquandel2-alt/homeintent/actions/runs/42528485996):
+  Sicherheitsinvarianten erfolgreich, Live-Testbett 230/231 Szenarien.
+
+Beide Live-Läufe scheiterten an `n791-b-partial`: Bei „Schalte die Stehlampe
+und das Flurlicht ein“ wurde wegen der unerreichbaren Stehlampe auch das
+erreichbare Flurlicht nicht geschaltet. Die neue strenge Vorprüfung hatte eine
+gemeinsame Geräteauswahl wie mehrere unabhängige Prädikate behandelt. Das war
+eine Regression gegenüber der ausdrücklich beizubehaltenden Batch-Regel.
+Der Live-Test und seine Erwartungen bleiben unverändert.
+
+Der kompositionelle Parser weist das gemeinsame Prädikat bereits nach.
+`CommandPlan.shared_predicate` bewahrt diesen Nachweis bis zum Controller.
+Nur gleiche Operationen und Parameter auf gemäß bestehender
+`batch_eligibility` unabhängigen Zielen werden zum vorhandenen Batch-Executor
+weitergereicht. Validator, Policy, Bestätigung, Einzelziel-Vorprüfung,
+Ergebnisreduktion und Undo laufen durch die bestehenden Pfade. Getrennte
+Prädikate und nicht unabhängige Geräte behalten die strenge gemeinsame
+Vorprüfung. Es wird kein Satz anhand seiner Schreibweise sonderbehandelt.
+
+Reproduktion im separaten Checkout von `98b0e69`: Zwei neue Regressionen
+(direkte Ausführung und bestehender Policy-Bestätigungspfad) scheitern;
+die Kontrolle mit getrennten Prädikaten besteht. Nach der Korrektur bestehen
+125 gezielte Tests, einschließlich aller unveränderten unabhängigen
+Review-Regressionen. Exakte Befehle:
+
+```bash
+# Vorher im Checkout 98b0e69, nur die neue Testdatei ergänzt:
+python -m pytest -q tests/test_reliability_semantics.py -k 'shared_predicate_keeps or separate_predicates_still' -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning --tb=short
+# Nachher im Arbeitsstand:
+.venv/bin/python -m pytest -q tests/test_reliability_semantics.py tests/test_review_regressions_7133.py tests/test_batch_execution.py tests/test_composition.py tests/test_semantic_interpreter.py -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning --tb=short
+```
+
+Geänderte Dateien dieser Nachkorrektur: `engine.py`,
+`controllers/devices.py`, `tests/test_reliability_semantics.py` und diese
+Dokumentation samt Release-Notizen. Das Exception-Inventar wurde ausschließlich
+für die verschobene Zeilennummer des unveränderten Undo-Handlers aktualisiert.
+Zusätzlich bestanden 600 bestehende Cover-, Batch-, Undo- und Tonprüfungen:
+
+```bash
+.venv/bin/python -m pytest -q tests/test_cover_safety_7132.py tests/test_cover_batch_7131.py tests/test_batch_settle_7131.py tests/test_undo.py tests/test_tone_793.py -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning --tb=short
+```
+
+Ein erster Aufruf enthielt irrtümlich `tests/test_cover_safety_713.py` und
+endete ohne Testausführung (Exit 4); oben steht der korrigierte, erfolgreiche
+Aufruf. Der Korpusvergleich umfasst nach den Dokumentationsergänzungen
+4340 Sätze, davon 4310 mit Baseline, ohne geänderte Signaturen. Der
+Arbiter-Vergleich meldet 2154 äquivalente Fälle, sieben Verhaltensänderungen
+und keine Sicherheitsabweichung. Pyright meldet null Fehler und null
+Typwarnungen. Pyflakes und Exception-Inventarprüfung
+bestehen ebenfalls (unverändert 120 `Exception`-, zwei `BaseException`-Handler).
+
+```bash
+.venv/bin/python scripts/corpus_shadow.py --check docs/perf/corpus-signatures-7.13.4.json
+.venv/bin/python scripts/arbiter_shadow.py --check
+.venv/bin/pyright
+.venv/bin/python -m pyflakes custom_components tests tests_ha scripts
+.venv/bin/python scripts/exception_inventory.py --refresh
+.venv/bin/python scripts/exception_inventory.py --check
+```
+
+Die Veröffentlichung erfordert erneut
+vollständig erfolgreiche CI- und Nightly-Läufe auf dem korrigierten Commit;
+die erfolgreichen Teilprüfungen von `98b0e69` ersetzen diese nicht.

@@ -503,6 +503,10 @@ class CommandPlan:
     still resolved and validated before execution starts, and action/query
     segments that refer to the same entity are refused because the query
     would otherwise describe the pre-execution snapshot.
+
+    The compositional compiler also projects a shared predicate per target.
+    ``shared_predicate`` distinguishes this target coordination from a
+    sequence, so eligible independent devices retain the batch policy.
     """
 
     commands: tuple[MatchResult, ...]
@@ -514,6 +518,9 @@ class CommandPlan:
     routine_key: str | None = None
     binding_confirmed: bool = False
     routine_candidates: tuple[str, ...] = ()
+    # Proven by the compositional parser: one predicate over named targets,
+    # not a sequence of independently requested actions.
+    shared_predicate: bool = False
 
 
 def _mark_inferred_routines(
@@ -1676,7 +1683,7 @@ class NluEngine:
                 if result is None or result.plan is None:
                     return None
                 rendered.append(result)
-            return CommandPlan(tuple(rendered))
+            return CommandPlan(tuple(rendered), shared_predicate=True)
         if isinstance(interpreted.parse_result, ParseResult):
             if interpreted.parse_result.response_text is not None:
                 if isinstance(

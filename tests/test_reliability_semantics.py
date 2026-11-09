@@ -451,3 +451,32 @@ def test_preflight_checks_known_transitive_empty_capabilities(monkeypatch, suppo
         h.entity.hass, plan, h.entities, {}, is_admin=True, user_id=None, confirmed=True))
     assert (result.error is None) is supported
     h.entity.hass.services.async_call.assert_not_awaited()
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_shared_predicate_keeps_independent_batch_availability(monkeypatch, confirmed):
+    """Live n791-b-partial: one shared action retains per-device outcomes."""
+    from _testhaus import HouseConversation, house_entities, with_states
+    if confirmed:
+        media_confirmation_preview(monkeypatch)
+    h = HouseConversation(monkeypatch, entities=with_states(
+        house_entities(), **{"light.stehlampe": "unavailable"}),
+        options={"effect_wait_seconds": 0.01})
+    turn = h.say("Schalte die Stehlampe und das Flurlicht ein.")
+    if confirmed:
+        assert turn.calls == []
+        turn = h.say("Ja")
+    assert turn.targets == {"light.flurlicht"}, turn.speech
+    assert "Stehlampe" in turn.speech
+    assert "nicht" in turn.speech
+    assert h.say("Ja").calls == []
+
+
+def test_separate_predicates_still_preflight_the_entire_order(monkeypatch):
+    from _testhaus import HouseConversation, house_entities, with_states
+    h = HouseConversation(monkeypatch, entities=with_states(
+        house_entities(), **{"light.stehlampe": "unavailable"}),
+        options={"effect_wait_seconds": 0.01})
+    turn = h.say("Schalte das Flurlicht ein und schalte die Stehlampe ein.")
+    assert turn.calls == []
+    assert h.say("Ja").calls == []

@@ -479,7 +479,7 @@
     {
       "id": "custom_components/homeintent/controllers/devices.py::DeviceController.async_handle_undo_request::1",
       "path": "custom_components/homeintent/controllers/devices.py",
-      "line": 1302,
+      "line": 1338,
       "scope": "DeviceController.async_handle_undo_request",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",

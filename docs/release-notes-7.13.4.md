@@ -27,6 +27,11 @@ Bestätigungsscope und bekannte transitive Einschränkungen.
 Teilweise erfolgreiche Batches werden anhand ihrer einzelnen Ergebnisse
 beantwortet. Ein abbrechender Fehler stoppt spätere Klauseln, auch nach einer
 Bestätigung. Unabhängige Geräte innerhalb eines Batches behalten ihre Regeln.
+Auch eine gemeinsame Aktion über ausdrücklich benannte Geräte (etwa
+„Schalte die Stehlampe und das Flurlicht ein“) nutzt diesen Batch-Pfad.
+Eine unerreichbare Lampe verhindert dort nicht die andere, zulässige Aktion;
+die Antwort nennt beide Ergebnisse. Getrennte Prädikate bleiben Mehrbefehle
+mit gemeinsamer Vorprüfung und Fail-fast.
 Nach einem abgebrochenen Mehrbefehl bleibt kein aktivierbarer Rest- oder Undo-Plan.
 Rücknahmen erfolgreicher Teile eines einzelnen Batches sind an beobachtete
 Zustände gebunden und überschreiben keine späteren Änderungen.
