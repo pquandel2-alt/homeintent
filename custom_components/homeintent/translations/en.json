@@ -35,6 +35,7 @@
           "allow_non_admin_critical": "Allow critical actions for authenticated non-admin users",
           "allow_non_admin_automations": "Allow non-admin users to create automations",
           "response_style": "Reply style on success (tone: default for new installations - only a short confirmation sound when everything was done and confirmed, and a second sound when everything ran but a device did not report back; spoken: speech as before, default for installations before 7.9.3 without a stored setting; questions, errors, partial results, wrong direction and unreachable devices are always spoken)",
+          "response_detail_level": "Successful reply detail (concise: omit redundant entity counts, default for new installations; detailed: include counts, default for existing installations without a stored value; failures, partial results, questions, and status answers stay complete)",
           "confirmation_media_id": "Custom confirmation sound (media-source:// ID or /local/… path; empty: built-in sound)",
           "notice_media_id": "Own sound for done, but not reported back (media-source:// id or /local/... path; empty: built-in second sound)",
           "notice_says_name": "After the second sound, briefly say which device did not report back (e.g. Floor lamp does not respond.)",

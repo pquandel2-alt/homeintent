@@ -84,10 +84,14 @@ from .const import (
     CONF_SHARE_HOUSEHOLD_LOCATION,
     DEFAULT_EFFECT_WAIT_SECONDS,
     CONF_RESPONSE_STYLE,
+    CONF_RESPONSE_DETAIL_LEVEL,
     CONF_NOTICE_MEDIA_ID,
     CONF_NOTICE_SAYS_NAME,
     DEFAULT_RESPONSE_STYLE,
+    DEFAULT_RESPONSE_DETAIL_LEVEL,
     NEW_INSTALL_RESPONSE_STYLE,
+    NEW_INSTALL_RESPONSE_DETAIL_LEVEL,
+    RESPONSE_DETAIL_LEVELS,
     RESPONSE_STYLES,
     CONF_ALLOW_NON_ADMIN_CRITICAL,
     CONF_CONFIRMATION_LEVEL,
@@ -186,6 +190,7 @@ class HomeIntentConfigFlow(_DomainConfigFlow, domain=DOMAIN):
                 # command with the confirmation tone; entries created before
                 # keep their stored (or implicit "spoken") style.
                 CONF_RESPONSE_STYLE: NEW_INSTALL_RESPONSE_STYLE,
+                CONF_RESPONSE_DETAIL_LEVEL: NEW_INSTALL_RESPONSE_DETAIL_LEVEL,
             },
         )
 
@@ -363,6 +368,13 @@ class HomeIntentOptionsFlow(OptionsFlow):
                         CONF_RESPONSE_STYLE,
                         default=defaults.get(CONF_RESPONSE_STYLE, DEFAULT_RESPONSE_STYLE),
                     ): vol.In(RESPONSE_STYLES),
+                    vol.Optional(
+                        CONF_RESPONSE_DETAIL_LEVEL,
+                        default=defaults.get(
+                            CONF_RESPONSE_DETAIL_LEVEL,
+                            DEFAULT_RESPONSE_DETAIL_LEVEL,
+                        ),
+                    ): vol.In(RESPONSE_DETAIL_LEVELS),
                     vol.Optional(
                         CONF_CONFIRMATION_MEDIA_ID,
                         description={

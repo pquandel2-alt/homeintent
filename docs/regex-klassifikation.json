@@ -1533,6 +1533,13 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/controllers/replies.py::_LEADING_COUNT::a3f3d42047",
+   "datei": "custom_components/homeintent/controllers/replies.py",
+   "bereich": "_LEADING_COUNT",
+   "klasse": "LEXICAL",
+   "quelle": "manuell"
+  },
+  {
    "id": "custom_components/homeintent/conversation.py::_UNIVERSAL_CANCEL_RE::9ed9a8dea1",
    "datei": "custom_components/homeintent/conversation.py",
    "bereich": "_UNIVERSAL_CANCEL_RE",
@@ -5391,7 +5398,7 @@
   }
  ],
  "anzahl": {
-  "LEXICAL": 410,
+  "LEXICAL": 411,
   "MORPHOLOGICAL": 37,
   "STRUCTURAL": 150,
   "SEMANTIC_SENTENCE_PATTERN": 171

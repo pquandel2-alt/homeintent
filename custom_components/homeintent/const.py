@@ -40,6 +40,14 @@ RESPONSE_STYLES = (RESPONSE_STYLE_SPOKEN, RESPONSE_STYLE_TONE)
 # keeps the behaviour it had: a missing key still means "spoken".
 DEFAULT_RESPONSE_STYLE = RESPONSE_STYLE_SPOKEN
 NEW_INSTALL_RESPONSE_STYLE = RESPONSE_STYLE_TONE
+# Redundant target counts in successful execution replies.  A missing key
+# belongs to an existing installation and preserves its detailed wording.
+CONF_RESPONSE_DETAIL_LEVEL = "response_detail_level"
+RESPONSE_DETAIL_CONCISE = "concise"
+RESPONSE_DETAIL_DETAILED = "detailed"
+RESPONSE_DETAIL_LEVELS = (RESPONSE_DETAIL_CONCISE, RESPONSE_DETAIL_DETAILED)
+DEFAULT_RESPONSE_DETAIL_LEVEL = RESPONSE_DETAIL_DETAILED
+NEW_INSTALL_RESPONSE_DETAIL_LEVEL = RESPONSE_DETAIL_CONCISE
 # Optional own sound (media-source:// or a local /local/... path); empty:
 # the integration's own confirm.mp3.
 CONF_CONFIRMATION_MEDIA_ID = "confirmation_media_id"

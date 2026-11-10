@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from homeintent.entities import EntitySnapshot
 from homeintent.service_call import ServiceCallPlan
-from homeintent.undo import build_undo_plan, is_undo_request, restrict_undo_plan
+from homeintent.undo import (
+    UndoPlan,
+    build_undo_plan,
+    is_undo_request,
+    restrict_undo_plan,
+    undo_matches_observed_states,
+)
 
 
 def test_undo_request_is_deliberately_narrow():
@@ -81,3 +87,14 @@ def test_partial_batch_undo_contains_only_confirmed_successes():
     assert restricted.plans == (
         ServiceCallPlan("light", "turn_on", second.entity_id),
     )
+
+
+def test_targeted_undo_without_observed_state_fails_closed():
+    """An inverse call is never proof that its post-action state was observed."""
+
+    undo = UndoPlan(
+        (ServiceCallPlan("light", "turn_off", "light.office"),),
+        requested_by_user_id="user-1",
+    )
+
+    assert not undo_matches_observed_states(undo, lambda _entity_id: None)

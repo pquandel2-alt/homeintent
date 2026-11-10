@@ -18,7 +18,11 @@ from homeassistant.util import dt as dt_util
 
 from ..audit_log import AuditTrail
 from ..bindings import BindingKind, BindingScope
-from ..controllers.replies import confirmation_question, with_effect_summary
+from ..controllers.replies import (
+    confirmation_question,
+    with_effect_summary,
+    with_response_detail,
+)
 from ..dialog_manager import DialogPriority, DialogTaskKind
 from ..effect_graph import build_plan_effects
 from ..entities import EntitySnapshot
@@ -283,5 +287,11 @@ class RoutineController:
                 note = await self.async_store_binding(
                     payload.concept_key, chosen.entity_id, actor_id
                 )
-                response.async_set_speech(f"{with_effect_summary(success, execution)} {note}")
+                rendered = with_effect_summary(
+                    success, execution, self.entry.options
+                )
+                rendered = with_response_detail(
+                    rendered, execution, self.entry.options
+                )
+                response.async_set_speech(f"{rendered} {note}")
         return conversation.ConversationResult(response=response, conversation_id=conversation_id)

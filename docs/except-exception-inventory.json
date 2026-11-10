@@ -409,7 +409,7 @@
     {
       "id": "custom_components/homeintent/config_flow.py::HomeIntentOptionsFlow._async_schema::1",
       "path": "custom_components/homeintent/config_flow.py",
-      "line": 270,
+      "line": 275,
       "scope": "HomeIntentOptionsFlow._async_schema",
       "caught": "Exception",
       "classification": "FALLBACK",
@@ -479,7 +479,7 @@
     {
       "id": "custom_components/homeintent/controllers/devices.py::DeviceController.async_handle_undo_request::1",
       "path": "custom_components/homeintent/controllers/devices.py",
-      "line": 1338,
+      "line": 1414,
       "scope": "DeviceController.async_handle_undo_request",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",

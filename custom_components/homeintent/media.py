@@ -38,6 +38,7 @@ __all__ = (
     "MediaResolution",
     "now_playing",
     "parse_media_request",
+    "merge_media_continuation",
     "queue_directive_positions",
     "media_words",
     "MEDIA_CONTENT_WORDS",
@@ -105,6 +106,9 @@ class MediaRequest:
     media_type: str | None = None
     library_only: bool = False
     enqueue: str = "replace"
+    # Fields explicitly stated in this utterance.  In particular, the
+    # default ``replace`` is not an instruction to overwrite a pending mode.
+    explicit_fields: frozenset[str] = frozenset()
 
 
 _TYPE_MARKERS = {
@@ -155,27 +159,67 @@ def _has_media_power_form(words: Sequence[str], present: set[str]) -> bool:
 def queue_directive_positions(words: Sequence[str]) -> tuple[frozenset[int], str]:
     """Word positions of one explicit queue modifier and its closed value.
 
-    Queue language only applies to an explicit play command.  The remaining
-    words continue through the ordinary type/name/player composition, so a
-    queue modifier can never become part of a library search term.  The
-    positions are also what the complete-coverage check (``media_coverage``)
-    counts as consumed by the queue directive.
+    The remaining words continue through the ordinary type/name/player
+    composition, so a queue modifier can never become part of a library search
+    term.  Continuations need not repeat a play verb.  The positions are also
+    what the complete-coverage check (``media_coverage``) counts as consumed by
+    the queue directive.
     """
-    if not words or words[0] not in _PLAY_VERBS:
+    if not words:
         return frozenset(), "replace"
     for index in range(len(words) - 1):
         if words[index] == "als" and words[index + 1] == "naechstes":
             return frozenset({index, index + 1}), "next"
     queue_words = {"warteschlange", "queue"}
     present = set(words)
-    if present & queue_words and "hinzu" in present:
-        removed = {
-            index for index, word in enumerate(words)
-            if word in queue_words | {"hinzu", "zur"}
-        }
-        kept = [index for index in range(len(words)) if index not in removed]
-        if kept and words[kept[-1]] == "und":
-            removed.add(kept[-1])
+    for queue_index, word in enumerate(words):
+        if word not in queue_words:
+            continue
+        hinzu_index = next(
+            (
+                index
+                for index in range(
+                    queue_index + 1, min(len(words), queue_index + 3)
+                )
+                if words[index] == "hinzu"
+            ),
+            None,
+        )
+        danach_index = next(
+            (
+                index
+                for index in range(max(0, queue_index - 3), queue_index)
+                if words[index] == "danach"
+            ),
+            None,
+        )
+        if hinzu_index is None and danach_index is None:
+            continue
+        start = queue_index
+        add_verb_index = None
+        if danach_index is not None:
+            start = danach_index
+        else:
+            while start > 0 and words[start - 1] in {
+                "in", "die", "der", "den", "zur"
+            }:
+                start -= 1
+            add_verb_index = next(
+                (
+                    index
+                    for index in range(max(0, start - 4), start)
+                    if words[index] in {"fuege", "fueg", "fuegen"}
+                ),
+                None,
+            )
+        end = hinzu_index if hinzu_index is not None else queue_index
+        removed = set(range(start, end + 1))
+        joiner_index = start - 1
+        if add_verb_index is not None:
+            removed.add(add_verb_index)
+            joiner_index = add_verb_index - 1
+        if joiner_index >= 0 and words[joiner_index] == "und":
+            removed.add(joiner_index)
         return frozenset(removed), "add"
     replace_at = next(
         (index for index, word in enumerate(words) if word.startswith("ersetz")), None
@@ -202,8 +246,12 @@ def _queue_directive(words: list[str]) -> tuple[list[str], str]:
 
 def parse_media_request(text: str) -> MediaRequest | None:
     """A media command or "Was läuft?", else ``None``."""
-    words = _words(text)
-    words, enqueue = _queue_directive(words)
+    raw_words = _words(text)
+    queue_positions, enqueue = queue_directive_positions(raw_words)
+    words = [
+        word for index, word in enumerate(raw_words)
+        if index not in queue_positions
+    ]
     present = set(words)
     if not words or present & {"wenn", "sobald", "falls", "nicht", "kein", "keine"}:
         return None
@@ -287,14 +335,92 @@ def parse_media_request(text: str) -> MediaRequest | None:
             "die", "den", "das", "der", "mir", "uns", *_LIBRARY_MARKERS, *marker_words,
         })
         if not named:
-            return MediaRequest("play", text=text, enqueue=enqueue) if present & {"musik", "radio"} else None
+            return MediaRequest(
+                "play",
+                text=text,
+                enqueue=enqueue,
+                explicit_fields=(
+                    frozenset({"enqueue"}) if queue_positions else frozenset()
+                ),
+            ) if present & {"musik", "radio"} else None
         if set(named) <= _MUSIC_WORDS | {"etwas", "was", "ein", "bisschen"}:
-            return MediaRequest("play", text=text, enqueue=enqueue)
+            return MediaRequest(
+                "play",
+                text=text,
+                enqueue=enqueue,
+                explicit_fields=(
+                    frozenset({"enqueue"}) if queue_positions else frozenset()
+                ),
+            )
+        explicit = {"source_words"}
+        if media_type is not None:
+            explicit.add("media_type")
+        if library_only:
+            explicit.add("library_only")
+        if queue_positions:
+            explicit.add("enqueue")
         return MediaRequest(
             "play", named, text=text, media_type=media_type, library_only=library_only,
-            enqueue=enqueue,
+            enqueue=enqueue, explicit_fields=frozenset(explicit),
         )
     return None
+
+
+_CONTINUATION_PRONOUNS = frozenset({"es", "das", "dort", "da", "hier"})
+
+
+def merge_media_continuation(
+    pending: MediaRequest, text: str
+) -> MediaRequest | None:
+    """Merge one bounded amendment into an open typed media request.
+
+    The parser's default values never overwrite inherited fields.  Only
+    fields recorded as explicit in the new turn are applied.
+    """
+
+    words = _words(text)
+    queue_positions, queue_mode = queue_directive_positions(words)
+    fresh = parse_media_request(text)
+    if fresh is not None and fresh.op != pending.op:
+        return None
+
+    source_words = pending.source_words
+    media_type = pending.media_type
+    library_only = pending.library_only
+    explicit = set(pending.explicit_fields)
+    if fresh is not None:
+        if (
+            "source_words" in fresh.explicit_fields
+            and fresh.source_words
+            and not set(fresh.source_words) <= _CONTINUATION_PRONOUNS
+        ):
+            source_words = fresh.source_words
+            explicit.add("source_words")
+        if "media_type" in fresh.explicit_fields:
+            media_type = fresh.media_type
+            explicit.add("media_type")
+        if "library_only" in fresh.explicit_fields:
+            library_only = fresh.library_only
+            explicit.add("library_only")
+    enqueue = pending.enqueue
+    if queue_positions:
+        enqueue = queue_mode
+        explicit.add("enqueue")
+
+    if pending.op == "play" and source_words:
+        merged_text = f"Spiel {' '.join(source_words)} {text}".strip()
+    else:
+        merged_text = text
+    return MediaRequest(
+        pending.op,
+        source_words,
+        pending.volume,
+        merged_text,
+        media_type,
+        library_only,
+        enqueue,
+        frozenset(explicit),
+    )
 
 
 @dataclass(frozen=True)
@@ -471,6 +597,12 @@ def resolve_media(
     satellite_area_id: str | None,
 ) -> MediaResolution:
     """The plan for one media command, or the honest answer/question."""
+    if request.op == "play" and "enqueue" in request.explicit_fields:
+        return MediaResolution(
+            None,
+            "Dieser normale Medienplayer unterstützt keinen sicher geprüften "
+            "Warteschlangenmodus; ich habe nichts gestartet.",
+        )
     target = resolve_media_player(
         request, entities, satellite_area_id=satellite_area_id, match_source_lists=True
     )

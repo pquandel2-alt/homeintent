@@ -134,7 +134,9 @@ def opens_clause(tokens: Sequence[LanguageToken], index: int) -> bool:
     """Whether the joiner at ``index`` opens a new coordinated clause.
 
     "und"/"sowie" open a clause before an imperative verb, an article or a
-    further joiner; "dann"/"danach" always do. Shared by the
+    further joiner; "dann"/"danach" normally do. A bounded queue phrase such
+    as "danach in die Warteschlange" is one media modifier, not a second
+    predicate. Shared by the
     place carrying below and by the complete-coverage check of bounded
     domain parsers (``media_coverage``), so both read coordination alike.
     """
@@ -143,7 +145,22 @@ def opens_clause(tokens: Sequence[LanguageToken], index: int) -> bool:
     token = tokens[index]
     if not token.is_word or token.canonical not in _CLAUSE_WORDS:
         return False
-    following = next((item for item in tokens[index + 1:] if item.is_word), None)
+    following_words = [item for item in tokens[index + 1:] if item.is_word]
+    following = next(iter(following_words), None)
+    if token.canonical in {"dann", "danach"}:
+        queue_index = next(
+            (
+                offset
+                for offset, item in enumerate(following_words[:4])
+                if item.canonical in {"warteschlange", "queue"}
+            ),
+            None,
+        )
+        if queue_index is not None and all(
+            item.canonical in {"in", "die", "der", "den", "zur"}
+            for item in following_words[:queue_index]
+        ):
+            return False
     return following is not None and (
         following.canonical in _VERBS | _ARTICLES | {"dann", "danach"}
         or token.canonical in {"dann", "danach"}

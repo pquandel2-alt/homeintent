@@ -7,12 +7,18 @@ decides or executes.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..effect_graph import summarize_effects
 from ..execution_policy import PolicyOutcome
 from ..service_executor import CHANGED_SINCE_CONFIRMATION, ExecutionResult
 from ..service_call import ServiceCallPlan
+from ..const import (
+    CONF_RESPONSE_DETAIL_LEVEL,
+    DEFAULT_RESPONSE_DETAIL_LEVEL,
+    RESPONSE_DETAIL_CONCISE,
+)
 
 # Past-tense or passive endings of service_call.py's response texts and the
 # infinitive a confirmation question needs ("Burgtor wird geöffnet" ->
@@ -52,13 +58,50 @@ def media_execution_text(plan: ServiceCallPlan, execution: ExecutionResult) -> s
     return None
 
 
-def with_effect_summary(text: str, execution: Any) -> str:
+def concise_responses(options: Any) -> bool:
+    """Whether successful replies omit redundant entity-count details."""
+
+    return (
+        options.get(CONF_RESPONSE_DETAIL_LEVEL, DEFAULT_RESPONSE_DETAIL_LEVEL)
+        == RESPONSE_DETAIL_CONCISE
+    )
+
+
+def with_effect_summary(text: str, execution: Any, options: Any = None) -> str:
     """„Gute Nacht ausgeführt: 9 Rollläden.“ after a script/scene/group."""
+    if concise_responses(options or {}):
+        return text
     effects = getattr(getattr(execution, "decision", None), "effects", None)
     summary = summarize_effects(effects) if effects is not None else None
     if not summary or not text:
         return text
     return f"{text.rstrip().rstrip('.')}: {summary}."
+
+
+_LEADING_COUNT = re.compile(
+    r"^(?:\d+|Ein|Eine|Zwei|Drei|Vier|Fünf|Sechs|Sieben|Acht|Neun|Zehn)\s+"
+    r"(?P<noun>Licht(?:er)?|Rolll(?:a|ä)den|Schalter|Ventilatoren?|Gerät(?:e)?|"
+    r"Heizungen?|Luftbefeuchter|Saugroboter|Medienplayer|Szenen|Skripte|Ventile|"
+    r"Helfer|Schlösser)\s+",
+    re.IGNORECASE,
+)
+
+
+def with_response_detail(text: str, execution: Any, options: Any) -> str:
+    """Shorten only a proven full-success rendering, never its result."""
+
+    if not concise_responses(options):
+        return text
+    if not getattr(execution, "executed", False) or getattr(execution, "failed", True):
+        return text
+    batch = getattr(execution, "batch_result", None)
+    if batch is not None and not getattr(batch, "fully_successful", False):
+        return text
+    match = _LEADING_COUNT.match(text)
+    if match is None:
+        return text
+    noun = match.group("noun")
+    return noun[:1].upper() + noun[1:] + " " + text[match.end():]
 
 
 def with_planned_effect_summary(text: str, execution: Any) -> str:

@@ -479,6 +479,31 @@ def _trim(tokens: Sequence[StructuralToken], start: int, end: int) -> tuple[int,
     return start, end
 
 
+def _is_queue_modifier(
+    tokens: Sequence[StructuralToken],
+    word_positions: Sequence[int],
+    word_offset: int,
+) -> bool:
+    """Whether ``dann/danach`` belongs to a bounded queue destination."""
+
+    following = [
+        tokens[position].canonical
+        for position in word_positions[word_offset + 1:word_offset + 5]
+    ]
+    queue_index = next(
+        (
+            offset
+            for offset, word in enumerate(following)
+            if word in {"warteschlange", "queue"}
+        ),
+        None,
+    )
+    return queue_index is not None and all(
+        word in {"in", "die", "der", "den", "zur"}
+        for word in following[:queue_index]
+    )
+
+
 def analyse_german_structure(
     tokens: Sequence[StructuralToken],
 ) -> GermanStructuralAnalysis:
@@ -499,6 +524,12 @@ def analyse_german_structure(
     while word_offset < len(word_positions):
         token_index = word_positions[word_offset]
         connector_match = _connector_at(tokens, word_positions, word_offset)
+        if (
+            connector_match is not None
+            and connector_match[0].words in {("dann",), ("danach",)}
+            and _is_queue_modifier(tokens, word_positions, word_offset)
+        ):
+            connector_match = None
         if (
             connector_match is not None
             and connector_match[0].words == ("nur",)

@@ -33,6 +33,7 @@ from ..controllers.replies import (
     confirmation_question,
     execution_failure_text,
     with_effect_summary,
+    with_response_detail,
     with_planned_effect_summary,
 )
 from ..device_result import DeviceControlResult
@@ -388,21 +389,31 @@ class DeviceController:
                 return conversation.ConversationResult(
                     response=response, conversation_id=user_input.conversation_id
                 )
-            if execution.batch_result is not None:
-                stored = self._context_store.get(user_input.conversation_id)
-                if stored is not None:
-                    self._context_store.set(
-                        user_input.conversation_id,
-                        replace(
-                            stored,
-                            pending_undo=bind_undo_to_observed_states(
-                                restrict_undo_plan(stored.pending_undo,
-                                    execution.batch_result.succeeded_entity_ids),
-                                self.hass.states.get,
+            stored = self._context_store.get(user_input.conversation_id)
+            if stored is not None:
+                supported = stored.pending_undo
+                if execution.batch_result is not None:
+                    supported = restrict_undo_plan(
+                        supported, execution.batch_result.succeeded_entity_ids
+                    )
+                self._context_store.set(
+                    user_input.conversation_id,
+                    replace(
+                        stored,
+                        pending_undo=bind_undo_to_observed_states(
+                            supported,
+                            self.hass.states.get,
+                            executed=(
+                                None
+                                if execution.batch_result is not None
+                                else result.plan
                             ),
                         ),
-                    )
-            response_text = with_effect_summary(result.response_text, execution)
+                    ),
+                )
+            response_text = with_effect_summary(
+                result.response_text, execution, self.entry.options
+            )
             if (
                 execution.batch_result is not None
                 and not execution.batch_result.fully_successful
@@ -418,12 +429,19 @@ class DeviceController:
                     execution.script_outcome,
                 )
                 if execution.script_outcome.status is ScriptExecutionStatus.COMPLETED:
-                    response_text = with_effect_summary(response_text, execution)
+                    response_text = with_effect_summary(
+                        response_text, execution, self.entry.options
+                    )
                 else:
                     response_text = with_planned_effect_summary(
                         response_text, execution
                     )
-            result = replace(result, response_text=response_text)
+            result = replace(
+                result,
+                response_text=with_response_detail(
+                    response_text, execution, self.entry.options
+                ),
+            )
 
         if (
             result.command is not None and result.command.intent in QUERY_INTENT_NAMES
@@ -663,11 +681,21 @@ class DeviceController:
                           "einen abweichenden oder nicht verfügbaren Zustand.")
                 inverse = None
             elif execution.effect is not None and execution.effect.confirmed:
-                spoken = media_execution_text(plan, execution) or with_effect_summary(command.response_text, execution)
+                spoken = media_execution_text(plan, execution) or with_effect_summary(
+                    command.response_text, execution, self.entry.options
+                )
             else:
                 spoken = f"Aufruf für {plan_names(plan)} angenommen; Wirkung noch nicht bestätigt."
                 inverse = None
-            response_parts.append(spoken)
+            if inverse is not None:
+                inverse = bind_undo_to_observed_states(
+                    inverse,
+                    self.hass.states.get,
+                    executed=(None if execution.batch_result is not None else plan),
+                )
+            response_parts.append(
+                with_response_detail(spoken, execution, self.entry.options)
+            )
             if execution.failed:
                 skipped = [plan_names(later.plan) for later in commands[index + 1:]
                            if later.plan is not None]
@@ -684,10 +712,23 @@ class DeviceController:
             else:
                 undo_parts.append(inverse)
         if undo_supported and undo_parts:
+            combined = bind_undo_to_observed_states(
+                UndoPlan(
+                    tuple(
+                        plan
+                        for undo in reversed(undo_parts)
+                        for plan in undo.plans
+                    ),
+                    actor_id,
+                ),
+                self.hass.states.get,
+            )
+        else:
+            combined = None
+        if combined is not None:
             self._context_store.set(user_input.conversation_id, ConversationContext(
                 last_command=None, last_entities=(), last_area=None, pending_clarification=None,
-                pending_undo=UndoPlan(tuple(plan for undo in reversed(undo_parts)
-                                           for plan in undo.plans), actor_id),
+                pending_undo=combined,
             ))
         if binding_offer is not None:
             response_parts.append(await self._async_store_routine_binding(*binding_offer, actor_id))
@@ -805,11 +846,21 @@ class DeviceController:
                 if execution.batch_result is not None:
                     if not execution.batch_result.fully_successful:
                         spoken = batch_execution_speech(execution.batch_result)
-                    undo = bind_undo_to_observed_states(
-                        restrict_undo_plan(undo, execution.batch_result.succeeded_entity_ids),
-                        self.hass.states.get,
+                    undo = restrict_undo_plan(
+                        undo, execution.batch_result.succeeded_entity_ids
                     )
-                response.async_set_speech(spoken)
+                undo = bind_undo_to_observed_states(
+                    undo,
+                    self.hass.states.get,
+                    executed=(
+                        None
+                        if execution.batch_result is not None
+                        else device_control.plan
+                    ),
+                )
+                response.async_set_speech(
+                    with_response_detail(spoken, execution, self.entry.options)
+                )
                 if resolved_entities:
                     controlled = resolved_entities[0]
                     self._context_store.set(
@@ -904,10 +955,21 @@ class DeviceController:
                 scope=confirmation.scope,
             )
             if execution.batch_result is not None:
-                undo = bind_undo_to_observed_states(
-                    restrict_undo_plan(undo, execution.batch_result.succeeded_entity_ids),
-                    self.hass.states.get,
+                undo = restrict_undo_plan(
+                    undo, execution.batch_result.succeeded_entity_ids
                 )
+            if execution.executed and not execution.failed:
+                undo = bind_undo_to_observed_states(
+                    undo,
+                    self.hass.states.get,
+                    executed=(
+                        None
+                        if execution.batch_result is not None
+                        else confirmation.plan
+                    ),
+                )
+            else:
+                undo = None
             if not execution.executed or (
                 execution.batch_result is not None and not execution.batch_result.fully_successful
             ) or (
@@ -929,7 +991,9 @@ class DeviceController:
                     ),
                 )
             else:
-                spoken = with_effect_summary(confirmation.success_text, execution)
+                spoken = with_effect_summary(
+                    confirmation.success_text, execution, self.entry.options
+                )
                 if media_memory is not None and media_memory.media_request is not None:
                     spoken = media_execution_text(confirmation.plan, execution) or spoken
                 if execution.script_outcome is not None:
@@ -958,14 +1022,18 @@ class DeviceController:
                         execution.script_outcome.status
                         is ScriptExecutionStatus.COMPLETED
                     ):
-                        spoken = with_effect_summary(spoken, execution)
+                        spoken = with_effect_summary(
+                            spoken, execution, self.entry.options
+                        )
                     else:
                         spoken = with_planned_effect_summary(spoken, execution)
                 if confirmation.binding_offer is not None:
                     spoken = f"{spoken} " + await self._async_store_routine_binding(
                         *confirmation.binding_offer, current_user_id
                     )
-                response.async_set_speech(spoken)
+                response.async_set_speech(
+                    with_response_detail(spoken, execution, self.entry.options)
+                )
                 if undo is not None:
                     self._context_store.set(
                         user_input.conversation_id,
@@ -1335,6 +1403,14 @@ class DeviceController:
                     )
                     if not execution.executed:
                         raise RuntimeError(execution.error or "Rücknahme nicht erlaubt")
+                    rebound = bind_undo_to_observed_states(
+                        undo, self.hass.states.get
+                    )
+                    if rebound is None:
+                        raise RuntimeError(
+                            "Der Zustand nach der Rücknahme konnte nicht sicher belegt werden"
+                        )
+                    undo = rebound
             except Exception as err:  # noqa: BLE001
                 _LOGGER.error("Undo service call failed: %s", err, exc_info=True)
                 response.async_set_error(

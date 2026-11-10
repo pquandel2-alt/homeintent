@@ -35,6 +35,7 @@
           "allow_non_admin_critical": "Kritische Aktionen für authentifizierte Nicht-Administratoren erlauben",
           "allow_non_admin_automations": "Automationserstellung für Nicht-Administratoren erlauben",
           "response_style": "Antwortstil bei Erfolg (tone: Standard für neue Installationen – nur ein kurzer Bestätigungston, wenn alles ausgeführt und bestätigt wurde, und ein zweiter Ton, wenn alles ausgeführt wurde, sich aber ein Gerät nicht zurückgemeldet hat; spoken: Sprache wie bisher, Standard für Installationen vor 7.9.3 ohne gespeicherte Einstellung; Fragen, Fehler, Teilerfolge, Gegenrichtung und nicht erreichbare Geräte werden immer gesprochen)",
+          "response_detail_level": "Details erfolgreicher Antworten (concise: ohne redundante Geräteanzahl, Standard für neue Installationen; detailed: mit Anzahl, Standard für bestehende Installationen ohne gespeicherte Einstellung; Fehler, Teilerfolge, Rückfragen und Statusauskünfte bleiben vollständig)",
           "confirmation_media_id": "Eigener Bestätigungston (media-source:// ID oder /local/… Pfad; leer: eingebauter Ton)",
           "notice_media_id": "Eigener Ton für „ausgeführt, aber ohne Rückmeldung“ (media-source:// ID oder /local/… Pfad; leer: eingebauter zweiter Ton)",
           "notice_says_name": "Nach dem zweiten Ton kurz sagen, welches Gerät sich nicht meldet (z. B. „Stehlampe meldet sich nicht.“)",

@@ -1088,6 +1088,7 @@ def test_legacy_confirmation_uses_central_explain_understood_and_cancel(monkeypa
 
 def test_undo_reports_empty_context_then_reverses_last_light_action(monkeypatch):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
+    _report_requested_effects(entity)
 
     empty = _run(entity, "Mach das rückgängig", "undo-empty")
     assert "keine kürzlich" in empty.response.speech
@@ -1104,6 +1105,7 @@ def test_undo_reports_empty_context_then_reverses_last_light_action(monkeypatch)
 
 def test_undo_service_failure_is_cleanly_reported(monkeypatch):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
+    _report_requested_effects(entity)
     _run(entity, "Schalte das Flurlicht ein", "undo-failure")
     entity.hass.services.async_call = ServiceMock(side_effect=RuntimeError("undo boom"))
 
@@ -1170,6 +1172,7 @@ def test_advanced_unavailable_query_is_read_only(monkeypatch):
 
 def test_undo_service_failure_is_logged(monkeypatch, caplog):
     entity = _make_entity(monkeypatch, [FLUR_LICHT_OFF])
+    _report_requested_effects(entity)
     _run(entity, "Schalte das Flurlicht ein", conversation_id="undo-failure")
     entity.hass.services.async_call.reset_mock()
     entity.hass.services.async_call.side_effect = RuntimeError("undo unavailable")

@@ -82,6 +82,31 @@ Release-Nachweise gelten ausschließlich für ihre historischen Commits.
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – weiterhin
   nicht geprüft und nicht behauptet
 
+## Release Candidate 7.14.0
+
+- [x] Undo-Zielmenge und beobachtete Signaturen stimmen exakt überein; leere
+  oder unvollständige Belege sind fail-closed.
+- [x] Einzel-, Batch-, Teilbatch-, Mehrbefehls- und Bestätigungspfade binden
+  Undo erst nach belegter Ausführung; spätere Zustands-, Attribut-, Zeit- oder
+  Context-Änderungen verhindern inverse Writes.
+- [x] Medienfortsetzungen führen explizite Queue-Felder typisiert zusammen;
+  Default-`replace` überschreibt keinen geerbten Modus.
+- [x] `response_detail_level` verändert ausschließlich die Darstellung reiner
+  Erfolge; Teilfehler und Status-/Sicherheitsantworten bleiben vollständig.
+- [x] Nightly-Property-Profil lokal mit festem Seed: 647 bestanden; echte
+  HA-2026.9.2-Suite: 25 bestanden; MA-Komponentenvertrag grün.
+- [!] vollständige lokale Suite am Implementierungszwischenstand: 10.692
+  bestanden, 12 übersprungen; ein danach behobenes Regex-Inventar und zwei
+  unter Last überschrittene, isoliert grüne Effect-Wait-Zeitgrenzen. Nach der
+  finalen Queue-Span-Korrektur bestanden 119 direkte sowie 151 gemeinsame
+  Struktur-/Sprachtests; die Gesamtsuite wurde danach nicht erneut vollständig
+  gestartet. Vier unveränderte lokale Performance-Gates lagen über ihrem
+  Budget; Grenzen wurden nicht angehoben.
+- [ ] Hassfest, HACS-Action, CI und `nightly-live` auf einem finalen Commit –
+  lokal ohne Docker/GitHub-Actions-Runner nicht ausgeführt und vor einer
+  Veröffentlichung zwingend offen.
+- [ ] echte Music-Assistant-/Lautsprecher-/Gerätehardware – nicht geprüft.
+
 ## Release Candidate 7.13.1
 
 - [x] vollständige Satzverbrauchsprüfung für schreibende Medienbefehle

@@ -17,7 +17,7 @@ from homeintent.conversation import NluConversationEntity  # noqa: E402
 from homeintent.entities import EntitySnapshot  # noqa: E402
 from homeassistant.components.conversation import ConversationInput  # noqa: E402
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
-from homeassistant.core import HomeAssistant  # noqa: E402
+from homeassistant.core import HomeAssistant, State  # noqa: E402
 
 
 LIGHTS = [
@@ -42,9 +42,31 @@ LIGHTS = [
 ]
 
 
+def _install_state_reports(entity, *, report_compensation: bool) -> None:
+    """Model actual HA state evidence instead of a recorder-only service."""
+
+    for item in LIGHTS:
+        entity.hass.states._states[item.entity_id] = State(
+            item.entity_id, item.state, dict(item.attributes)
+        )
+
+    async def report(_domain, service, data=None, **_kwargs):
+        payload = data or {}
+        entity_id = payload.get("entity_id")
+        if not isinstance(entity_id, str):
+            return
+        if service == "turn_on":
+            entity.hass.states._states[entity_id] = State(entity_id, "on")
+        elif service == "turn_off" and report_compensation:
+            entity.hass.states._states[entity_id] = State(entity_id, "off")
+
+    entity.hass.services.async_call.side_effect = report
+
+
 def test_correction_compensates_previous_action_before_retargeting(monkeypatch):
     entity = NluConversationEntity(ConfigEntry())
     entity.hass = HomeAssistant()
+    _install_state_reports(entity, report_compensation=True)
     monkeypatch.setattr(ha_conversation, "build_entity_snapshots", lambda *_: LIGHTS)
 
     async def turn(text: str):
@@ -74,6 +96,7 @@ def test_correction_compensates_previous_action_before_retargeting(monkeypatch):
 def test_correction_stops_when_compensation_effect_is_not_observed(monkeypatch):
     entity = NluConversationEntity(ConfigEntry())
     entity.hass = HomeAssistant()
+    _install_state_reports(entity, report_compensation=False)
     still_on = [
         EntitySnapshot(
             item.entity_id,

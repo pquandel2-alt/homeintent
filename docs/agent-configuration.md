@@ -9,6 +9,12 @@ deaktivierter Routineerkennung, deaktiviertem AUTO und leerer AUTO-Allowlist.
 - `memory_retention_days`: maximale Standardaufbewahrung.
 - `persona_style`: `neutral`, `precise` oder `jarvis`.
 - `banter_level`: 0 bis 3; bei Sicherheitskategorien immer wirkungslos.
+- `response_detail_level`: `concise` blendet bei vollständig erfolgreichen
+  Geräteaktionen redundante Zielanzahlen aus; `detailed` behält die bisherige
+  Anzahl. Neue Einträge starten mit `concise`, bestehende Einträge ohne
+  gespeicherten Wert bleiben auf `detailed`. Teilfehler, Fehler,
+  unbestätigte Wirkungen, Statusauskünfte und Bestätigungsfragen werden nie
+  verkürzt.
 - `agent_enabled`: bestehende INFORM-/ASK-/AUTO-Ausgabe insgesamt.
 - `agent_quiet_start` / `agent_quiet_end`: lokales TTS-Ruhefenster.
 - `agent_event_categories`: kommagetrennte, ausdrücklich aktive

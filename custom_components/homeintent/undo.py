@@ -37,14 +37,120 @@ def _state_signature(state: Any) -> tuple[object, ...] | None:
     )
 
 
+def _target_ids(undo: UndoPlan) -> frozenset[str]:
+    return frozenset(
+        entity_id
+        for plan in undo.plans
+        for entity_id in (
+            (plan.entity_id,) if isinstance(plan.entity_id, str) else plan.entity_id
+        )
+    )
+
+
+def _observed_effect_matches(
+    executed: ServiceCallPlan,
+    state_lookup: Callable[[str], Any],
+    evidenced_target_ids: frozenset[str],
+    undo: UndoPlan,
+) -> bool:
+    """Require the requested post-state before an inverse becomes available."""
+
+    executed_target_ids = (
+        (executed.entity_id,)
+        if isinstance(executed.entity_id, str)
+        else tuple(executed.entity_id)
+    )
+    target_ids = tuple(
+        entity_id
+        for entity_id in executed_target_ids
+        if entity_id in evidenced_target_ids
+    )
+    if not target_ids or frozenset(target_ids) != evidenced_target_ids:
+        return False
+    for entity_id in target_ids:
+        state = state_lookup(entity_id)
+        if state is None:
+            return False
+        value = getattr(state, "state", None)
+        attributes = dict(getattr(state, "attributes", {}) or {})
+        service = executed.service
+        if service == "turn_on" and value != "on":
+            return False
+        if service == "turn_off" and value != "off":
+            return False
+        if service == "open_cover" and value != "open":
+            return False
+        if service == "close_cover" and value != "closed":
+            return False
+        if service == "toggle":
+            inverse = next(
+                (
+                    plan
+                    for plan in undo.plans
+                    if plan.entity_id == entity_id
+                    and plan.service in {"turn_on", "turn_off"}
+                ),
+                None,
+            )
+            expected = (
+                "off"
+                if inverse is not None and inverse.service == "turn_on"
+                else "on"
+                if inverse is not None and inverse.service == "turn_off"
+                else None
+            )
+            if expected is None or value != expected:
+                return False
+        expected_attribute = {
+            "set_cover_position": ("current_position", "position"),
+            "set_temperature": ("temperature", "temperature"),
+            "set_humidity": ("humidity", "humidity"),
+            "set_value": (None, "value"),
+            "select_option": (None, "option"),
+            "set_hvac_mode": (None, "hvac_mode"),
+        }.get(service)
+        if expected_attribute is not None:
+            attribute, data_key = expected_attribute
+            expected = executed.data.get(data_key)
+            observed = value if attribute is None else attributes.get(attribute)
+            if service == "set_value":
+                matches = False
+                if isinstance(observed, (str, int, float)) and isinstance(
+                    expected, (str, int, float)
+                ):
+                    try:
+                        matches = float(observed) == float(expected)
+                    except ValueError:
+                        pass
+            else:
+                matches = observed == expected
+            if expected is None or not matches:
+                return False
+        elif service not in {
+            "turn_on", "turn_off", "open_cover", "close_cover", "toggle"
+        }:
+            # Undo is intentionally unavailable for an effect whose resulting
+            # state this closed adapter cannot prove.
+            return False
+    return True
+
+
 def bind_undo_to_observed_states(
-    undo: UndoPlan | None, state_lookup: Callable[[str], Any]
+    undo: UndoPlan | None,
+    state_lookup: Callable[[str], Any],
+    *,
+    executed: ServiceCallPlan | None = None,
 ) -> UndoPlan | None:
     """Bind a safely observed partial inverse; missing evidence offers no Undo."""
-    if undo is None:
+    if undo is None or not undo.plans:
         return None
-    target_ids = {entity_id for plan in undo.plans
-                  for entity_id in ((plan.entity_id,) if isinstance(plan.entity_id, str) else plan.entity_id)}
+    target_ids = _target_ids(undo)
+    if executed is not None and not _observed_effect_matches(
+        executed, state_lookup, target_ids, undo
+    ):
+        return None
+    if not target_ids:
+        return None
     observed = []
     for entity_id in sorted(target_ids):
         signature = _state_signature(state_lookup(entity_id))
@@ -56,8 +162,18 @@ def bind_undo_to_observed_states(
 
 def undo_matches_observed_states(undo: UndoPlan, state_lookup: Callable[[str], Any]) -> bool:
     """Do not overwrite a later device change, including same-value updates."""
-    return all(_state_signature(state_lookup(entity_id)) == signature
-               for entity_id, signature in undo.observed_states)
+    target_ids = _target_ids(undo)
+    observed_ids = tuple(entity_id for entity_id, _signature in undo.observed_states)
+    if (
+        not target_ids
+        or len(observed_ids) != len(target_ids)
+        or frozenset(observed_ids) != target_ids
+    ):
+        return False
+    return all(
+        _state_signature(state_lookup(entity_id)) == signature
+        for entity_id, signature in undo.observed_states
+    )
 
 
 def is_undo_request(text: str) -> bool:

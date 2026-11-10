@@ -15,7 +15,13 @@ from homeassistant.helpers import intent
 
 from ..entities import EntitySnapshot, normalize_for_compare
 from ..arbitration_candidates import complete_command_candidate
-from ..media import PendingMediaCommand, claims_other_target, parse_media_request, resolve_media
+from ..media import (
+    PendingMediaCommand,
+    claims_other_target,
+    merge_media_continuation,
+    parse_media_request,
+    resolve_media,
+)
 from ..media_coverage import analyse_media_coverage
 from ..music_aliases import (
     PendingMediaAliasInstanceSelection,
@@ -118,10 +124,7 @@ class MediaCommandSupport:
             or not getattr(request, "source_words", ())
         ):
             return None
-        return replace(
-            request,
-            text="Spiel " + " ".join(request.source_words) + " " + user_input.text,
-        )
+        return merge_media_continuation(request, user_input.text)
 
     async def _async_resolve_media_request(
         self: Any,
@@ -324,9 +327,11 @@ class MediaCommandSupport:
                     "In Ordnung, der offene Medienentwurf wurde vollständig verworfen.",
                 )
             fresh_request = parse_media_request(user_input.text)
+            amended_request = merge_media_continuation(
+                pending.request, user_input.text
+            )
             if fresh_request is not None and not (
-                isinstance(pending, PendingMusicAssistant)
-                and set(words_of(user_input.text)) & {"es", "dort", "da", "hier"}
+                set(words_of(user_input.text)) & {"es", "dort", "da", "hier"}
             ):
                 self._runtime.dialog_manager.cancel(
                     user_input.conversation_id, task.task_id
@@ -345,6 +350,18 @@ class MediaCommandSupport:
                     self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
                     return await self._async_rerun(user_input)
         if isinstance(pending, (PendingMusicAssistant, PendingMediaCommand)):
+            request = amended_request
+            if request is None:
+                self._runtime.dialog_manager.cancel(
+                    user_input.conversation_id, task.task_id
+                )
+                self.devices._context_store.clear(user_input.conversation_id)
+                return self._result(
+                    user_input,
+                    response,
+                    "Die Medienänderung widerspricht dem offenen Auftrag. "
+                    "Ich habe nichts gestartet und den Entwurf verworfen.",
+                )
             selection_words = frozenset({"es"})
             if isinstance(pending, PendingMusicAssistant) and pending.stage == "media_type":
                 selection_words |= frozenset(
@@ -352,7 +369,7 @@ class MediaCommandSupport:
                     for word in _MEDIA_TYPE_SELECTIONS.get(kind, ())
                 )
             if not media_reading_complete(
-                user_input.text, pending.request, entities, selection=True,
+                user_input.text, request, entities, selection=True,
                 selection_words=selection_words,
             ):
                 self._runtime.dialog_manager.cancel(user_input.conversation_id, task.task_id)
@@ -384,8 +401,8 @@ class MediaCommandSupport:
                 user_input.conversation_id, task.task_id
             )
             resolved = await self._async_resolve_media_request(
-                replace(user_input, text=pending.request.text),
-                pending.request,
+                replace(user_input, text=request.text),
+                request,
                 [chosen],
             )
             return await self._async_finish_media(
@@ -393,7 +410,7 @@ class MediaCommandSupport:
                 response,
                 resolved,
                 entities,
-                request=pending.request,
+                request=request,
             )
         if not isinstance(pending, PendingMusicAssistant):
             return None
@@ -407,7 +424,13 @@ class MediaCommandSupport:
                 "Diese Rückfrage gehört zu einem anderen Benutzer.",
             )
         chosen: EntitySnapshot | None = None
-        request = pending.request
+        request = amended_request
+        if request is None:
+            return self._result(
+                user_input,
+                response,
+                "Die Medienänderung widerspricht dem offenen Auftrag; ich habe nichts gestartet.",
+            )
         if pending.stage == "player":
             candidates = [
                 entity

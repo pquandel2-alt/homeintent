@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.13.4**
+- Aktuelle Version: **7.14.0**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS
@@ -78,6 +78,11 @@ HomeIntent → Konfigurieren**. Dort werden insbesondere festgelegt:
 - ausgewählte beziehungsweise von Assist freigegebene Entitäten,
 - Benutzer-, Haushalts- und Administratorgrenzen,
 - Bestätigungs- und Ausführungsrichtlinien,
+- Antwortdetails (`response_detail_level`): `concise` blendet bei reinen
+  Erfolgen redundante Geräteanzahlen aus, `detailed` nennt sie weiterhin;
+  Teilfehler, Rückfragen, Statusauskünfte und Sicherheitsangaben bleiben in
+  beiden Modi vollständig. Neue Installationen starten mit `concise`,
+  bestehende Installationen ohne gespeicherten Wert bleiben `detailed`,
 - proaktive Kategorien, Kanäle und Aufmerksamkeitsbudgets,
 - Langläufer-Schwelle (`0` deaktiviert die Kategorie vollständig),
 - Benachrichtigungsziele sowie optionale lokale Adapter.
@@ -149,6 +154,24 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
    anonymisierte Logzeilen angeben; Tokens und private Pfade nicht veröffentlichen.
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
+
+## Version 7.14.0 – Zustandsgebundenes Undo und sichere Medienfortsetzungen
+
+Geprüfter Release-Stand von Version 7.14.0 ist ausschließlich der im
+[GitHub-Release v7.14.0](https://github.com/pquandel2-alt/homeintent/releases/tag/v7.14.0)
+ausgewiesene Commit mit seinen erfolgreichen CI- und Nightly-Läufen. Die
+Korpusbaseline
+[`corpus-signatures-7.14.0.json`](docs/perf/corpus-signatures-7.14.0.json)
+schützt die deterministischen Sprachsignaturen dieses Stands.
+
+Geräte-Undo verlangt jetzt für jedes Ziel einen unveränderten beobachteten
+Nachzustand. Medienfortsetzungen führen Player, Quelle, Medientyp und
+Warteschlangenmodus typisiert zusammen. Mit `response_detail_level` lassen
+sich redundante Geräteanzahlen bei reinen Erfolgen ausblenden, ohne
+Teilresultate, Fehler, Rückfragen oder Sicherheitsangaben zu verkürzen.
+Details und Prüfgrenzen stehen in den
+[Release Notes](docs/release-notes-7.14.0.md) und im
+[Umsetzungsbericht](docs/umsetzung-next-reliability.md).
 
 Geprüfter Release-Stand von Version 7.13.3 ist der commitfest geprüfte Stand
 `0fb881c9e00959bedeb97ce0e3733887b3b8235e`. CI und Nightly waren für exakt
