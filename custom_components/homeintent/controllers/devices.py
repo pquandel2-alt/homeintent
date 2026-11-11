@@ -73,7 +73,8 @@ from ..batch_execution import (
 )
 from ..undo import (
     build_undo_plan, restrict_undo_plan, UndoPlan,
-    bind_undo_to_observed_states, undo_matches_observed_states,
+    async_bind_undo_when_observed, bind_undo_to_observed_states,
+    undo_matches_observed_states,
 )
 from ..world_model import WorldModel
 from ..plan_origin import PlanOrigin
@@ -155,6 +156,91 @@ class DeviceController:
     @property
     def _world_model(self) -> WorldModel | None:
         return self._world_model_of()
+
+    def _store_or_observe_undo(
+        self,
+        conversation_id: str,
+        context: ConversationContext,
+        undo: UndoPlan | None,
+        executed: ServiceCallPlan,
+        execution_id: str | None,
+        *,
+        allow_provisional: bool = False,
+    ) -> None:
+        """Store exact evidence now, or bind it after a delayed device report."""
+        exact = bind_undo_to_observed_states(
+            undo,
+            self.hass.states.get,
+            executed=executed,
+            execution_id=execution_id,
+        )
+        if exact is not None or undo is None or execution_id is None:
+            self._context_store.set(
+                conversation_id,
+                replace(
+                    context,
+                    pending_undo=exact,
+                    pending_undo_evidence_id=None,
+                ),
+            )
+            return
+
+        provisional = (
+            bind_undo_to_observed_states(
+                undo,
+                self.hass.states.get,
+                execution_id=execution_id,
+            )
+            if allow_provisional
+            else None
+        )
+
+        waiting = replace(
+            context,
+            pending_undo=provisional,
+            pending_undo_evidence_id=execution_id,
+        )
+        self._context_store.set(conversation_id, waiting)
+        monitor_timeout = getattr(
+            getattr(self._runtime, "effect_monitor", None), "timeout", None
+        )
+        timeout = (
+            float(monitor_timeout.total_seconds())
+            if monitor_timeout is not None
+            else 10.0
+        )
+        timeout = min(10.0, max(0.1, timeout))
+
+        async def observe() -> None:
+            observed = await async_bind_undo_when_observed(
+                self.hass,
+                undo,
+                executed,
+                execution_id,
+                timeout=timeout,
+            )
+            current = self._context_store.get(conversation_id)
+            if (
+                current is None
+                or current.pending_undo_evidence_id != execution_id
+            ):
+                return
+            self._context_store.set(
+                conversation_id,
+                replace(
+                    current,
+                    pending_undo=(
+                        observed
+                        if observed is not None
+                        else current.pending_undo
+                    ),
+                    pending_undo_evidence_id=None,
+                ),
+            )
+
+        self.hass.async_create_background_task(
+            observe(), f"homeintent-undo-evidence-{execution_id}"
+        )
 
     def _incomplete_write_coverage(
         self,
@@ -396,20 +482,13 @@ class DeviceController:
                     supported = restrict_undo_plan(
                         supported, execution.batch_result.succeeded_entity_ids
                     )
-                self._context_store.set(
+                self._store_or_observe_undo(
                     user_input.conversation_id,
-                    replace(
-                        stored,
-                        pending_undo=bind_undo_to_observed_states(
-                            supported,
-                            self.hass.states.get,
-                            executed=(
-                                None
-                                if execution.batch_result is not None
-                                else result.plan
-                            ),
-                        ),
-                    ),
+                    stored,
+                    supported,
+                    result.plan,
+                    execution.execution_id,
+                    allow_provisional=execution.batch_result is not None,
                 )
             response_text = with_effect_summary(
                 result.response_text, execution, self.entry.options
@@ -849,21 +928,12 @@ class DeviceController:
                     undo = restrict_undo_plan(
                         undo, execution.batch_result.succeeded_entity_ids
                     )
-                undo = bind_undo_to_observed_states(
-                    undo,
-                    self.hass.states.get,
-                    executed=(
-                        None
-                        if execution.batch_result is not None
-                        else device_control.plan
-                    ),
-                )
                 response.async_set_speech(
                     with_response_detail(spoken, execution, self.entry.options)
                 )
                 if resolved_entities:
                     controlled = resolved_entities[0]
-                    self._context_store.set(
+                    self._store_or_observe_undo(
                         user_input.conversation_id,
                         ConversationContext(
                             last_command=None,
@@ -879,8 +949,11 @@ class DeviceController:
                                 ),
                                 source_intent="DeviceControl:" + device_control.plan.service,
                             ),
-                            pending_undo=undo,
                         ),
+                        undo,
+                        device_control.plan,
+                        execution.execution_id,
+                        allow_provisional=execution.batch_result is not None,
                     )
         return conversation.ConversationResult(
             response=response, conversation_id=user_input.conversation_id
@@ -958,17 +1031,7 @@ class DeviceController:
                 undo = restrict_undo_plan(
                     undo, execution.batch_result.succeeded_entity_ids
                 )
-            if execution.executed and not execution.failed:
-                undo = bind_undo_to_observed_states(
-                    undo,
-                    self.hass.states.get,
-                    executed=(
-                        None
-                        if execution.batch_result is not None
-                        else confirmation.plan
-                    ),
-                )
-            else:
+            if not execution.executed or execution.failed:
                 undo = None
             if not execution.executed or (
                 execution.batch_result is not None and not execution.batch_result.fully_successful
@@ -1035,15 +1098,18 @@ class DeviceController:
                     with_response_detail(spoken, execution, self.entry.options)
                 )
                 if undo is not None:
-                    self._context_store.set(
+                    self._store_or_observe_undo(
                         user_input.conversation_id,
                         ConversationContext(
                             last_command=None,
                             last_entities=(),
                             last_area=None,
                             pending_clarification=None,
-                            pending_undo=undo,
                         ),
+                        undo,
+                        confirmation.plan,
+                        execution.execution_id,
+                        allow_provisional=execution.batch_result is not None,
                     )
             if media_memory is not None and media_memory.media_request is not None:
                 current = self._context_store.get(user_input.conversation_id)

@@ -1,5 +1,6 @@
 """v7.14 reliability regressions through the real conversation pipeline."""
 
+import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -9,11 +10,14 @@ import _ha_stub
 
 _ha_stub.install()
 
-from homeassistant.core import State
+from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
+from test_batch_settle_7131 import FakeBus
 from test_clause_binding_7132 import source_entities
 from test_music_assistant_710 import _player, _response
 from test_review_regressions_7133 import house, inject_one_lamp_failure
+from homeintent.service_call import ServiceCallPlan
+from homeintent.undo import UndoPlan, async_bind_undo_when_observed
 
 
 def _music_house(monkeypatch, *, options=None):
@@ -276,6 +280,52 @@ def test_confirmed_device_action_uses_the_same_state_bound_undo(monkeypatch):
 
     assert turn.calls == []
     assert "nichts zurückgenommen" in turn.speech
+
+
+@pytest.mark.parametrize("foreign", [False, True])
+def test_delayed_cover_undo_binds_only_to_the_original_execution(foreign):
+    """A moving cover becomes undoable at its exact, causal final report."""
+    hass = HomeAssistant()
+    hass.bus = FakeBus()
+    entity_id = "cover.esszimmer_rollladen"
+    moving = State(entity_id, "closing", {"current_position": 100})
+    moving.context = SimpleNamespace(id="moving", parent_id="execution-1")
+    hass.states._states[entity_id] = moving
+    undo = UndoPlan(
+        (
+            ServiceCallPlan(
+                "cover", "set_cover_position", entity_id, {"position": 100}
+            ),
+        ),
+        "admin",
+    )
+    executed = ServiceCallPlan(
+        "cover", "set_cover_position", entity_id, {"position": 40}
+    )
+
+    async def run():
+        task = asyncio.create_task(
+            async_bind_undo_when_observed(
+                hass, undo, executed, "execution-1", timeout=0.2
+            )
+        )
+        await asyncio.sleep(0)
+        final = State(entity_id, "open", {"current_position": 40})
+        final.context = SimpleNamespace(
+            id="final",
+            parent_id="external" if foreign else "execution-1",
+        )
+        hass.states._states[entity_id] = final
+        hass.bus.fire(
+            "state_changed",
+            {"entity_id": entity_id, "old_state": moving, "new_state": final},
+        )
+        return await task
+
+    observed = asyncio.run(run())
+    assert (observed is None) is foreign
+    if observed is not None:
+        assert observed.observed_states[0][0] == entity_id
 
 
 @pytest.mark.parametrize(

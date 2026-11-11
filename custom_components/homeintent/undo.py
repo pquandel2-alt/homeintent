@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, replace
 from copy import deepcopy
@@ -140,6 +141,7 @@ def bind_undo_to_observed_states(
     state_lookup: Callable[[str], Any],
     *,
     executed: ServiceCallPlan | None = None,
+    execution_id: str | None = None,
 ) -> UndoPlan | None:
     """Bind a safely observed partial inverse; missing evidence offers no Undo."""
     if undo is None or not undo.plans:
@@ -147,6 +149,11 @@ def bind_undo_to_observed_states(
     target_ids = _target_ids(undo)
     if executed is not None and not _observed_effect_matches(
         executed, state_lookup, target_ids, undo
+    ):
+        return None
+    if execution_id is not None and not all(
+        _state_belongs_to_execution(state_lookup(entity_id), execution_id)
+        for entity_id in target_ids
     ):
         return None
     if not target_ids:
@@ -158,6 +165,87 @@ def bind_undo_to_observed_states(
             return None
         observed.append((entity_id, signature))
     return replace(undo, observed_states=tuple(observed))
+
+
+def _state_belongs_to_execution(state: Any, execution_id: str) -> bool:
+    """Whether HA causally linked this state report to the original write."""
+    # Home-Assistant-free service doubles have no Context at all.  They can
+    # still prove state/attributes/time; a real HA State always has Context.
+    if state is not None and not hasattr(state, "context"):
+        return True
+    context = getattr(state, "context", None)
+    return context is not None and execution_id in {
+        getattr(context, "id", None),
+        getattr(context, "parent_id", None),
+    }
+
+
+async def async_bind_undo_when_observed(
+    hass: Any,
+    undo: UndoPlan,
+    executed: ServiceCallPlan,
+    execution_id: str,
+    *,
+    timeout: float,
+) -> UndoPlan | None:
+    """Wait in the background for exact, causally bound post-state evidence.
+
+    A moving cover is a confirmed *movement* for the spoken response, but it
+    is not yet the requested set point that may safely anchor a later inverse.
+    This observer therefore waits for the exact typed effect without delaying
+    the response.  A foreign state event aborts the observation fail-closed.
+    """
+    target_ids = _target_ids(undo)
+    if not target_ids or timeout <= 0:
+        return None
+
+    def bind_if_proven() -> UndoPlan | None:
+        if not all(
+            _state_belongs_to_execution(hass.states.get(entity_id), execution_id)
+            for entity_id in target_ids
+        ):
+            return None
+        return bind_undo_to_observed_states(
+            undo, hass.states.get, executed=executed
+        )
+
+    if (bound := bind_if_proven()) is not None:
+        return bound
+
+    changed = asyncio.Event()
+    foreign_change = False
+
+    def on_change(event: Any) -> None:
+        nonlocal foreign_change
+        data = getattr(event, "data", None) or {}
+        entity_id = data.get("entity_id")
+        if entity_id not in target_ids:
+            return
+        new_state = data.get("new_state")
+        if not _state_belongs_to_execution(new_state, execution_id):
+            foreign_change = True
+        changed.set()
+
+    bus = getattr(hass, "bus", None)
+    if bus is None:
+        return None
+    unsubscribe = bus.async_listen("state_changed", on_change)
+    deadline = asyncio.get_running_loop().time() + timeout
+    try:
+        while not foreign_change:
+            changed.clear()
+            if (bound := bind_if_proven()) is not None:
+                return bound
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return None
+            try:
+                await asyncio.wait_for(changed.wait(), remaining)
+            except asyncio.TimeoutError:
+                return None
+        return None
+    finally:
+        unsubscribe()
 
 
 def undo_matches_observed_states(undo: UndoPlan, state_lookup: Callable[[str], Any]) -> bool:

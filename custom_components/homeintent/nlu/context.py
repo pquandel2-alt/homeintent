@@ -392,6 +392,10 @@ class ConversationContext:
     pending_automation_wizard: PendingAutomationWizard | None = None
     pending_alias_learning: PendingAliasLearning | None = None
     pending_undo: "UndoPlan | None" = None
+    # Execution id of an exact post-state observation still in progress.
+    # It prevents a late device report from attaching an old inverse to a
+    # context that a newer turn has already replaced.
+    pending_undo_evidence_id: str | None = None
     # Read-only, non-command answers (for example "Spielt das Radio?") use
     # these fields to support "Läuft es noch?", "Und das andere?" and
     # "Woher weißt du das?" without manufacturing an executable command.

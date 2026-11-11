@@ -12,6 +12,9 @@ deutschsprachig und deterministisch; es gibt kein Laufzeit-LLM.
 - Zustand, Attribute, `last_updated` und HA-Context-ID gehören zur
   unveränderlichen Signatur. Fehlende oder unvollständige Belege sperren die
   Rücknahme.
+- Verzögert fahrende Cover binden ihren exakten Endzustand im Hintergrund an
+  die ursprüngliche HA-Context-ID. Fremde Zustandsereignisse aktivieren keinen
+  alten Undo-Plan und die gesprochene Antwort wird dafür nicht verzögert.
 - Vor Beginn und unmittelbar vor jedem inversen Aufruf wird erneut geprüft.
   Spätere Änderungen durch Benutzer, Automationen oder Dashboards werden nicht
   überschrieben.
