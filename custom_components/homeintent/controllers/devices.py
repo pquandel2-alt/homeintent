@@ -40,7 +40,6 @@ from ..device_result import DeviceControlResult
 from ..effect_graph import build_plan_effects
 from ..engine import CommandPlan, MatchResult, NluEngine
 from ..entities import EntitySnapshot
-from ..execution_context import user_facing_error
 from ..execution_policy import evaluate_service_plan, PolicyOutcome
 from ..nlu.automation_confirmation import classify_confirmation_reply, ConfirmationReply
 from ..nlu.clause_binding import analyse_clause_bindings
@@ -74,10 +73,10 @@ from ..batch_execution import (
 from ..undo import (
     build_undo_plan, restrict_undo_plan, UndoPlan,
     async_bind_undo_when_observed, bind_undo_to_observed_states,
-    undo_matches_observed_states,
 )
 from ..world_model import WorldModel
 from ..plan_origin import PlanOrigin
+from .device_undo import async_handle_device_undo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -771,6 +770,7 @@ class DeviceController:
                     inverse,
                     self.hass.states.get,
                     executed=(None if execution.batch_result is not None else plan),
+                    execution_id=execution.execution_id,
                 )
             response_parts.append(
                 with_response_detail(spoken, execution, self.entry.options)
@@ -799,6 +799,11 @@ class DeviceController:
                         for plan in undo.plans
                     ),
                     actor_id,
+                    source_execution_ids=tuple(dict.fromkeys(
+                        execution_id
+                        for undo in undo_parts
+                        for execution_id in undo.source_execution_ids
+                    )),
                 ),
                 self.hass.states.get,
             )
@@ -1399,92 +1404,15 @@ class DeviceController:
         entities: list[EntitySnapshot],
     ) -> conversation.ConversationResult:
         """Undo the most recent safely reversible action for this user."""
-        undo = pending.pending_undo if pending is not None else None
-        current_user_id = conversation_user_id(user_input)
-        if undo is None:
-            response.async_set_speech(
-                "Es gibt keine kürzlich ausgeführte, sicher rückgängig machbare Aktion."
-            )
-        elif (
-            undo.requested_by_user_id is not None
-            and undo.requested_by_user_id != current_user_id
-        ):
-            response.async_set_error(
-                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                "Diese Rücknahme gehört zu einem anderen Benutzer.",
-            )
-        elif not undo_matches_observed_states(undo, self.hass.states.get):
-            self._context_store.clear(user_input.conversation_id)
-            response.async_set_speech(
-                "Die Geräte wurden seit der Aktion verändert. "
-                "Ich habe deshalb nichts zurückgenommen."
-            )
-        else:
-            is_admin = await user_is_admin(self.hass, user_input)
-            denial = next(
-                (
-                    decision.reason
-                    for plan in undo.plans
-                    if (
-                        decision := evaluate_service_plan(
-                            plan,
-                            entities,
-                            self.entry.options,
-                            is_admin=is_admin,
-                            user_id=current_user_id,
-                            effects=build_plan_effects(self.hass, plan),
-                        )
-                    ).outcome
-                    is PolicyOutcome.DENY
-                ),
-                None,
-            )
-            if denial is not None:
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    denial,
-                )
-                return conversation.ConversationResult(
-                    response=response,
-                    conversation_id=user_input.conversation_id,
-                )
-            self._context_store.clear(user_input.conversation_id)
-            try:
-                for plan in undo.plans:
-                    target_ids = frozenset((plan.entity_id,) if isinstance(plan.entity_id, str) else plan.entity_id)
-                    guarded = restrict_undo_plan(undo, target_ids)
-                    if guarded is not None and not undo_matches_observed_states(guarded, self.hass.states.get):
-                        raise RuntimeError("Die Geräte wurden seit der Aktion verändert")
-                    execution = await async_execute_service_plan(
-                        self.hass,
-                        plan,
-                        entities,
-                        self.entry.options,
-                        is_admin=is_admin,
-                        user_id=current_user_id,
-                        confirmed=True,
-                        audit_trail=self._audit_trail,
-                        audit_actor_id=current_user_id,
-                        effect_monitor=self._runtime.effect_monitor,
-                    )
-                    if not execution.executed:
-                        raise RuntimeError(execution.error or "Rücknahme nicht erlaubt")
-                    rebound = bind_undo_to_observed_states(
-                        undo, self.hass.states.get
-                    )
-                    if rebound is None:
-                        raise RuntimeError(
-                            "Der Zustand nach der Rücknahme konnte nicht sicher belegt werden"
-                        )
-                    undo = rebound
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.error("Undo service call failed: %s", err, exc_info=True)
-                response.async_set_error(
-                    intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
-                    f"Fehler beim Rückgängigmachen: {user_facing_error(err)}",
-                )
-            else:
-                response.async_set_speech("Die letzte Aktion wurde rückgängig gemacht.")
-        return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id
+        return await async_handle_device_undo(
+            hass=self.hass,
+            options=self.entry.options,
+            context_store=self._context_store,
+            audit_trail=self._audit_trail,
+            effect_monitor=self._runtime.effect_monitor,
+            entities_provider=self._entities,
+            user_input=user_input,
+            response=response,
+            pending=pending,
+            entities=entities,
         )

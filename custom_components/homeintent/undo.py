@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from copy import deepcopy
 from typing import Any, Callable
@@ -26,13 +27,91 @@ class UndoPlan:
     requested_by_user_id: str | None = None
     # Exact post-execution observations; a later update invalidates the inverse.
     observed_states: tuple[tuple[str, tuple[object, ...]], ...] = ()
+    # Context identities of the writes whose observed effects made this undo
+    # available.  They are evidence/trace data, never authorization.
+    source_execution_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CompletedUndoStep:
+    """One inverse whose exact, causally linked effect was observed."""
+
+    plan: ServiceCallPlan
+    execution_id: str
+    observed_states: tuple[tuple[str, tuple[object, ...]], ...]
+
+
+@dataclass(frozen=True)
+class UndoRemainder:
+    """Immutable execution state for one consumed undo request.
+
+    ``original_observed_states`` is never changed.  ``observed_states`` may
+    advance only for a target that has just been affected by a causally proven
+    inverse and still has another inverse step.  Thus an unrelated target can
+    never acquire fresh evidence merely because an earlier step succeeded.
+    """
+
+    remaining_plans: tuple[ServiceCallPlan, ...]
+    original_observed_states: tuple[tuple[str, tuple[object, ...]], ...]
+    observed_states: tuple[tuple[str, tuple[object, ...]], ...]
+    completed_steps: tuple[CompletedUndoStep, ...] = ()
+    aborted_plans: tuple[ServiceCallPlan, ...] = ()
+    skipped_plans: tuple[ServiceCallPlan, ...] = ()
+    requested_by_user_id: str | None = None
+    source_execution_ids: tuple[str, ...] = ()
+    undo_execution_ids: tuple[str, ...] = ()
+
+    @classmethod
+    def from_undo(cls, undo: UndoPlan) -> "UndoRemainder":
+        """Consume a fully evidenced stored plan into an execution remainder."""
+
+        return cls(
+            remaining_plans=undo.plans,
+            original_observed_states=undo.observed_states,
+            observed_states=undo.observed_states,
+            requested_by_user_id=undo.requested_by_user_id,
+            source_execution_ids=undo.source_execution_ids,
+        )
+
+
+def _freeze_state_value(value: object) -> object:
+    """Recursively freeze HA state attributes without losing container type."""
+
+    if isinstance(value, Mapping):
+        return (
+            "mapping",
+            tuple(
+                sorted(
+                    (
+                        (_freeze_state_value(key), _freeze_state_value(item))
+                        for key, item in value.items()
+                    ),
+                    key=repr,
+                )
+            ),
+        )
+    if isinstance(value, list):
+        return ("list", tuple(_freeze_state_value(item) for item in value))
+    if isinstance(value, tuple):
+        return ("tuple", tuple(_freeze_state_value(item) for item in value))
+    if isinstance(value, set):
+        return (
+            "set",
+            tuple(sorted((_freeze_state_value(item) for item in value), key=repr)),
+        )
+    if isinstance(value, frozenset):
+        return (
+            "frozenset",
+            tuple(sorted((_freeze_state_value(item) for item in value), key=repr)),
+        )
+    return deepcopy(value)
 
 
 def _state_signature(state: Any) -> tuple[object, ...] | None:
     if state is None:
         return None
     return (
-        state.state, deepcopy(dict(state.attributes)),
+        state.state, _freeze_state_value(dict(state.attributes)),
         getattr(state, "last_updated", None),
         getattr(getattr(state, "context", None), "id", None),
     )
@@ -164,7 +243,14 @@ def bind_undo_to_observed_states(
         if signature is None:
             return None
         observed.append((entity_id, signature))
-    return replace(undo, observed_states=tuple(observed))
+    source_execution_ids = undo.source_execution_ids
+    if execution_id is not None and execution_id not in source_execution_ids:
+        source_execution_ids += (execution_id,)
+    return replace(
+        undo,
+        observed_states=tuple(observed),
+        source_execution_ids=source_execution_ids,
+    )
 
 
 def _state_belongs_to_execution(state: Any, execution_id: str) -> bool:
@@ -206,11 +292,21 @@ async def async_bind_undo_when_observed(
         ):
             return None
         return bind_undo_to_observed_states(
-            undo, hass.states.get, executed=executed
+            undo,
+            hass.states.get,
+            executed=executed,
+            execution_id=execution_id,
         )
 
     if (bound := bind_if_proven()) is not None:
         return bound
+    if any(
+        not _state_belongs_to_execution(
+            hass.states.get(entity_id), execution_id
+        )
+        for entity_id in target_ids
+    ):
+        return None
 
     changed = asyncio.Event()
     foreign_change = False
@@ -261,6 +357,112 @@ def undo_matches_observed_states(undo: UndoPlan, state_lookup: Callable[[str], A
     return all(
         _state_signature(state_lookup(entity_id)) == signature
         for entity_id, signature in undo.observed_states
+    )
+
+
+def next_undo_guard(remainder: UndoRemainder) -> UndoPlan | None:
+    """Return the exact evidence guard for only the next inverse step."""
+
+    if not remainder.remaining_plans:
+        return None
+    plan = remainder.remaining_plans[0]
+    target_ids = _plan_target_ids(plan)
+    observed = tuple(
+        item for item in remainder.observed_states if item[0] in target_ids
+    )
+    guard = UndoPlan(
+        (plan,),
+        remainder.requested_by_user_id,
+        observed,
+        remainder.source_execution_ids,
+    )
+    return guard if frozenset(item[0] for item in observed) == target_ids else None
+
+
+def advance_undo_remainder(
+    remainder: UndoRemainder,
+    plan: ServiceCallPlan,
+    observed: UndoPlan,
+    execution_id: str,
+) -> UndoRemainder:
+    """Remove one proven step and mutate evidence only for its own targets."""
+
+    if not remainder.remaining_plans or remainder.remaining_plans[0] != plan:
+        raise ValueError("undo step is not the next remaining plan")
+    target_ids = _plan_target_ids(plan)
+    observed_by_id = dict(observed.observed_states)
+    if frozenset(observed_by_id) != target_ids:
+        raise ValueError("completed undo step lacks exact target evidence")
+
+    remaining = remainder.remaining_plans[1:]
+    remaining_target_ids = frozenset(
+        entity_id
+        for pending in remaining
+        for entity_id in _plan_target_ids(pending)
+    )
+    evidence_by_id = dict(remainder.observed_states)
+    for entity_id in target_ids:
+        if entity_id in remaining_target_ids:
+            evidence_by_id[entity_id] = observed_by_id[entity_id]
+        else:
+            evidence_by_id.pop(entity_id, None)
+    ordered_evidence = tuple(sorted(evidence_by_id.items()))
+    return replace(
+        remainder,
+        remaining_plans=remaining,
+        observed_states=ordered_evidence,
+        completed_steps=remainder.completed_steps
+        + (CompletedUndoStep(plan, execution_id, observed.observed_states),),
+        undo_execution_ids=remainder.undo_execution_ids + (execution_id,),
+    )
+
+
+def stop_undo_remainder(
+    remainder: UndoRemainder,
+    *,
+    aborted_plan: ServiceCallPlan | None,
+) -> UndoRemainder:
+    """Consume every remaining step while retaining an honest typed outcome."""
+
+    aborted_index = next(
+        (
+            index
+            for index, plan in enumerate(remainder.remaining_plans)
+            if plan is aborted_plan
+        ),
+        None,
+    )
+    if aborted_index is None and aborted_plan is not None:
+        aborted_index = next(
+            (
+                index
+                for index, plan in enumerate(remainder.remaining_plans)
+                if plan == aborted_plan
+            ),
+            None,
+        )
+    aborted = (
+        (remainder.remaining_plans[aborted_index],)
+        if aborted_index is not None
+        else ()
+    )
+    skipped = (
+        remainder.remaining_plans[:aborted_index]
+        + remainder.remaining_plans[aborted_index + 1:]
+        if aborted_index is not None
+        else remainder.remaining_plans
+    )
+    return replace(
+        remainder,
+        remaining_plans=(),
+        aborted_plans=remainder.aborted_plans + aborted,
+        skipped_plans=remainder.skipped_plans + skipped,
+    )
+
+
+def _plan_target_ids(plan: ServiceCallPlan) -> frozenset[str]:
+    return frozenset(
+        (plan.entity_id,) if isinstance(plan.entity_id, str) else plan.entity_id
     )
 
 

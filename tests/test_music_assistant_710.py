@@ -249,6 +249,31 @@ def test_library_search_timeout_is_bounded_and_never_builds_a_plan(monkeypatch):
     )
 
 
+def test_numeric_search_variants_share_one_timeout_budget(monkeypatch):
+    import homeintent.music_assistant as adapter
+
+    hass = _hass()
+
+    async def first_empty_then_block(_domain, _service, data, **_kwargs):
+        if data["name"] == "eins live":
+            return _response()
+        await asyncio.Event().wait()
+
+    hass.services.async_call = AsyncMock(side_effect=first_empty_then_block)
+    monkeypatch.setattr(adapter, "SEARCH_TIMEOUT_SECONDS", 0.01)
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("eins", "live"), text="Spiele eins live."),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None
+    assert "antwortet gerade nicht" in result.spoken
+    assert hass.services.async_call.await_count == 2
+
+
 def test_library_search_cancellation_is_never_swallowed():
     hass = _hass()
     hass.services.async_call.side_effect = asyncio.CancelledError
@@ -925,3 +950,214 @@ def test_existing_named_music_assistant_group_player_is_a_normal_target(
 
     assert turn.calls[-1][:2] == ("music_assistant", "play_media")
     assert turn.calls[-1][2]["entity_id"] == "media_player.ganzes_haus"
+
+
+@pytest.mark.parametrize(
+    ("spoken_name", "search_variant", "library_name"),
+    [
+        ("eins live", "1 live", "1LIVE"),
+        ("WDR zwei", "wdr 2", "WDR 2"),
+    ],
+)
+def test_spoken_number_name_retries_with_a_bounded_numeric_variant(
+    spoken_name, search_variant, library_name
+):
+    hass = _hass()
+    hass.services.async_call.side_effect = [
+        _response(),
+        _response(radio=[{"name": library_name, "uri": "library://radio/number"}]),
+    ]
+    request = parse_media_request(
+        f"Spiele {spoken_name} auf dem Wohnzimmer Lautsprecher."
+    )
+
+    result = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert result is not None and result.plan is not None
+    assert result.plan.data == {
+        "media_id": "library://radio/number",
+        "media_type": "radio",
+        "enqueue": "replace",
+    }
+    assert hass.services.async_call.await_args_list[1].args[2]["name"] == search_variant
+
+
+def test_numeric_name_equivalence_never_accepts_an_unsafe_uri():
+    hass = _hass({
+        "radio": [{"name": "1LIVE", "uri": "https://example.invalid/live"}],
+    })
+    request = parse_media_request("Spiele eins live im Wohnzimmer.")
+
+    result = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert result is not None and result.plan is None
+    assert "keine sichere Media-ID" in result.spoken
+    assert hass.services.async_call.await_count == 1
+
+
+def test_radio_prefix_falls_back_to_a_typed_exact_station_search():
+    hass = _hass()
+    hass.services.async_call.side_effect = [
+        _response(),
+        _response(radio=[{"name": "ENERGY", "uri": "library://radio/energy"}]),
+    ]
+    request = parse_media_request(
+        "Spiele Radio Energy auf dem Wohnzimmer Lautsprecher."
+    )
+
+    result = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert result is not None and result.plan is not None
+    assert result.plan.data["media_id"] == "library://radio/energy"
+    calls = hass.services.async_call.await_args_list
+    assert calls[0].args[2]["name"] == "Radio Energy"
+    assert "media_type" not in calls[0].args[2]
+    assert calls[1].args[2]["name"] == "Energy"
+    assert calls[1].args[2]["media_type"] == "radio"
+
+
+def test_radio_prefix_fallback_shares_the_request_timeout(monkeypatch):
+    import homeintent.music_assistant as adapter
+
+    hass = _hass()
+
+    async def full_name_empty_then_block(_domain, _service, data, **_kwargs):
+        if data["name"] == "Radio Energy":
+            return _response()
+        await asyncio.Event().wait()
+
+    hass.services.async_call = AsyncMock(side_effect=full_name_empty_then_block)
+    monkeypatch.setattr(adapter, "SEARCH_TIMEOUT_SECONDS", 0.01)
+    request = parse_media_request("Spiele Radio Energy im Wohnzimmer.")
+
+    result = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert result is not None and result.plan is None
+    assert "antwortet gerade nicht" in result.spoken
+    assert hass.services.async_call.await_count == 2
+
+
+def test_exact_radio_prefixed_library_name_wins_without_fallback():
+    hass = _hass({
+        "radio": [{"name": "Radio Bob", "uri": "library://radio/bob"}],
+    })
+    request = parse_media_request(
+        "Spiele Radio Bob auf dem Wohnzimmer Lautsprecher."
+    )
+
+    result = _resolve(hass, request, [_player()], satellite_area_id="living")
+
+    assert result is not None and result.plan is not None
+    assert result.plan.data["media_id"] == "library://radio/bob"
+    assert hass.services.async_call.await_count == 1
+
+
+def test_duplicate_search_results_offer_every_media_type_once():
+    hass = _hass({
+        "artists": [
+            {"name": "Energy", "uri": "library://artist/1"},
+            {"name": "Energy", "uri": "library://artist/2"},
+        ],
+        "albums": [
+            {"name": "Energy", "uri": "library://album/1"},
+            {"name": "ENERGY", "uri": "library://album/2"},
+            {"name": "Energy", "uri": "library://album/3"},
+            {"name": "Energy", "uri": "library://album/4"},
+        ],
+        "radio": [{"name": "ENERGY", "uri": "library://radio/energy"}],
+    })
+
+    result = _resolve(
+        hass,
+        MediaRequest("play", ("energy",), text="Spiele Energy im Wohnzimmer."),
+        [_player()],
+        satellite_area_id="living",
+    )
+
+    assert result is not None and result.plan is None and result.question
+    assert result.spoken == (
+        "Ich finde „Energy“ als Künstler, Album oder Radiosender. Welche meinst du?"
+    )
+    assert result.pending is not None
+    assert result.pending.media_types == ("artist", "album", "radio")
+
+
+def test_full_radio_command_replaces_open_media_type_dialog(monkeypatch):
+    from _testhaus import HouseConversation
+
+    studio = replace(
+        _player(),
+        friendly_name="Studio-Lautsprecher",
+        aliases=("Studiolautsprecher",),
+    )
+    house = HouseConversation(monkeypatch, entities=[studio])
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        artists=[{"name": "Energy", "uri": "library://artist/1"}],
+        albums=[{"name": "Energy", "uri": "library://album/1"}],
+        radio=[{"name": "ENERGY", "uri": "library://radio/energy"}],
+    )
+
+    first = house.say("Spiele Energy auf dem Studiolautsprecher.")
+    second = house.say("Spiele Radio Energy auf dem Studio-Lautsprecher.")
+
+    assert "Radiosender" in first.speech
+    assert second.calls[-1][:2] == ("music_assistant", "play_media")
+    assert second.calls[-1][2]["media_id"] == "library://radio/energy"
+
+
+@pytest.mark.parametrize(
+    ("text", "media_id"),
+    [
+        ("Spiele eins live auf dem Studio-Lautsprecher.", "library://radio/1live"),
+        ("Spiele WDR zwei auf dem Studio-Lautsprecher.", "library://radio/wdr2"),
+        ("Spiele Radio Energy auf dem Studio-Lautsprecher.", "library://radio/energy"),
+    ],
+)
+def test_screenshot_radio_phrases_execute_the_unique_ma_station(
+    monkeypatch, text, media_id
+):
+    from _testhaus import HouseConversation
+
+    studio = replace(
+        _player(),
+        friendly_name="Studio-Lautsprecher",
+        aliases=("Studiolautsprecher",),
+    )
+    house = HouseConversation(monkeypatch, entities=[studio])
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[
+            {"name": "1LIVE", "uri": "library://radio/1live"},
+            {"name": "WDR 2", "uri": "library://radio/wdr2"},
+            {"name": "ENERGY", "uri": "library://radio/energy"},
+        ]
+    )
+
+    turn = house.say(text)
+
+    assert turn.calls[-1][:2] == ("music_assistant", "play_media")
+    assert turn.calls[-1][2]["media_id"] == media_id
+    assert turn.calls[-1][2]["entity_id"] == studio.entity_id
+
+
+def test_new_transport_command_replaces_open_media_type_dialog(monkeypatch):
+    from _testhaus import HouseConversation
+
+    radio = replace(_player(state="playing"), friendly_name="Wohnzimmer Radio")
+    house = HouseConversation(monkeypatch, entities=[radio])
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        artists=[{"name": "Energy", "uri": "library://artist/1"}],
+        radio=[{"name": "ENERGY", "uri": "library://radio/energy"}],
+    )
+    assert "Welche meinst du?" in house.say(
+        "Spiele Energy auf dem Wohnzimmer Radio."
+    ).speech
+
+    stopped = house.say("Pausiere das Radio im Wohnzimmer.")
+
+    assert stopped.calls[-1][:2] == ("media_player", "media_pause")

@@ -44,6 +44,32 @@ _TYPE_NAMES = {
 }
 _SAFE_MEDIA_ID = re.compile(r"^[a-zA-Z][a-zA-Z0-9+._-]*://[^\s]{1,2040}$")
 _FORBIDDEN_SCHEMES = ("http://", "https://", "file://", "data:", "ftp://")
+_NUMBER_WORDS: dict[str, str] = {
+    "null": "0",
+    "eins": "1",
+    "ein": "1",
+    "eine": "1",
+    "zwei": "2",
+    "zwo": "2",
+    "drei": "3",
+    "vier": "4",
+    "fuenf": "5",
+    "sechs": "6",
+    "sieben": "7",
+    "acht": "8",
+    "neun": "9",
+    "zehn": "10",
+    "elf": "11",
+    "zwoelf": "12",
+    "dreizehn": "13",
+    "vierzehn": "14",
+    "fuenfzehn": "15",
+    "sechzehn": "16",
+    "siebzehn": "17",
+    "achtzehn": "18",
+    "neunzehn": "19",
+    "zwanzig": "20",
+}
 
 
 def is_safe_music_assistant_media_id(value: str) -> bool:
@@ -136,7 +162,60 @@ def _safe_item(raw: object, media_type: str) -> MusicAssistantItem | None:
     return MusicAssistantItem(name.strip(), uri, media_type)
 
 
-def _exact_items(response: object, query: str, requested_type: str | None) -> tuple[MusicAssistantItem, ...]:
+def _number_name_parts(value: str) -> tuple[str, ...]:
+    """Return the bounded speech-equivalent parts of one media name.
+
+    This deliberately is not fuzzy matching.  Only punctuation boundaries and
+    German number words that speech-to-text commonly emits for written digits
+    are folded.  Compact branding (``1LIVE``) is compared separately below.
+    """
+
+    folded = normalize_for_compare(value)
+    parts = re.findall(r"[a-z0-9]+", folded)
+    return tuple(
+        _NUMBER_WORDS[part] if part in _NUMBER_WORDS else part
+        for part in parts
+    )
+
+
+def _number_name_equivalent(left: str, right: str) -> bool:
+    """Whether two names differ only by a proven numeric speech spelling."""
+
+    if normalize_for_compare(left) == normalize_for_compare(right):
+        return True
+    left_parts = _number_name_parts(left)
+    right_parts = _number_name_parts(right)
+    if not left_parts or not right_parts:
+        return False
+    numeric = any(
+        any(char.isdigit() for char in part)
+        for part in (*left_parts, *right_parts)
+    )
+    if not numeric:
+        return False
+    return left_parts == right_parts or "".join(left_parts) == "".join(right_parts)
+
+
+def _search_name_variants(name: str) -> tuple[str, ...]:
+    """Bounded service-search spellings for STT number words.
+
+    Music Assistant may filter before returning results, so accepting an
+    equivalent returned name is insufficient when ``eins live`` does not make
+    ``1LIVE`` enter the response.  At most two deterministic numeric spellings
+    are tried after the original query.
+    """
+
+    parts = _number_name_parts(name)
+    original_parts = tuple(re.findall(r"[a-z0-9]+", normalize_for_compare(name)))
+    if not parts or parts == original_parts:
+        return (name,)
+    candidates = (name, " ".join(parts), "".join(parts))
+    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _exact_items(
+    response: object, query: str, requested_type: str | None
+) -> tuple[MusicAssistantItem, ...]:
     if not isinstance(response, Mapping):
         return ()
     wanted = normalize_for_compare(query)
@@ -149,7 +228,10 @@ def _exact_items(response: object, query: str, requested_type: str | None) -> tu
             continue
         for raw in raw_items:
             item = _safe_item(raw, media_type)
-            if item is not None and normalize_for_compare(item.name) == wanted:
+            if item is not None and (
+                normalize_for_compare(item.name) == wanted
+                or _number_name_equivalent(item.name, query)
+            ):
                 found[(item.media_type, item.uri)] = item
     return tuple(found.values())
 
@@ -165,6 +247,16 @@ def _query_as_said(request: MediaRequest) -> str:
     if request.text:
         return _as_said(request.text, request.source_words)
     return " ".join(request.source_words)
+
+
+def _spoken_list(values: Sequence[str]) -> str:
+    """Join a short, already deduplicated German option list."""
+
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return f"{values[0]} oder {values[1]}"
+    return f"{', '.join(values[:-1])} oder {values[-1]}"
 
 
 async def async_search_exact_music_assistant(
@@ -183,35 +275,40 @@ async def async_search_exact_music_assistant(
         return MusicAssistantSearchResult("unavailable")
     data: dict[str, object] = {
         "config_entry_id": config_entry_id,
-        "name": name,
         "limit": 10,
         "library_only": library_only,
     }
     if media_type is not None:
         data["media_type"] = media_type
     try:
+        # One deadline covers every deterministic spelling variant.  Adding
+        # STT normalization must never multiply the request latency budget.
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
-            response = await hass.services.async_call(
-                DOMAIN,
-                SEARCH,
-                data,
-                blocking=True,
-                return_response=True,
-                context=context,
-            )
+            for search_name in _search_name_variants(name):
+                call_data = {**data, "name": search_name}
+                response = await hass.services.async_call(
+                    DOMAIN,
+                    SEARCH,
+                    call_data,
+                    blocking=True,
+                    return_response=True,
+                    context=context,
+                )
+                if not _valid_search_response(response):
+                    _LOGGER.warning("HomeIntent Music Assistant returned a malformed search response")
+                    return MusicAssistantSearchResult("malformed")
+                items = _exact_items(response, name, media_type)
+                if items:
+                    return MusicAssistantSearchResult("ok", items)
+                if _has_raw_exact_name(response, name, media_type):
+                    return MusicAssistantSearchResult("unsafe")
     except TimeoutError:
         _LOGGER.warning("HomeIntent Music Assistant library search timed out")
         return MusicAssistantSearchResult("timeout")
     except HomeAssistantError:
         _LOGGER.warning("HomeIntent Music Assistant library search failed")
         return MusicAssistantSearchResult("unavailable")
-    if not _valid_search_response(response):
-        _LOGGER.warning("HomeIntent Music Assistant returned a malformed search response")
-        return MusicAssistantSearchResult("malformed")
-    items = _exact_items(response, name, media_type)
-    if not items and _has_raw_exact_name(response, name, media_type):
-        return MusicAssistantSearchResult("unsafe")
-    return MusicAssistantSearchResult("ok", items)
+    return MusicAssistantSearchResult("ok")
 
 
 async def async_resolve_music_assistant(
@@ -272,14 +369,54 @@ async def async_resolve_music_assistant(
         return None
 
     query = _query_as_said(request)
-    searched = await async_search_exact_music_assistant(
-        hass,
-        config_entry_id=player.config_entry_id,
-        name=query,
-        media_type=request.media_type,
-        library_only=request.library_only,
-        context=context,
-    )
+    requested_type = request.media_type
+    try:
+        # The initial full-name lookup and the optional structural ``Radio X``
+        # retry share one deadline.  A fallback must not double latency.
+        async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
+            searched = await async_search_exact_music_assistant(
+                hass,
+                config_entry_id=player.config_entry_id,
+                name=query,
+                media_type=requested_type,
+                library_only=request.library_only,
+                context=context,
+            )
+            items = searched.items
+            # ``Radio Bob`` may be the exact library name, while ``Radio
+            # Energy`` may be the natural German type plus the library name
+            # ``ENERGY``.  Preserve the exact full-name result first.  Only
+            # when it has no match, retry the bounded structural reading as a
+            # radio request; never maintain a station dictionary or use a
+            # fuzzy result.
+            if (
+                not items
+                and searched.status == "ok"
+                and requested_type is None
+                and len(request.source_words) > 1
+                and request.source_words[0] == "radio"
+            ):
+                fallback_words = request.source_words[1:]
+                fallback_query = (
+                    _as_said(request.text, fallback_words)
+                    if request.text
+                    else " ".join(fallback_words)
+                )
+                searched = await async_search_exact_music_assistant(
+                    hass,
+                    config_entry_id=player.config_entry_id,
+                    name=fallback_query,
+                    media_type="radio",
+                    library_only=request.library_only,
+                    context=context,
+                )
+                query = fallback_query
+                requested_type = "radio"
+                items = searched.items
+    except TimeoutError:
+        return MusicAssistantResolution(
+            None, "Die Music-Assistant-Bibliothek antwortet gerade nicht; ich habe nichts gestartet."
+        )
     if searched.status == "timeout":
         return MusicAssistantResolution(
             None, "Die Music-Assistant-Bibliothek antwortet gerade nicht; ich habe nichts gestartet."
@@ -292,29 +429,35 @@ async def async_resolve_music_assistant(
         return MusicAssistantResolution(
             None, "Music Assistant hat keine gültige Suchantwort geliefert; ich habe nichts gestartet."
         )
-    items = searched.items
     if not items:
         if searched.status == "unsafe":
             return MusicAssistantResolution(
                 None, "Music Assistant hat für diesen Treffer keine sichere Media-ID geliefert."
             )
-        kind = _TYPE_NAMES.get(request.media_type or "", "Medium")
+        kind = _TYPE_NAMES.get(requested_type or "", "Medium")
         return MusicAssistantResolution(
             None, f"{kind} „{query}“ finde ich in Music Assistant nicht."
         )
     if len(items) != 1:
-        options = ", ".join(
-            f"{_TYPE_NAMES[item.media_type]} „{item.name}“" for item in items[:6]
-        )
+        media_types = tuple(dict.fromkeys(item.media_type for item in items))
+        if len(media_types) == 1:
+            kind = _TYPE_NAMES[media_types[0]]
+            return MusicAssistantResolution(
+                None,
+                f"Ich finde mehrere Einträge vom Typ {kind} mit dem Namen „{query}“. "
+                "Bitte benenne den gewünschten Eintrag in Music Assistant eindeutig.",
+                question=True,
+            )
+        options = _spoken_list(tuple(_TYPE_NAMES[kind] for kind in media_types))
         return MusicAssistantResolution(
             None,
-            f"Ich finde mehrere eindeutige Arten: {options}. Welche meinst du?",
+            f"Ich finde „{query}“ als {options}. Welche meinst du?",
             question=True,
             pending=PendingMusicAssistant(
                 "media_type",
                 request,
                 player_id=player.entity_id,
-                media_types=tuple(dict.fromkeys(item.media_type for item in items)),
+                media_types=media_types,
             ),
         )
 
@@ -347,7 +490,10 @@ def _has_raw_exact_name(response: object, query: str, requested_type: str | None
         if isinstance(values, (list, tuple)) and any(
             isinstance(value, Mapping)
             and isinstance(value.get("name"), str)
-            and normalize_for_compare(value["name"]) == wanted
+            and (
+                normalize_for_compare(value["name"]) == wanted
+                or _number_name_equivalent(value["name"], query)
+            )
             for value in values
         ):
             return True

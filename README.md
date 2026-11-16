@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.14.0**
+- Aktuelle Version: **7.15.0**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS
@@ -154,6 +154,28 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
    anonymisierte Logzeilen angeben; Tokens und private Pfade nicht veröffentlichen.
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
+
+## Version 7.15.0 – Rennfestes Undo und natürlichere Radiosender
+
+Version 7.15.0 ist bis zur erfolgreichen Prüfung desselben Commits durch CI,
+Nightly und Release-Gate ein Release-Kandidat. Die Korpusbaseline
+[`corpus-signatures-7.15.0.json`](docs/perf/corpus-signatures-7.15.0.json)
+schützt die deterministischen Sprachsignaturen dieses Stands.
+
+Mehrstufiges Geräte-Undo bewahrt jetzt die ursprüngliche Evidenz jedes noch
+unberührten Ziels. Vor dem ersten und unmittelbar vor jedem weiteren inversen
+Write werden Zustand, Context, Berechtigung, Policy, Service und Verfügbarkeit
+erneut geprüft; Teilresultate benennen ausgeführte, abgebrochene und
+übersprungene Schritte ehrlich.
+
+Music Assistant versteht bei exakten Bibliothekstreffern nun auch eng
+begrenzte Zahlenschreibweisen wie „eins live“/`1LIVE` und „WDR zwei“/`WDR 2`.
+„Radio“ wird strukturell als möglicher Medientyp behandelt, ohne Senderlisten
+oder unscharfe Suche. Mehrdeutigkeiten werden nach Medientyp zusammengefasst
+und nie willkürlich ausgeführt. Details und Prüfgrenzen stehen in den
+[Release Notes](docs/release-notes-7.15.0.md), der
+[Zuverlässigkeits-Roadmap](docs/reliability-roadmap-progress.md) und der
+[Music-Assistant-Dokumentation](docs/music-assistant.md).
 
 ## Version 7.14.0 – Zustandsgebundenes Undo und sichere Medienfortsetzungen
 

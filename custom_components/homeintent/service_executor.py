@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 import logging
 
 import voluptuous as vol
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from homeassistant.core import Context, HomeAssistant
 
@@ -234,6 +234,8 @@ async def async_execute_service_plan(
     binding_confirmed: bool = False,
     context: Context | None = None,
     scope: ConfirmedScope | None = None,
+    pre_write_check: Callable[[], str | None] | None = None,
+    trace_utterance: str | None = None,
 ) -> ExecutionResult:
     """The single physical write path; reports what the turn did (7.9.1 B).
 
@@ -264,6 +266,8 @@ async def async_execute_service_plan(
             binding_confirmed=binding_confirmed,
             context=context,
             scope=scope,
+            pre_write_check=pre_write_check,
+            trace_utterance=trace_utterance,
         )
     names = {entity.entity_id: entity.friendly_name for entity in entities}
     expectations = expectations_for(plan, lambda entity_id: _snapshot(hass, entity_id), names)
@@ -271,7 +275,8 @@ async def async_execute_service_plan(
         hass, plan, entities, options, is_admin=is_admin, user_id=user_id, confirmed=confirmed,
         audit_trail=audit_trail, audit_actor_id=audit_actor_id, effect_monitor=effect_monitor,
         origin=origin, attended=attended, binding_confirmed=binding_confirmed, context=context,
-        scope=scope,
+        scope=scope, pre_write_check=pre_write_check,
+        trace_utterance=trace_utterance,
     )
     if not result.executed:
         report_outcome(TurnOutcomeKind.NOT_DONE)
@@ -317,6 +322,8 @@ async def _async_execute_independent_batch(
     binding_confirmed: bool,
     context: Context | None,
     scope: ConfirmedScope | None,
+    pre_write_check: Callable[[], str | None] | None,
+    trace_utterance: str | None,
 ) -> ExecutionResult:
     """Preflight every target, then run only independent validated targets."""
 
@@ -367,6 +374,8 @@ async def _async_execute_independent_batch(
             binding_confirmed=binding_confirmed,
             context=context,
             scope=scope,
+            pre_write_check=pre_write_check,
+            trace_utterance=trace_utterance,
         )
     if overall_decision.outcome is PolicyOutcome.DENY or (
         overall_decision.outcome is PolicyOutcome.CONFIRM and not confirmed
@@ -431,6 +440,8 @@ async def _async_execute_independent_batch(
     pending_effects: dict[str, PendingEffect] = {}
     called: list[str] = []
     execution_id: str | None = None
+    if pre_write_check is not None and (pre_write_error := pre_write_check()) is not None:
+        return ExecutionResult(False, overall_decision, pre_write_error)
     for entity, child in runnable:
         expectations = expectations_for(
             child,
@@ -458,6 +469,8 @@ async def _async_execute_independent_batch(
             # write. A child is an execution unit, not a separately previewed
             # plan; policy is still re-evaluated immediately here.
             scope=None,
+            pre_write_check=None,
+            trace_utterance=trace_utterance,
         )
         execution_id = execution_id or result.execution_id
         if not result.executed:
@@ -681,6 +694,8 @@ async def _async_execute_service_plan(
     binding_confirmed: bool = False,
     context: Context | None = None,
     scope: ConfirmedScope | None = None,
+    pre_write_check: Callable[[], str | None] | None = None,
+    trace_utterance: str | None = None,
 ) -> ExecutionResult:
     """Re-evaluate policy immediately before the only physical write.
 
@@ -702,6 +717,8 @@ async def _async_execute_service_plan(
     decision = checked.decision
     if checked.error is not None:
         return ExecutionResult(False, decision, checked.error)
+    if pre_write_check is not None and (pre_write_error := pre_write_check()) is not None:
+        return ExecutionResult(False, decision, pre_write_error)
     names = {entity.entity_id: entity.friendly_name for entity in entities}
     turn = current_turn()
     call_context = context or (turn.context if turn is not None else None) or (
@@ -780,7 +797,13 @@ async def _async_execute_service_plan(
         plan=plan,
         decision=decision,
         user_id=user_id,
-        utterance=turn.utterance if turn is not None and context is None else None,
+        utterance=(
+            trace_utterance
+            if trace_utterance is not None
+            else turn.utterance
+            if turn is not None and context is None
+            else None
+        ),
         origin=origin.value,
         attended=attended,
         now=now,

@@ -330,8 +330,16 @@ class MediaCommandSupport:
             amended_request = merge_media_continuation(
                 pending.request, user_input.text
             )
-            if fresh_request is not None and not (
-                set(words_of(user_input.text)) & {"es", "dort", "da", "hier"}
+            continuation_pronouns = {"es", "das", "dort", "da", "hier"}
+            independent_source = (
+                fresh_request is not None
+                and bool(fresh_request.source_words)
+                and not (set(fresh_request.source_words) <= continuation_pronouns)
+            )
+            if fresh_request is not None and (
+                independent_source
+                or fresh_request.op != pending.request.op
+                or not (set(words_of(user_input.text)) & continuation_pronouns)
             ):
                 self._runtime.dialog_manager.cancel(
                     user_input.conversation_id, task.task_id

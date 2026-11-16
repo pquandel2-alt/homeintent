@@ -82,6 +82,29 @@ Release-Nachweise gelten ausschließlich für ihre historischen Commits.
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – weiterhin
   nicht geprüft und nicht behauptet
 
+## Release Candidate 7.15.0
+
+- [x] Mehrstufiges Undo behält die Originalevidenz unberührter Ziele und prüft
+  alle Schritte vor dem ersten sowie unmittelbar vor jedem einzelnen Write.
+- [x] Abbruch- und Teilpfade verbrauchen den Undo-Plan endgültig und benennen
+  abgeschlossene, extern veränderte und übersprungene Ziele.
+- [x] Music Assistant löst ausschließlich belegte numerische
+  Schreibäquivalenzen und die strukturelle Form `Radio X` auf; keine
+  Senderliste, Fuzzy-Suche oder willkürliche Trefferwahl.
+- [x] 277 verbreiterte Undo-Regressionen, 317 relevante Medien-/Dialogtests,
+  Pyflakes, vollständiges Pyright, Dev-Benchmark, Corpus- und Identity-Shadow
+  lokal grün beziehungsweise unverändert; sämtliche Safety-Zähler null.
+- [x] versionierte Korpusbaseline 7.15.0 mit 4.384 Satzsignaturen erzeugt; CI
+  prüft exakt diese Datei.
+- [!] vollständige Suite vor der lokal begrenzten Radiosender-Änderung: 10.721
+  bestanden, zwölf übersprungen. Nach der Änderung nicht erneut vollständig
+  lokal ausgeführt; CI und Nightly müssen daher den exakten Commit prüfen.
+- [ ] Python 3.13, echte HA-/MA-Komponententests, Hassfest, HACS,
+  HA-Stable-Smoke, Options Flow, Live-Testbett, CI und `nightly-live` für den
+  finalen Commit – vor Veröffentlichung zwingend offen.
+- [ ] echte Sonos-/Music-Assistant-/Gerätehardware – nicht geprüft und nicht
+  behauptet.
+
 ## Release Candidate 7.14.0
 
 - [x] Undo-Zielmenge und beobachtete Signaturen stimmen exakt überein; leere

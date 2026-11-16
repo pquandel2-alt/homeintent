@@ -31,12 +31,30 @@ Titel, Künstler, Alben, Playlists und Radiosender werden über
 oder „Favorit“ wird die Suche auf Bibliothekseinträge begrenzt. HomeIntent
 akzeptiert nur einen exakt normalisierten Namen und eine von Music Assistant
 gelieferte, nicht webbasierte Media-ID. Ähnlich klingende Namen reichen nicht.
+Für von der Spracherkennung ausgeschriebene Zahlen gilt eine eng begrenzte
+Schreibäquivalenz: beispielsweise passen „eins live“ zu `1LIVE` und „WDR
+zwei“ zu `WDR 2`. Dabei wird keine phonetische oder unscharfe Sendersuche
+verwendet; Music Assistant muss weiterhin genau einen äquivalent geschriebenen
+Treffer mit sicherer Media-ID liefern. Alle dafür nötigen Suchvarianten teilen
+sich dasselbe Neun-Sekunden-Zeitbudget.
+
+„Radio“ kann sowohl Bestandteil eines echten Namens wie `Radio Bob` als auch
+eine Typangabe wie in „Radio Energy“ sein. HomeIntent prüft deshalb zuerst den
+vollständigen Namen. Nur wenn dieser keinen exakten Treffer liefert, wird der
+Rest einmal als Radiosender gesucht. So gewinnt ein tatsächlich vorhandener
+Sender `Radio Bob`, während `Radio Energy` sicher den eindeutig belegten
+Radiosender `ENERGY` erreichen kann. Es gibt keine fest eingebaute Senderliste.
 
 Mehrere exakte Treffer, etwa ein Künstler und ein Titel mit demselben Namen,
-führen zu einer Rückfrage. Die Antwort wird erneut gegen die aktuelle
-Bibliothek geprüft. Ein Player-Dialog ist pro Benutzer und Conversation
-isoliert; „Spiel es im Wohnzimmer“ kann nur einen eindeutig passenden Player
-aus dem offenen Auftrag auswählen.
+führen zu einer nach Medientyp deduplizierten Rückfrage. Mehrere Alben gleichen
+Namens verdrängen dadurch einen ebenfalls gefundenen Radiosender nicht aus der
+gesprochenen Auswahlliste. Die Antwort wird erneut gegen die aktuelle
+Bibliothek geprüft. Mehrere Treffer desselben Medientyps werden nicht
+willkürlich ausgewählt; sie müssen in Music Assistant eindeutig benannt werden.
+Ein Player-Dialog ist pro Benutzer und Conversation isoliert; „Spiel es im
+Wohnzimmer“ kann nur einen eindeutig passenden Player aus dem offenen Auftrag
+auswählen. Ein vollständiger neuer Medien- oder Transportbefehl ersetzt den
+offenen Entwurf, statt als unvollständige Auswahleingabe behandelt zu werden.
 
 Eine eindeutig gebundene Quelle kann seit 7.13.3 Teil eines Mehrbefehls sein,
 zum Beispiel „Spiel WDR 2 in der Küche und pausiere die Musik im

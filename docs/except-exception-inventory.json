@@ -477,16 +477,6 @@
       "body_digest": "76f04d4e33995213"
     },
     {
-      "id": "custom_components/homeintent/controllers/devices.py::DeviceController.async_handle_undo_request::1",
-      "path": "custom_components/homeintent/controllers/devices.py",
-      "line": 1480,
-      "scope": "DeviceController.async_handle_undo_request",
-      "caught": "Exception",
-      "classification": "BOUNDARY_REQUIRED",
-      "reason": "Heterogene Home-Assistant-/Providergrenze; Fehler wird lokal protokolliert, gemessen oder in einen stabilen Vertrag übersetzt.",
-      "body_digest": "68499590013dc969"
-    },
-    {
       "id": "custom_components/homeintent/controllers/goals.py::GoalController.async_handle_goal_turn.schedule::1",
       "path": "custom_components/homeintent/controllers/goals.py",
       "line": 884,
@@ -1199,7 +1189,7 @@
     {
       "id": "custom_components/homeintent/service_executor.py::_async_execute_service_plan::1",
       "path": "custom_components/homeintent/service_executor.py",
-      "line": 757,
+      "line": 774,
       "scope": "_async_execute_service_plan",
       "caught": "Exception",
       "classification": "BOUNDARY_REQUIRED",
