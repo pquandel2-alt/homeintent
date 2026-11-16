@@ -2793,6 +2793,20 @@
    "quelle": "heuristik"
   },
   {
+   "id": "custom_components/homeintent/music_assistant.py::_number_name_parts::a810f32b5f",
+   "datei": "custom_components/homeintent/music_assistant.py",
+   "bereich": "_number_name_parts",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
+   "id": "custom_components/homeintent/music_assistant.py::_search_name_variants::a810f32b5f",
+   "datei": "custom_components/homeintent/music_assistant.py",
+   "bereich": "_search_name_variants",
+   "klasse": "STRUCTURAL",
+   "quelle": "heuristik"
+  },
+  {
    "id": "custom_components/homeintent/music_assistant.py::async_resolve_music_assistant::efe3556aea",
    "datei": "custom_components/homeintent/music_assistant.py",
    "bereich": "async_resolve_music_assistant",
@@ -5400,7 +5414,7 @@
  "anzahl": {
   "LEXICAL": 411,
   "MORPHOLOGICAL": 37,
-  "STRUCTURAL": 150,
+  "STRUCTURAL": 152,
   "SEMANTIC_SENTENCE_PATTERN": 171
  }
 }

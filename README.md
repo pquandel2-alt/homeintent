@@ -157,8 +157,9 @@ Ausführlich: [Troubleshooting](docs/troubleshooting.md).
 
 ## Version 7.15.0 – Rennfestes Undo und natürlichere Radiosender
 
-Version 7.15.0 ist bis zur erfolgreichen Prüfung desselben Commits durch CI,
-Nightly und Release-Gate ein Release-Kandidat. Die Korpusbaseline
+Geprüfter Release-Stand von Version 7.15.0 ist ausschließlich der Commit, den
+CI, Nightly und Release-Gate vollständig erfolgreich geprüft haben. Bis dahin
+ist dieser Stand ein Release-Kandidat. Die Korpusbaseline
 [`corpus-signatures-7.15.0.json`](docs/perf/corpus-signatures-7.15.0.json)
 schützt die deterministischen Sprachsignaturen dieses Stands.
 
