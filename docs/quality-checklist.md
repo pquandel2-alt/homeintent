@@ -82,6 +82,27 @@ Release-Nachweise gelten ausschließlich für ihre historischen Commits.
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – weiterhin
   nicht geprüft und nicht behauptet
 
+## Release Candidate 7.15.1
+
+- [x] Musik-PLAY wird kompositionell aus Aktion, Quelle und geerdetem
+  Player/Bereich gelesen; keine neuen vollständigen Satzschablonen.
+- [x] Kompakte alphanumerische Namen wie `1LIVE`, `WDR2` und `rbb24` bleiben
+  zwischen Sprachfrontend, Coverage und Bibliothekssuche tokenstabil.
+- [x] Ein ausdrücklich genannter nativer Sonos-Player wird nur bei genau einem
+  verfügbaren Music-Assistant-Player im selben Bereich abgebildet; sonst wird
+  nicht geraten.
+- [x] Transport-, Resume- und umgangssprachliche Lautstärkebedeutungen bleiben
+  von freien Quellenbezeichnungen getrennt.
+- [x] Vollständige Suite abschnittsweise bis zum Ende geprüft; finale relevante
+  Regressionen, Pyflakes, vollständiges Pyright und Architektur-/Regex-Gates
+  grün. Dev-Benchmark 478/516, Held-out 109/117; alle Safety-Zähler null.
+- [x] versionierte Korpusbaseline 7.15.1 erzeugt; CI prüft exakt diese Datei.
+- [ ] Python 3.13, echte HA-/MA-Komponententests, Hassfest, HACS,
+  HA-Stable-Smoke, Options Flow, Live-Testbett, CI und `nightly-live` für den
+  finalen Commit – vor Veröffentlichung zwingend offen.
+- [ ] echte Sonos-/Music-Assistant-Hardware – nicht geprüft und nicht
+  behauptet.
+
 ## Release Candidate 7.15.0
 
 - [x] Mehrstufiges Undo behält die Originalevidenz unberührter Ziele und prüft

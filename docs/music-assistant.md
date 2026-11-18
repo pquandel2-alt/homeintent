@@ -24,6 +24,23 @@ Fähigkeitsprüfung und Aufruf verschwundener Dienst, HA-Fehler sowie strukturel
 ungültige Antworten erzeugen keinen Wiedergabeplan. Abbruch der übergeordneten
 HA-Aufgabe (`CancelledError`) wird nicht abgefangen.
 
+Seit 7.15.1 liest HomeIntent Wiedergabewünsche kompositionell aus Aktion,
+Quelle und Ziel. Das sind keine vollständigen Satzvorlagen. Deshalb können
+Quelle und Ziel in unterschiedlichen natürlichen Reihenfolgen stehen, etwa
+„Spiele 1Live im Studio“, „Im Studio bitte WDR zwei“, „Ich möchte im Studio
+Radio Energy hören“ oder „Lass dort Eins Live laufen“. Jeder freie Quellenteil
+muss weiterhin vollständig erklärt und anschließend exakt gegen Music
+Assistant geerdet werden; unbekannte Orts- oder Klauselreste werden nicht
+verschluckt.
+
+Home Assistant kann denselben Sonos-Lautsprecher als native Sonos-Entity und
+als Music-Assistant-Player zeigen. Nennt die Äußerung ausdrücklich die native
+Entity, darf HomeIntent sie nur dann auf Music Assistant abbilden, wenn beide
+im selben HA-Bereich liegen und dort genau ein verfügbarer MA-Player existiert.
+Ohne Bereich oder bei mehreren Gegenstücken wird nicht geraten. Ein direkt
+genannter MA-Player, ein eindeutig genannter Bereich und die aktuelle
+Satellitenzuordnung behalten ihre bestehende, streng eindeutige Zielauflösung.
+
 ## Bibliothek und gespeicherte Radiosender
 
 Titel, Künstler, Alben, Playlists und Radiosender werden über

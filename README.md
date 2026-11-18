@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.15.0**
+- Aktuelle Version: **7.15.1**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS
@@ -154,6 +154,29 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
    anonymisierte Logzeilen angeben; Tokens und private Pfade nicht veröffentlichen.
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
+
+## Version 7.15.1 – Natürliches Music-Assistant-Routing
+
+Geprüfter Release-Stand von Version 7.15.1 ist ausschließlich der Commit, den
+CI, Nightly und Release-Gate vollständig erfolgreich geprüft haben. Bis dahin
+ist dieser Stand ein Release-Kandidat. Die Korpusbaseline
+[`corpus-signatures-7.15.1.json`](docs/perf/corpus-signatures-7.15.1.json)
+schützt die deterministischen Sprachsignaturen dieses Stands.
+
+Musik- und Radiosätze werden jetzt kompositionell aus Aktion, Quelle und Ziel
+aufgebaut. Dadurch funktionieren unterschiedliche natürliche Wortfolgen,
+kompakte Sendernamen wie `1LIVE`, `WDR2` und `rbb24` sowie eindeutig benannte
+Music-Assistant-Player, ohne eine Liste vollständiger Befehlssätze einzubauen.
+Ein ausdrücklich genannter nativer Sonos-Player darf nur dann auf Music
+Assistant abgebildet werden, wenn im selben Home-Assistant-Bereich genau ein
+verfügbarer MA-Player existiert. Mehrdeutigkeiten und unverstandene Satzreste
+führen weiterhin zu einer Rückfrage beziehungsweise zu keiner Ausführung.
+
+Transport- und Lautstärkebedeutungen wie „weiterspielen“ oder „dreh das Radio
+runter“ haben Vorrang vor der Bibliothekssuche und können daher nicht als
+Titel- oder Sendername fehlinterpretiert werden. Details und Prüfgrenzen stehen
+in den [Release Notes](docs/release-notes-7.15.1.md) und der
+[Music-Assistant-Dokumentation](docs/music-assistant.md).
 
 ## Version 7.15.0 – Rennfestes Undo und natürlichere Radiosender
 
