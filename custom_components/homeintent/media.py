@@ -354,6 +354,36 @@ def _parse_play_request(
         if word in _PLAY_REQUEST_SHELL
     }
 
+    leading = next(
+        (word for index, word in enumerate(words) if index not in shell_positions),
+        "",
+    )
+    if leading in {"lass", "lasse", "lassen"} and not (
+        present & {"laufen", "spielen", "abspielen"}
+    ):
+        return None
+    direct_action = bool(action_positions) and (
+        leading in _PLAY_SEMANTIC_ACTIONS
+        or bool(present & _PLAY_REQUEST_SHELL)
+        or {"lass", "lasse"} & present and "laufen" in present
+    )
+    light_action = words[:1] and words[0] in MEDIA_LIGHT_VERBS and bool(
+        present & {"musik", "radio", "sender", "radiosender", "radiostation", "station"}
+    )
+    # A verbless polite request can still name a player before the source
+    # (``Auf dem Studiolautsprecher bitte WDR zwei``).  Only those locative or
+    # media-typed shapes need registry grounding.  Ordinary device commands
+    # with generic light verbs return here before scanning thousands of
+    # entities.
+    polite_candidate = "bitte" in present and bool(
+        present & (
+            PLAY_NAME_STOPS
+            | {"radio", "sender", "radiosender", "radiostation", "station"}
+        )
+    )
+    if not (direct_action or light_action or polite_candidate):
+        return None
+
     fields, _rest = utterance_fields(text, entities)
     grounded_positions: set[int] = set()
     explicit_media_target = False
@@ -386,26 +416,10 @@ def _parse_play_request(
                 grounded_positions.add(first_position - 1)
             explicit_media_target = explicit_media_target or registry_media
 
-    leading = next(
-        (word for index, word in enumerate(words) if index not in shell_positions),
-        "",
-    )
-    if leading in {"lass", "lasse", "lassen"} and not (
-        present & {"laufen", "spielen", "abspielen"}
-    ):
-        return None
-    direct_action = bool(action_positions) and (
-        leading in _PLAY_SEMANTIC_ACTIONS
-        or bool(present & _PLAY_REQUEST_SHELL)
-        or {"lass", "lasse"} & present and "laufen" in present
-    )
     if leading in {"starte", "start"} and not (
         present & MEDIA_CONTENT_WORDS or explicit_media_target
     ):
         direct_action = False
-    light_action = words[:1] and words[0] in MEDIA_LIGHT_VERBS and bool(
-        present & {"musik", "radio", "sender", "radiosender", "radiostation", "station"}
-    )
     polite_ellipsis = "bitte" in present and (
         explicit_media_target
         or bool(present & {"radio", "sender", "radiosender", "radiostation", "station"})
