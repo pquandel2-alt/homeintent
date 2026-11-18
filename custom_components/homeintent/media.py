@@ -37,6 +37,7 @@ __all__ = (
     "claims_other_target",
     "MediaResolution",
     "now_playing",
+    "is_named_play_request",
     "parse_media_request",
     "merge_media_continuation",
     "queue_directive_positions",
@@ -51,6 +52,19 @@ __all__ = (
 )
 
 _PLAY_VERBS = frozenset({"spiel", "spiele", "spielen", "abspielen", "starte", "start", "leg", "lege", "mach", "mache"})
+# Surface forms that can carry the same semantic PLAY operation.  They are
+# building blocks, not complete sentence patterns: source, place and player
+# are extracted independently below and still have to pass full coverage and
+# exact target/library grounding before anything is executed.
+_PLAY_SEMANTIC_ACTIONS = frozenset({
+    "spiel", "spiele", "spielen", "abspielen", "starte", "start", "leg", "lege",
+    "lass", "lasse", "laufen", "hoer", "hoere", "hoeren", "wechsel", "wechsle",
+})
+_PLAY_REQUEST_SHELL = frozenset({
+    "ich", "du", "wir", "ihr", "kannst", "koenntest", "wuerdest", "magst",
+    "moechte", "moechtest", "will", "willst", "haette", "sollst", "bitte",
+    "gern", "gerne",
+})
 _MUSIC_WORDS = frozenset({"musik", "radio", "lied", "lieder", "song", "songs", "playlist", "sender", "titel"})
 _PAUSE_WORDS = frozenset({"pause", "pausiere", "pausieren", "anhalten", "halt"})
 _STOP_WORDS = frozenset({"stopp", "stop", "stoppe", "stoppen", "beende"})
@@ -74,13 +88,20 @@ MEDIA_LIGHT_VERBS = frozenset({"mach", "mache", "schalte", "schalt", "stell", "s
 # Words that stop the free-text name of a play command (the place or player).
 PLAY_NAME_STOPS = frozenset({"im", "in", "am", "auf", "ueber"})
 # Words the play reader drops from the free-text name.
-PLAY_NAME_FILLERS = frozenset({"bitte", "mal", "eben", "doch", "etwas", "an", "ab", "ein"})
+PLAY_NAME_FILLERS = frozenset({
+    "bitte", "mal", "eben", "doch", "etwas", "an", "ab", "ein",
+    "mein", "meine", "meinen", "meiner", "gespeichert", "gespeicherte",
+    "gespeicherten", "favorit", "favoriten", "favorisierte", "favorisierten",
+})
 # The closed lexemes each media operation consists of.  The parser selects
 # the operation from them; the complete-coverage check (``media_coverage``)
 # accepts exactly these words for the selected operation, so a lexeme of a
 # different operation in the same sentence stays an unexplained residue.
 MEDIA_OPERATION_WORDS: dict[str, frozenset[str]] = {
-    "play": _PLAY_VERBS | PLAY_NAME_FILLERS | frozenset({"was"}),
+    "play": (
+        _PLAY_VERBS | _PLAY_SEMANTIC_ACTIONS | _PLAY_REQUEST_SHELL
+        | PLAY_NAME_FILLERS | frozenset({"was", "auf", "zu"})
+    ),
     "pause": _PAUSE_WORDS | frozenset({"pause"}),
     "stop": _STOP_WORDS,
     "resume": _RESUME_WORDS | frozenset({"mit", "spiel", "spiele"}),
@@ -109,6 +130,11 @@ class MediaRequest:
     # Fields explicitly stated in this utterance.  In particular, the
     # default ``replace`` is not an instruction to overwrite a pending mode.
     explicit_fields: frozenset[str] = frozenset()
+    # Canonical word positions occupied by the free-text source in the
+    # original utterance.  This lets complete coverage prove source binding
+    # for different German word orders without re-guessing it.  Manually
+    # constructed/legacy requests leave it empty and use the exact fallback.
+    source_positions: frozenset[int] = frozenset()
 
 
 _TYPE_MARKERS = {
@@ -127,6 +153,20 @@ _LIBRARY_MARKERS = frozenset({
 def _words(text: str) -> list[str]:
     folded = normalize_for_compare(text)
     return "".join(char if char.isalnum() else " " for char in folded).split()
+
+
+def _is_resume_surface(word: str) -> bool:
+    """Recognise inflected separable resume verbs as an operation.
+
+    German inserts ``zu`` inside separable verbs (``weiterzuspielen``), so a
+    plain closed-token lookup would mistake that infinitive for a library
+    title.  Stems keep the distinction morphological rather than tying it to
+    one polite sentence shell.
+    """
+
+    return word in _RESUME_WORDS or word.startswith(
+        ("weiterspiel", "weiterzuspiel", "fortsetz", "fortzusetz", "fortfahr", "fortzufahr")
+    )
 
 
 def media_words(text: str) -> list[str]:
@@ -244,7 +284,246 @@ def _queue_directive(words: list[str]) -> tuple[list[str], str]:
     return [word for index, word in enumerate(words) if index not in removed], mode
 
 
-def parse_media_request(text: str) -> MediaRequest | None:
+_PLAY_SOURCE_FILLERS = frozenset({
+    "bitte", "mal", "eben", "doch", "etwas", "jetzt", "kurz", "schnell",
+    "mir", "uns", "dort", "da", "hier", "gern", "gerne",
+})
+_MEDIA_TARGET_GENERA = frozenset({"media", "tv"})
+
+
+def _overlapping_word_positions(tokens: Sequence[object], start: int, end: int) -> set[int]:
+    return {
+        index for index, token in enumerate(tokens)
+        if int(getattr(token, "start")) < end and start < int(getattr(token, "end"))
+    }
+
+
+def _parse_play_request(
+    text: str,
+    raw_words: list[str],
+    queue_positions: frozenset[int],
+    enqueue: str,
+    entities: Sequence[EntitySnapshot],
+) -> MediaRequest | None:
+    """Compose PLAY from independent action, source and target evidence.
+
+    This is intentionally not a list of sentence templates.  It identifies a
+    bounded German play action, removes registry-grounded player/place spans,
+    and leaves the remaining phrase as the exact Music Assistant/source name.
+    The positions are carried into ``media_coverage`` so unknown tails cannot
+    disappear between understanding and execution.
+    """
+
+    from .nlu.coordination import opens_clause
+    from .nlu.language_frontend import tokenize_language
+    from .nlu.self_correction import utterance_fields
+
+    all_tokens = list(tokenize_language(text))
+    tokens = [
+        token for token in all_tokens
+        if token.is_word or token.is_number
+    ]
+    words = [token.canonical for token in tokens]
+    if words != raw_words:
+        return None
+    present = {
+        word for index, word in enumerate(words) if index not in queue_positions
+    }
+    # Transport/volume lexemes own their established operations.  A generic
+    # light verb plus ``Musik`` must never turn ``Mach die Musik lauter`` into
+    # a request to search for a source named "Musik lauter".
+    if any(_is_resume_surface(word) for word in present) or present & (
+        _PAUSE_WORDS | _STOP_WORDS | _NEXT_WORDS
+        | _PREVIOUS_WORDS | _LOUDER | _QUIETER | _VOLUME_WORDS
+        | frozenset({"stumm", "stummschalten"})
+    ):
+        return None
+    if present & {"dreh", "drehe"} and present & {
+        "hoch", "rauf", "runter", "herunter",
+    }:
+        # Colloquial separable volume verbs belong to the established device
+        # operation (``dreh das Radio runter``), not to a source called
+        # ``Radio runter``.
+        return None
+    action_positions = {
+        index for index, word in enumerate(words)
+        if word in _PLAY_SEMANTIC_ACTIONS
+    }
+    shell_positions = {
+        index for index, word in enumerate(words)
+        if word in _PLAY_REQUEST_SHELL
+    }
+
+    fields, _rest = utterance_fields(text, entities)
+    grounded_positions: set[int] = set()
+    explicit_media_target = False
+    for item in fields:
+        positions = _overlapping_word_positions(tokens, item.start, item.end)
+        if item.kind == "place":
+            grounded_positions.update(positions)
+            continue
+        if item.kind != "target":
+            continue
+        registry_ids = item.registry_ids
+        genera = set(item.genera)
+        registry_media = bool(registry_ids) and all(
+            entity_id.startswith("media_player.") for entity_id in registry_ids
+        )
+        # A media device noun after a target preposition is a target.  A
+        # leading ``Radio`` in ``Radio Energy`` remains part of the source so
+        # exact library grounding can decide whether that is its real name.
+        first = min(positions, default=-1)
+        preceded_by_target_preposition = (
+            first > 0 and words[first - 1] in PLAY_NAME_STOPS
+        )
+        genus_media = bool(genera & _MEDIA_TARGET_GENERA) or (
+            "radio" in genera and preceded_by_target_preposition
+        )
+        if registry_media or genus_media:
+            grounded_positions.update(positions)
+            first_position = min(positions, default=-1)
+            if first_position > 0 and words[first_position - 1] in PLAY_NAME_STOPS:
+                grounded_positions.add(first_position - 1)
+            explicit_media_target = explicit_media_target or registry_media
+
+    leading = next(
+        (word for index, word in enumerate(words) if index not in shell_positions),
+        "",
+    )
+    if leading in {"lass", "lasse", "lassen"} and not (
+        present & {"laufen", "spielen", "abspielen"}
+    ):
+        return None
+    direct_action = bool(action_positions) and (
+        leading in _PLAY_SEMANTIC_ACTIONS
+        or bool(present & _PLAY_REQUEST_SHELL)
+        or {"lass", "lasse"} & present and "laufen" in present
+    )
+    if leading in {"starte", "start"} and not (
+        present & MEDIA_CONTENT_WORDS or explicit_media_target
+    ):
+        direct_action = False
+    light_action = words[:1] and words[0] in MEDIA_LIGHT_VERBS and bool(
+        present & {"musik", "radio", "sender", "radiosender", "radiostation", "station"}
+    )
+    polite_ellipsis = "bitte" in present and (
+        explicit_media_target
+        or bool(present & {"radio", "sender", "radiosender", "radiostation", "station"})
+    )
+    if not (direct_action or light_action or polite_ellipsis):
+        return None
+
+    excluded = set(queue_positions) | grounded_positions | action_positions | shell_positions
+    if light_action:
+        excluded.update(
+            index for index, word in enumerate(words) if word in MEDIA_LIGHT_VERBS
+        )
+    excluded.update(
+        index for index, word in enumerate(words)
+        if word in _PLAY_SOURCE_FILLERS
+    )
+    # Separable particles and ``wechsel auf`` describe the operation.  Other
+    # unresolved locatives stop the source phrase and remain visible residue
+    # in complete coverage (for example ``im unbekannten Raum``).
+    blocked: set[int] = set()
+    source_before_grounding = bool(grounded_positions) and any(
+        index < min(grounded_positions)
+        and index not in excluded
+        and words[index] not in PLAY_NAME_STOPS
+        for index in range(len(words))
+    )
+    clause_joiners = {
+        "und", "oder", "dann", "danach", "anschliessend", "ausserdem",
+        "sowie", "zudem", "aber", "sondern", "bevor", "nachdem", "waehrend",
+    }
+    for index, token in enumerate(tokens):
+        if index in queue_positions or token.canonical not in clause_joiners:
+            continue
+        token_index = next(
+            position for position, candidate in enumerate(all_tokens)
+            if candidate.start == token.start and candidate.end == token.end
+        )
+        if opens_clause(all_tokens, token_index) or (
+            source_before_grounding and index > max(grounded_positions)
+        ):
+            blocked.update(range(index, len(words)))
+            break
+    for index, word in enumerate(words):
+        if index in grounded_positions or word not in PLAY_NAME_STOPS:
+            continue
+        if index > 0 and words[index - 1] in {"wechsel", "wechsle"}:
+            excluded.add(index)
+            continue
+        blocked.update(range(index, len(words)))
+        break
+    excluded.update(
+        index for index, word in enumerate(words)
+        if word in {"an", "ein", "ab", "zu"}
+        and (index == len(words) - 1 or index in action_positions or light_action)
+    )
+
+    marked_types = [
+        kind for kind, markers in _TYPE_MARKERS.items()
+        if present & markers
+    ]
+    media_type = marked_types[0] if len(marked_types) == 1 else None
+    marker_words = _TYPE_MARKERS[media_type] if media_type is not None else frozenset()
+    library_only = bool(present & _LIBRARY_MARKERS)
+    for index, word in enumerate(words):
+        if word in marker_words or word in _LIBRARY_MARKERS:
+            excluded.add(index)
+            if index > 0 and words[index - 1] in {"der", "die", "das", "den", "dem"}:
+                excluded.add(index - 1)
+
+    source_positions = frozenset(
+        index for index in range(len(words))
+        if index not in excluded and index not in blocked
+    )
+    named = tuple(words[index] for index in sorted(source_positions))
+    source_order = sorted(source_positions)
+    if (
+        len(source_order) >= 2
+        and words[source_order[0]] in {"der", "die", "das", "den", "dem"}
+        and words[source_order[1]] in _MUSIC_WORDS
+    ):
+        source_positions = frozenset(source_order[1:])
+        named = tuple(words[index] for index in source_order[1:])
+    if {"lass", "lasse", "lassen"} & present and set(named) <= {
+        "an", "aus", "offen", "zu", "laufen", "brennen",
+    }:
+        return None
+    if set(named) <= MEDIA_CONTENT_WORDS | {"etwas", "was", "ein", "bisschen"}:
+        named = ()
+        source_positions = frozenset()
+    if not named and not (
+        present & (MEDIA_CONTENT_WORDS | {"was", "etwas", "bisschen"})
+    ):
+        return None
+
+    explicit: set[str] = set()
+    if named:
+        explicit.add("source_words")
+    if media_type is not None:
+        explicit.add("media_type")
+    if library_only:
+        explicit.add("library_only")
+    if queue_positions:
+        explicit.add("enqueue")
+    return MediaRequest(
+        "play",
+        named,
+        text=text,
+        media_type=media_type,
+        library_only=library_only,
+        enqueue=enqueue,
+        explicit_fields=frozenset(explicit),
+        source_positions=source_positions,
+    )
+
+
+def parse_media_request(
+    text: str, entities: Sequence[EntitySnapshot] = ()
+) -> MediaRequest | None:
     """A media command or "Was läuft?", else ``None``."""
     raw_words = _words(text)
     queue_positions, enqueue = queue_directive_positions(raw_words)
@@ -305,6 +584,17 @@ def parse_media_request(text: str) -> MediaRequest | None:
         and _has_media_power_form(words, present)
     ):
         return MediaRequest("off", text=text)
+    play_request = _parse_play_request(
+        text, raw_words, queue_positions, enqueue, entities
+    )
+    # A named medium makes ``Mach Radio Energy an`` a PLAY request.  A bare
+    # ``Mach das Radio an`` still reaches the established power/resume path.
+    if (
+        play_request is not None
+        and play_request.source_words
+        and not set(play_request.source_words) <= _RESUME_WORDS
+    ):
+        return play_request
     if present & {"musik", "radio"} and (
         present & {"an", "ein", "anmachen", "einschalten"}
     ) and (
@@ -319,58 +609,27 @@ def parse_media_request(text: str) -> MediaRequest | None:
         words, _RESUME_WORDS, frozenset({"spiel", "spiele"})
     ):
         return MediaRequest("resume", text=text)
-    if words[0] in {"spiel", "spiele", "spielen", "leg", "lege"} or (
-        words[0] == "starte" and present & {"musik", "radio"}
-    ) or (
-        words[0] in {"mach", "mache"} and present & {"musik"} and "an" in present
-    ):
-        rest = [word for word in words[1:] if word not in PLAY_NAME_FILLERS]
-        cut = next((index for index, word in enumerate(rest) if word in PLAY_NAME_STOPS), len(rest))
-        candidate = rest[:cut]
-        marked_types = [kind for kind, markers in _TYPE_MARKERS.items() if set(candidate) & markers]
-        media_type = marked_types[0] if len(marked_types) == 1 else None
-        marker_words = _TYPE_MARKERS[media_type] if media_type is not None else frozenset()
-        library_only = bool(set(candidate) & _LIBRARY_MARKERS)
-        named = tuple(word for word in candidate if word not in {
-            "die", "den", "das", "der", "mir", "uns", *_LIBRARY_MARKERS, *marker_words,
-        })
-        if not named:
-            return MediaRequest(
-                "play",
-                text=text,
-                enqueue=enqueue,
-                explicit_fields=(
-                    frozenset({"enqueue"}) if queue_positions else frozenset()
-                ),
-            ) if present & {"musik", "radio"} else None
-        if set(named) <= _MUSIC_WORDS | {"etwas", "was", "ein", "bisschen"}:
-            return MediaRequest(
-                "play",
-                text=text,
-                enqueue=enqueue,
-                explicit_fields=(
-                    frozenset({"enqueue"}) if queue_positions else frozenset()
-                ),
-            )
-        explicit = {"source_words"}
-        if media_type is not None:
-            explicit.add("media_type")
-        if library_only:
-            explicit.add("library_only")
-        if queue_positions:
-            explicit.add("enqueue")
-        return MediaRequest(
-            "play", named, text=text, media_type=media_type, library_only=library_only,
-            enqueue=enqueue, explicit_fields=frozenset(explicit),
-        )
+    if play_request is not None:
+        return play_request
     return None
+
+
+def is_named_play_request(
+    text: str, entities: Sequence[EntitySnapshot]
+) -> bool:
+    """Whether a maintain-looking surface actually binds a named PLAY."""
+
+    request = parse_media_request(text, entities)
+    return bool(
+        request is not None and request.op == "play" and request.source_words
+    )
 
 
 _CONTINUATION_PRONOUNS = frozenset({"es", "das", "dort", "da", "hier"})
 
 
 def merge_media_continuation(
-    pending: MediaRequest, text: str
+    pending: MediaRequest, text: str, entities: Sequence[EntitySnapshot] = ()
 ) -> MediaRequest | None:
     """Merge one bounded amendment into an open typed media request.
 
@@ -380,7 +639,7 @@ def merge_media_continuation(
 
     words = _words(text)
     queue_positions, queue_mode = queue_directive_positions(words)
-    fresh = parse_media_request(text)
+    fresh = parse_media_request(text, entities)
     if fresh is not None and fresh.op != pending.op:
         return None
 

@@ -240,6 +240,7 @@ _COMMAND_RE = re.compile(
     r"\b(?:" + regex_union(list(COMMAND_MARKER_EXPRESSIONS))
     + r"|regel\w*|regle\w*|zeig\w*|sorge\w*|schick\w*|"
     r"find\w*|such\w*|ort\w*|lokalisier\w*|piep\w*|heb\w*|unmute|"
+    r"abspiel\w*|"
     r"wähl\w*|waehl\w*|auswähl\w*|auswaehl\w*|send\w*|"
     r"drück\w*|drueck\w*|"
     r"möchte|moechte)\b",

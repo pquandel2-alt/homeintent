@@ -165,18 +165,26 @@ def analyse_media_coverage(
     for index in queue:
         mark(index, "queue")
 
-    # The free-text name of a play command: everything between the verb and
-    # the place/player, validated later by exact source, alias or library
-    # match - never fuzzily.
+    # The parser carries the exact free-text source positions for composable
+    # word orders ("im Studio bitte WDR zwei", "ich möchte dort 1LIVE
+    # hören").  This is parser evidence, not a second guess.  Legacy/manual
+    # requests without positions retain the historical bounded fallback.
     if request.op == "play" and request.source_words:
-        for index in range(1, len(words)):
-            if words[index] in PLAY_NAME_STOPS:
-                break
-            if index in queue:
-                continue
-            if index in joiner_at and index in clause_openers:
-                break
-            mark(index, "filler" if words[index] in PLAY_NAME_FILLERS else "source")
+        if request.source_positions:
+            if any(index >= len(words) for index in request.source_positions):
+                conflicts.append("source_alignment")
+            else:
+                for index in sorted(request.source_positions):
+                    mark(index, "source")
+        else:
+            for index in range(1, len(words)):
+                if words[index] in PLAY_NAME_STOPS:
+                    break
+                if index in queue:
+                    continue
+                if index in joiner_at and index in clause_openers:
+                    break
+                mark(index, "filler" if words[index] in PLAY_NAME_FILLERS else "source")
 
     # Registry names, places and genus nouns from the shared field reader.
     fields, _rest = utterance_fields(text, entities)

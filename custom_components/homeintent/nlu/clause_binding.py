@@ -499,7 +499,7 @@ def _source_binding(
     lexicon: PlaceLexicon,
     plans: Sequence[ServiceCallPlan],
 ) -> ClauseBinding | None:
-    request = parse_media_request(meaning.text)
+    request = parse_media_request(meaning.text, entities)
     if request is None:
         return None
     if request.op != "play" or not request.source_words:
@@ -632,12 +632,14 @@ def _validated_read_item(item: object) -> bool:
     return getattr(action, "name", "") == "QUERY"
 
 
-def _contains_media_source(document: LanguageDocument) -> bool:
+def _contains_media_source(
+    document: LanguageDocument, entities: Sequence[EntitySnapshot]
+) -> bool:
     clauses = independent_predicate_clauses(document) or (document.source_text,)
     return any(
         bool(request.source_words)
         for text in clauses
-        if (request := parse_media_request(text)) is not None
+        if (request := parse_media_request(text, entities)) is not None
     )
 
 
@@ -652,7 +654,7 @@ def _allows_domain_handoff(
     never use this escape hatch because it is owned by the source binder.
     """
 
-    if _contains_media_source(document):
+    if _contains_media_source(document, entities):
         return False
     decision = route_automation_turn(document, entities)
     if decision.kind is not AutomationRouteKind.NOT_APPLICABLE:
@@ -731,7 +733,7 @@ def analyse_clause_bindings(
     source_clause = any(
         request.op == "play" and bool(request.source_words)
         for meaning in meanings
-        if (request := parse_media_request(meaning.text)) is not None
+        if (request := parse_media_request(meaning.text, entities)) is not None
     )
     shared_predicate = len(meanings) == 1 and len(meanings[0].descriptions) > 1
     independent_predicates = bool(independent_predicate_clauses(document))

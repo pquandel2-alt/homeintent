@@ -509,7 +509,7 @@ class InsightsController(MediaCommandSupport):
         )
         if compound is not None:
             return compound
-        request = parse_media_request(user_input.text)
+        request = parse_media_request(user_input.text, entities)
         if request is None:
             return None
         utterance = analyse_utterance(user_input.text)

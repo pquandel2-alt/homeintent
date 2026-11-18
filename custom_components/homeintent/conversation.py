@@ -70,6 +70,7 @@ from .history_query import parse_history_query
 from .household_query import match_household_query
 from .embedded_question import embedded_check_question
 from .response_style import apply_response_style
+from .media import is_named_play_request
 from .turn_outcome import begin_outcomes, end_outcomes
 from .effect_wait import append_speech, async_settle_turn
 from .automation_ownership import begin_shared_turn
@@ -1054,6 +1055,7 @@ class NluConversationEntity(
             active_dialog is None
             and language_document.utterance.modality is Modality.MAINTAIN
             and language_document.maintained
+            and not is_named_play_request(user_input.text, entities)
         ):
             # "Lass das Licht an": keeping a state is never an operation,
             # whatever router would otherwise read the particle "an".

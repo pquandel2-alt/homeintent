@@ -124,7 +124,7 @@ class MediaCommandSupport:
             or not getattr(request, "source_words", ())
         ):
             return None
-        return merge_media_continuation(request, user_input.text)
+        return merge_media_continuation(request, user_input.text, entities)
 
     async def _async_resolve_media_request(
         self: Any,
@@ -168,7 +168,7 @@ class MediaCommandSupport:
         clauses = independent_predicate_clauses(document)
         if len(clauses) < 2:
             return None
-        requests = tuple(parse_media_request(clause) for clause in clauses)
+        requests = tuple(parse_media_request(clause, entities) for clause in clauses)
         if not any(
             request is not None
             and request.op == "play"
@@ -326,9 +326,9 @@ class MediaCommandSupport:
                     response,
                     "In Ordnung, der offene Medienentwurf wurde vollständig verworfen.",
                 )
-            fresh_request = parse_media_request(user_input.text)
+            fresh_request = parse_media_request(user_input.text, entities)
             amended_request = merge_media_continuation(
-                pending.request, user_input.text
+                pending.request, user_input.text, entities
             )
             continuation_pronouns = {"es", "das", "dort", "da", "hier"}
             independent_source = (

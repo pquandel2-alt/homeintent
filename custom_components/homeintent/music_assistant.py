@@ -18,7 +18,14 @@ from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from .entities import EntitySnapshot, normalize_for_compare
-from .media import QUEUE_MODES, MediaRequest, _as_said, resolve_media_player
+from .media import (
+    QUEUE_MODES,
+    MediaPlayerResolution,
+    MediaRequest,
+    _as_said,
+    media_words,
+    resolve_media_player,
+)
 from .service_call import ServiceCallPlan
 
 _LOGGER = logging.getLogger(__name__)
@@ -347,9 +354,59 @@ async def async_resolve_music_assistant(
         return None
 
     usable = [entity for entity in entities if entity.state not in {"unavailable", "unknown"}]
-    target = resolve_media_player(
+    ma_players = [
+        entity for entity in usable
+        if entity.integration == DOMAIN and entity.config_entry_id
+    ]
+    all_target = resolve_media_player(
         request, usable, satellite_area_id=satellite_area_id, match_source_lists=False
     )
+    ma_target = resolve_media_player(
+        request, ma_players, satellite_area_id=satellite_area_id, match_source_lists=False
+    ) if ma_players else MediaPlayerResolution(None, "Ich finde keinen Music-Assistant-Player.")
+
+    target = all_target
+    if ma_target.player is not None:
+        # An explicit MA player/place or the satellite area is the strongest
+        # playback route.  Native Sonos entities in the same room must not
+        # make that proven route ambiguous.
+        target = ma_target
+    elif all_target.player is not None and all_target.player.integration != DOMAIN:
+        native = all_target.player
+        text_words = media_words(request.text)
+
+        def explicitly_names(entity: EntitySnapshot) -> bool:
+            for name in (entity.friendly_name, *entity.aliases):
+                parts = media_words(name)
+                if parts and any(
+                    text_words[index:index + len(parts)] == parts
+                    for index in range(len(text_words) - len(parts) + 1)
+                ):
+                    return True
+            return False
+
+        # Home Assistant exposes a native Sonos entity and a Music Assistant
+        # player separately.  We link them only with explicit spoken native
+        # identity plus exactly one available MA player in that same area.
+        # With no area or several MA players we ask/refuse instead of guessing.
+        counterparts = [
+            player for player in ma_players
+            if native.area_id is not None and player.area_id == native.area_id
+        ] if explicitly_names(native) else []
+        if len(counterparts) == 1:
+            target = MediaPlayerResolution(counterparts[0])
+        elif len(counterparts) > 1:
+            target = MediaPlayerResolution(
+                None,
+                "Zum genannten Lautsprecher finde ich mehrere Music-Assistant-Player: "
+                f"{_spoken_list(tuple(player.friendly_name for player in counterparts))}. "
+                "Welchen meinst du?",
+                question=True,
+                candidates=tuple(counterparts),
+            )
+    elif explicit_library_request and ma_target.question:
+        target = ma_target
+
     if target.player is None:
         pending = (
             PendingMusicAssistant(

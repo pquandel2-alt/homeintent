@@ -36,7 +36,12 @@ from .word_cues import has_word
 from .locative import has_locative_cue
 
 
-_TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
+# Decimal numbers stay one token, as do compact alphanumeric names such as
+# ``1LIVE``, ``WDR2`` and ``rbb24``.  Matching a leading digit before the
+# ordinary word alternative used to split ``1live`` into ``1`` + ``live``;
+# the media parser deliberately kept it whole, so the complete-coverage gate
+# rejected an otherwise valid command as an alignment conflict.
+_TOKEN_RE = re.compile(r"\d+[,.]\d+|[\wäöüß]+|[%°]|[^\w\s]", re.I)
 _SPACE_RE = re.compile(r"\s+")
 _ELLIPTICAL_DIRECTIVE_RE = re.compile(
     r"\b(?:bitte|soll(?:st|en|t)?|möchte|moechte|will|gern|gerne)\b", re.I

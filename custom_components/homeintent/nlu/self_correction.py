@@ -134,7 +134,7 @@ _UNITS = frozenset({"prozent", "%", "grad", "°", "c", "stufe"})
 _PREPOSITIONS = frozenset({"im", "in", "am", "an", "beim", "bei", "auf", "vom", "von", "aus", "zum", "zur", "nach"})
 # Automations keep their own repair reading (``automation_lexicon``).
 _TRIGGER_WORDS = frozenset({"wenn", "sobald", "falls", "sofern"})
-_TOKEN_RE = re.compile(r"\d+(?:[,.]\d+)?|[\wäöüß]+|[%°]|[^\w\s]", re.I)
+_TOKEN_RE = re.compile(r"\d+[,.]\d+|[\wäöüß]+|[%°]|[^\w\s]", re.I)
 
 
 @dataclass(frozen=True)

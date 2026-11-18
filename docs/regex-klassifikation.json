@@ -3171,7 +3171,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/language_frontend.py::_TOKEN_RE::ee5879c938",
+   "id": "custom_components/homeintent/nlu/language_frontend.py::_TOKEN_RE::17c5242c03",
    "datei": "custom_components/homeintent/nlu/language_frontend.py",
    "bereich": "_TOKEN_RE",
    "klasse": "LEXICAL",
@@ -3794,7 +3794,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/self_correction.py::_TOKEN_RE::ee5879c938",
+   "id": "custom_components/homeintent/nlu/self_correction.py::_TOKEN_RE::17c5242c03",
    "datei": "custom_components/homeintent/nlu/self_correction.py",
    "bereich": "_TOKEN_RE",
    "klasse": "LEXICAL",
@@ -4452,7 +4452,7 @@
    "quelle": "heuristik"
   },
   {
-   "id": "custom_components/homeintent/nlu/semantic_utterance.py::_COMMAND_RE::48751cf940",
+   "id": "custom_components/homeintent/nlu/semantic_utterance.py::_COMMAND_RE::1dd41e1b85",
    "datei": "custom_components/homeintent/nlu/semantic_utterance.py",
    "bereich": "_COMMAND_RE",
    "klasse": "LEXICAL",
