@@ -115,6 +115,75 @@ def test_explicit_native_sonos_name_links_to_unique_ma_player_in_same_area(monke
     assert turn.calls[-1][2]["entity_id"] == ma_player.entity_id
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Spiele 1live auf Studio",
+        "Spiele 1live auf dem Studio Lautsprecher",
+        "Spiele Radio 1live auf dem Studio Lautsprecher",
+    ],
+)
+def test_registry_name_plus_media_genus_is_one_player_phrase(monkeypatch, text):
+    """``Studio`` + ``Lautsprecher`` qualifies one target, not two.
+
+    A common HA setup names the native Sonos entity only after its room and
+    lets the spoken device noun supply the type.  The natural compound must
+    retain the exact same target evidence as the bare registry name and then
+    link to the unique MA player in that area.
+    """
+    native = _studio_player(
+        entity_id="media_player.sonos_studio",
+        friendly_name="Studio",
+        aliases=(),
+        integration="sonos",
+        config_entry_id=None,
+    )
+    ma_player = _studio_player(
+        friendly_name="Studio via Music Assistant",
+        aliases=(),
+    )
+    request = parse_media_request(text, [native, ma_player])
+
+    assert request is not None and request.source_words in {
+        ("1live",),
+        ("radio", "1live"),
+    }
+    coverage = analyse_media_coverage(text, [native, ma_player], request)
+    assert coverage.complete, (coverage.residue, coverage.conflicts)
+
+    house = HouseConversation(monkeypatch, entities=[native, ma_player])
+    house.entity.hass.services.async_register("music_assistant", "search", lambda call: None)
+    house.entity.hass.services.async_register("music_assistant", "play_media", lambda call: None)
+    house.entity.hass.services.async_call.return_value = _response(
+        radio=[{"name": "1LIVE", "uri": "library://radio/1live"}]
+    )
+
+    turn = house.say(text)
+
+    assert turn.calls[-1][:2] == ("music_assistant", "play_media")
+    assert turn.calls[-1][2]["media_id"] == "library://radio/1live"
+    assert turn.calls[-1][2]["entity_id"] == ma_player.entity_id
+
+
+def test_registry_name_plus_genus_never_merges_a_second_registry_target():
+    studio = _studio_player(friendly_name="Studio", aliases=())
+    kitchen = _studio_player(
+        entity_id="media_player.ma_kueche",
+        friendly_name="Küche",
+        aliases=(),
+        area_id="kueche",
+        area_name="Küche",
+    )
+    text = "Spiele 1live auf Studio Küche Lautsprecher"
+    request = parse_media_request(text, [studio, kitchen])
+
+    assert request is not None
+    coverage = analyse_media_coverage(text, [studio, kitchen], request)
+
+    assert not coverage.complete
+    assert coverage.conflicts == ("target",)
+
+
 def test_native_sonos_mapping_never_guesses_between_two_ma_players(monkeypatch):
     native = _studio_player(
         entity_id="media_player.sonos_studio",

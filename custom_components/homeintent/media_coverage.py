@@ -188,7 +188,15 @@ def analyse_media_coverage(
 
     # Registry names, places and genus nouns from the shared field reader.
     fields, _rest = utterance_fields(text, entities)
-    targets = 0
+    # Keep registry-backed targets separate from generic device nouns until
+    # all fields have been read.  The shared field reader deliberately emits
+    # both parts of a natural compound such as ``Studio Lautsprecher``:
+    # ``Studio`` is the exact registry name and ``Lautsprecher`` is the media
+    # genus.  Counting both fields immediately used to turn that one spoken
+    # player into a false two-target conflict and made the media route reject
+    # an otherwise complete request.
+    registry_targets: list[frozenset[int]] = []
+    genus_targets: list[frozenset[int]] = []
     places = 0
     for item in fields:
         positions = overlapping(item.start, item.end)
@@ -205,8 +213,11 @@ def analyse_media_coverage(
             media_genus = bool(item.genera) and set(item.genera) <= _MEDIA_GENERA
             if not (media_registry or media_genus):
                 continue
-            if media_registry or set(item.genera) & _MEDIA_DEVICE_GENERA:
-                targets += 1
+            positions_set = frozenset(positions)
+            if media_registry:
+                registry_targets.append(positions_set)
+            elif set(item.genera) & _MEDIA_DEVICE_GENERA:
+                genus_targets.append(positions_set)
             for index in positions:
                 mark(index, "target")
         elif item.kind == "value" and request.op == "volume":
@@ -214,6 +225,25 @@ def analyse_media_coverage(
                 mark(index, "value")
     if places > 1:
         conflicts.append("place")
+    # A directly adjacent media genus qualifies an exact registry target; it
+    # does not introduce another target.  Registry-to-registry adjacency is
+    # intentionally never merged, and a standalone/second genus still counts
+    # independently.  This keeps ``Studio Lautsprecher`` compositional while
+    # preserving the fail-closed behaviour for genuinely multiple players.
+    attached_genera = {
+        genus_index
+        for genus_index, genus_positions in enumerate(genus_targets)
+        if any(
+            registry_positions
+            and genus_positions
+            and (
+                max(registry_positions) + 1 == min(genus_positions)
+                or max(genus_positions) + 1 == min(registry_positions)
+            )
+            for registry_positions in registry_targets
+        )
+    }
+    targets = len(registry_targets) + len(genus_targets) - len(attached_genera)
     if targets > 1:
         conflicts.append("target")
 
