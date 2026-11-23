@@ -1,4 +1,4 @@
-"""Natural, compositional radio playback regressions for 7.15.1.
+"""Natural, compositional radio playback regressions for 7.15.x.
 
 These are not production sentence templates.  The matrix varies action,
 source spelling and word order while asserting the same typed PLAY meaning;

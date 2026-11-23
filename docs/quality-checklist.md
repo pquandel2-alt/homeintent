@@ -6,7 +6,7 @@ Checkliste orientiert sich trotzdem an der aktuellen Integration Quality Scale
 und trennt nachweisbar Erledigtes von offenen Arbeiten. Sie ist keine
 Selbstzertifizierung.
 
-Stand: 7. November 2026 (7.13.3)
+Stand: 23. November 2026 (7.15.2)
 
 ## Nachprüfung von 7.13.3
 
@@ -82,7 +82,27 @@ Release-Nachweise gelten ausschließlich für ihre historischen Commits.
 - [ ] reale Sonos-/Music-Assistant-/Licht-/Rollladen-Hardware – weiterhin
   nicht geprüft und nicht behauptet
 
-## Release Candidate 7.15.1
+## Release Candidate 7.15.2
+
+- [x] Exakter Registry-Name plus direkt angrenzende Mediengeräteart wird als
+  ein zusammengesetzter Playerausdruck gebunden.
+- [x] Zwei echte Registry-Ziele bleiben getrennt und blockieren eine
+  willkürliche Wiedergabe.
+- [x] Die Screenshot-Formen „Spiele 1LIVE auf Studio“, „Spiele 1LIVE auf dem
+  Studio Lautsprecher“ und „Spiele Radio 1LIVE auf dem Studio Lautsprecher“
+  erreichen in der vollständigen Regression den eindeutigen MA-Player.
+- [x] 1.208 verbreiterte Medien-/Routingtests und 463 Sprach-Sicherheitstests
+  grün; Pyright 0/0 und Pyflakes ohne Befund.
+- [x] Korpusvergleich 4.386/4.386 ohne Signaturänderung; Identity-Shadow
+  2.131/2.131 äquivalent, `SAFETY_DRIFT=0`; Dev-Benchmark unverändert 478/516
+  und sämtliche Safety-Zähler null.
+- [ ] Python 3.13, echte HA-/MA-Komponententests, Hassfest, HACS,
+  HA-Stable-Smoke, Options Flow, Live-Testbett, CI und `nightly-live` für den
+  finalen Commit – vor Veröffentlichung zwingend offen.
+- [ ] echte Sonos-/Music-Assistant-Hardware – nicht geprüft und nicht
+  behauptet.
+
+## Release 7.15.1
 
 - [x] Musik-PLAY wird kompositionell aus Aktion, Quelle und geerdetem
   Player/Bereich gelesen; keine neuen vollständigen Satzschablonen.
@@ -97,9 +117,10 @@ Release-Nachweise gelten ausschließlich für ihre historischen Commits.
   Regressionen, Pyflakes, vollständiges Pyright und Architektur-/Regex-Gates
   grün. Dev-Benchmark 478/516, Held-out 109/117; alle Safety-Zähler null.
 - [x] versionierte Korpusbaseline 7.15.1 erzeugt; CI prüft exakt diese Datei.
-- [ ] Python 3.13, echte HA-/MA-Komponententests, Hassfest, HACS,
+- [x] Python 3.13, echte HA-/MA-Komponententests, Hassfest, HACS,
   HA-Stable-Smoke, Options Flow, Live-Testbett, CI und `nightly-live` für den
-  finalen Commit – vor Veröffentlichung zwingend offen.
+  finalen Commit erfolgreich; Release-Workflow veröffentlichte den exakt
+  geprüften SHA als `v7.15.1`.
 - [ ] echte Sonos-/Music-Assistant-Hardware – nicht geprüft und nicht
   behauptet.
 

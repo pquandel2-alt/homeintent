@@ -33,6 +33,13 @@ muss weiterhin vollständig erklärt und anschließend exakt gegen Music
 Assistant geerdet werden; unbekannte Orts- oder Klauselreste werden nicht
 verschluckt.
 
+Seit 7.15.2 wird ein exakter Registry-Name mit einer direkt angrenzenden
+Mediengeräteart als ein zusammengesetzter Playerausdruck behandelt. Heißt die
+native Sonos-Entity beispielsweise „Studio“, sind „auf Studio“ und „auf dem
+Studio Lautsprecher“ zwei Formen derselben Zielbindung. Zwei Registry-Namen
+werden dadurch nicht zusammengelegt; mehrere tatsächlich genannte Player
+bleiben mehrdeutig und führen zu keiner Ausführung.
+
 Home Assistant kann denselben Sonos-Lautsprecher als native Sonos-Entity und
 als Music-Assistant-Player zeigen. Nennt die Äußerung ausdrücklich die native
 Entity, darf HomeIntent sie nur dann auf Music Assistant abbilden, wenn beide

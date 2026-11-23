@@ -2,7 +2,7 @@
 
 **Lokale, deterministische Sprachsteuerung für Home Assistant Assist – ohne LLM oder ML-Modell zur Laufzeit.**
 
-- Aktuelle Version: **7.15.1**
+- Aktuelle Version: **7.15.2**
 - Sprache: Deutsch
 - Mindestversion: Home Assistant **2026.4.0**
 - Installation: HACS
@@ -154,6 +154,29 @@ Weitere Grenzen und ausführliche Funktionsbeispiele stehen im
    anonymisierte Logzeilen angeben; Tokens und private Pfade nicht veröffentlichen.
 
 Ausführlich: [Troubleshooting](docs/troubleshooting.md).
+
+## Version 7.15.2 – Zusammengesetzte Playernamen korrekt binden
+
+Geprüfter Release-Stand von Version 7.15.2 ist ausschließlich der Commit, den
+CI, Nightly und Release-Gate vollständig erfolgreich geprüft haben. Bis dahin
+ist dieser Stand ein Release-Kandidat. Die Korpusbaseline
+[`corpus-signatures-7.15.2.json`](docs/perf/corpus-signatures-7.15.2.json)
+schützt die deterministischen Sprachsignaturen dieses Stands.
+
+Natürlich zusammengesetzte Playerausdrücke wie „Studio Lautsprecher“ werden
+nicht mehr fälschlich als zwei Ziele bewertet, wenn „Studio“ der exakte
+Registry-Name und „Lautsprecher“ die direkt folgende Geräteart ist. Befehle
+wie „Spiele 1LIVE auf Studio“ und „Spiele Radio 1LIVE auf dem Studio
+Lautsprecher“ behalten dadurch einen vollständigen, typisierten PLAY-Auftrag
+und können den eindeutig zugeordneten Music-Assistant-Player erreichen.
+
+Zwei tatsächlich genannte Registry-Ziele bleiben ein Konflikt und werden
+nicht zusammengeführt. Native Sonos- und Music-Assistant-Entities müssen
+weiterhin für Assist beziehungsweise in HomeIntent freigegeben sein; die
+Zuordnung findet nur bei genau einem MA-Player im selben Bereich statt.
+Details und Prüfgrenzen stehen in den
+[Release Notes](docs/release-notes-7.15.2.md) und der
+[Music-Assistant-Dokumentation](docs/music-assistant.md).
 
 ## Version 7.15.1 – Natürliches Music-Assistant-Routing
 

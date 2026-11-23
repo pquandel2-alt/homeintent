@@ -6,9 +6,9 @@ Aktuelle, veröffentlichte Stände stehen zusätzlich unter
 Umsetzungsberichte liegen im übergeordneten Verzeichnis `docs/`.
 
 Ab 7.9.9 hat jede Version eigenständige Release Notes. Als Release-Kandidat ist
-[7.15.1](../release-notes-7.15.1.md) mit erweitertem natürlichem
-Music-Assistant-Routing vorbereitet. Zuletzt veröffentlicht ist
-[7.15.0](../release-notes-7.15.0.md).
+[7.15.2](../release-notes-7.15.2.md) mit korrigierter Bindung natürlicher
+Playernamen vorbereitet. Zuletzt veröffentlicht ist
+[7.15.1](../release-notes-7.15.1.md).
 
 Version 7.9.9 ist in den eigenständigen
 [Release Notes](../release-notes-7.9.9.md) dokumentiert. Dieses Archiv beginnt
